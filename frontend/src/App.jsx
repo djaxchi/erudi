@@ -1,24 +1,19 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import LandingPage from "./pages/LandingPage";
+import LocalModelsPage from "./pages/LocalModelsPage";
+import AvailableModelsPage from "./pages/AvailableModelsPage";
+import TrainNewModelPage from "./pages/TrainNewModelPage";
 
 export default function App() {
-  const [message, setMessage] = useState("Loading...");
-
-  useEffect(() => {
-    // Fetch data from the FastAPI backend
-    fetch("http://localhost:8000/ping")
-      .then((response) => response.json())
-      .then((data) => {
-        setMessage(data.message); // Set the message from the backend
-      })
-      .catch((error) => {
-        console.error("Error fetching data:", error);
-        setMessage("Error connecting to backend");
-      });
-  }, []);
-
   return (
-    <div className="min-h-screen max-h-full bg-zinc-950 flex items-center justify-center">
-      <div className="font-bold text-white text-2xl">{message}</div>
-    </div>
+    <Router>
+      <Routes>
+        <Route path="/main_window" element={<LandingPage />} />
+        <Route path="/main_window/local-models" element={<LocalModelsPage />} />
+        <Route path="/main_window/available-models" element={<AvailableModelsPage />} />
+        <Route path="/main_window/train-new-model" element={<TrainNewModelPage />} />
+      </Routes>
+    </Router>
   );
 }

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import ping
+from backend.app.api import routes
 app = FastAPI()
 
 app.add_middleware(
@@ -13,4 +13,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(ping.router)
+app.include_router(routes.router)

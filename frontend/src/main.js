@@ -9,33 +9,35 @@ if (require("electron-squirrel-startup")) {
 const createWindow = () => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    fullscreen: true,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: [
+        "--csp=default-src 'self'; connect-src 'self' http://localhost:8000 http://127.0.0.1:8000; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';",
+      ],
     },
     autoHideMenuBar: true,
   });
+
+  mainWindow.webContents.session.clearCache();
 
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
   // Set custom CSP headers
-  mainWindow.webContents.session.webRequest.onHeadersReceived(
-    (details, callback) => {
-      const isDev = !app.isPackaged; // Check if the app is in development mode
-      const csp = isDev
-        ? "default-src 'self'; connect-src 'self' http://localhost:8000 ws://localhost:3000; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
-        : "default-src 'self'; connect-src 'self' http://localhost:8000; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';";
-
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          "Content-Security-Policy": [csp],
-        },
-      });
-    }
-  );
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    const isDev = !app.isPackaged; // Check if the app is in development mode
+    const csp = isDev
+      ? "default-src 'self'; connect-src 'self' http://localhost:8000/ http://127.0.0.1:8000/ ws://localhost:3000; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+      : "default-src 'self'; connect-src 'self' http://localhost:8000/ http://127.0.0.1:8000/; script-src 'self'; style-src 'self';";
+  
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [csp],
+      },
+    });
+  });
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
 };
