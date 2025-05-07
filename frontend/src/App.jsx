@@ -4,6 +4,26 @@ export default function App() {
   const [message, setMessage] = useState("Loading...");
 
   useEffect(() => {
+    window.hardware.getStats().then(stats => {
+      console.log(`CPU : ${stats.cpuModel}`);
+      console.log(
+        `RAM : ${(stats.freeMem / 1024 ** 3).toFixed(2)} GiB libres / ` +
+        `${(stats.totalMem / 1024 ** 3).toFixed(2)} GiB totales`
+      );
+      console.log(`GPU : ${stats.gpuModel} (${stats.gpuVram} MB VRAM)`);
+
+      // Disque courant
+      const { disk } = stats;
+      const avail   = ((disk.size - disk.used) / 1024**3).toFixed(2);
+      const total   = (disk.size     / 1024**3).toFixed(2);
+      console.log(
+        `Disk (${disk.mount}) – ${disk.fs} : ` +
+        `${avail} GiB libres / ${total} GiB totales`
+      );
+
+
+    });
+
     // Fetch data from the FastAPI backend
     fetch("http://127.0.0.1:8000/ping")
       .then((response) => response.json())
