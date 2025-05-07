@@ -35,7 +35,7 @@ module.exports = {
       scriptLoading: "blocking",
       meta: {
         "Content-Security-Policy":
-          "default-src 'self'; connect-src 'self' http://127.0.0.1:8000; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';",
+          "default-src 'self'; connect-src 'self' http://localhost:8000; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';",
       },
     }),
   ],

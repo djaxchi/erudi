@@ -25,8 +25,8 @@ const createWindow = () => {
     (details, callback) => {
       const isDev = !app.isPackaged; // Check if the app is in development mode
       const csp = isDev
-        ? "default-src 'self'; connect-src 'self' http://127.0.0.1:8000 ws://127.0.0.1:3000; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
-        : "default-src 'self'; connect-src 'self' http://127.0.0.1:8000; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';";
+        ? "default-src 'self'; connect-src 'self' http://localhost:8000 ws://localhost:3000; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+        : "default-src 'self'; connect-src 'self' http://localhost:8000; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';";
 
       callback({
         responseHeaders: {

@@ -5,7 +5,7 @@ export default function App() {
 
   useEffect(() => {
     // Fetch data from the FastAPI backend
-    fetch("http://127.0.0.1:8000/ping")
+    fetch("http://localhost:8000/ping")
       .then((response) => response.json())
       .then((data) => {
         setMessage(data.message); // Set the message from the backend
