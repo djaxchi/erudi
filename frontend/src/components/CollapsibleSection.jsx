@@ -101,6 +101,7 @@ export default function CollapsibleSection({ title }) {
           {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           <span className="font-semibold">{title}</span>
         </div>
+      </div>
 
         <div className="flex gap-3">
           <Cog className="w-4 h-4 hover:opacity-70" />
