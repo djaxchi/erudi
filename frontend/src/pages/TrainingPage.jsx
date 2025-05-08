@@ -63,6 +63,7 @@ export default function TrainingPage() {
             <InfoRow label="Available CPU :">{hw.cpu_model}</InfoRow>
             <InfoRow label="Available GPU :">{hw.gpu_model}</InfoRow>
             <InfoRow label="Cuda Installed :">
+            
               <div className="flex items-center gap-2">
                 <div className="bg-gray-800/60 rounded-full px-4 py-1 text-sm truncate max-w-[160px]">
                 {hw.cuda_installed.path || "—"}
@@ -77,21 +78,20 @@ export default function TrainingPage() {
             <div className="flex items-center justify-between">
               <h3 className="text-2xl font-bold">Model Name</h3>
               <input
-                className="bg-transparent border border-gray-400 rounded-full px-4 py-1 text-sm w-56 truncate focus:outline-none"
+                className="bg-transparent border border-gray-400 rounded-full px-4 py-1 text-sm w-56 truncate placeholder-white/40 focus:border-emerald-400/50 focus:ring-0 focus:outline-none"
                 placeholder="/AppData/DataStorage…"
               />
             </div>
 
             <div className="flex items-center justify-between mt-4">
               <div className="flex items-center gap-2">
-                <ChevronDown className="w-4 h-4" />
                 <h4 className="text-lg font-semibold">Available Models</h4>
               </div>
               <RefreshCcw className="w-4 h-4 cursor-pointer hover:rotate-90 transition" />
             </div>
 
-            <div className="bg-gray-800/50 rounded-lg p-4 overflow-y-auto h-40 mt-2">
-              <ul className="space-y-2 text-emerald-300 text-sm">
+            <div className="bg-gray-800/50 rounded-lg p-4 overflow-y-auto h-40 mt-2 shadow-lg">
+              <ul className="space-y-2 text-white/80 text-sm">
                 <li>Mistral‑7b</li>
                 <li>Llama‑3</li>
                 <li>LoRa</li>
@@ -105,7 +105,6 @@ export default function TrainingPage() {
         {/* Bottom Row */}
         <div className="flex gap-8">
           <DatasetCard />
-          <DragDropArea />
         </div>
       </main>
     </div>
