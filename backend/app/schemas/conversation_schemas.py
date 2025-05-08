@@ -12,9 +12,11 @@ class ConversationCreate(ConversationBase):
 class ConversationResponse(ConversationBase):
     id: int
     created_at: datetime
+    last_message_time: datetime
+
 
     class Config:
         orm_mode = True
 
 class ConversationWithMessagesResponse(ConversationResponse):
-    messages: List["MessageResponse"]  # Nested messages
+    messages: List[MessageResponse]

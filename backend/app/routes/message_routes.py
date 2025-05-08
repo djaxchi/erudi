@@ -5,6 +5,7 @@ from ..database import get_db
 from ..models.Conversation import Conversation
 from ..models.Message import Message
 from ..schemas.message_schemas import MessageCreate, MessageResponse
+from datetime import datetime
 
 router = APIRouter()
 
@@ -19,27 +20,17 @@ async def get_messages_by_conversation(conversation_id: int, db: Session = Depen
 @router.post("/conversations/{conversation_id}/messages", response_model=MessageResponse)
 async def add_message_to_conversation(conversation_id: int, message: MessageCreate, db: Session = Depends(get_db)):
     """
-    Add a new message to a specific conversation.
+    Add a new message to a specific conversation and update the last_message_time.
     """
     conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    new_message = Message(conversation_id=conversation_id, **message.dict())
-    db.add(new_message)
-    db.commit()
-    db.refresh(new_message)
-    return new_message
 
-@router.post("/conversations/{conversation_id}/messages", response_model=MessageResponse)
-async def add_message_to_conversation(conversation_id: int, message: MessageCreate, db: Session = Depends(get_db)):
-    """
-    Add a new message to a specific conversation.
-    """
-    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
     new_message = Message(conversation_id=conversation_id, **message.dict())
     db.add(new_message)
+
+    conversation.last_message_time = datetime.utcnow()
+
     db.commit()
     db.refresh(new_message)
     return new_message

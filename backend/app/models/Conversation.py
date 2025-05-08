@@ -11,3 +11,4 @@ class Conversation(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     messages = relationship("Message", back_populates="conversation")
+    last_message_time = Column(DateTime, default=datetime.utcnow)

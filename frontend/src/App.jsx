@@ -5,6 +5,7 @@ import LocalModelsPage from "./pages/LocalModelsPage";
 import AvailableModelsPage from "./pages/AvailableModelsPage";
 import TrainNewModelPage from "./pages/TrainNewModelPage";
 import ChatPage from "./pages/ChatPage";
+import ConversationPage from "./pages/ConversationPage";
 
 export default function App() {
   return (
@@ -16,7 +17,8 @@ export default function App() {
         <Route path="/main_window/local-models" element={<LocalModelsPage />} />
         <Route path="/main_window/available-models" element={<AvailableModelsPage />} />
         <Route path="/main_window/train-new-model" element={<TrainNewModelPage />} />
-      </Routes>
+        <Route path="/main_window/conversations/:id" element={<ConversationPage />} />
+        </Routes>
     </Router>
   );
 }
