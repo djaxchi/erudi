@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import basic_routes, llm_routes, conversation_routes, message_routes, bd_routes
+from .routes import basic_routes, llm_routes, conversation_routes, message_routes, bd_routes, hardware_routes
 from .database import Base, engine
 from .models.Llm import Llm
 from sqlalchemy.orm import Session
@@ -35,3 +35,4 @@ app.include_router(llm_routes.router)
 app.include_router(conversation_routes.router)
 app.include_router(message_routes.router)
 app.include_router(bd_routes.router)
+app.include_router(hardware_routes.router)
