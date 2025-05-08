@@ -7,6 +7,7 @@ import ChatPage from "./pages/ChatPage";
 import TrainingPage from "./pages/TrainingPage";
 import ConversationPage from "./pages/ConversationPage";
 import TrainingPage from "./pages/TrainingPage";
+import ConversationPage from "./pages/ConversationPage";
 
 export default function App() {
   return (
@@ -19,7 +20,7 @@ export default function App() {
         <Route path="/main_window/available-models" element={<AvailableModelsPage />} />
         <Route path="/main_window/conversations/:id" element={<ConversationPage />} />
         <Route path="/main_window/new-training" element={<TrainingPage />} />
-      </Routes>
+        </Routes>
     </Router>
   );
 }

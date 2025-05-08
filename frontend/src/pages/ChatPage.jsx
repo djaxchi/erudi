@@ -78,6 +78,11 @@ export default function ChatPage() {
         <h1 className="text-3xl font-bold">History</h1>
 
         <CollapsibleSection title="Hot Chats" />
+        <CollapsibleSection
+          title="Previous Chats"
+          items={conversations}
+          onItemClick={handleConversationClick}
+        />
 
         <CollapsibleSection
           title="Previous Chats"
