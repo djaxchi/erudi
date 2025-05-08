@@ -12,13 +12,12 @@ import DatasetCard from "../components/DatasetCard";
 const API_BASE = "http://localhost:8000";
 
 export default function TrainingPage() {
-    const [cudaPath, setCudaPath] = useState("");
   const [hw, setHw] = useState({
-    storage_path:   "—",
-    disk_available: "—",
-    cpu_model:      "—",
-    gpu_model:      "—",
-    cuda_installed: { path: "—", ok: false },
+    storage_path:   "/Path/To/Storage",
+    disk_available: "fetching…",
+    cpu_model:      "fetching…",
+    gpu_model:      "fetching…",
+    cuda_installed: { path: "", ok: false },
   });
 
   useEffect(() => {
@@ -29,13 +28,14 @@ export default function TrainingPage() {
       })
       .then(data => {
         setHw({
-          storage_path:   data.storage_path ?? "—",
+          storage_path:   data.storage_path ?? "/Path/To/Storage",
+          ram_available:  `${data.available_ram_gb} GB`,
           disk_available: `${data.disk_available_gb} GB`,
           cpu_model:      data.cpu_model,
-          gpu_model:      data.gpu_model ?? "—",
+          gpu_model:      data.gpu_model ?? "No GPU detected",
           cuda_installed: {
-            path: data.cuda_path  ?? "—",
-            ok:   data.cuda_installed,
+            path: data.cuda_path  ?? "Path/To/Cuda",
+            ok:   data.cuda_installed
           },
         });
       })
@@ -44,6 +44,8 @@ export default function TrainingPage() {
         // on laisse les valeurs par défaut en UI
       });
   }, []);
+
+  const [cudaPath, setCudaPath] = useState(hw.cuda_installed.path);
 
   return (
     <div className="flex h-screen bg-[#071b18]">
@@ -55,11 +57,13 @@ export default function TrainingPage() {
           {/* System Info Card */}
           <GradientBox className="flex-1 min-w-[300px]">
             <InfoRow label="Storage Path :">
-              <div className="bg-gray-800/60 rounded-full px-4 py-1 text-sm truncate max-w-[180px]">
-                {hw.storage_path}
-              </div>
+            <input
+                className="bg-gray-800/60 border border-transparent rounded-full px-4 py-1 placeholder-white text-sm truncate max-w-[180px] focus:border-emerald-400/50 focus:ring-0 focus:outline-none "
+                placeholder={hw.storage_path}
+              />
             </InfoRow>
             <InfoRow label="Available Storage :">{hw.disk_available}</InfoRow>
+            <InfoRow label="Available RAM :">{hw.ram_available} </InfoRow>
             <InfoRow label="Available CPU :">{hw.cpu_model}</InfoRow>
             <InfoRow label="Available GPU :">{hw.gpu_model}</InfoRow>
             <InfoRow label="Cuda Installed :">
