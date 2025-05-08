@@ -6,11 +6,27 @@ from .models.LLM import LLM
 from sqlalchemy.orm import Session
 from .database import SessionLocal
 from pydantic import BaseModel
+import logging
+from .models.Conversation import Conversation
+from .models.Message import Message
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class LLMCreate(BaseModel):
     name: str
     local: int
     link: str
+
+class conversationCreate(BaseModel):
+    llm_id: int
+    messages: list
+
+class messageCreate(BaseModel):
+    conversation_id: int
+    content: str
+    sender: str  # "user" or "llm"
 
 async def createTables():
     # Create all tables in the database
@@ -20,12 +36,12 @@ app = FastAPI()
 
 @app.on_event("startup")
 async def startup_event():
+    logger.info("Startup event triggered")    
     # Create tables on startup
     await createTables()
     
     # Mock local LLM data to test the database
     db: Session = SessionLocal()
-    print(f"__________Mock before try:")
 
     try:
         # Mock LLM data
@@ -34,13 +50,37 @@ async def startup_event():
             local=1,  # 1 for local, 0 for remote
             link="data/mock_model"
         )
-        
         # Add mock LLM to the database
         db_model = LLM(**model.dict())
         db.add(db_model)
         db.commit()
         db.refresh(db_model)
-        print(f"__________Mock LLM added: {db_model}")
+        logger.info(f"Mock LLM added: {db_model}")
+
+        # Create a conversation
+        conversation = Conversation(
+            llm_id=db_model.id  # Link to the mock LLM
+        )
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
+        logger.info(f"Mock conversation added: {conversation}")
+
+        # Add two messages to the conversation
+        message_1 = Message(
+            conversation_id=conversation.id,
+            sender="user",
+            content="Hello, how are you?"
+        )
+        message_2 = Message(
+            conversation_id=conversation.id,
+            sender="llm",
+            content="I'm just a model, but I'm doing great! How can I assist you?"
+        )
+        db.add_all([message_1, message_2])
+        db.commit()
+        logger.info(f"Mock messages added: {message_1}, {message_2}")
+
     finally:
         # Close the database session
         db.close()

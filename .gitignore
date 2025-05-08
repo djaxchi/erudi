@@ -94,3 +94,4 @@ frontend/out/
 
 backend/app/__pycache__
 backend/app/api/__pycache__
+backend/data/
