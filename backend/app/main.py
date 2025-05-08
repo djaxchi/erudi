@@ -5,7 +5,12 @@ from .database import Base, engine
 from .models.LLM import LLM
 from sqlalchemy.orm import Session
 from .database import SessionLocal
-from .schemas.LLM import LLMCreate
+from pydantic import BaseModel
+
+class LLMCreate(BaseModel):
+    name: str
+    local: int
+    link: str
 
 async def createTables():
     # Create all tables in the database
@@ -19,19 +24,23 @@ async def startup_event():
     await createTables()
     
     # Mock local LLM data to test the database
-
-    # Create a new database session
     db: Session = SessionLocal()
+    print(f"__________Mock before try:")
 
     try:
         # Mock LLM data
-        model = LLMCreate(name="MockModel", version="1.0", description="A mock LLM for testing purposes")
+        model = LLMCreate(
+            name="MockModel",
+            local=1,  # 1 for local, 0 for remote
+            link="data/mock_model"
+        )
         
         # Add mock LLM to the database
         db_model = LLM(**model.dict())
         db.add(db_model)
         db.commit()
         db.refresh(db_model)
+        print(f"__________Mock LLM added: {db_model}")
     finally:
         # Close the database session
         db.close()
