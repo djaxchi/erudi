@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import basic_routes
+from .routes import basic_routes, llm_routes, conversation_routes, message_routes, bd_routes
 from .database import Base, engine
-from .models.LLM import LLM
+from .models.Llm import Llm
 from sqlalchemy.orm import Session
 from .database import SessionLocal
 from pydantic import BaseModel
@@ -51,7 +51,7 @@ async def startup_event():
             link="data/mock_model"
         )
         # Add mock LLM to the database
-        db_model = LLM(**model.dict())
+        db_model = Llm(**model.dict())
         db.add(db_model)
         db.commit()
         db.refresh(db_model)
@@ -96,3 +96,7 @@ app.add_middleware(
 )
 
 app.include_router(basic_routes.router)
+app.include_router(llm_routes.router)
+app.include_router(conversation_routes.router)
+app.include_router(message_routes.router)
+app.include_router(bd_routes.router)

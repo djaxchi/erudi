@@ -10,9 +10,6 @@ export default function App() {
     <Router>
       <Routes>
         <Route path="/main_window" element={<LandingPage />} />
-        <Route path="/main_window/local-models" element={<LocalModelsPage />} />
-        <Route path="/main_window/available-models" element={<AvailableModelsPage />} />
-        <Route path="/main_window/train-new-model" element={<TrainNewModelPage />} />
       </Routes>
     </Router>
   );
