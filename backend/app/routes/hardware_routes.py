@@ -2,7 +2,7 @@ from fastapi import APIRouter
 import psutil, cpuinfo, GPUtil, shutil, os
 from app.schemas.hardware_schemas import HardwareInfo
 
-router = APIRouter()
+router = APIRouter(tags=["hardware"])
 
 @router.get("/hardware", response_model=HardwareInfo)
 def get_hardware_info():
