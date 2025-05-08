@@ -2,9 +2,9 @@ import React, { useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";   
 import GradientBox  from "../components/GradientBox";
 import {
-  ChevronDown,
   RefreshCcw,
   Check,
+    X,
 } from "lucide-react";
 import InfoRow from "../components/InfoRow";
 import DatasetCard from "../components/DatasetCard";
@@ -63,7 +63,6 @@ export default function TrainingPage() {
             <InfoRow label="Available CPU :">{hw.cpu_model}</InfoRow>
             <InfoRow label="Available GPU :">{hw.gpu_model}</InfoRow>
             <InfoRow label="Cuda Installed :">
-            
               <div className="flex items-center gap-2">
                 <div className="bg-gray-800/60 rounded-full px-4 py-1 text-sm truncate max-w-[160px]">
                 {hw.cuda_installed.path || "—"}
