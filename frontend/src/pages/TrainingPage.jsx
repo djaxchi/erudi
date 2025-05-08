@@ -2,14 +2,15 @@ import React, { useState } from "react";
 import Sidebar from "../components/Sidebar";   
 import GradientBox  from "../components/GradientBox";
 import {
-  ChevronDown,
   RefreshCcw,
   Check,
+    X,
 } from "lucide-react";
 import InfoRow from "../components/InfoRow";
 import DatasetCard from "../components/DatasetCard";
 
 export default function TrainingPage() {
+    const [cudaPath, setCudaPath] = useState("");
   return (
     <div className="flex h-screen bg-[#071b18]">
       <Sidebar />
@@ -30,13 +31,18 @@ export default function TrainingPage() {
             <InfoRow label="Available CPU :">AMD Ryzen 5</InfoRow>
             <InfoRow label="Available GPU :">NVIDIA GEFORCE 940M</InfoRow>
             <InfoRow label="Cuda Installed :">
-            
               <div className="flex items-center gap-2">
-              <input
-                className="bg-gray-800/60 border border-transparent rounded-full px-4 py-1 placeholder-white text-sm truncate max-w-[180px] focus:border-emerald-400/50 focus:ring-0 focus:outline-none "
-                placeholder="/AppData/CudaPack…"
-              />
-                <Check className="w-5 h-5 text-emerald-400" />
+                <input
+                  value={cudaPath}
+                  onChange={(e) => setCudaPath(e.target.value)}
+                  className="bg-gray-800/60 border border-transparent rounded-full px-4 py-1 placeholder-white text-sm truncate max-w-[180px] focus:border-emerald-400/50 focus:ring-0 focus:outline-none"
+                  placeholder="Click to specify path"
+                />
+                {cudaPath ? (
+                  <Check className="w-5 h-5 text-emerald-400" />
+                ) : (
+                  <X className="w-5 h-5 text-red-500" />
+                )}
               </div>
             </InfoRow>
           </GradientBox>
