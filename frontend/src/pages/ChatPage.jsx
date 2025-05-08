@@ -1,15 +1,5 @@
-import React, { useState } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  MessageSquare,
-  Brain,
-  SendHorizontal,
-    Plus,
-    RefreshCcw,
-    Cog,
-} from "lucide-react";
 
+/*
 function SidebarIcon({ children, active }) {
     return (
       <div
@@ -56,7 +46,6 @@ function CollapsibleSection({ title }) {
 export function GradientBox({ children, className = "" }) {
     return (
       <div className={`relative rounded-2xl overflow-hidden shadow-xl ${className}`}>
-        {/* gradient layer (11 % d'opacité) */}
         <div
           className="absolute inset-0 opacity-[11%]"
           style={{
@@ -65,34 +54,26 @@ export function GradientBox({ children, className = "" }) {
           }}
         />
   
-        {/* grain overlay */}
         <div
           className="absolute inset-0 mix-blend-overlay pointer-events-none"
         />
   
-        {/* content retains full opacity */}
         <div className="relative z-10 p-8">{children}</div>
       </div>
     );
   }
-  
-  /**
-   * Specific card that matches the second mock‑up (Chat with → input).
-   */
+
   export function ChatWithCard() {
     return (
       <GradientBox className="w-[700px] max-w-full">
         <div className="space-y-6">
-          {/* header row */}
           <div className="flex items-center gap-4 flex-wrap">
             <h2 className="text-white text-3xl font-bold">Chat with</h2>
             <select className="px-4 py-1 rounded-full border border-emerald-400 bg-transparent text-white focus:outline-none text-sm">
               <option className="text-black">Models</option>
-              {/* options dynamiques ici */}
             </select>
           </div>
   
-          {/* question input */}
           <div className="flex items-center bg-gray-900/80 rounded-full overflow-hidden">
             <input
               type="text"
@@ -107,20 +88,21 @@ export function GradientBox({ children, className = "" }) {
       </GradientBox>
     );
   }
+*/
+
+import React from "react";
+import Sidebar from "../components/Sidebar";
+import CollapsibleSection from "../components/CollapsibleSection";
+import NewChatCard from "../components/NewChatCard";
+
+  
 
 
 export default function ChatPage() {
   return (
     <div className="flex h-screen">
       {/* mini sidebar */}
-      <div className="w-16 bg-[#121212] flex flex-col items-center">
-        <SidebarIcon>
-          <Brain className="w-6 h-6 text-gray-400" />
-        </SidebarIcon>
-        <SidebarIcon active>
-          <MessageSquare className="w-6 h-6 text-green-400" />
-        </SidebarIcon>
-      </div>
+      <Sidebar />
 
       {/* main sidebar */}
       <aside className="w-80 bg-[#272727] text-white flex flex-col p-6 space-y-6">
@@ -131,7 +113,7 @@ export default function ChatPage() {
 
       {/* content */}
       <main className="flex-1 bg-[#071b18] flex items-center justify-center relative overflow-auto">
-        <ChatWithCard />
+        <NewChatCard />
       </main>
     </div>
   );
