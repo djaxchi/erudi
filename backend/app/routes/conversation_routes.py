@@ -12,8 +12,13 @@ async def get_all_conversations(db: Session = Depends(get_db)):
     """
     Fetch all conversations.
     """
-    conversations = db.query(Conversation).all()
-    return conversations
+    try:
+        conversations = db.query(Conversation).all()
+        return conversations
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationWithMessagesResponse)
 async def get_conversation_by_id(conversation_id: int, db: Session = Depends(get_db)):
