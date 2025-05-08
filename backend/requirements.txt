@@ -1,3 +1,9 @@
 fastapi==0.115.12
 uvicorn==0.34.0
 sqlalchemy==2.0.40
+numpy==1.26.4
+torch==2.2.2+cu121 torchvision==0.17.2+cu121 torchaudio==2.2.2+cu121 --extra-index-url https://download.pytorch.org/wh/cu121
+transformers
+datetime
+bitsandbytes --prefer-binary --extra-index-url https://jllllll.github.io/bitsandbytes-windows-webui
+huggingface_hub
