@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import InfoRow from "../components/InfoRow";
 import DatasetCard from "../components/DatasetCard";
-import DragDropArea from "../components/DragDropArea";
 
 export default function TrainingPage() {
   return (
@@ -21,18 +20,22 @@ export default function TrainingPage() {
           {/* System Info Card */}
           <GradientBox className="flex-1 min-w-[300px]">
             <InfoRow label="Storage Path :">
-              <div className="bg-gray-800/60 rounded-full px-4 py-1 text-sm truncate max-w-[180px]">
-                /AppData/ModelStorage…
-              </div>
+            <input
+                className="bg-gray-800/60 border border-transparent rounded-full px-4 py-1 placeholder-white text-sm truncate max-w-[180px] focus:border-emerald-400/50 focus:ring-0 focus:outline-none "
+                placeholder="/AppData/ModelStorage…"
+              />
             </InfoRow>
             <InfoRow label="Available Storage :">32 GB</InfoRow>
+            <InfoRow label="Available RAM :">8 GB</InfoRow>
             <InfoRow label="Available CPU :">AMD Ryzen 5</InfoRow>
             <InfoRow label="Available GPU :">NVIDIA GEFORCE 940M</InfoRow>
             <InfoRow label="Cuda Installed :">
+            
               <div className="flex items-center gap-2">
-                <div className="bg-gray-800/60 rounded-full px-4 py-1 text-sm truncate max-w-[160px]">
-                  /AppData/CudaPack…
-                </div>
+              <input
+                className="bg-gray-800/60 border border-transparent rounded-full px-4 py-1 placeholder-white text-sm truncate max-w-[180px] focus:border-emerald-400/50 focus:ring-0 focus:outline-none "
+                placeholder="/AppData/CudaPack…"
+              />
                 <Check className="w-5 h-5 text-emerald-400" />
               </div>
             </InfoRow>
@@ -43,21 +46,20 @@ export default function TrainingPage() {
             <div className="flex items-center justify-between">
               <h3 className="text-2xl font-bold">Model Name</h3>
               <input
-                className="bg-transparent border border-gray-400 rounded-full px-4 py-1 text-sm w-56 truncate focus:outline-none"
+                className="bg-transparent border border-gray-400 rounded-full px-4 py-1 text-sm w-56 truncate placeholder-white/40 focus:border-emerald-400/50 focus:ring-0 focus:outline-none"
                 placeholder="/AppData/DataStorage…"
               />
             </div>
 
             <div className="flex items-center justify-between mt-4">
               <div className="flex items-center gap-2">
-                <ChevronDown className="w-4 h-4" />
                 <h4 className="text-lg font-semibold">Available Models</h4>
               </div>
               <RefreshCcw className="w-4 h-4 cursor-pointer hover:rotate-90 transition" />
             </div>
 
-            <div className="bg-gray-800/50 rounded-lg p-4 overflow-y-auto h-40 mt-2">
-              <ul className="space-y-2 text-emerald-300 text-sm">
+            <div className="bg-gray-800/50 rounded-lg p-4 overflow-y-auto h-40 mt-2 shadow-lg">
+              <ul className="space-y-2 text-white/80 text-sm">
                 <li>Mistral‑7b</li>
                 <li>Llama‑3</li>
                 <li>LoRa</li>

@@ -43,7 +43,7 @@ export default function DatasetCard() {
             </button>
             </div>
         </div>
-        <div className="w-1/2 rounded-2xl  flex flex-col gap-6 shadow-lg">
+        <div className="w-[65%] rounded-2xl  flex flex-col gap-6 shadow-lg">
 
             <DragDropArea />
         </div>
