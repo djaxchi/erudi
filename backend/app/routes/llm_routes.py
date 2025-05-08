@@ -1,9 +1,10 @@
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.Llm import Llm
 from ..schemas.llm_schemas import LLMCreate, LLMResponse
+from ..utils.llm_downloader import download_llm
 
 from typing import List
 
@@ -86,3 +87,18 @@ async def search_llms(name: str, db: Session = Depends(get_db)):
     """
     llms = db.query(Llm).filter(Llm.name.ilike(f"%{name}%")).all()
     return llms
+
+@router.post("/llms/{llm_id}/download")
+async def download_llm_route(llm_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """
+    Download an LLM by its ID.
+    """
+    # Fetch the LLM object from the database
+    llm = db.query(Llm).filter(Llm.id == llm_id).first()
+    if not llm:
+        raise HTTPException(status_code=404, detail="LLM not found")
+
+    # Start the download in the background
+    background_tasks.add_task(download_llm, model_name=llm.link)
+
+    return {"message": f"Download started for LLM '{llm.name}'"}
