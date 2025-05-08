@@ -18,7 +18,7 @@ useEffect(() => {
                 } else {
                     console.error("Failed to fetch local models");
                 }
-            } else {
+            } else if (title === "Available Models") {
                 const response = await fetch("http://127.0.0.1:8000/main_window/llms/remote");
                 if (response.ok) {
                     const data = await response.json();
@@ -36,39 +36,45 @@ useEffect(() => {
 
     fetchModels();
 }, [title]);
-  return (
+return (
     <div className="text-gray-200">
-      <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
-        onClick={() => setOpen(!open)}
-      >
-        <div className="flex items-center gap-2">
-          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          <span className="font-semibold">{title}</span>
+        <div
+            className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
+            onClick={() => setOpen(!open)}
+        >
+            <div className="flex items-center gap-2">
+                {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                <span className="font-semibold">{title}</span>
+            </div>
+
+            <div className="flex gap-3">
+                <Cog className="w-4 h-4 hover:opacity-70" />
+                <RefreshCcw className="w-4 h-4 hover:opacity-70" />
+                <Plus className="w-4 h-4 hover:opacity-70" />
+            </div>
         </div>
 
-        <div className="flex gap-3">
-          <Cog className="w-4 h-4 hover:opacity-70" />
-          <RefreshCcw className="w-4 h-4 hover:opacity-70" />
-          <Plus className="w-4 h-4 hover:opacity-70" />
-        </div>
-      </div>
-
-      {open && (
-        <div className="px-10 py-2 text-sm text-gray-500">
-          {loading ? (
-            <p className="italic">Loading...</p>
-          ) : title === "Local Models" && models.length > 0 ? (
-            models.map((model) => (
-              <p key={model.id} className="py-1">
-                {model.name}
-              </p>
-            ))
-          ) : (
-            <p className="italic">Nothing here…</p>
-          )}
-        </div>
-      )}
+        {open && (
+            <div className="px-10 py-2 text-sm text-gray-500">
+                {loading ? (
+                    <p className="italic">Loading...</p>
+                ) : title === "Local Models" && models.length > 0 ? (
+                    models.map((model) => (
+                        <p key={model.id} className="py-1">
+                            {model.name}
+                        </p>
+                    ))
+                ) : title === "Available Models" && models.length > 0 ? (
+                    models.map((model) => (
+                        <p key={model.id} className="py-1">
+                            {model.name}
+                        </p>
+                    ))
+                ) : (
+                    <p className="italic">Nothing here…</p>
+                )}
+            </div>
+        )}
     </div>
-  );
+);
 }
