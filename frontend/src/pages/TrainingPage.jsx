@@ -71,7 +71,6 @@ export default function TrainingPage() {
         {/* Bottom Row */}
         <div className="flex gap-8">
           <DatasetCard />
-          <DragDropArea />
         </div>
       </main>
     </div>
