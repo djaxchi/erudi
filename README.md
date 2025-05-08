@@ -27,7 +27,9 @@ docker build -t smarter-backend .
 
 2. Lancer le conteneur
 
-docker run -p 8000:8000 smarter-backend
+<!-- docker run -p 8000:8000 smarter-backend -->
+<!-- VERSION POWERSHELL WINDOWS !! -->
+docker run -v ${PWD}\data:/app/data -p 8000:8000 smarter-backend
 
 Le backend est maintenant disponible sur http://localhost:8000.
 
