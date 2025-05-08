@@ -1,8 +1,40 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import routes
+from .routes import basic_routes
+from .database import Base, engine
+from .models.LLM import LLM
+from sqlalchemy.orm import Session
+from .database import SessionLocal
+from .schemas.LLM import LLMCreate
+
+async def createTables():
+    # Create all tables in the database
+    Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+@app.on_event("startup")
+async def startup_event():
+    # Create tables on startup
+    await createTables()
+    
+    # Mock local LLM data to test the database
+
+    # Create a new database session
+    db: Session = SessionLocal()
+
+    try:
+        # Mock LLM data
+        model = LLMCreate(name="MockModel", version="1.0", description="A mock LLM for testing purposes")
+        
+        # Add mock LLM to the database
+        db_model = LLM(**model.dict())
+        db.add(db_model)
+        db.commit()
+        db.refresh(db_model)
+    finally:
+        # Close the database session
+        db.close()
 
 app.add_middleware(
     CORSMiddleware,
@@ -14,4 +46,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(routes.router)
+app.include_router(basic_routes.router)
