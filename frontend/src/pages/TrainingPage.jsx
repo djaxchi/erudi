@@ -8,11 +8,11 @@ import {
 } from "lucide-react";
 import InfoRow from "../components/InfoRow";
 import DatasetCard from "../components/DatasetCard";
-import DragDropArea from "../components/DragDropArea";
 
 const API_BASE = "http://localhost:8000";
 
 export default function TrainingPage() {
+    const [cudaPath, setCudaPath] = useState("");
   const [hw, setHw] = useState({
     storage_path:   "—",
     disk_available: "—",
@@ -63,11 +63,18 @@ export default function TrainingPage() {
             <InfoRow label="Available CPU :">{hw.cpu_model}</InfoRow>
             <InfoRow label="Available GPU :">{hw.gpu_model}</InfoRow>
             <InfoRow label="Cuda Installed :">
-              <div className="flex items-center gap-2">
-                <div className="bg-gray-800/60 rounded-full px-4 py-1 text-sm truncate max-w-[160px]">
-                {hw.cuda_installed.path || "—"}
-                </div>
-                <Check className="w-5 h-5 text-emerald-400" />
+            <div className="flex items-center gap-2">
+                <input
+                  value={cudaPath}
+                  onChange={(e) => setCudaPath(e.target.value)}
+                  className="bg-gray-800/60 border border-transparent rounded-full px-4 py-1 placeholder-white text-sm truncate max-w-[180px] focus:border-emerald-400/50 focus:ring-0 focus:outline-none"
+                  placeholder="Click to specify path"
+                />
+                {cudaPath ? (
+                  <Check className="w-5 h-5 text-emerald-400" />
+                ) : (
+                  <X className="w-5 h-5 text-red-500" />
+                )}
               </div>
             </InfoRow>
           </GradientBox>
