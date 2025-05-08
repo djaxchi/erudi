@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.app.api import routes
+from app.api import routes
+
 app = FastAPI()
 
 app.add_middleware(
