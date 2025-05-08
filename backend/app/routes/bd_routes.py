@@ -5,6 +5,8 @@ from ..models.Llm import Llm
 from ..models.Conversation import Conversation
 from ..models.Message import Message
 
+# routes only for testing purposes
+
 router = APIRouter(prefix="/db", tags=["Database"])
 
 @router.post("/reset")
