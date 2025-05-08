@@ -3,8 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import LandingPage from "./pages/LandingPage";
 import LocalModelsPage from "./pages/LocalModelsPage";
 import AvailableModelsPage from "./pages/AvailableModelsPage";
-import TrainNewModelPage from "./pages/TrainNewModelPage";
 import ChatPage from "./pages/ChatPage";
+import TrainingPage from "./pages/TrainingPage";
 
 export default function App() {
   return (
@@ -15,7 +15,7 @@ export default function App() {
         <Route path="/main_window/models" element={<LandingPage />} />
         <Route path="/main_window/local-models" element={<LocalModelsPage />} />
         <Route path="/main_window/available-models" element={<AvailableModelsPage />} />
-        <Route path="/main_window/train-new-model" element={<TrainNewModelPage />} />
+        <Route path="/main_window/new-training" element={<TrainingPage />} />
       </Routes>
     </Router>
   );
