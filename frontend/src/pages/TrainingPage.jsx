@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";   
 import GradientBox  from "../components/GradientBox";
 import {
@@ -10,7 +10,41 @@ import InfoRow from "../components/InfoRow";
 import DatasetCard from "../components/DatasetCard";
 import DragDropArea from "../components/DragDropArea";
 
+const API_BASE = "http://localhost:8000";
+
 export default function TrainingPage() {
+  const [hw, setHw] = useState({
+    storage_path:   "—",
+    disk_available: "—",
+    cpu_model:      "—",
+    gpu_model:      "—",
+    cuda_installed: { path: "—", ok: false },
+  });
+
+  useEffect(() => {
+    fetch(`${API_BASE}/hardware`)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        setHw({
+          storage_path:   data.storage_path ?? "—",
+          disk_available: `${data.disk_available_gb} GB`,
+          cpu_model:      data.cpu_model,
+          gpu_model:      data.gpu_model ?? "—",
+          cuda_installed: {
+            path: data.cuda_path  ?? "—",
+            ok:   data.cuda_installed,
+          },
+        });
+      })
+      .catch(err => {
+        console.error("Erreur hardware:", err);
+        // on laisse les valeurs par défaut en UI
+      });
+  }, []);
+
   return (
     <div className="flex h-screen bg-[#071b18]">
       <Sidebar />
@@ -22,16 +56,16 @@ export default function TrainingPage() {
           <GradientBox className="flex-1 min-w-[300px]">
             <InfoRow label="Storage Path :">
               <div className="bg-gray-800/60 rounded-full px-4 py-1 text-sm truncate max-w-[180px]">
-                /AppData/ModelStorage…
+                {hw.storage_path}
               </div>
             </InfoRow>
-            <InfoRow label="Available Storage :">32 GB</InfoRow>
-            <InfoRow label="Available CPU :">AMD Ryzen 5</InfoRow>
-            <InfoRow label="Available GPU :">NVIDIA GEFORCE 940M</InfoRow>
+            <InfoRow label="Available Storage :">{hw.disk_available}</InfoRow>
+            <InfoRow label="Available CPU :">{hw.cpu_model}</InfoRow>
+            <InfoRow label="Available GPU :">{hw.gpu_model}</InfoRow>
             <InfoRow label="Cuda Installed :">
               <div className="flex items-center gap-2">
                 <div className="bg-gray-800/60 rounded-full px-4 py-1 text-sm truncate max-w-[160px]">
-                  /AppData/CudaPack…
+                {hw.cuda_installed.path || "—"}
                 </div>
                 <Check className="w-5 h-5 text-emerald-400" />
               </div>
