@@ -33,7 +33,8 @@ async def fill_database_with_test_data(db: Session = Depends(get_db)):
         # Add test LLMs
         llm1 = Llm(name="Test Model 1", local=1, link="/models/test_model_1")
         llm2 = Llm(name="Test Model 2", local=0, link="https://huggingface.co/test_model_2")
-        db.add_all([llm1, llm2])
+        llm3 = Llm(name="Mistral-7B : Base Model", local=0, link="mistralai/Mistral-7B-Instruct-v0.3")
+        db.add_all([llm1, llm2, llm3])
         db.commit()
 
         # Add a test conversation for LLM 1

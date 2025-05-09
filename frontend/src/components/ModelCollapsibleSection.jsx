@@ -8,6 +8,8 @@ export default function ModelCollapsibleSection({ title }) {
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState(null); // Track the selected LLM
+  const [isDownloading, setIsDownloading] = useState(false); // Track download progress
+  const [errorMessage, setErrorMessage] = useState(""); // Track errors
 
   useEffect(() => {
     const fetchModels = async () => {
@@ -42,6 +44,8 @@ export default function ModelCollapsibleSection({ title }) {
   const handleConfirmDownload = async () => {
     if (!selectedModel) return;
 
+    setIsDownloading(true); // Start showing the loading bar
+    setErrorMessage(""); // Clear previous errors
     try {
       const response = await fetch(
         `http://127.0.0.1:8000/main_window/llms/${selectedModel.id}/download`,
@@ -51,11 +55,31 @@ export default function ModelCollapsibleSection({ title }) {
       );
       if (response.ok) {
         console.log(`Download started for ${selectedModel.name}`);
+
+        // Listen to SSE for updates
+        const eventSource = new EventSource(
+          `http://127.0.0.1:8000/main_window/llms/${selectedModel.id}/status/stream`
+        );
+
+        eventSource.onmessage = (event) => {
+          if (event.data === "complete") {
+            setIsDownloading(false); // Hide the loading bar
+            eventSource.close();
+            console.log(`Download complete for ${selectedModel.name}`);
+          }
+        };
+
+        eventSource.onerror = (error) => {
+          console.error("SSE error:", error);
+          setIsDownloading(false); // Hide the loading bar
+          eventSource.close();
+        };
       } else {
-        console.error("Failed to start download");
+        setErrorMessage("Failed to start download. Please try again.");
       }
     } catch (error) {
       console.error("Error downloading model:", error);
+      setErrorMessage("An error occurred while starting the download.");
     } finally {
       setIsModalOpen(false); // Close the modal
       setSelectedModel(null); // Clear the selected model
@@ -64,6 +88,11 @@ export default function ModelCollapsibleSection({ title }) {
 
   return (
     <div className="text-gray-200">
+      {/* Error Message */}
+      {errorMessage && (
+        <div className="text-red-500 text-sm mb-2">{errorMessage}</div>
+      )}
+
       <div
         className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
         onClick={() => setOpen(!open)}
@@ -114,6 +143,11 @@ export default function ModelCollapsibleSection({ title }) {
         title="Confirm Download"
         message={`Are you sure you want to download "${selectedModel?.name}"?`}
       />
+
+      {/* Loading Bar */}
+      {isDownloading && (
+        <div className="fixed bottom-0 left-0 w-full bg-blue-500 h-2 animate-pulse"></div>
+      )}
     </div>
   );
 }
