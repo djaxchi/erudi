@@ -92,6 +92,7 @@ frontend/.vite/
 frontend/out/
 
 backend/venv
+frontend/venv
 backend/app/__pycache__
 backend/app/models/__pycache__
 backend/app/routes/__pycache__

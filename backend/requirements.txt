@@ -11,3 +11,7 @@ accelerate
 datetime
 bitsandbytes --prefer-binary --extra-index-url https://jllllll.github.io/bitsandbytes-windows-webui
 huggingface_hub
+psutil
+py-cpuinfo
+gputil
+pydantic
