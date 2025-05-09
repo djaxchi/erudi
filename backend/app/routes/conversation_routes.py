@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from ..database import get_db
 from ..models.Conversation import Conversation
-from ..schemas.conversation_schemas import ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
+from ..schemas.conversation_schemas import ConversationCreate, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
 
 router = APIRouter()
 
@@ -30,18 +30,24 @@ async def get_conversation_by_id(conversation_id: int, db: Session = Depends(get
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
 
-@router.post("/conversations", response_model=ConversationResponse)
-async def create_conversation(llm_id: int, db: Session = Depends(get_db)):
-    """
-    Create a new conversation for a specific LLM.
-    """
-    conversation = Conversation(
-        llm_id=llm_id,
-        name="New Conversation"
-    )
-    db.add(conversation)
-    db.commit()
-    db.refresh(conversation)
+@router.post("/conversations", response_model=ConversationResponse, status_code=201)
+async def create_conversation(
+    payload: ConversationCreate,
+    db: Session = Depends(get_db),
+):
+    """Create a new conversation for a specific LLM (body JSON)."""
+
+    conversation = Conversation(llm_id=payload.llm_id, name="New Conversation")
+    try:
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not create conversation: {str(e)}",
+        )
     return conversation
 
 @router.delete("/conversations/{conversation_id}")
