@@ -9,19 +9,20 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-export default function CollapsibleSection({
+export default function ChatCollapsibleSection({
   title,
   items = [],
   selectedId,
   onSelect,
-  onRename, // optional callback to update conversation list in parent
+  onRename, 
 }) {
   const [open, setOpen] = useState(true);
-  const [models, setModels] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [tempName, setTempName] = useState("");
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  
+
 
   const renameConversation = async (id, name) => {
     try {
@@ -62,7 +63,7 @@ export default function CollapsibleSection({
             }}
             className={`relative group py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${
               isSelected
-                ? "bg-emerald-500 text-white"
+                ? "bg-emerald-500/50 text-white"
                 : "hover:bg-gray-700 hover:text-white text-gray-300"
             }`}
           >
@@ -70,14 +71,16 @@ export default function CollapsibleSection({
               <input
                 value={tempName}
                 onChange={(e) => setTempName(e.target.value)}
-                onKeyDown={(e) => {
+                onKeyDown={async (e) => {
                   if (e.key === "Enter" && tempName.trim()) {
-                    renameConversation(conv.id, tempName.trim());
+                    await renameConversation(conv.id, tempName.trim());
++                   e.stopPropagation();
                   }
                   if (e.key === "Escape") {
                     setEditingId(null);
                   }
                 }}
+                onBlur={() => setEditingId(null)}
                 autoFocus
                 className="w-full bg-transparent focus:outline-none border-b border-emerald-400"
               />
@@ -98,16 +101,8 @@ export default function CollapsibleSection({
       });
     }
 
-    const list = models.length > 0 ? models : [];
-    return list.length > 0 ? (
-      list.map((model) => (
-        <p key={model.id} className="py-1">
-          {model.name}
-        </p>
-      ))
-    ) : (
-      <p className="italic">Nothing here…</p>
-    );
+    
+    <p className="italic">Nothing here…</p>
   };
 
   return (

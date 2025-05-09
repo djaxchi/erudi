@@ -10,7 +10,8 @@ export default function Sidebar() {
   const isModelsActive =
     location.pathname === "/main_window/models" ||
     location.pathname === "/main_window/new-training";
-  const isChatActive = location.pathname.startsWith("/main_window/chat");
+  const isChatActive = location.pathname.startsWith("/main_window/chat") ||
+    location.pathname.startsWith("/main_window/conversations");
 
   return (
     <div className="w-16 bg-[#121212] flex flex-col items-center">

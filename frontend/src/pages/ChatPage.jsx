@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
-import CollapsibleSection from "../components/CollapsibleSection";
+import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
 import { ask } from "../services/conversationService";
@@ -9,12 +9,10 @@ import { ask } from "../services/conversationService";
 export default function ChatPage() {
   const navigate = useNavigate();
 
-  /* ----------------------------- ÉTATS ------------------------------- */
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [conversations, setConversations] = useState([]);
 
-  /* ----------------------- FETCH DES MODÈLES ------------------------- */
   useEffect(() => {
     fetch("http://127.0.0.1:8000/main_window/llms/local")
       .then((res) => res.json())
@@ -27,7 +25,6 @@ export default function ChatPage() {
       .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
   }, []);
 
-  /* -------------------- FETCH DES CONVERSATIONS ---------------------- */
   useEffect(() => {
     const fetchConversations = async () => {
       try {
@@ -45,7 +42,6 @@ export default function ChatPage() {
     fetchConversations();
   }, []);
 
-  /* -------------- NAVIGATION & ENVOI DU PREMIER MESSAGE -------------- */
   const handleConversationClick = (id) => {
     navigate(`/main_window/conversation/${id}`);
   };
@@ -68,7 +64,12 @@ export default function ChatPage() {
     [models, selectedModel, navigate]
   );
 
-  /* ----------------------------- RENDER ------------------------------ */
+  const handleRename = (id, newName) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, name: newName } : c))
+    );
+  };
+
   return (
     <div className="flex h-screen">
       <Sidebar />
@@ -77,17 +78,12 @@ export default function ChatPage() {
       <aside className="w-80 bg-[#272727] text-white flex flex-col p-6 space-y-6">
         <h1 className="text-3xl font-bold">History</h1>
 
-        <CollapsibleSection title="Hot Chats" />
-        <CollapsibleSection
+        <ChatCollapsibleSection title="Hot Chats" />
+        <ChatCollapsibleSection
           title="Previous Chats"
           items={conversations}
           onItemClick={handleConversationClick}
-        />
-
-        <CollapsibleSection
-          title="Previous Chats"
-          items={conversations}
-          onItemClick={handleConversationClick}
+          onRename={handleRename}
         />
       </aside>
 
