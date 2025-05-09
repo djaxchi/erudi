@@ -1,16 +1,23 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import CollapsibleSection from "../components/CollapsibleSection";
-import { useParams, useNavigate } from "react-router-dom";
 import QuestionInput from "../components/QuestionInput";
+import { ask } from "../services/conversationService";
 
+/**
+ * Affiche une conversation existante et permet d'ajouter de nouveaux messages.
+ */
 export default function ConversationPage() {
-  const { id } = useParams();
+  const { id } = useParams(); // id de la conversation courante
   const navigate = useNavigate();
+
   const [messages, setMessages] = useState([]);
   const [conversations, setConversations] = useState([]);
-  const [input, setInput] = useState("");
 
+  /* ------------------------------------------------------------------ */
+  /* CHARGEMENT INITIAL                                                 */
+  /* ------------------------------------------------------------------ */
   useEffect(() => {
     const fetchMessages = async () => {
       try {
@@ -39,20 +46,46 @@ export default function ConversationPage() {
     fetchConversations();
   }, [id]);
 
+  /* ------------------------------------------------------------------ */
+  /* NAVIGATION ENTRE CONVERSATIONS                                     */
+  /* ------------------------------------------------------------------ */
   const handleConversationClick = (newId) => {
-    navigate(`/main_window/conversation/${newId}`);
+    navigate(`/main_window/conversations/${newId}`);
   };
 
+  /* ------------------------------------------------------------------ */
+  /* ENVOI D'UN NOUVEAU MESSAGE                                         */
+  /* ------------------------------------------------------------------ */
+  const handleAsk = useCallback(
+    async (question) => {
+      try {
+        const { message } = await ask({ question, conversationId: parseInt(id) });
+
+        // 1️⃣ Met à jour l'affichage immédiatement
+        setMessages((prev) => [...prev, message]);
+
+        // 2️⃣ Actions supplémentaires (décommenter / remplacer)
+        // await callLLM(message);   // 🔮 obtenir la réponse du modèle & l'ajouter
+        // playSendSound();          // 🔊 feedback audio
+        // scrollToBottom();         // 📜 défilement automatique
+        // refreshConversations();   // 🔄 remettre à jour la sidebar
+      } catch (err) {
+        console.error("Failed to send message:", err);
+      }
+    },
+    [id]
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* RENDER                                                             */
+  /* ------------------------------------------------------------------ */
   return (
     <div className="flex h-screen">
       <Sidebar />
 
-      {/* Sidebar section with collapsible conversation list */}
       <aside className="w-80 bg-[#272727] text-white flex flex-col p-6 space-y-6">
         <h1 className="text-3xl font-bold">History</h1>
-        <CollapsibleSection
-          title="Hot Chats"
-        />
+        <CollapsibleSection title="Hot Chats" />
         <CollapsibleSection
           title="Previous Chats"
           items={conversations}
@@ -62,13 +95,6 @@ export default function ConversationPage() {
       </aside>
 
       <main className="flex-1 bg-gradient-to-br from-[#041915] to-[#0f2d27] p-10 overflow-auto">
-        {/* <div className="flex items-center gap-4 mb-8">
-          <h2 className="text-white text-3xl font-bold">Chat with</h2>
-          <select className="px-4 py-1 rounded-full border border-emerald-400 bg-transparent text-white focus:outline-none text-sm">
-            <option className="text-black">Mistral-7b-AO</option>
-          </select>
-        </div> */}
-
         <div className="space-y-6">
           {messages.map((msg) => (
             <div
@@ -83,10 +109,7 @@ export default function ConversationPage() {
         </div>
 
         <div className="mt-10 flex justify-center">
-        <QuestionInput
-          onSend={() => {}}
-          backgroundClass="bg-emerald-900"
-        />
+          <QuestionInput onSend={handleAsk} backgroundClass="bg-emerald-900" />
         </div>
       </main>
     </div>
