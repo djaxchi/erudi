@@ -1,13 +1,10 @@
 import React, { useEffect, useState } from "react";
-import Sidebar from "../components/Sidebar";   
-import GradientBox  from "../components/GradientBox";
+import Sidebar from "../components/Sidebar";
 import {
   RefreshCcw,
-  Check,
-    X,
 } from "lucide-react";
-import InfoRow from "../components/InfoRow";
 import DatasetCard from "../components/DatasetCard";
+import HardwareInfo from "../components/HardwareInfo";
 
 const API_BASE = "http://localhost:8000";
 
@@ -55,34 +52,7 @@ export default function TrainingPage() {
         {/* Top Row */}
         <div className="flex gap-8">
           {/* System Info Card */}
-          <GradientBox className="flex-1 min-w-[300px]">
-            <InfoRow label="Storage Path :">
-            <input
-                className="bg-gray-800/60 border border-transparent rounded-full px-4 py-1 placeholder-white text-sm truncate max-w-[180px] focus:border-emerald-400/50 focus:ring-0 focus:outline-none "
-                placeholder={hw.storage_path}
-              />
-            </InfoRow>
-            <InfoRow label="Available Storage :">{hw.disk_available}</InfoRow>
-            <InfoRow label="Available RAM :">{hw.ram_available} </InfoRow>
-            <InfoRow label="Available CPU :">{hw.cpu_model}</InfoRow>
-            <InfoRow label="Available GPU :">{hw.gpu_model}</InfoRow>
-            <InfoRow label="Cuda Installed :">
-            <div className="flex items-center gap-2">
-                <input
-                  value={cudaPath}
-                  onChange={(e) => setCudaPath(e.target.value)}
-                  className="bg-gray-800/60 border border-transparent rounded-full px-4 py-1 placeholder-white text-sm truncate max-w-[180px] focus:border-emerald-400/50 focus:ring-0 focus:outline-none"
-                  placeholder="Click to specify path"
-                />
-                {cudaPath ? (
-                  <Check className="w-5 h-5 text-emerald-400" />
-                ) : (
-                  <X className="w-5 h-5 text-red-500" />
-                )}
-              </div>
-            </InfoRow>
-          </GradientBox>
-
+          <HardwareInfo hw={hw} />
           {/* Model List Card */}
           <div className="flex-1 min-w-[300px] bg-[#2B2B2B] rounded-2xl p-8 text-white shadow-lg flex flex-col gap-4">
             <div className="flex items-center justify-between">
