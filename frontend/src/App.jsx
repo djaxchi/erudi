@@ -6,6 +6,7 @@ import AvailableModelsPage from "./pages/AvailableModelsPage";
 import ChatPage from "./pages/ChatPage";
 import TrainingPage from "./pages/TrainingPage";
 import ConversationPage from "./pages/ConversationPage";
+import TrainingPage from "./pages/TrainingPage";
 
 export default function App() {
   return (
@@ -16,9 +17,9 @@ export default function App() {
         <Route path="/main_window/models" element={<LandingPage />} />
         <Route path="/main_window/local-models" element={<LocalModelsPage />} />
         <Route path="/main_window/available-models" element={<AvailableModelsPage />} />
-        <Route path="/main_window/new-training" element={<TrainingPage />} />
         <Route path="/main_window/conversations/:id" element={<ConversationPage />} />
-        </Routes>
+        <Route path="/main_window/new-training" element={<TrainingPage />} />
+      </Routes>
     </Router>
   );
 }
