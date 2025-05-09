@@ -1,119 +1,138 @@
-
-/*
-function SidebarIcon({ children, active }) {
-    return (
-      <div
-        className={`w-full flex justify-center items-center py-4 ${
-          active ? "border-l-4 border-green-500" : ""
-        }`}
-      >
-        {children}
-      </div>
-    );
-  }
-
-function CollapsibleSection({ title }) {
-  const [open, setOpen] = useState(true);
-  return (
-    <div className="text-gray-200">
-      <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
-        onClick={() => setOpen(!open)}
-      >
-        <div className="flex items-center gap-2">
-          {open ? (
-            <ChevronDown className="w-4 h-4" />
-          ) : (
-            <ChevronRight className="w-4 h-4" />
-          )}
-          <span className="font-semibold">{title}</span>
-        </div>
-
-        <div className="flex gap-3">
-          <Cog className="w-4 h-4 hover:opacity-70" />
-          <RefreshCcw className="w-4 h-4 hover:opacity-70" />
-          <Plus className="w-4 h-4 hover:opacity-70" />
-        </div>
-      </div>
-
-      {open && (
-        <p className="px-10 py-2 text-sm italic text-gray-500">Nothing here…</p>
-      )}
-    </div>
-  );
-}
-
-export function GradientBox({ children, className = "" }) {
-    return (
-      <div className={`relative rounded-2xl overflow-hidden shadow-xl ${className}`}>
-        <div
-          className="absolute inset-0 opacity-[11%]"
-          style={{
-            background:
-              "linear-gradient(135deg, rgba(217, 217, 217, 1) 0%, rgba(217, 217, 217, 0.26) 26%, rgba(0, 204, 133, 1) 100%)",
-          }}
-        />
-  
-        <div
-          className="absolute inset-0 mix-blend-overlay pointer-events-none"
-        />
-  
-        <div className="relative z-10 p-8">{children}</div>
-      </div>
-    );
-  }
-
-  export function ChatWithCard() {
-    return (
-      <GradientBox className="w-[700px] max-w-full">
-        <div className="space-y-6">
-          <div className="flex items-center gap-4 flex-wrap">
-            <h2 className="text-white text-3xl font-bold">Chat with</h2>
-            <select className="px-4 py-1 rounded-full border border-emerald-400 bg-transparent text-white focus:outline-none text-sm">
-              <option className="text-black">Models</option>
-            </select>
-          </div>
-  
-          <div className="flex items-center bg-gray-900/80 rounded-full overflow-hidden">
-            <input
-              type="text"
-              placeholder="Ask a question…"
-              className="flex-1 bg-transparent font-thin px-8 py-4 border-0 text-white placeholder-white focus:outline-none"
-            />
-            <button className="pr-6">
-              <SendHorizontal className="w-6 h-6 text-white" />
-            </button>
-          </div>
-        </div>
-      </GradientBox>
-    );
-  }
-*/
-
-import React from "react";
+import React, { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import CollapsibleSection from "../components/CollapsibleSection";
-import NewChatCard from "../components/NewChatCard";
-
-  
-
+import GradientBox from "../components/GradientBox";
+import QuestionInput from "../components/QuestionInput";
+import { ask } from "../services/conversationService";
 
 export default function ChatPage() {
+  const navigate = useNavigate();
+
+  /* ----------------------------- ÉTATS ------------------------------- */
+  const [models, setModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [conversations, setConversations] = useState([]);
+
+  /* ----------------------- FETCH DES MODÈLES ------------------------- */
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/main_window/llms/local")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setModels(data);
+          setSelectedModel(data[0].name);
+        }
+      })
+      .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
+  }, []);
+
+  /* -------------------- FETCH DES CONVERSATIONS ---------------------- */
+  useEffect(() => {
+    const fetchConversations = async () => {
+      try {
+        const res = await fetch("http://127.0.0.1:8000/conversations");
+        const data = await res.json();
+        const sorted = data.sort(
+          (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
+        );
+        setConversations(sorted);
+      } catch (err) {
+        console.error("Failed to fetch conversations:", err);
+      }
+    };
+
+    fetchConversations();
+  }, []);
+
+  /* -------------- NAVIGATION & ENVOI DU PREMIER MESSAGE -------------- */
+  const handleConversationClick = (id) => {
+    navigate(`/main_window/conversation/${id}`);
+  };
+
+  const handleAsk = useCallback(
+    async (question) => {
+      const llm = models.find((m) => m.name === selectedModel);
+      if (!llm) {
+        console.error("Selected model not found");
+        return;
+      }
+
+      try {
+        const { conversation } = await ask({ question, llmId: llm.id });
+        navigate(`/main_window/conversations/${conversation.id}`);
+      } catch (err) {
+        console.error("Failed to start conversation:", err);
+      }
+    },
+    [models, selectedModel, navigate]
+  );
+
+  /* ----------------------------- RENDER ------------------------------ */
   return (
     <div className="flex h-screen">
-      {/* mini sidebar */}
       <Sidebar />
 
-      {/* main sidebar */}
+      {/* barre latérale */}
       <aside className="w-80 bg-[#272727] text-white flex flex-col p-6 space-y-6">
         <h1 className="text-3xl font-bold">History</h1>
+
         <CollapsibleSection title="Hot Chats" />
-        <CollapsibleSection title="Previous Chats" />
+        <CollapsibleSection
+          title="Previous Chats"
+          items={conversations}
+          onItemClick={handleConversationClick}
+        />
+
+        <CollapsibleSection
+          title="Previous Chats"
+          items={conversations}
+          onItemClick={handleConversationClick}
+        />
       </aside>
 
-      {/* content */}
+      {/* zone centrale */}
       <main className="flex-1 bg-[#071b18] flex items-center justify-center relative overflow-auto">
-        <NewChatCard />
+        {/* Si aucun modèle local */}
+        {models.length === 0 ? (
+          <GradientBox className="w-[700px] max-w-full">
+            <div className="text-white text-center py-10">
+              Aucun modèle local disponible. Veuillez en ajouter un.
+            </div>
+          </GradientBox>
+        ) : (
+          /* Interface de création de chat */
+          <GradientBox className="w-[700px] max-w-full">
+            <div className="space-y-6">
+              {/* header row */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-white text-3xl font-bold whitespace-nowrap">
+                  Chat with
+                </h2>
+                <div className="relative">
+                  <select
+                    className="appearance-none pr-8 pl-4 py-1 rounded-full border border-emerald-400 bg-transparent text-white focus:outline-none text-sm"
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    value={selectedModel}
+                  >
+                    {models.map((model) => (
+                      <option
+                        key={model.id}
+                        value={model.name}
+                        className="text-black"
+                      >
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* question input */}
+              <QuestionInput onSend={handleAsk} />
+            </div>
+          </GradientBox>
+        )}
       </main>
     </div>
   );

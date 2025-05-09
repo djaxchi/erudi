@@ -20,11 +20,38 @@ app = FastAPI()
 async def startup_event():
     await createTables()
 
+    db: Session = SessionLocal()
+
+    try:
+        # Créer deux LLM
+        llm1 = Llm(name="Mistral", local=1, link="data/mistral")
+        llm2 = Llm(name="Llama", local=1, link="data/llama")
+        db.add_all([llm1, llm2])
+        db.commit()
+
+        # Créer une conversation pour chaque LLM
+        conv1 = Conversation(llm_id=llm1.id)
+        conv2 = Conversation(llm_id=llm2.id)
+        db.add_all([conv1, conv2])
+        db.commit()
+
+        # Ajouter plusieurs messages à chaque conversation
+        messages = [
+            Message(conversation_id=conv1.id, sender="user", content="Salut Mistral !"),
+            Message(conversation_id=conv1.id, sender="llm", content="Salut utilisateur ! Comment puis-je t’aider ?"),
+            Message(conversation_id=conv2.id, sender="user", content="Hey Llama !"),
+            Message(conversation_id=conv2.id, sender="llm", content="Bonjour ! Pose-moi une question.")
+        ]
+        db.add_all(messages)
+        db.commit()
+
+        print("Données factices insérées avec succès.")
+    finally:
+        db.close()
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "*"
-    ],  # Allow all origins (you can restrict this to specific origins)
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
