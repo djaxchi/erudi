@@ -61,12 +61,12 @@ export default function ConversationPage() {
       </aside>
 
       <main className="flex-1 bg-gradient-to-br from-[#041915] to-[#0f2d27] p-10 overflow-auto">
-        <div className="flex items-center gap-4 mb-8">
+        {/* <div className="flex items-center gap-4 mb-8">
           <h2 className="text-white text-3xl font-bold">Chat with</h2>
           <select className="px-4 py-1 rounded-full border border-emerald-400 bg-transparent text-white focus:outline-none text-sm">
             <option className="text-black">Mistral-7b-AO</option>
           </select>
-        </div>
+        </div> */}
 
         <div className="space-y-6">
           {messages.map((msg) => (

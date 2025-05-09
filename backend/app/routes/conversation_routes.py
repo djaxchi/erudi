@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from ..database import get_db
 from ..models.Conversation import Conversation
-from ..schemas.conversation_schemas import ConversationResponse, ConversationWithMessagesResponse
+from ..schemas.conversation_schemas import ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
 
 router = APIRouter()
 
@@ -35,7 +35,10 @@ async def create_conversation(llm_id: int, db: Session = Depends(get_db)):
     """
     Create a new conversation for a specific LLM.
     """
-    conversation = Conversation(llm_id=llm_id)
+    conversation = Conversation(
+        llm_id=llm_id,
+        name="New Conversation"
+    )
     db.add(conversation)
     db.commit()
     db.refresh(conversation)
@@ -53,3 +56,30 @@ async def delete_conversation(conversation_id: int, db: Session = Depends(get_db
     db.commit()
     return {"message": "Conversation deleted successfully"}
 
+@router.patch("/conversations/{conversation_id}", response_model=ConversationResponse)
+async def update_conversation(
+    conversation_id: int,
+    payload: ConversationUpdate,
+    db: Session = Depends(get_db),
+):
+    """Update conversation fields (currently only *name*)."""
+
+    conversation = (
+        db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if payload.name != conversation.name:
+        conversation.name = payload.name
+        try:
+            db.commit()
+            db.refresh(conversation)
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Could not update conversation: {str(e)}",
+            )
+
+    return conversation

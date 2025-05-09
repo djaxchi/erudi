@@ -1,12 +1,47 @@
-import React, { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight, Cog, RefreshCcw, Plus } from "lucide-react";
+import React, { useState } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Cog,
+  RefreshCcw,
+  Plus,
+  Edit3,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-export default function CollapsibleSection({ title, items = [], selectedId, onSelect }) {
+export default function CollapsibleSection({
+  title,
+  items = [],
+  selectedId,
+  onSelect,
+  onRename, // optional callback to update conversation list in parent
+}) {
   const [open, setOpen] = useState(true);
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate(); // 👈 pour redirection
+  const [editingId, setEditingId] = useState(null);
+  const [tempName, setTempName] = useState("");
+  const navigate = useNavigate();
+
+  const renameConversation = async (id, name) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/conversations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+
+      if (!res.ok) throw new Error("Rename failed");
+
+      // notify parent so it can refresh its list, if desired
+      onRename?.(id, name);
+    } catch (err) {
+      console.error(err);
+      alert("Impossible de renommer la conversation – réessayez.");
+    } finally {
+      setEditingId(null);
+    }
+  };
 
   const renderItems = () => {
     if (loading) return <p className="italic">Loading...</p>;
@@ -14,20 +49,50 @@ export default function CollapsibleSection({ title, items = [], selectedId, onSe
     if (title === "Previous Chats" && items.length > 0) {
       return items.map((conv) => {
         const isSelected = selectedId === conv.id;
+        const isEditing = editingId === conv.id;
+
         return (
           <div
             key={conv.id}
             onClick={() => {
-              onSelect?.(conv.id);
-              navigate(`/main_window/conversations/${conv.id}`); // 👈 redirection
+              if (!isEditing) {
+                onSelect?.(conv.id);
+                navigate(`/main_window/conversations/${conv.id}`);
+              }
             }}
-            className={`py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${
+            className={`relative group py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${
               isSelected
                 ? "bg-emerald-500 text-white"
                 : "hover:bg-gray-700 hover:text-white text-gray-300"
             }`}
           >
-            Conversation #{conv.id}
+            {isEditing ? (
+              <input
+                value={tempName}
+                onChange={(e) => setTempName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && tempName.trim()) {
+                    renameConversation(conv.id, tempName.trim());
+                  }
+                  if (e.key === "Escape") {
+                    setEditingId(null);
+                  }
+                }}
+                autoFocus
+                className="w-full bg-transparent focus:outline-none border-b border-emerald-400"
+              />
+            ) : (
+              <span>{conv.name}</span>
+            )}
+
+            <Edit3
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingId(conv.id);
+                setTempName(conv.name);
+              }}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 hover:text-gray-200 transition-opacity cursor-pointer"
+            />
           </div>
         );
       });
@@ -52,7 +117,11 @@ export default function CollapsibleSection({ title, items = [], selectedId, onSe
         onClick={() => setOpen(!open)}
       >
         <div className="flex items-center gap-2">
-          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          {open ? (
+            <ChevronDown className="w-4 h-4" />
+          ) : (
+            <ChevronRight className="w-4 h-4" />
+          )}
           <span className="font-semibold">{title}</span>
         </div>
 
