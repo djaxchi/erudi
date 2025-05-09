@@ -4,10 +4,8 @@ import LandingPage from "./pages/LandingPage";
 import LocalModelsPage from "./pages/LocalModelsPage";
 import AvailableModelsPage from "./pages/AvailableModelsPage";
 import ChatPage from "./pages/ChatPage";
-import TrainingPage from "./pages/TrainingPage";
 import ConversationPage from "./pages/ConversationPage";
 import TrainingPage from "./pages/TrainingPage";
-import ConversationPage from "./pages/ConversationPage";
 
 export default function App() {
   return (
