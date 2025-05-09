@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import CollapsibleSection from "../components/CollapsibleSection";
 import { useParams, useNavigate } from "react-router-dom";
+import QuestionInput from "../components/QuestionInput";
 
 export default function ConversationPage() {
   const { id } = useParams();
@@ -82,26 +83,10 @@ export default function ConversationPage() {
         </div>
 
         <div className="mt-10 flex justify-center">
-          <div className="flex items-center bg-gradient-to-r from-[#0d312a] to-[#183e3b] rounded-full px-4 py-3 w-full max-w-2xl">
-            <input
-              type="text"
-              placeholder="Ask a question…"
-              className="flex-1 bg-transparent text-white px-4 focus:outline-none placeholder:text-white/70"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-            />
-            <button>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6 text-white"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </button>
-          </div>
+        <QuestionInput
+          onSend={() => {}}
+          backgroundClass="bg-emerald-900"
+        />
         </div>
       </main>
     </div>

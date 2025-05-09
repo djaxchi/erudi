@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import GradientBox from "./GradientBox";
 import { SendHorizontal } from "lucide-react";
+import QuestionInput from "../components/QuestionInput";
 
 export default function NewChatCard() {
   const [models, setModels] = useState([]);
@@ -52,16 +53,10 @@ export default function NewChatCard() {
         </div>
 
         {/* question input */}
-        <div className="flex items-center bg-gray-900/80 rounded-full overflow-hidden">
-          <input
-            type="text"
-            placeholder="Ask a question…"
-            className="flex-1 bg-transparent font-thin px-8 py-4 border-0 text-white placeholder-white focus:outline-none"
-          />
-          <button className="pr-6">
-            <SendHorizontal className="w-6 h-6 text-white" />
-          </button>
-        </div>
+
+        <QuestionInput
+          onSend={() => {}}
+        />
       </div>
     </GradientBox>
   );
