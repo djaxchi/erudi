@@ -15,7 +15,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.info(f"Using device: {device}")
 
 
-def download_llm(model_name: str, cache_dir: str = "../../data/models"):
+def download_llm(model_name: str, cache_dir: str = "./data/models"):
     """
     Downloads an LLM from Hugging Face and stores it in the specified cache directory.
 
@@ -41,21 +41,19 @@ def download_llm(model_name: str, cache_dir: str = "../../data/models"):
     start = datetime.now()
 
     # Download the tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir,token=HF_TOKEN)
+    AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir,token=HF_TOKEN)
 
     # Download the model
-    model = AutoModelForCausalLM.from_pretrained(
+    AutoModelForCausalLM.from_pretrained(
         model_name,
-        token=HF_TOKEN,
         cache_dir=cache_dir,
+        token=HF_TOKEN,
         quantization_config=bnb_config,
         torch_dtype=torch.float16,
-        attn_implementation="sdpa"
-    ).to(device)
+        attn_implementation="sdpa",
+        force_download=False
+    )
 
     logging.info(f"Model downloaded successfully in {datetime.now() - start}")
     
-    del model
-    gc.collect()
-    logging.info(f"Model deleted from memory successfully.")
     return cache_dir
