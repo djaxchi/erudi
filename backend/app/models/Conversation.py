@@ -12,3 +12,4 @@ class Conversation(Base):
 
     messages = relationship("Message", back_populates="conversation")
     last_message_time = Column(DateTime, default=datetime.utcnow)
+    name = Column(String, nullable=False, index=True, default="New Conversation")
