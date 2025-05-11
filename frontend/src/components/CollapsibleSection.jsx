@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight, Cog, RefreshCcw, Plus } from "lucide-react";
 import ConfirmationModal from "./ConfirmationModal";
+import ConfirmationModal from "./ConfirmationModal";
 
 export default function CollapsibleSection({ title }) {
   const [open, setOpen] = useState(true);
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState(null); // Track the selected LLM
+  const [isDownloading, setIsDownloading] = useState(false); // Track download progress
+  const [errorMessage, setErrorMessage] = useState(""); // Track errors
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState(null); // Track the selected LLM
   const [isDownloading, setIsDownloading] = useState(false); // Track download progress
@@ -101,7 +106,6 @@ export default function CollapsibleSection({ title }) {
           {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           <span className="font-semibold">{title}</span>
         </div>
-      </div>
 
         <div className="flex gap-3">
           <Cog className="w-4 h-4 hover:opacity-70" />
