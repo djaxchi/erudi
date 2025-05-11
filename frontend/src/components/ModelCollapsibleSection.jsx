@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight, Cog, RefreshCcw, Plus } from "lucide-react";
 import ConfirmationModal from "./ConfirmationModal";
 
-export default function ModelCollapsibleSection({ title }) {
+export default function CollapsibleSection({ title }) {
   const [open, setOpen] = useState(true);
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -10,6 +10,7 @@ export default function ModelCollapsibleSection({ title }) {
   const [selectedModel, setSelectedModel] = useState(null); // Track the selected LLM
   const [isDownloading, setIsDownloading] = useState(false); // Track download progress
   const [errorMessage, setErrorMessage] = useState(""); // Track errors
+  const [loadingDots, setLoadingDots] = useState(".");
 
   useEffect(() => {
     const fetchModels = async () => {
@@ -36,6 +37,18 @@ export default function ModelCollapsibleSection({ title }) {
     fetchModels();
   }, [title]);
 
+  // Animate loading dots when downloading
+  useEffect(() => {
+    if (!isDownloading) {
+      setLoadingDots(".");
+      return;
+    }
+    const interval = setInterval(() => {
+      setLoadingDots((prev) => (prev.length < 3 ? prev + "." : "."));
+    }, 500);
+    return () => clearInterval(interval);
+  }, [isDownloading]);
+
   const handleModelClick = (model) => {
     setSelectedModel(model); // Set the selected LLM
     setIsModalOpen(true); // Open the modal
@@ -44,7 +57,7 @@ export default function ModelCollapsibleSection({ title }) {
   const handleConfirmDownload = async () => {
     if (!selectedModel) return;
 
-    setIsDownloading(true); // Start showing the loading bar
+    setIsDownloading(true); // Start showing the loading text
     setErrorMessage(""); // Clear previous errors
     try {
       const response = await fetch(
@@ -63,7 +76,7 @@ export default function ModelCollapsibleSection({ title }) {
 
         eventSource.onmessage = (event) => {
           if (event.data === "complete") {
-            setIsDownloading(false); // Hide the loading bar
+            setIsDownloading(false); // Hide the loading text
             eventSource.close();
             console.log(`Download complete for ${selectedModel.name}`);
           }
@@ -71,7 +84,7 @@ export default function ModelCollapsibleSection({ title }) {
 
         eventSource.onerror = (error) => {
           console.error("SSE error:", error);
-          setIsDownloading(false); // Hide the loading bar
+          setIsDownloading(false); // Hide the loading text
           eventSource.close();
         };
       } else {
@@ -144,9 +157,13 @@ export default function ModelCollapsibleSection({ title }) {
         message={`Are you sure you want to download "${selectedModel?.name}"?`}
       />
 
-      {/* Loading Bar */}
+      {/* Animated Loading Text */}
       {isDownloading && (
-        <div className="fixed bottom-0 left-0 w-full bg-blue-500 h-2 animate-pulse"></div>
+        <div className="fixed bottom-0 left-0 w-full flex justify-start pb-4 pl-4 z-50">
+          <span className="text-green-400 font-semibold text-lg bg-gray-900/90 px-4 py-2 rounded shadow">
+            Downloading{loadingDots}
+          </span>
+        </div>
       )}
     </div>
   );
