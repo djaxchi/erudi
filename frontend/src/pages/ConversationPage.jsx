@@ -41,8 +41,8 @@ export default function ConversationPage() {
 
   const handleAsk = useCallback(async (question) => {
     try {
-      const { message } = await ask({ question, conversationId: Number(id) });
-      setMessages((prev) => [...prev, message]);
+      const { userMessage, assistantMessage } = await ask({ question, conversationId: Number(id) });
+      setMessages((prev) => [...prev, userMessage, assistantMessage]);
     } catch (err) {
       console.error("Failed to send message:", err);
     }

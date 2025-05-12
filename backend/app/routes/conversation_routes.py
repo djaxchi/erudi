@@ -1,9 +1,16 @@
+from ..schemas.message_schemas import MessageCreate, MessageResponse
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from ..database import get_db
 from ..models.Conversation import Conversation
-from ..schemas.conversation_schemas import ConversationCreate, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
+from ..models.Llm import Llm
+from ..routes.message_routes import add_message_to_conversation
+from ..schemas.conversation_schemas import ConversationCreate, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
+
+loaded_model = None
+current_tokenizer  = None
+loaded_model_id = None
 
 router = APIRouter()
 
@@ -89,3 +96,34 @@ async def update_conversation(
             )
 
     return conversation
+
+import torch
+from datetime import datetime
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+@router.post("/conversations/{conversation_id}/query", response_model=MessageResponse)
+async def query(
+    conversation_id: int,
+    payload: ConversationQuery,
+    db: Session = Depends(get_db),
+):
+    conversation = (
+        db.query(Conversation)
+        .filter(Conversation.id == conversation_id)
+        .first()
+    )
+     
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    llm = db.query(Llm).filter(Llm.id == conversation.llm_id).first()
+    if not llm:
+        raise HTTPException(status_code=404, detail="LLM not found")
+    
+    assistantMessage = await add_message_to_conversation(
+        conversation_id, 
+        MessageCreate(content="REPONSE DU MODELE", sender="assistant"),
+        db
+    )
+
+    return assistantMessage
