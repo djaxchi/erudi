@@ -3,6 +3,7 @@ import DragDropArea from "./DragDropArea";
 import Dropdown from "./Dropdown";
 import { Check, Folder } from "lucide-react";
 
+
 export default function DatasetCard() {
   /* -------------------- state -------------------- */
   const [type, setType] = useState("Textuel");
@@ -14,10 +15,17 @@ export default function DatasetCard() {
   /* ------------------- refs & handlers ------------------- */
   const fileInputRef = useRef(null);
 
-  const openExplorer = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-      fileInputRef.current.click();
+  const openExplorer = async () => {
+    // Vérifie si window.electron est défini
+    if (window.electron) {
+      const selectedPath = await window.electron.openDirectory();
+      if (selectedPath) {
+        setDataPath(selectedPath);  // Mettre à jour le chemin du dossier
+        paths.push(selectedPath); // Ajouter le chemin sélectionné à paths
+        console.log("Chemin du dossier sélectionné :", selectedPath);
+      }
+    } else {
+      console.error('window.electron est undefined');
     }
   };
 
