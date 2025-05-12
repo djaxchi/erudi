@@ -1,11 +1,66 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Hello World!</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smarter Loading</title>
+    <style>
+      /* General styles */
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: #02130e;
+        font-family: sans-serif;
+      }
+
+      /* Loader styles */
+      #loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background-color: #02130e;
+        z-index: 9999;
+      }
+
+      #loader h1 {
+        font-size: 3em;
+        font-weight: 800;
+        color: #00c978;
+        margin: 0;
+      }
+
+      #loader p {
+        font-size: 1.2em;
+        color: #e0e0e0;
+        margin: 0.3em 0 2em;
+      }
+
+      .spinner {
+        width: 48px;
+        height: 48px;
+        border: 5px solid rgba(255, 255, 255, 0.1);
+        border-top: 5px solid rgba(255, 255, 255, 0.8);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body>
-    <h1>💖 Hello World!</h1>
-    <p>Welcome to your Electron application.</p>
+    <div id="loader">
+      <h1>Smarter</h1>
+      <p>local fine tuning</p>
+      <div class="spinner"></div>
+    </div>
   </body>
 </html>
