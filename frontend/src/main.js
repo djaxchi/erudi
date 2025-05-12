@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog} = require("electron");
 const path = require("node:path");
 
 if (require("electron-squirrel-startup")) {
@@ -10,7 +10,10 @@ const createWindow = () => {
     width: 1280,
     height: 800,
     webPreferences: {
-      preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      // preload: path.join(__dirname, 'frontend', 'src', 'preload.js'),
+      preload: path.join(__dirname, '..', '..', '..', 'frontend', 'src', 'preload.js'),
+      nodeIntegration: false, // Désactive l'intégration de Node.js dans le rendu
+      contextIsolation: true, // Assure une isolation du contexte
     },
     autoHideMenuBar: true,
   });
@@ -18,6 +21,16 @@ const createWindow = () => {
   mainWindow.webContents.session.clearCache();
 
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+
+  // Ouvrir l'explorateur de fichiers et récupérer le chemin
+  ipcMain.handle('dialog:openDirectory', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory']
+    });
+    return result.filePaths[0];  // Retourner le chemin du dossier sélectionné
+  });
+
+
 
   // Set custom CSP headers
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
