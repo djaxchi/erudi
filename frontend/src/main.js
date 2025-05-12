@@ -11,6 +11,9 @@ const createWindow = () => {
     height: 800,
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: [
+        "--csp=default-src 'self'; connect-src 'self' http://localhost:8000 http://127.0.0.1:8000 ws://127.0.0.1:8000 ws://localhost:3000; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';",
+      ],
     },
     autoHideMenuBar: true,
   });
@@ -23,9 +26,9 @@ const createWindow = () => {
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     const isDev = !app.isPackaged;
     const csp = isDev
-      ? "default-src 'self'; connect-src 'self' http://localhost:8000 http://127.0.0.1:8000 ws://localhost:3000; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';"
-      : "default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self';";
-
+      ? "default-src 'self'; connect-src 'self' http://localhost:8000/ http://127.0.0.1:8000/ ws://localhost:3000 ws://127.0.0.1:8000/; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+      : "default-src 'self'; connect-src 'self' http://localhost:8000/ http://127.0.0.1:8000/ ws://127.0.0.1:8000/ ws://localhost:3000; script-src 'self'; style-src 'self';";
+  
     callback({
       responseHeaders: {
         ...details.responseHeaders,
