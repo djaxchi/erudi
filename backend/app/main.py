@@ -20,34 +20,22 @@ app = FastAPI()
 async def startup_event():
     await createTables()
 
-    # db: Session = SessionLocal()
+    db: Session = SessionLocal()
+    
+    try:
+        if db.query(Llm).first() is None:
 
-    # try:
-    #     # Créer deux LLM
-    #     llm1 = Llm(name="Mistral", local=1, link="data/mistral")
-    #     llm2 = Llm(name="Llama", local=1, link="data/llama")
-    #     db.add_all([llm1, llm2])
-    #     db.commit()
-
-    #     # Créer une conversation pour chaque LLM
-    #     conv1 = Conversation(llm_id=llm1.id)
-    #     conv2 = Conversation(llm_id=llm2.id)
-    #     db.add_all([conv1, conv2])
-    #     db.commit()
-
-    #     # Ajouter plusieurs messages à chaque conversation
-    #     messages = [
-    #         Message(conversation_id=conv1.id, sender="user", content="Salut Mistral !"),
-    #         Message(conversation_id=conv1.id, sender="llm", content="Salut utilisateur ! Comment puis-je t’aider ?"),
-    #         Message(conversation_id=conv2.id, sender="user", content="Hey Llama !"),
-    #         Message(conversation_id=conv2.id, sender="llm", content="Bonjour ! Pose-moi une question.")
-    #     ]
-    #     db.add_all(messages)
-    #     db.commit()
-
-    #     print("Données factices insérées avec succès.")
-    # finally:
-    #     db.close()
+            llm1 = Llm(name="Mistral-7B : Base Model", local=0, link="mistralai/Mistral-7B-Instruct-v0.3")
+            db.add_all([llm1])
+            db.commit()
+            logging.info("Startup: Mistral LLM created successfully in DB.")
+        else:
+            logging.info("Startup: Mistral LLM already exists in DB, skipping creation.")
+    except Exception as e:
+        logging.error(f"Error creating first LLM: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 app.add_middleware(
     CORSMiddleware,

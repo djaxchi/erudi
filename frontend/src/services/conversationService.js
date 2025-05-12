@@ -20,6 +20,16 @@ export async function addMessage(conversationId, content, sender = "user") {
   return res.json();
 }
 
+export async function query(conversationId, question) {
+  const res = await fetch(`${API}/conversations/${conversationId}/query`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+  if (!res.ok) throw new Error("Message creation failed");
+  return res.json();
+}
+
 export async function ask({ question, conversationId = null, llmId = null }) {
     if (!question.trim()) throw new Error("Question is empty");
   
@@ -32,7 +42,12 @@ export async function ask({ question, conversationId = null, llmId = null }) {
       convId = conversation.id;
     }
   
-    const message = await addMessage(convId, question);
+    const userMessage = await addMessage(convId, question);
+    const assistantMessage = await query(convId, question);
   
-    return { conversation: conversation ?? { id: convId }, message };
+    return { 
+      conversation: conversation ?? { id: convId }, 
+      userMessage,
+      assistantMessage
+    };
   }
