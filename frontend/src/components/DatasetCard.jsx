@@ -3,8 +3,11 @@ import DragDropArea from "./DragDropArea";
 import Dropdown from "./Dropdown";
 import { Check, Folder } from "lucide-react";
 
+<<<<<<< HEAD
 const API_BASE = "http://localhost:8000";
 
+=======
+>>>>>>> f8fee34 (fix - getting the absolute path of a folder)
 
 export default function DatasetCard() {
   /* -------------------- state -------------------- */
