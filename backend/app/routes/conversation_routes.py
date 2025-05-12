@@ -1,6 +1,10 @@
 from ..schemas.message_schemas import MessageCreate, MessageResponse
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+import torch
+from datetime import datetime
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import logging
 from typing import List
 from ..database import get_db
 from ..models.Conversation import Conversation
@@ -97,16 +101,13 @@ async def update_conversation(
 
     return conversation
 
-import torch
-from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForCausalLM
-
 @router.post("/conversations/{conversation_id}/query", response_model=MessageResponse)
 async def query(
     conversation_id: int,
     payload: ConversationQuery,
     db: Session = Depends(get_db),
-):
+):  
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     conversation = (
         db.query(Conversation)
         .filter(Conversation.id == conversation_id)
@@ -120,9 +121,59 @@ async def query(
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     
+    global loaded_model, current_tokenizer, loaded_model_id
+
+    if loaded_model_id != llm.id or loaded_model is None:
+        start = datetime.now()
+        logging.info(f"Loading model {llm.id} from {llm.link}")
+        loaded_model = AutoModelForCausalLM.from_pretrained(llm.link, local_files_only=True, torch_dtype=torch.float16)
+        current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
+        loaded_model_id = llm.id
+        loaded_model.eval()
+        loaded_model.to(device)
+        logging.info(f"Model {llm.id} loaded successfully in {datetime.now() - start} seconds")
+    else:
+        logging.info(f"Model {llm.id} already loaded")
+        loaded_model.eval()
+        loaded_model.to(device)
+
+    max_tokens = 10000
+    system_instruction = (
+        "You are an intelligent, polite, and helpful conversational assistant."
+        "You can answer all types of questions: general knowledge, emotions, advice, or technical topics."
+        "You automatically adapt to the language used by the user."
+        "When asked who you are, you simply explain that you are a virtual assistant designed to help."
+        "You do not provide false information: if you don't know, you say so."
+        "You express yourself naturally and fluently, as in a real conversation."
+        "If you cannot answer a question, simply say that you don't know."
+        f"You have a total of {max_tokens} tokens to respond, take this into account."
+    )
+    
+    full_prompt = f"[INST] {system_instruction}\n{payload.question} [/INST]"
+
+    start = datetime.now()
+    logging.info(f"Generating response for conversation {conversation_id} with question: {payload.question}")
+    input_ids = current_tokenizer.encode(full_prompt, return_tensors="pt").to(device)
+    
+    with torch.no_grad():
+        outputs = loaded_model.generate(
+            input_ids,
+            max_new_tokens=max_tokens,
+            temperature=0.5,
+            top_p=0.9,
+            do_sample=True,
+            num_beams=1,
+            pad_token_id=current_tokenizer.eos_token_id,
+        )
+        
+    response = current_tokenizer.decode(outputs[0][input_ids.shape[1]:], skip_special_tokens=True)
+    logging.info(f"Response generated in {datetime.now() - start} seconds")
+    if response == "":
+        raise HTTPException(status_code=500, detail="Empty response from model")
+    
     assistantMessage = await add_message_to_conversation(
         conversation_id, 
-        MessageCreate(content="REPONSE DU MODELE", sender="assistant"),
+        MessageCreate(content=response, sender="assistant"),
         db
     )
 
