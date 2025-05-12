@@ -40,6 +40,8 @@ const createWindow = () => {
   mainWindow.webContents.openDevTools();
 };
 
+app.commandLine.appendSwitch('no-sandbox');
+
 app.whenReady().then(() => {
   createWindow();
   app.on("activate", () => {
