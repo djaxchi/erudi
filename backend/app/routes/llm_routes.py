@@ -7,7 +7,7 @@ from ..database import get_db
 from ..models.Llm import Llm
 from ..schemas.llm_schemas import LLMCreate, LLMResponse
 
-# from ..utils.llm_downloader import download_llm
+from ..utils.llm_downloader import download_llm
 import logging
 
 from typing import List
@@ -110,6 +110,7 @@ async def search_llms(name: str, db: Session = Depends(get_db)):
 #     async def event_generator():
 #         while True:
 #             llm = db.query(Llm).filter(Llm.id == llm_id).first()
+#             logging.info(f"LLM status: {llm}")
 #             if llm and llm.local:
 #                 yield f"data: complete\n\n"
 #                 break
@@ -134,40 +135,45 @@ async def download_llm_route(
     Download an LLM by its ID and update the database after the download is complete.
     """
     llm = db.query(Llm).filter(Llm.id == llm_id).first()
-    # if not llm:
-    #     raise HTTPException(status_code=404, detail="LLM not found")
+    if not llm:
+        raise HTTPException(status_code=404, detail="LLM not found")
 
-    # def update_database_after_download(model_name: str, cache_dir: str):
-    #     with Session(db.get_bind()) as session:
-    #         db_llm = session.query(Llm).filter(Llm.id == llm_id).first()
-    #         if db_llm:
-    #             db_llm.local = True
-    #             db_llm.link = os.path.join(cache_dir, model_name)
-    #             session.commit()
-    #             logging.info(f"Database updated for LLM '{db_llm.name}'")
+    def update_database_after_download(model_id: int, save_dir: str):
+        with Session(db.get_bind()) as session:
+            old_llm = session.query(Llm).filter(Llm.id == llm_id).first()
+            if old_llm:
+                new_llm = Llm(
+                    name=old_llm.name,
+                    link=save_dir + "/" + str(model_id),
+                    local=True,
+                )
+                session.add(new_llm)
+                session.commit()
+                logging.info(f"New LLM created for '{new_llm.name}' with id {new_llm.id}")
 
-    # background_tasks.add_task(
-    #     download_and_update,
-    #     model_name=llm.link,
-    #     cache_dir="./data/models",
-    #     callback=update_database_after_download,
-    # )
+    background_tasks.add_task(
+        download_and_update,
+        model_link=llm.link,
+        model_id=llm.id,
+        save_dir="./data/models",
+        callback=update_database_after_download,
+    )
 
     return {"message": f"Download started for LLM '{llm.name}'"}
 
 
-# def download_and_update(model_name: str, cache_dir: str, callback):
-#     """
-#     Downloads the model and updates the database after the download is complete.
+def download_and_update(model_link: str, model_id: int, save_dir: str, callback):
+    """
+    Downloads the model and updates the database after the download is complete.
 
-#     Args:
-#         model_name (str): The Hugging Face model name or link.
-#         cache_dir (str): The directory where the model will be downloaded.
-#         callback (function): A function to call after the download is complete.
-#     """
-#     try:
-#         download_llm(model_name, cache_dir=cache_dir)
+    Args:
+        model_name (str): The Hugging Face model name or link.
+        save_dir (str): The directory where the model will be downloaded.
+        callback (function): A function to call after the download is complete.
+    """
+    try:
+        download_llm(model_link=model_link, model_id=model_id, save_dir=save_dir)
 
-#         callback(model_name, cache_dir)
-#     except Exception as e:
-#         logging.error(f"Error during download or database update: {e}")
+        callback(model_id, save_dir)
+    except Exception as e:
+        logging.error(f"Error during download or database update: {e}")
