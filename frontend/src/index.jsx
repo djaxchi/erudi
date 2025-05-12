@@ -3,5 +3,21 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
 
-const root = createRoot(document.body);
-root.render(<App />);
+setTimeout(() => {
+  const loader = document.getElementById('loader');
+  const body = document.body;
+
+  if (loader) {
+    loader.style.opacity = '0';
+    loader.style.transition = 'opacity 0.5s ease';
+
+    setTimeout(() => {
+      loader.style.display = 'none';
+      const root = createRoot(body);
+      root.render(<App />);
+    }, 500); // Wait for fade-out
+  } else {
+    const root = createRoot(body);
+    root.render(<App />);
+  }
+}, 2000); // Delay in ms
