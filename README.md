@@ -27,9 +27,9 @@ docker build -t smarter-backend .
 
 2. Lancer le conteneur
 
-docker run -p 8000:8000 smarter-backend
-docker run --gpus all -p 8000:8000 smarter-backend
-
+<!-- docker run -p 8000:8000 smarter-backend -->
+<!-- VERSION POWERSHELL WINDOWS !! -->
+docker run -v ${PWD}\data:/app/data -p 8000:8000 smarter-backend
 
 Le backend est maintenant disponible sur http://localhost:8000.
 
@@ -41,3 +41,16 @@ cd frontend
 npm start
 
 Cela démarre l'application Electron en mode développement, avec rechargement automatique à chaque modification.
+
+
+
+
+
+
+## SI UTILISATION SANS DOCKER !!!!!!!
+dans le terminal backend faire :
+cd backend
+python -m venv venv
+./venv/Scripts/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload

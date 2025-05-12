@@ -8,7 +8,10 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --progress-bar off \
+    --extra-index-url https://download.pytorch.org/whl/cu121 \
+    --extra-index-url https://jllllll.github.io/bitsandbytes-windows-webui \
+    -r requirements.txt
 
 # Copy the rest of the application code into the container
 COPY . .
