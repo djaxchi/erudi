@@ -27,3 +27,13 @@ class ConversationResponse(ConversationBase):
 
 class ConversationWithMessagesResponse(ConversationResponse):
     messages: List[MessageResponse]
+
+class ConversationQuery(BaseModel):
+    question: str
+
+class ConversationQueryResponse(BaseModel):
+    id: int
+    link: str
+    
+    class Config:
+        orm_mode = True
