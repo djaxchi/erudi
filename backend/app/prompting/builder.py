@@ -24,7 +24,7 @@ def build_prompt(
 ) -> str:
    
     system_instruction = load_system_instruction(max_tokens)
-    h = history or []  # garde la liste, jamais de chaîne
+    h = history or []  
     ctx = context or None
 
 

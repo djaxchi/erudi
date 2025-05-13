@@ -1,9 +1,12 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 # SQLite database URL
-DATABASE_URL = "sqlite:///./data/smarter.db"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Create the SQLite engine
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
