@@ -15,8 +15,7 @@ def extract_text_from_pdf(pdf_path):
     with open(pdf_path, "rb") as file:
         reader = pypdf.PdfReader(file)
         for page in reader.pages:
-            text += page.extract_text() or ""
-            logging.info(f"Extracted text from page : {page.extract_text()}")
+            text += page.extract_text() or ""  # Peut être None si la page est vide
             text += "\n"
     return text
 
