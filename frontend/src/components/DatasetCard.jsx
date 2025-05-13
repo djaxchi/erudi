@@ -16,10 +16,17 @@ export default function DatasetCard({ selectedModel, modelName }) {
   const fileInputRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const openExplorer = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-      fileInputRef.current.click();
+  const openExplorer = async () => {
+    
+    if (window.electron) {
+      const selectedPath = await window.electron.openDirectory();
+      if (selectedPath) {
+        setDataPath(selectedPath);
+        paths.push(selectedPath);
+        console.log("Chemin du dossier sélectionné :", selectedPath);
+      }
+    } else {
+      console.error('window.electron est undefined');
     }
   };
 
@@ -37,6 +44,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
 
     const updated = Array.from(folderSet);
     setPaths(updated);
+    console.log("Selected folders:", updated);
 
     setDataPath(
       updated.length === 1 ? `…/${updated[0]}` : `…/${updated.length} folders`
