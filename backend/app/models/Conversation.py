@@ -10,6 +10,6 @@ class Conversation(Base):
     llm_id = Column(Integer, ForeignKey("llms.id"), nullable=False)  # ID of the LLM
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    messages = relationship("Message", back_populates="conversation")
+    messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")
     last_message_time = Column(DateTime, default=datetime.utcnow)
     name = Column(String, nullable=False, index=True, default="New Conversation")
