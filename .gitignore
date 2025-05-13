@@ -99,3 +99,4 @@ backend/app/routes/__pycache__
 backend/app/utils/__pycache__
 backend/app/schemas/__pycache__
 backend/data
+backend/app/prompting/__pycache__

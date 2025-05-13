@@ -102,7 +102,7 @@ export default function ChatCollapsibleSection({
                 }}
                 onBlur={() => setEditingId(null)}
                 autoFocus
-                className="w-full bg-transparent focus:outline-none border-b border-emerald-400"
+                className="w-full bg-transparent focus:outline-none focus:ring-0 focus:shadow-none focus:border-transparent border-b border-emerald-400"
               />
             ) : (
               <span>{conv.name}</span>
