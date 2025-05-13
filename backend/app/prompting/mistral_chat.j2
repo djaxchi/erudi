@@ -1,0 +1,14 @@
+<|system|>
+{{ system_instruction }}
+<|end|>
+
+{% for pair in history %}
+<|user|>{{ pair.user }}<|end|>
+<|assistant|>{{ pair.assistant }}<|end|>
+{% endfor %}
+
+<|user|>{{ question }}<|end|>
+<|assistant|>
+
+
+

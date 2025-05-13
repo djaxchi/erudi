@@ -1,6 +1,7 @@
 from ..schemas.message_schemas import MessageCreate, MessageResponse
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from transformers import StoppingCriteria, StoppingCriteriaList
 import torch
 from datetime import datetime
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -11,12 +12,23 @@ from ..models.Conversation import Conversation
 from ..models.Llm import Llm
 from ..routes.message_routes import add_message_to_conversation
 from ..schemas.conversation_schemas import ConversationCreate, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
+from ..prompting.builder import build_prompt
+import re
 
 loaded_model = None
 current_tokenizer  = None
 loaded_model_id = None
 
 router = APIRouter()
+
+class StopOnEndToken(StoppingCriteria):
+    def __init__(self, end_token_id: int):
+        self.end_token_id = end_token_id
+    def __call__(self, input_ids, scores, **kwargs):
+        # arrête si le dernier token généré est <|end|>
+        return input_ids[0, -1].item() == self.end_token_id
+
+
 
 @router.get("/conversations", response_model=List[ConversationResponse])
 async def get_all_conversations(db: Session = Depends(get_db)):
@@ -137,43 +149,51 @@ async def query(
         loaded_model.eval()
         loaded_model.to(device)
 
-    max_tokens = 10000
-    system_instruction = (
-        "You are an intelligent, polite, and helpful conversational assistant."
-        "You can answer all types of questions: general knowledge, emotions, advice, or technical topics."
-        "You automatically adapt to the language used by the user."
-        "When asked who you are, you simply explain that you are a virtual assistant designed to help."
-        "You do not provide false information: if you don't know, you say so."
-        "You express yourself naturally and fluently, as in a real conversation."
-        "If you cannot answer a question, simply say that you don't know."
-        f"You have a total of {max_tokens} tokens to respond, take this into account."
+    lang = payload.language    # "fr"/"en"
+    max_tokens_out = payload.max_new_tokens or 512                # ou ce que tu veux
+    prompt = build_prompt(
+        question=payload.question,
+        history=payload.history,
+        language=lang,
+        max_tokens=max_tokens_out
     )
-    
-    full_prompt = f"[INST] {system_instruction}\n{payload.question} [/INST]"
+
 
     start = datetime.now()
     logging.info(f"Generating response for conversation {conversation_id} with question: {payload.question}")
-    input_ids = current_tokenizer.encode(full_prompt, return_tensors="pt").to(device)
     
+    gen_kwargs = {
+        "max_new_tokens": max_tokens_out,
+        "temperature": payload.temperature or 0.5,
+        "top_p": payload.top_p or 0.9,
+        "do_sample": True,
+        "num_beams": 1,
+        "pad_token_id": current_tokenizer.eos_token_id,
+    }
+
+    input_ids = current_tokenizer.encode(prompt, return_tensors="pt").to(device)
+    end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
+    stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
+
+
     with torch.no_grad():
         outputs = loaded_model.generate(
             input_ids,
-            max_new_tokens=max_tokens,
-            temperature=0.5,
-            top_p=0.9,
-            do_sample=True,
-            num_beams=1,
-            pad_token_id=current_tokenizer.eos_token_id,
+            **gen_kwargs,
+            stopping_criteria=stop_crit
         )
         
     response = current_tokenizer.decode(outputs[0][input_ids.shape[1]:], skip_special_tokens=True)
+
+    cleaned_response = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", response).strip()
+
     logging.info(f"Response generated in {datetime.now() - start} seconds")
-    if response == "":
+    if cleaned_response == "":
         raise HTTPException(status_code=500, detail="Empty response from model")
     
     assistantMessage = await add_message_to_conversation(
         conversation_id, 
-        MessageCreate(content=response, sender="assistant"),
+        MessageCreate(content=cleaned_response, sender="assistant"),
         db
     )
 
