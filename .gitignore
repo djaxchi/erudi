@@ -100,3 +100,6 @@ backend/app/utils/__pycache__
 backend/app/schemas/__pycache__
 backend/data
 backend/app/prompting/__pycache__
+
+# Secrets : il faut le mettre dans le gitignore une fois mis en prod
+# .env
