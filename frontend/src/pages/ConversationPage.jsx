@@ -51,6 +51,15 @@ export default function ConversationPage() {
   const handleRename = (cid, newName) =>
     setConversations((prev) => prev.map((c) => (c.id === cid ? { ...c, name: newName } : c)));
 
+  const handleDelete = (id) => {
+    setConversations((prev) => prev.filter((conv) => conv.id !== id));
+
+    if (id === Number(id)) {
+      navigate("/main_window/chat");
+    }
+  };
+
+
   /* ---------------- render ---------------- */
   return (
     <div className="flex h-screen">
@@ -66,6 +75,7 @@ export default function ConversationPage() {
           selectedId={Number(id)}
           onSelect={handleConversationClick}
           onRename={handleRename}
+          onDelete={handleDelete}
         />
       </aside>
 
