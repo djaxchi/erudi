@@ -37,8 +37,3 @@ def build_prompt(
     )
     logging.debug(f"Built prompt:\n{prompt}")
     return prompt.strip()
-
-
-
-
-
