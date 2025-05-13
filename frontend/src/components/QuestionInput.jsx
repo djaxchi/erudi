@@ -1,16 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { SendHorizontal } from "lucide-react";
 
-/**
- * Champ de question réutilisable.
- *
- * Props
- * - placeholder: string                (texte d’aide)
- * - onSend(message): function          (callback quand l’utilisateur envoie)
- * - disabled: boolean                  (désactive input & bouton)
- * - backgroundClass: string            (classes Tailwind pour le fond, ex: "bg-gray-900/80")
- * - className: string                  (classes additionnelles sur le conteneur)
- */
 export default function QuestionInput({
   placeholder = "Ask a question…",
   onSend,
@@ -19,12 +9,14 @@ export default function QuestionInput({
   className = "",
 }) {
   const [value, setValue] = useState("");
+  const textareaRef = useRef(null);
 
   const handleSend = () => {
     const trimmed = value.trim();
     if (!trimmed) return;
     onSend?.(trimmed);
     setValue("");
+    resizeTextarea(); // reset height
   };
 
   const handleKeyDown = (e) => {
@@ -34,23 +26,37 @@ export default function QuestionInput({
     }
   };
 
+  const resizeTextarea = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = "auto"; // reset
+      textarea.style.height = Math.min(textarea.scrollHeight, 160) + "px"; // max ≈ 4 lignes
+    }
+  };
+
+  useEffect(() => {
+    resizeTextarea();
+  }, [value]);
+
   return (
     <div
-      className={`flex items-center rounded-full overflow-hidden ${backgroundClass} ${className}`}
+      className={`flex items-end rounded-2xl overflow-hidden ${backgroundClass} ${className} w-full`}
     >
-      <input
-        type="text"
+      <textarea
+        ref={textareaRef}
+        rows={1}
         placeholder={placeholder}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={disabled}
-        className="flex-1 bg-transparent font-thin px-8 py-4 border-0 text-white placeholder-white focus:outline-none disabled:opacity-50"
+        style={{ maxHeight: "100px" }}
+        className="w-full bg-transparent font-thin px-8 py-4 border-0 text-white placeholder-white focus:outline-none focus:ring-0 focus:shadow-none disabled:opacity-50 resize-none overflow-y-auto"
       />
       <button
         onClick={handleSend}
         disabled={disabled || value.trim() === ""}
-        className="pr-6 disabled:opacity-50"
+        className="pr-6 pb-3 disabled:opacity-50"
       >
         <SendHorizontal className="w-6 h-6 text-white" />
       </button>
