@@ -225,75 +225,19 @@ async def query(
         raise HTTPException(status_code=500, detail=f"Context retrieval error: {str(e)}")
     
 
-    lang = payload.language    # "fr"/"en"
-    max_tokens_out = payload.max_new_tokens or 512                # ou ce que tu veux
+    lang = payload.language
+    max_tokens_out = payload.max_new_tokens or 3074
     prompt = build_prompt(
         question=payload.question,
-        history=payload.history,
         language=lang,
+        history=relevant_context if relevant_context!="" else None,
         max_tokens=max_tokens_out
     )
 
-
-    max_tokens = 10000
-    model_temperature = 0.5
-    system_instruction = (
-        "You are an intelligent, polite, and helpful conversational assistant."
-        "You can answer all types of questions: general knowledge, emotions, advice, or technical topics."
-        "You automatically adapt to the language used by the user."
-        "When asked who you are, you simply explain that you are a virtual assistant designed to help."
-        "You do not provide false information: if you don't know, you say so."
-        "You express yourself naturally and fluently, as in a real conversation."
-        "If you cannot answer a question, simply say that you don't know."
-        f"You have a total of {max_tokens} tokens to respond, take this into account and do not generate more that this."
-    )
-    
-    full_prompt = f"[INST] {system_instruction}\n"
-    if relevant_context != "":
-        full_prompt += f"Context from previous conversation:\n{relevant_context}\n\n"
-    full_prompt += f"Question: {payload.question} [/INST]"
-
-    start = datetime.now()
-    logging.info(f"Generating response for conversation {conversation_id} with question: {payload.question}")
-    
-    gen_kwargs = {
-        "max_new_tokens": max_tokens_out,
-        "temperature": payload.temperature or 0.5,
-        "top_p": payload.top_p or 0.9,
-        "do_sample": True,
-        "num_beams": 1,
-        "pad_token_id": current_tokenizer.eos_token_id,
-    }
-
-    input_ids = current_tokenizer.encode(prompt, return_tensors="pt").to(device)
-    end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
-    stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
-
-
-    with torch.no_grad():
-        outputs = loaded_model.generate(
-            input_ids,
-            **gen_kwargs,
-            stopping_criteria=stop_crit
-        )
-        
-    response = current_tokenizer.decode(outputs[0][input_ids.shape[1]:], skip_special_tokens=True)
-
-    cleaned_response = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", response).strip()
-
-    logging.info(f"Response generated in {datetime.now() - start} seconds")
-    if cleaned_response == "":
-        raise HTTPException(status_code=500, detail="Empty response from model")
-    
-    assistantMessage = await add_message_to_conversation(
-        conversation_id, 
-        MessageCreate(content=cleaned_response, sender="assistant"),
-        db
-    )
-
-    return assistantMessage
     try:
-        input_ids = current_tokenizer.encode(full_prompt, return_tensors="pt").to(device)
+        input_ids = current_tokenizer.encode(prompt, return_tensors="pt").to(device)
+        end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
+        stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
@@ -303,12 +247,13 @@ async def query(
     generation_kwargs = dict(
         input_ids=input_ids,
         streamer=streamer,
-        max_new_tokens=max_tokens,
-        temperature=model_temperature,
-        top_p=0.9,
+        max_new_tokens=max_tokens_out,
+        temperature=payload.temperature or 0.5,
+        top_p= payload.top_p or 0.9,
         do_sample=True,
         num_beams=1,
         pad_token_id=current_tokenizer.eos_token_id,
+        stopping_criteria=stop_crit
     )
 
     def run_generation():
@@ -326,8 +271,9 @@ async def query(
     async def token_stream():
         try:
             for new_text in streamer:
-                logging.info(f"Yielding token: {new_text}")
-                yield new_text
+                cleand_out_token = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", new_text).strip()
+                logging.info(f"Yielding token: {cleand_out_token}")
+                yield cleand_out_token
         except Exception as e:
             logging.exception("Streaming failed")
             raise HTTPException(status_code=500, detail="Streaming failed")

@@ -17,3 +17,4 @@ gputil
 pydantic
 faiss-cpu
 sentence-transformers
+jinja2
