@@ -151,22 +151,31 @@ def retrieve_context(query: str, conversation_history: List[str], top_k=3):
 
     if conversation_history == []:
         return ""
-    
+   
     embedder = get_embedder()
-    
+   
     query_embedding = embedder.encode(query, convert_to_tensor=True)
-    
+   
     message_embeddings = embedder.encode(conversation_history, convert_to_tensor=False)
-    
+   
     dimension = len(message_embeddings[0])
     index = faiss.IndexFlatL2(dimension)
     index.add(np.array(message_embeddings))
-    
+   
     distances, indices = index.search(np.array([query_embedding.cpu().numpy()]), k=min(top_k, len(conversation_history)))
-    
-    relevant_context = "\n".join([conversation_history[idx] for idx in indices[0]])
-    
+   
+    semantic_context  = "\n".join([conversation_history[idx] for idx in indices[0]])
+   
+    last_two_turns = conversation_history[-4:]
+    recency_context = "\n".join(last_two_turns)
+
+    if semantic_context:
+        relevant_context = semantic_context + "\n\n" + recency_context
+    else:
+        relevant_context = recency_context
+
     return relevant_context
+
 
 @router.post("/conversations/{conversation_id}/query", response_model=MessageResponse)
 async def query(
@@ -230,7 +239,7 @@ async def query(
     prompt = build_prompt(
         question=payload.question,
         language=lang,
-        history=relevant_context if relevant_context!="" else None,
+        context=relevant_context or None,
         max_tokens=max_tokens_out
     )
 
