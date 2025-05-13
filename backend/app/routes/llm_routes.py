@@ -8,6 +8,7 @@ from ..models.Llm import Llm
 from ..schemas.llm_schemas import LLMCreate, LLMResponse
 import json
 from collections import defaultdict
+import re
 
 from ..utils.llm_downloader import download_llm
 import logging
@@ -114,25 +115,49 @@ async def search_llms(name: str, db: Session = Depends(get_db)):
     return llms
 
 
-@router.get("/llms/{llm_id}/status/stream")
-async def stream_status(llm_id: int):
+@router.get("/llms/{llm_id}/download/stream")
+async def stream_download(llm_id: int):
     """
-    Server-Sent-Events stream that pushes
-       {"progress":  0-100 }
-       {"status": "complete"}
+    Runs your existing download script as a subprocess,
+    watches its stdout for any “NN%” fragments,
+    tracks the highest % seen, and emits that over SSE.
     """
+    proc = await asyncio.create_subprocess_exec(
+        "python",
+        "-u",
+        "scripts/download_llm.py",
+        str(llm_id),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
 
     async def event_generator():
-        last = -1
+        assert proc.stdout is not None
+        max_pct = 0
+        # read line-by-line as soon as download_llm prints something
         while True:
-            pct = download_progress.get(llm_id, 0)
-            if pct != last:
-                yield f"data: {json.dumps({'progress': pct})}\n\n"
-                last = pct
-            if pct >= 100:
-                yield f"data: {json.dumps({'status': 'complete'})}\n\n"
+            line_bytes = await proc.stdout.readline()
+            if not line_bytes:
                 break
-            await asyncio.sleep(0.7)
+            line = line_bytes.decode("utf-8", "ignore").rstrip()
+
+            # pull out *all* percentages on that line
+            found = [int(n) for n in re.findall(r"(\d{1,3})\s*%", line)]
+            if found:
+                local_max = max(found)
+                if local_max > max_pct:
+                    max_pct = local_max
+                    # push only when our global max increases
+                    yield f"data: {json.dumps({'progress': max_pct})}\n\n"
+
+            # (optional) if you still want to stream raw lines, uncomment:
+            # yield f"data: {json.dumps({'line': line})}\n\n"
+
+        await proc.wait()
+        # make sure we finish at 100%
+        if max_pct < 100:
+            yield f"data: {json.dumps({'progress': 100})}\n\n"
+        yield f"data: {json.dumps({'status': 'complete'})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
