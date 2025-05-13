@@ -9,14 +9,19 @@ from typing import List
 from ..database import get_db
 from ..models.Conversation import Conversation
 from ..models.Llm import Llm
+from ..models.Message import Message
 from ..routes.message_routes import add_message_to_conversation
 from ..schemas.conversation_schemas import ConversationCreate, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
 import threading
 from fastapi.responses import StreamingResponse
+import faiss
+from sentence_transformers import SentenceTransformer
+import numpy as np
     
 loaded_model = None
 current_tokenizer  = None
 loaded_model_id = None
+embedder = None
 
 router = APIRouter()
 
@@ -103,6 +108,54 @@ async def update_conversation(
 
     return conversation
 
+def get_conversation_history(db: Session, conversation_id: int):
+    try:
+        messages = db.query(Message).filter(
+            Message.conversation_id == conversation_id
+        ).order_by(Message.timestamp.asc()).all()
+        
+        formatted_messages = []
+        if len(messages) == 0 or len(messages) == 1:
+            return formatted_messages
+        for msg in messages:
+            prefix = "[USER]" if msg.sender == "user" else "[ASSISTANT]"
+            formatted_messages.append(f"{prefix} {msg.content}")
+        
+        return formatted_messages
+    except Exception as e:
+        logging.exception(f"Error retrieving conversation history: {e}")
+        return []
+
+def retrieve_context(query: str, conversation_history: List[str], top_k=3):
+
+    def get_embedder():
+        global embedder
+        if embedder is None:
+            logging.info("Loading the Embedder")
+            start = datetime.now()
+            embedder = SentenceTransformer("sentence-transformers/distiluse-base-multilingual-cased-v2")
+            logging.info(f"Embedder loaded in {datetime.now() - start} seconds")
+        return embedder
+
+    if conversation_history == []:
+        return ""
+    
+    embedder = get_embedder()
+    
+    query_embedding = embedder.encode(query, convert_to_tensor=True)
+    
+    message_embeddings = embedder.encode(conversation_history, convert_to_tensor=False)
+    
+    dimension = len(message_embeddings[0])
+    index = faiss.IndexFlatL2(dimension)
+    index.add(np.array(message_embeddings))
+    
+    distances, indices = index.search(np.array([query_embedding.cpu().numpy()]), k=min(top_k, len(conversation_history)))
+    
+    relevant_context = "\n".join([conversation_history[idx] for idx in indices[0]])
+    
+    return relevant_context
+
 @router.post("/conversations/{conversation_id}/query", response_model=MessageResponse)
 async def query(
     conversation_id: int,
@@ -145,6 +198,19 @@ async def query(
         logging.exception("Failed to load model or tokenizer")
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
+    try :
+        conversation_history = get_conversation_history(db, conversation_id)
+        if not conversation_history:
+            relevant_context = ""
+            logging.info("No previous messages in conversation, skipping context retrieval")
+        else:
+            logging.info(f"Retrieving context for conversation {conversation_id}")
+            start = datetime.now()
+            relevant_context = retrieve_context(payload.question, conversation_history)
+            logging.info(f"Found relevant context: {relevant_context[:100]}... in {datetime.now() - start} seconds")
+    except Exception as e:
+        logging.exception("Failed to retrieve context")
+        raise HTTPException(status_code=500, detail=f"Context retrieval error: {str(e)}")
     
     max_tokens = 10000
     model_temperature = 0.5
@@ -157,10 +223,12 @@ async def query(
         "You express yourself naturally and fluently, as in a real conversation."
         "If you cannot answer a question, simply say that you don't know."
         f"You have a total of {max_tokens} tokens to respond, take this into account and do not generate more that this."
-        "The user's instruction is the following :"
     )
     
-    full_prompt = f"[INST] {system_instruction}\n{payload.question} [/INST]"
+    full_prompt = f"[INST] {system_instruction}\n"
+    if relevant_context != "":
+        full_prompt += f"Context from previous conversation:\n{relevant_context}\n\n"
+    full_prompt += f"Question: {payload.question} [/INST]"
 
     try:
         input_ids = current_tokenizer.encode(full_prompt, return_tensors="pt").to(device)
@@ -188,6 +256,7 @@ async def query(
                 loaded_model.generate(**generation_kwargs)
         except Exception as e:
             logging.exception(f"Generation failed : {e}")
+            raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
     thread = threading.Thread(target=run_generation)
     thread.start()
@@ -195,10 +264,13 @@ async def query(
     async def token_stream():
         try:
             for new_text in streamer:
-                logging.info(f"Streamed chunk: {new_text}")
+                logging.info(f"Yielding token: {new_text}")
                 yield new_text
         except Exception as e:
             logging.exception("Streaming failed")
             raise HTTPException(status_code=500, detail="Streaming failed")
+        finally:
+            thread.join()
+            logging.info("Generation thread finished")
         
     return StreamingResponse(token_stream(), media_type="text/plain")
