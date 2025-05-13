@@ -157,8 +157,10 @@ export default function ConversationPage() {
         </div>
 
         {/* sticky question bar */}
-        <div className="sticky bottom-0 left-0 right-0 px-10 py-10 backdrop-blur-md flex justify-center">
-          <QuestionInput onSend={handleAsk} backgroundClass="bg-emerald-900" />
+        <div className="sticky bottom-0 left-0 right-0 px-10 py-10 backdrop-blur-md flex justify-center w-full">
+          <div className="w-full max-w-lg">
+            <QuestionInput onSend={handleAsk} backgroundClass="bg-emerald-900" />
+          </div>
         </div>
       </main>
     </div>
