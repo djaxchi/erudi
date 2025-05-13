@@ -60,7 +60,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/upload-folders`, {
+      const response = await fetch(`${API_BASE}/train`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -143,10 +143,10 @@ export default function DatasetCard({ selectedModel, modelName }) {
           >
             Train
           </button>
-          {errorMsg && (
-            <div className="text-red-400 text-sm mt-2 text-center w-full">{errorMsg}</div>
-          )}
         </div>
+        {errorMsg && (
+          <div className="text-red-400 text-sm mt-2 text-center w-full">{errorMsg}</div>
+        )}
       </div>
 
       <div className="w-[50%] rounded-2xl flex flex-col gap-6 shadow-lg">
