@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight, Cog, RefreshCcw, Plus } from "lucide-react";
 import ConfirmationModal from "./ConfirmationModal";
+import SpinnerDots from "./Spinner";
+
 
 export default function CollapsibleSection({ title }) {
   const [open, setOpen] = useState(true);
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(null); // Track the selected LLM
-  const [isDownloading, setIsDownloading] = useState(false); // Track download progress
-  const [errorMessage, setErrorMessage] = useState(""); // Track errors
-  const [loadingDots, setLoadingDots] = useState(".");
+  const [selectedModel, setSelectedModel] = useState(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
     const fetchModels = async () => {
@@ -37,71 +38,59 @@ export default function CollapsibleSection({ title }) {
     fetchModels();
   }, [title]);
 
-  // Animate loading dots when downloading
-  useEffect(() => {
-    if (!isDownloading) {
-      setLoadingDots(".");
-      return;
-    }
-    const interval = setInterval(() => {
-      setLoadingDots((prev) => (prev.length < 3 ? prev + "." : "."));
-    }, 500);
-    return () => clearInterval(interval);
-  }, [isDownloading]);
-
   const handleModelClick = (model) => {
-    setSelectedModel(model); // Set the selected LLM
-    setIsModalOpen(true); // Open the modal
+    setSelectedModel(model);
+    setIsModalOpen(true);
   };
 
   const handleConfirmDownload = async () => {
     if (!selectedModel) return;
 
-    setIsDownloading(true); // Start showing the loading text
-    setErrorMessage(""); // Clear previous errors
+    setIsDownloading(true);
+    setErrorMessage("");
     try {
       const response = await fetch(
         `http://127.0.0.1:8000/main_window/llms/${selectedModel.id}/download`,
-        {
-          method: "POST",
-        }
+        { method: "POST" }
       );
       if (response.ok) {
-        console.log(`Download started for ${selectedModel.name}`);
-
-        // Listen to SSE for updates
         const eventSource = new EventSource(
           `http://127.0.0.1:8000/main_window/llms/${selectedModel.id}/status/stream`
         );
 
         eventSource.onmessage = (event) => {
-          if (event.data === "complete") {
-            setIsDownloading(false); // Hide the loading text
+          if (event.data === "installed") {
+            setIsDownloading(false);
             eventSource.close();
-            console.log(`Download complete for ${selectedModel.name}`);
+          }
+          if (event.data.startsWith("error")) {
+            setErrorMessage("Download failed.");
+            setIsDownloading(false);
+            eventSource.close();
           }
         };
 
-        eventSource.onerror = (error) => {
-          console.error("SSE error:", error);
-          setIsDownloading(false); // Hide the loading text
+        eventSource.onerror = () => {
+          setErrorMessage("Error during download stream.");
+          setIsDownloading(false);
           eventSource.close();
         };
       } else {
         setErrorMessage("Failed to start download. Please try again.");
+        setIsDownloading(false);
       }
     } catch (error) {
       console.error("Error downloading model:", error);
       setErrorMessage("An error occurred while starting the download.");
+      setIsDownloading(false);
     } finally {
-      setIsModalOpen(false); // Close the modal
-      setSelectedModel(null); // Clear the selected model
+      setIsModalOpen(false);
+      setSelectedModel(null);
     }
   };
 
   return (
     <div className="text-gray-200">
-      {/* Error Message */}
       {errorMessage && (
         <div className="text-red-500 text-sm mb-2">{errorMessage}</div>
       )}
@@ -111,7 +100,7 @@ export default function CollapsibleSection({ title }) {
         onClick={() => setOpen(!open)}
       >
         <div className="flex items-center gap-2">
-          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}          
           <span className="font-semibold">{title}</span>
         </div>
 
@@ -137,7 +126,7 @@ export default function CollapsibleSection({ title }) {
               <p
                 key={model.id}
                 className="py-1 cursor-pointer hover:text-blue-500"
-                onClick={() => handleModelClick(model)} // Handle click
+                onClick={() => handleModelClick(model)}
               >
                 {model.name}
               </p>
@@ -148,7 +137,6 @@ export default function CollapsibleSection({ title }) {
         </div>
       )}
 
-      {/* Confirmation Modal */}
       <ConfirmationModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -157,14 +145,13 @@ export default function CollapsibleSection({ title }) {
         message={`Are you sure you want to download "${selectedModel?.name}"?`}
       />
 
-      {/* Animated Loading Text */}
       {isDownloading && (
-        <div className="fixed bottom-0 left-0 w-full flex justify-start pb-4 pl-4 z-50">
-          <span className="text-green-400 font-semibold text-lg bg-gray-900/90 px-4 py-2 rounded shadow">
-            Downloading{loadingDots}
-          </span>
+        <div className="fixed bottom-0 left-0 w-full flex items-center gap-2 pb-4 pl-4 z-50">
+          <SpinnerDots size={30} dotSize={4} colorClass="bg-green-400" />
         </div>
       )}
     </div>
   );
 }
+
+
