@@ -271,7 +271,7 @@ async def query(
     async def token_stream():
         try:
             for new_text in streamer:
-                cleand_out_token = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", new_text).strip()
+                cleand_out_token = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", new_text)
                 logging.info(f"Yielding token: {cleand_out_token}")
                 yield cleand_out_token
         except Exception as e:
