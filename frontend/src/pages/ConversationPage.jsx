@@ -5,9 +5,7 @@ import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import QuestionInput from "../components/QuestionInput";
 import { ask } from "../services/conversationService";
 
-/**
- * ConversationPage: affiche une conversation et la zone de saisie collée en bas.
- */
+
 export default function ConversationPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -15,7 +13,6 @@ export default function ConversationPage() {
   const [messages, setMessages] = useState([]);
   const [conversations, setConversations] = useState([]);
 
-  /* ---------------- fetch data ---------------- */
   useEffect(() => {
     (async () => {
       try {
@@ -36,31 +33,49 @@ export default function ConversationPage() {
     })();
   }, [id]);
 
-  /* ---------------- handlers ---------------- */
   const handleConversationClick = (newId) => navigate(`/main_window/conversations/${newId}`);
 
   const handleAsk = useCallback(async (question) => {
+    const userMessage = {
+      id: Date.now(),
+      sender: "user",
+      content: question,
+    };
+  
+    const assistantMessage = {
+      id: Date.now() + 1, // unique id
+      sender: "llm",
+      content: "",
+    };
+  
+    setMessages((prev) => [...prev, userMessage, assistantMessage]);
+  
     try {
-      const partialMessage = { id: Date.now(), sender: "assistant", content: "" };
-
-      // Call the `ask` function with the `onStreamChunk` callback
-      const { userMessage } = await ask({
+      await ask({
         question,
         conversationId: Number(id),
         onStreamChunk: (chunk) => {
-          partialMessage.content += chunk; // Append the chunk to the partial message
-          setMessages((prev) => [
-            ...prev.filter((m) => m.id !== partialMessage.id), // Remove the old partial message
-            partialMessage, // Add the updated partial message
-          ]);
+          assistantMessage.content += chunk;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessage.id ? { ...msg, content: assistantMessage.content } : msg
+            )
+          );
         },
       });
-
-      // Add the final user and assistant messages to the state
-      setMessages((prev) => [...prev, userMessage, partialMessage]);
     } catch (err) {
       console.error("Failed to send message:", err);
     }
+
+    await fetch(`http://127.0.0.1:8000/conversations/${id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+      conversation_id: Number(id),
+      sender: "llm",
+      content: assistantMessage.content,
+      }), 
+    });
   }, [id]);
 
   const handleRename = (cid, newName) =>
@@ -75,7 +90,6 @@ export default function ConversationPage() {
   };
 
 
-  /* ---------------- render ---------------- */
   return (
     <div className="flex h-screen">
       <Sidebar />
