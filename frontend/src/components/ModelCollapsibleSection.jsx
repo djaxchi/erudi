@@ -11,6 +11,8 @@ export default function CollapsibleSection({ title }) {
   const [isDownloading, setIsDownloading] = useState(false); // Track download progress
   const [errorMessage, setErrorMessage] = useState(""); // Track errors
   const [loadingDots, setLoadingDots] = useState(".");
+  const [progress, setProgress] = useState(0);   
+  const spinner = "w-5 h-5 rounded-full border-2 border-dashed border-green-400 animate-spin";
 
   useEffect(() => {
     const fetchModels = async () => {
@@ -75,12 +77,17 @@ export default function CollapsibleSection({ title }) {
         );
 
         eventSource.onmessage = (event) => {
-          if (event.data === "complete") {
-            setIsDownloading(false); // Hide the loading text
+          const data = JSON.parse(event.data);
+          if (data.progress !== undefined) {        // ▲ live %
+            setProgress(data.progress);
+          }
+          if (data.status === "complete") {
+            setIsDownloading(false);
+            setProgress(100);
             eventSource.close();
-            console.log(`Download complete for ${selectedModel.name}`);
           }
         };
+
 
         eventSource.onerror = (error) => {
           console.error("SSE error:", error);
@@ -159,12 +166,23 @@ export default function CollapsibleSection({ title }) {
 
       {/* Animated Loading Text */}
       {isDownloading && (
-        <div className="fixed bottom-0 left-0 w-full flex justify-start pb-4 pl-4 z-50">
-          <span className="text-green-400 font-semibold text-lg bg-gray-900/90 px-4 py-2 rounded shadow">
-            Downloading{loadingDots}
-          </span>
+        <div className="fixed bottom-0 left-0 w-full px-4 py-3 bg-gray-900/90 z-50">
+          <div className="flex items-center gap-3">
+            <div className={spinner} />    {/* dashed circle */}
+            <span className="text-gray-200">
+              Downloading&nbsp;{selectedModel?.name}&nbsp;–&nbsp;{progress}%
+            </span>
+          </div>
+
+          <div className="w-full h-2 mt-2 bg-gray-700 rounded">
+            <div
+              className="h-full bg-green-500 rounded transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
       )}
+
     </div>
   );
 }

@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.Llm import Llm
 from ..schemas.llm_schemas import LLMCreate, LLMResponse
+import json
+from collections import defaultdict
 
 from ..utils.llm_downloader import download_llm
 import logging
@@ -16,6 +18,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/main_window")
+
+download_progress: dict[int, int] = defaultdict(int)
+
+
+def _progress_cb(model_id: int, bytes_done: int, bytes_total: int):
+    pct = int(bytes_done / bytes_total * 100)
+    download_progress[model_id] = pct
 
 
 @router.get("/llms", response_model=List[LLMResponse])
@@ -105,24 +114,25 @@ async def search_llms(name: str, db: Session = Depends(get_db)):
     return llms
 
 
-# @router.get("/llms/{llm_id}/status/stream")
-# async def stream_status(llm_id: int, db: Session = Depends(get_db)):
-#     async def event_generator():
-#         while True:
-#             llm = db.query(Llm).filter(Llm.id == llm_id).first()
-#             logging.info(f"LLM status: {llm}")
-#             if llm and llm.local:
-#                 yield f"data: complete\n\n"
-#                 break
-#             await asyncio.sleep(2)  # Check every 2 seconds
-#     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
-
 @router.get("/llms/{llm_id}/status/stream")
 async def stream_status(llm_id: int):
+    """
+    Server-Sent-Events stream that pushes
+       {"progress":  0-100 }
+       {"status": "complete"}
+    """
+
     async def event_generator():
-        await asyncio.sleep(10)
-        yield "data: complete\n\n"
+        last = -1
+        while True:
+            pct = download_progress.get(llm_id, 0)
+            if pct != last:
+                yield f"data: {json.dumps({'progress': pct})}\n\n"
+                last = pct
+            if pct >= 100:
+                yield f"data: {json.dumps({'status': 'complete'})}\n\n"
+                break
+            await asyncio.sleep(0.7)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -149,7 +159,9 @@ async def download_llm_route(
                 )
                 session.add(new_llm)
                 session.commit()
-                logging.info(f"New LLM created for '{new_llm.name}' with id {new_llm.id}")
+                logging.info(
+                    f"New LLM created for '{new_llm.name}' with id {new_llm.id}"
+                )
 
     background_tasks.add_task(
         download_and_update,
@@ -172,8 +184,12 @@ def download_and_update(model_link: str, model_id: int, save_dir: str, callback)
         callback (function): A function to call after the download is complete.
     """
     try:
-        download_llm(model_link=model_link, model_id=model_id, save_dir=save_dir)
-
+        download_llm(  # ▼ inject the callback
+            model_link=model_link,
+            model_id=model_id,
+            save_dir=save_dir,
+            progress_callback=lambda done, total: _progress_cb(model_id, done, total),
+        )
         callback(model_id, save_dir)
     except Exception as e:
         logging.error(f"Error during download or database update: {e}")
