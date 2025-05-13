@@ -3,6 +3,9 @@ import DragDropArea from "./DragDropArea";
 import Dropdown from "./Dropdown";
 import { Check, Folder } from "lucide-react";
 
+const API_BASE = "http://localhost:8000";
+
+
 export default function DatasetCard() {
   /* -------------------- state -------------------- */
   const [type, setType] = useState("Textuel");
@@ -14,10 +17,17 @@ export default function DatasetCard() {
   /* ------------------- refs & handlers ------------------- */
   const fileInputRef = useRef(null);
 
-  const openExplorer = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-      fileInputRef.current.click();
+  const openExplorer = async () => {
+    // Vérifie si window.electron est défini
+    if (window.electron) {
+      const selectedPath = await window.electron.openDirectory();
+      if (selectedPath) {
+        setDataPath(selectedPath);  // Mettre à jour le chemin du dossier
+        paths.push(selectedPath); // Ajouter le chemin sélectionné à paths
+        console.log("Chemin du dossier sélectionné :", selectedPath);
+      }
+    } else {
+      console.error('window.electron est undefined');
     }
   };
 
@@ -42,6 +52,30 @@ export default function DatasetCard() {
       updated.length === 1 ? `…/${updated[0]}` : `…/${updated.length} folders`
     );
   };
+
+   /* -------------------- send paths to backend -------------------- */
+  const sendPathsToBackend = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/upload-folders`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ paths: paths }), // envoie les chemins de dossier
+      });
+
+      if (!response.ok) {
+        throw new Error('Erreur lors de l\'envoi des chemins');
+      }
+
+      const data = await response.json();
+      console.log('Réponse du backend:', data);
+
+    } catch (error) {
+      console.error('Erreur lors de l\'envoi des chemins au backend:', error);
+    }
+  };
+
 
   /* -------------------- render -------------------- */
   return (
@@ -102,7 +136,9 @@ export default function DatasetCard() {
 
         {/* Train button */}
         <div className="flex-1 flex items-end">
-          <button className="w-40 mx-auto py-3 rounded-full border border-emerald-400/20 text-emerald-400 font-semibold hover:bg-emerald-400/10 transition">
+          <button className="w-40 mx-auto py-3 rounded-full border border-emerald-400/20 text-emerald-400 font-semibold hover:bg-emerald-400/10 transition"
+            onClick={sendPathsToBackend}
+            >
             Train
           </button>
         </div>
