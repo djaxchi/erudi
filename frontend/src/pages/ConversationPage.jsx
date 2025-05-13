@@ -1,10 +1,9 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import QuestionInput from "../components/QuestionInput";
 import { ask } from "../services/conversationService";
-
 
 export default function ConversationPage() {
   const { id } = useParams();
@@ -12,6 +11,7 @@ export default function ConversationPage() {
 
   const [messages, setMessages] = useState([]);
   const [conversations, setConversations] = useState([]);
+  const scrollRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -33,6 +33,15 @@ export default function ConversationPage() {
     })();
   }, [id]);
 
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages]);
+
   const handleConversationClick = (newId) => navigate(`/main_window/conversations/${newId}`);
 
   const handleAsk = useCallback(async (question) => {
@@ -41,15 +50,15 @@ export default function ConversationPage() {
       sender: "user",
       content: question,
     };
-  
+
     const assistantMessage = {
-      id: Date.now() + 1, // unique id
+      id: Date.now() + 1,
       sender: "llm",
       content: "",
     };
-  
+
     setMessages((prev) => [...prev, userMessage, assistantMessage]);
-  
+
     try {
       await ask({
         question,
@@ -71,10 +80,10 @@ export default function ConversationPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-      conversation_id: Number(id),
-      sender: "llm",
-      content: assistantMessage.content,
-      }), 
+        conversation_id: Number(id),
+        sender: "llm",
+        content: assistantMessage.content,
+      }),
     });
   }, [id]);
 
@@ -83,12 +92,10 @@ export default function ConversationPage() {
 
   const handleDelete = (id) => {
     setConversations((prev) => prev.filter((conv) => conv.id !== id));
-
     if (id === Number(id)) {
       navigate("/main_window/chat");
     }
   };
-
 
   return (
     <div className="flex h-screen">
@@ -109,22 +116,44 @@ export default function ConversationPage() {
       </aside>
 
       {/* ---------- Chat column ---------- */}
-      <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden "
-      style={{ scrollbarWidth: "none", msOverflowStyle: "none"}}>
+      <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">
         {/* message list */}
         <div
-          className="flex-1 overflow-y-auto space-y-12 px-10 pt-10"
-          style={{ maxHeight: "calc(100vh - 10px)",  scrollbarWidth: "none", msOverflowStyle: "none" }}
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto px-10 pt-10 pb-4"
+          style={{
+            scrollbarWidth: "none", // Firefox
+            msOverflowStyle: "none", // IE/Edge
+          }}
         >
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`max-w-full p-4 rounded-2xl text-white whitespace-pre-wrap ${msg.sender === "user" ? "bg-[#191919] ml-auto rounded-tr-none max-w-xl" : " mr-auto rounded-tl-none"}`
+          <style>{`
+            ::-webkit-scrollbar {
+              display: none;
             }
-            >
-              {msg.content}
-            </div>
-          ))}
+          `}</style>
+
+          <div className="flex flex-col gap-6">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`
+                  break-words
+                  w-fit
+                  max-w-[75%]
+                  p-4
+                  rounded-2xl
+                  text-white
+                  whitespace-pre-wrap
+                  overflow-wrap break-word
+                  ${msg.sender === "user"
+                    ? "bg-[#191919] ml-auto rounded-tr-none"
+                    : "mr-auto rounded-tl-none"}
+                `}
+              >
+                {msg.content}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* sticky question bar */}
