@@ -41,8 +41,23 @@ export default function ConversationPage() {
 
   const handleAsk = useCallback(async (question) => {
     try {
-      const { userMessage, assistantMessage } = await ask({ question, conversationId: Number(id) });
-      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      const partialMessage = { id: Date.now(), sender: "assistant", content: "" };
+
+      // Call the `ask` function with the `onStreamChunk` callback
+      const { userMessage } = await ask({
+        question,
+        conversationId: Number(id),
+        onStreamChunk: (chunk) => {
+          partialMessage.content += chunk; // Append the chunk to the partial message
+          setMessages((prev) => [
+            ...prev.filter((m) => m.id !== partialMessage.id), // Remove the old partial message
+            partialMessage, // Add the updated partial message
+          ]);
+        },
+      });
+
+      // Add the final user and assistant messages to the state
+      setMessages((prev) => [...prev, userMessage, partialMessage]);
     } catch (err) {
       console.error("Failed to send message:", err);
     }

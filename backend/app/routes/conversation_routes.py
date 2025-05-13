@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 import torch
 from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
 import logging
 from typing import List
 from ..database import get_db
@@ -11,7 +11,9 @@ from ..models.Conversation import Conversation
 from ..models.Llm import Llm
 from ..routes.message_routes import add_message_to_conversation
 from ..schemas.conversation_schemas import ConversationCreate, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
-
+import threading
+from fastapi.responses import StreamingResponse
+    
 loaded_model = None
 current_tokenizer  = None
 loaded_model_id = None
@@ -123,21 +125,29 @@ async def query(
     
     global loaded_model, current_tokenizer, loaded_model_id
 
-    if loaded_model_id != llm.id or loaded_model is None:
-        start = datetime.now()
-        logging.info(f"Loading model {llm.id} from {llm.link}")
-        loaded_model = AutoModelForCausalLM.from_pretrained(llm.link, local_files_only=True, torch_dtype=torch.float16)
-        current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
-        loaded_model_id = llm.id
-        loaded_model.eval()
-        loaded_model.to(device)
-        logging.info(f"Model {llm.id} loaded successfully in {datetime.now() - start} seconds")
-    else:
-        logging.info(f"Model {llm.id} already loaded")
-        loaded_model.eval()
-        loaded_model.to(device)
+    try:
+        if loaded_model_id != llm.id or loaded_model is None:
+            start = datetime.now()
+            logging.info(f"Loading model {llm.id} from {llm.link}")
+            loaded_model = AutoModelForCausalLM.from_pretrained(
+                llm.link, local_files_only=True, torch_dtype=torch.float16
+            )
+            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
+            loaded_model_id = llm.id
+            loaded_model.eval()
+            loaded_model.to(device)
+            logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
+        else:
+            logging.info(f"Model {llm.id} already loaded")
+            loaded_model.eval()
+            loaded_model.to(device)
+    except Exception as e:
+        logging.exception("Failed to load model or tokenizer")
+        raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
+    
     max_tokens = 10000
+    model_temperature = 0.5
     system_instruction = (
         "You are an intelligent, polite, and helpful conversational assistant."
         "You can answer all types of questions: general knowledge, emotions, advice, or technical topics."
@@ -146,35 +156,49 @@ async def query(
         "You do not provide false information: if you don't know, you say so."
         "You express yourself naturally and fluently, as in a real conversation."
         "If you cannot answer a question, simply say that you don't know."
-        f"You have a total of {max_tokens} tokens to respond, take this into account."
+        f"You have a total of {max_tokens} tokens to respond, take this into account and do not generate more that this."
+        "The user's instruction is the following :"
     )
     
     full_prompt = f"[INST] {system_instruction}\n{payload.question} [/INST]"
 
-    start = datetime.now()
-    logging.info(f"Generating response for conversation {conversation_id} with question: {payload.question}")
-    input_ids = current_tokenizer.encode(full_prompt, return_tensors="pt").to(device)
+    try:
+        input_ids = current_tokenizer.encode(full_prompt, return_tensors="pt").to(device)
+    except Exception as e:
+        logging.exception("Failed to tokenize prompt")
+        raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
     
-    with torch.no_grad():
-        outputs = loaded_model.generate(
-            input_ids,
-            max_new_tokens=max_tokens,
-            temperature=0.5,
-            top_p=0.9,
-            do_sample=True,
-            num_beams=1,
-            pad_token_id=current_tokenizer.eos_token_id,
-        )
-        
-    response = current_tokenizer.decode(outputs[0][input_ids.shape[1]:], skip_special_tokens=True)
-    logging.info(f"Response generated in {datetime.now() - start} seconds")
-    if response == "":
-        raise HTTPException(status_code=500, detail="Empty response from model")
-    
-    assistantMessage = await add_message_to_conversation(
-        conversation_id, 
-        MessageCreate(content=response, sender="assistant"),
-        db
+    streamer = TextIteratorStreamer(current_tokenizer, skip_prompt=True, skip_special_tokens=True)
+
+    generation_kwargs = dict(
+        input_ids=input_ids,
+        streamer=streamer,
+        max_new_tokens=max_tokens,
+        temperature=model_temperature,
+        top_p=0.9,
+        do_sample=True,
+        num_beams=1,
+        pad_token_id=current_tokenizer.eos_token_id,
     )
 
-    return assistantMessage
+    def run_generation():
+        logging.info(f"Generating response for conversation {conversation_id} with question: {payload.question}")
+        try:
+            with torch.no_grad():
+                loaded_model.generate(**generation_kwargs)
+        except Exception as e:
+            logging.exception(f"Generation failed : {e}")
+
+    thread = threading.Thread(target=run_generation)
+    thread.start()
+
+    async def token_stream():
+        try:
+            for new_text in streamer:
+                logging.info(f"Streamed chunk: {new_text}")
+                yield new_text
+        except Exception as e:
+            logging.exception("Streaming failed")
+            raise HTTPException(status_code=500, detail="Streaming failed")
+        
+    return StreamingResponse(token_stream(), media_type="text/plain")
