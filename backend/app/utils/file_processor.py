@@ -16,7 +16,6 @@ def extract_text_from_pdf(pdf_path):
         reader = pypdf.PdfReader(file)
         for page in reader.pages:
             text += page.extract_text() or ""
-            logging.info(f"Extracted text from page : {page.extract_text()}")
             text += "\n"
     return text
 
@@ -47,7 +46,7 @@ def chunk_text(text, chunk_size, overlap):
         i += chunk_size - overlap
     return chunks
 
-def process_pdfs_to_causal_dataset(input_folders, chunk_size = 800, overlap = 200, output_path = "../../data/training_datasets/"):
+def process_pdfs_to_causal_dataset(input_folders, chunk_size = 800, overlap = 200, output_path = "data/training_datasets/"):
     
     logging.info(f"Processing PDFs and TXT files to create a dataset, from folders: {input_folders}")
     start = datetime.now()
@@ -62,13 +61,9 @@ def process_pdfs_to_causal_dataset(input_folders, chunk_size = 800, overlap = 20
 
     for pdf_path in tqdm(pdf_files, desc="Processing PDF files"):
         raw_text = extract_text_from_pdf(pdf_path)
-        logging.info(f"Extracted text from {pdf_path}: {raw_text}")
         clean = clean_text(raw_text)
-        logging.info(f"Cleaned text: {clean}")
         chunks = chunk_text(text=clean, chunk_size=chunk_size, overlap=overlap)
-        logging.info(f"Chunks created: {chunks}")
         all_chunks.extend(chunks)
-        break
     
     for txt_path in tqdm(txt_files, desc="Processing TXT files"):
         with open(txt_path, "r", encoding="utf-8", errors="ignore") as f:
