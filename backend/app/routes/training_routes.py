@@ -1,4 +1,7 @@
-from fastapi import APIRouter, HTTPException
+import logging
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends 
+from sqlalchemy.orm import Session
+from ..database import get_db
 from ..schemas.training_schemas import TrainingInfo
 from ..utils.file_processor import process_pdfs_to_causal_dataset
 from ..utils.training_utils import (
@@ -9,25 +12,31 @@ from ..utils.training_utils import (
     tokenize_fn,
     train_llm,
 )
-from datasets import Dataset
-from transformers import Trainer
-import torch
 
 router = APIRouter()
 
 @router.post("/train", status_code=200)
-async def train_llm_route(payload: TrainingInfo):
+async def train_llm_route(payload: TrainingInfo, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
     Fine-tune an LLM and update the database after the training is complete.
     """
-    llm = db.query(Llm).filter(Llm.id == llm_id).first()
-    llmLink = llm.link
-
-    # Process the PDF files into a dataset
-    dataset = process_pdfs_to_causal_dataset(payload.pdf_files)
-    if dataset is None:
-        raise HTTPException(status_code=400, detail="Failed to process PDF files into a dataset.")
     
+    # Process the PDF files into a dataset
+    if not payload.paths:
+        raise HTTPException(status_code=400, detail="No PDF files provided.")
+    
+    if not payload.selectedModel:
+        raise HTTPException(status_code=400, detail="Model ID is required.")
+    
+    try:
+        dataset_path = process_pdfs_to_causal_dataset(payload.paths)
+        if dataset_path is None:
+            raise HTTPException(status_code=400, detail="Failed to process PDF files into a dataset.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing training files: {e}")
+    
+    return {"message": "[TEST] Dataset created successfully", "dataset_path": dataset_path}
+
     def update_database_after_training():
         return
     
@@ -37,6 +46,7 @@ def train_and_update():
     """
     Trains the model and updates the database after the training is complete.
     """
+    return
     try:
         train_llm()
 

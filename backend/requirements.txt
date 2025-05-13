@@ -19,3 +19,7 @@ faiss-cpu
 sentence-transformers
 jinja2
 python-dotenv
+pypdf
+datasets
+peft
+tqdm
