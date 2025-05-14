@@ -6,6 +6,10 @@ from ..models.Conversation import Conversation
 from ..models.Message import Message
 from ..schemas.message_schemas import MessageCreate, MessageResponse
 from datetime import datetime
+from transformers import pipeline
+import logging
+
+summarizer = pipeline("summarization", model="google/pegasus-xsum", tokenizer = "google/pegasus-xsum") 
 
 router = APIRouter()
 
@@ -28,6 +32,14 @@ async def add_message_to_conversation(conversation_id: int, message: MessageCrea
 
     new_message = Message(conversation_id=conversation_id, **message.dict())
     db.add(new_message)
+    db.flush()
+
+    count = db.query(Message).filter(Message.conversation_id == conversation_id).count()
+    if count==1:
+        prompt=("Very short title, don't exceed 10 words : \n" + new_message.content)
+        summary = summarizer(prompt, max_length=10, min_length=5, do_sample=False)[0]["summary_text"]
+        conversation.name = summary
+        logging.info("Premier message résumé pour le titre : %s", summary)
 
     conversation.last_message_time = datetime.utcnow()
 
