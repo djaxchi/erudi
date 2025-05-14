@@ -1,30 +1,17 @@
 <|system|>
 {{ system_instruction }}
-<|end|>
-
-
-{# Bloc de contexte libre (RAG + récence) #}
 {% if context %}
-<|system|>
 Contexte pertinent :
 {{ context }}
+{% endif %}
 <|end|>
 
-
-{% endif %}
-
-
-{# Boucle history structurée #}
-{% for pair in history %}
-<|user|>{{ pair.user }}<|end|>
-<|assistant|>{{ pair.assistant }}<|end|>
+{% for text in history %}
+<|user|>{{ text }}<|end|>
 {% endfor %}
-
 
 <|user|>{{ question }}<|end|>
 <|assistant|>
-
-
 
 
 

@@ -20,7 +20,7 @@ export async function addMessage(conversationId, content, sender = "user") {
   return res.json();
 }
 
-export async function query(conversationId, question, {temperature = 0.5, topP = 0.9, maxTokens = 3074, onStreamChunk} = {}) {
+export async function query(conversationId, question, {temperature = 0.5, topP = 0.9, maxTokens = 3074, customPrompt = "", onStreamChunk} = {}) {
   const body = {
     question,
     temperature : temperature,
