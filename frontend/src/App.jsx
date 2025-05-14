@@ -6,6 +6,7 @@ import AvailableModelsPage from "./pages/AvailableModelsPage";
 import ChatPage from "./pages/ChatPage";
 import ConversationPage from "./pages/ConversationPage";
 import TrainingPage from "./pages/TrainingPage";
+import ArenaPage from "./pages/ArenaPage";
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/main_window/available-models" element={<AvailableModelsPage />} />
         <Route path="/main_window/conversations/:id" element={<ConversationPage />} />
         <Route path="/main_window/new-training" element={<TrainingPage />} />
+        <Route path="/main_window/arena" element={<ArenaPage />} />
         </Routes>
     </Router>
   );
