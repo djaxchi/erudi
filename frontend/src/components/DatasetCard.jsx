@@ -1,7 +1,7 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import DragDropArea from "./DragDropArea";
 import Dropdown from "./Dropdown";
-import { Check, Folder } from "lucide-react";
+import { Check, Folder, Loader } from "lucide-react";
 
 const API_BASE = "http://localhost:8000";
 
@@ -12,9 +12,25 @@ export default function DatasetCard({ selectedModel, modelName }) {
 
   const [dataPath, setDataPath] = useState("/AppData/DataStorage/");
   const [paths, setPaths] = useState([]);
+  
+  // Nouveaux états pour le suivi d'entraînement
+  const [isTraining, setIsTraining] = useState(false);
+  const [trainingStatus, setTrainingStatus] = useState(null);
+  const [trainingError, setTrainingError] = useState("");
+  const [trainingId, setTrainingId] = useState(null);
+  const pollingRef = useRef(null);
 
   const fileInputRef = useRef(null);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // Effet pour nettoyer l'interval de polling lorsque le composant est démonté
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, []);
 
   const openExplorer = async () => {
     
@@ -51,8 +67,65 @@ export default function DatasetCard({ selectedModel, modelName }) {
     );
   };
 
+  // Nouvelle fonction pour vérifier le statut d'entraînement
+  const checkTrainingStatus = async (llmId) => {
+    try {
+      const response = await fetch(`${API_BASE}/training/${llmId}/status`);
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          // Le job de training n'existe plus (probablement supprimé après un échec)
+          setTrainingError("Le job d'entraînement n'existe plus ou a échoué.");
+          setIsTraining(false);
+          return true; // Arrêter le polling
+        }
+        throw new Error(`Erreur HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setTrainingStatus(data.status);
+
+      // Traitement selon le statut
+      if (data.status === "failed") {
+        setTrainingError(data.error_message || "L'entraînement a échoué.");
+        setIsTraining(false);
+        return true; // Arrêter le polling
+      } else if (data.status === "completed") {
+        setTrainingError("");
+        setIsTraining(false);
+        return true; // Arrêter le polling
+      }
+
+      // Continuer le polling pour "pending" ou "running"
+      return false;
+    } catch (error) {
+      console.error("Erreur lors de la vérification du statut:", error);
+      setTrainingError(`Erreur lors de la vérification du statut: ${error.message}`);
+      setIsTraining(false);
+      return true; // Arrêter le polling en cas d'erreur
+    }
+  };
+
+  // Fonction pour démarrer le polling
+  const startPolling = (llmId) => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+
+    // Vérifier toutes les 3 secondes
+    pollingRef.current = setInterval(async () => {
+      const shouldStop = await checkTrainingStatus(llmId);
+      
+      if (shouldStop && pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    }, 3000);
+  };
+
   const submitTrainForm = async () => {
     setErrorMsg("");
+    setTrainingError("");
 
     if (!selectedModel) {
       setErrorMsg("Please select a model to train.");
@@ -68,6 +141,10 @@ export default function DatasetCard({ selectedModel, modelName }) {
     }
 
     try {
+      // Activer l'état d'entraînement
+      setIsTraining(true);
+      setTrainingStatus("pending");
+      
       const response = await fetch(`${API_BASE}/train`, {
         method: "POST",
         headers: {
@@ -81,14 +158,24 @@ export default function DatasetCard({ selectedModel, modelName }) {
       });
 
       if (!response.ok) {
-        throw new Error("Erreur lors de l'envoi des infos d'entrainement");
+        throw new Error("Erreur provenant du backend");
       }
 
       const data = await response.json();
       console.log("Réponse du backend:", data);
+      
+      // Récupérer l'ID du modèle en entraînement et démarrer le polling
+      if (data.llm_in_training_id) {
+        setTrainingId(data.llm_in_training_id);
+        startPolling(data.llm_in_training_id);
+      } else {
+        throw new Error("ID du modèle en entraînement non reçu");
+      }
+      
     } catch (error) {
       console.error("Erreur lors de l'envoi des infos d'entrainement:", error);
       setErrorMsg("Une erreur est survenue.");
+      setIsTraining(false);
     }
   };
 
@@ -145,15 +232,40 @@ export default function DatasetCard({ selectedModel, modelName }) {
           </div>
         </div>
 
-        <div className="flex-1 flex items-end">
-          <button className="w-40 mx-auto py-3 rounded-full border border-emerald-400/20 text-emerald-400 font-semibold hover:bg-emerald-400/10 transition"
-            onClick={submitTrainForm}
-          >
-            Train
-          </button>
+        <div className="flex-1 flex items-end flex-col">
+          {isTraining ? (
+            <div className="w-full text-center">
+              <div className="inline-flex items-center gap-2 py-3">
+                <Loader className="w-5 h-5 text-emerald-400 animate-spin" />
+                <span className="text-emerald-400">
+                  {trainingStatus === "running" 
+                    ? "Entraînement en cours..." 
+                    : "Préparation de l'entraînement..."}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <button 
+              className="w-40 mx-auto py-3 rounded-full border border-emerald-400/20 text-emerald-400 font-semibold hover:bg-emerald-400/10 transition"
+              onClick={submitTrainForm}
+            >
+              Train
+            </button>
+          )}
         </div>
+        
         {errorMsg && (
           <div className="text-red-400 text-sm mt-2 text-center w-full">{errorMsg}</div>
+        )}
+        
+        {trainingError && (
+          <div className="text-red-400 text-sm mt-2 text-center w-full">{trainingError}</div>
+        )}
+        
+        {trainingStatus === "completed" && (
+          <div className="text-emerald-400 text-sm mt-2 text-center w-full">
+            Entraînement terminé avec succès!
+          </div>
         )}
       </div>
 

@@ -53,11 +53,9 @@ def process_pdfs_to_causal_dataset(input_folders, chunk_size = 800, overlap = 20
     all_chunks = []
     pdf_files = [list(Path(input_folder).glob("*.pdf")) for input_folder in input_folders]
     pdf_files = [item for sublist in pdf_files for item in sublist]
-    logging.info(f"PDF files found: {pdf_files}")
 
     txt_files = [list(Path(input_folder).glob("*.txt")) for input_folder in input_folders]
     txt_files = [item for sublist in txt_files for item in sublist]
-    logging.info(f"TXT files found: {txt_files}")
 
     for pdf_path in tqdm(pdf_files, desc="Processing PDF files"):
         raw_text = extract_text_from_pdf(pdf_path)
