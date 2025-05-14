@@ -20,11 +20,21 @@ export async function addMessage(conversationId, content, sender = "user") {
   return res.json();
 }
 
-export async function query(conversationId, question, onChunk) {
+export async function query(conversationId, question, {temperature = 0.5, topP = 0.9, maxTokens = 3074, onStreamChunk} = {}) {
+  const body = {
+    question,
+    temperature : temperature,
+    top_p: topP,
+    max_tokens : maxTokens
+
+  }
+
+  console.log(body);
+  
   const res = await fetch(`${API}/conversations/${conversationId}/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, temperature, top_p : topP, max_tokens : maxTokens}),
   });
 
   if (!res.ok) throw new Error("Query failed");
@@ -40,7 +50,7 @@ export async function query(conversationId, question, onChunk) {
 
     const chunk = decoder.decode(value, { stream: true });
     fullText += chunk;
-    if (onChunk) onChunk(chunk); // send partial result to the caller
+    if (onStreamChunk) onStreamChunk(chunk); // send partial result to the caller
   }
 
   return {
@@ -50,7 +60,7 @@ export async function query(conversationId, question, onChunk) {
   };
 }
 
-export async function ask({ question, conversationId = null, llmId = null, onStreamChunk }) {
+export async function ask({ question, conversationId = null, llmId = null, temperature, topP, maxTokens, onStreamChunk }) {
   if (!question.trim()) throw new Error("Question is empty");
 
   let convId = conversationId;
@@ -64,7 +74,7 @@ export async function ask({ question, conversationId = null, llmId = null, onStr
 
   const userMessage = await addMessage(convId, question);
   
-  const assistantMessage = await query(convId, question, onStreamChunk);
+  const assistantMessage = await query(convId, question, {temperature, topP, maxTokens, onStreamChunk});
 
   return {
     conversation: conversation ?? { id: convId },
