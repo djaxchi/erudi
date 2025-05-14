@@ -4,6 +4,7 @@ import Sidebar from "../components/Sidebar";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
 import { ask } from "../services/conversationService";
+import { Trash } from "lucide-react";
 
 const MAX_PANELS = 4;
 
@@ -33,7 +34,7 @@ export default function ArenaPage() {
       .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
   }, []);
 
-  const handleSend = async () => {
+  const handleAsk = async () => {
     if (!inputValue.trim() || loading) return;
     setLoading(true);
     setPanels((prev) =>
@@ -98,6 +99,10 @@ export default function ArenaPage() {
     ]);
   };
 
+  const handleDeletePanel = (panelId) => {
+    setPanels((prev) => prev.filter((panel) => panel.id !== panelId));
+  };
+
   // Grid layout logic
   let gridCols = 1;
   let gridRows = 1;
@@ -115,37 +120,49 @@ export default function ArenaPage() {
   // For 3 panels, show them side by side (3 columns)
   let gridPanels = panels;
   let gridClass = "";
-  if (panels.length === 2) {
+  if (panels.length === 1) {
+    gridClass = "grid grid-cols-1 gap-4 w-full h-full";
+  } else if (panels.length === 2) {
     gridClass = "grid grid-cols-2 gap-4 w-full";
   } else if (panels.length === 3) {
     gridClass = "grid grid-cols-3 gap-4 w-full";
   } else if (panels.length === 4) {
     gridClass = "grid grid-cols-2 grid-rows-2 gap-4 w-full";
-  } else {
-    gridClass = "flex w-full";
   }
-
   const renderChatPanel = (panel, idx) => (
     <GradientBox
       key={panel.id}
       className="flex flex-col mx-2 min-w-[320px] h-full"
     >
-      <div className="flex items-center gap-2 pb-2">
-        <h2 className="text-white text-3xl font-bold whitespace-nowrap">Chat with</h2>
-        <div className="relative">
-          <select
-            className="appearance-none pr-8 pl-4 py-1 rounded-full border border-emerald-400 bg-transparent text-white focus:outline-none text-sm"
-            onChange={(e) => handleModelChange(panel.id, e.target.value)}
-            value={panel.selectedModel}
-          >
-            {models.map((model) => (
-              <option key={model.id} value={model.name} className="text-black">
-                {model.name}
-              </option>
-            ))}
-          </select>
+      <div className="flex items-center justify-between pb-2">
+        {/* Chat with and model selector */}
+        <div className="flex items-center gap-2">
+          <h2 className="text-white text-3xl font-bold whitespace-nowrap">Chat with</h2>
+          <div className="relative">
+            <select
+              className="appearance-none pr-8 pl-4 py-1 rounded-full border border-emerald-400 bg-transparent text-white focus:outline-none text-sm"
+              onChange={(e) => handleModelChange(panel.id, e.target.value)}
+              value={panel.selectedModel}
+            >
+              {models.map((model) => (
+                <option key={model.id} value={model.name} className="text-black">
+                  {model.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        {/* Trash Button */}
+        <button
+          className="p-1 text-gray-400 hover:text-gray-200"
+          onClick={() => handleDeletePanel(panel.id)}
+          title="Delete this panel"
+        >
+          <Trash className="w-5 h-5" />
+        </button>
       </div>
+
       <div className="flex-1 flex flex-col gap-2 pb-6 overflow-y-auto">
         {panel.messages.map((msg, idx) => (
           <div
@@ -177,7 +194,7 @@ export default function ArenaPage() {
             <QuestionInput
               value={inputValue}
               onChange={setInputValue}
-              onSend={handleSend}
+              onSend={handleAsk}
               loading={loading}
               placeholder="Ask a question..."
             />
