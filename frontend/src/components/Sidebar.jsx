@@ -14,18 +14,19 @@ export default function Sidebar() {
     location.pathname.startsWith("/main_window/conversations");
 
   return (
-    <div className="w-16 bg-[#121212] flex flex-col items-center">
+    <div className="w-[8%] bg-[#121212] flex flex-col items-center">
       <Link
         to="/main_window/models"
         className={`w-full flex justify-center items-center py-4 ${
           isModelsActive ? "border-l-4 border-green-500" : ""
         }`}
       >
-        <Brain
-          className={`w-6 h-6 ${
-            isModelsActive ? "text-green-400" : "text-gray-400"
-          }`}
-        />
+      <Brain
+  className={`w-[50%] sm:w-[40%] xl:w-[25%] h-auto aspect-square ${
+    isModelsActive ? "text-green-400" : "text-gray-400"
+  }`}
+/>
+
       </Link>
 
       <Link
@@ -35,7 +36,7 @@ export default function Sidebar() {
         }`}
       >
         <MessageSquare
-          className={`w-6 h-6 ${
+          className={`w-[50%] sm:w-[40%] xl:w-[25%] h-auto aspect-square  ${
             isChatActive ? "text-green-400" : "text-gray-400"
           }`}
         />
