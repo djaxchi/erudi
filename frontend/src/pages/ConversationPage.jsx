@@ -172,7 +172,7 @@ export default function ConversationPage() {
         {/* ───── Zones de paramètres LLM + bouton Appliquer ───── */}
         <div className="px-10 pb-4 flex items-end space-x-4">
           <div>
-            <label className="block text-white text-sm">Temperature</label>
+            <label className="block text-white text-sm">Créativité(Température)</label>
             <input
               type="number"
               step="0.1"
@@ -184,7 +184,7 @@ export default function ConversationPage() {
             />
           </div>
           <div>
-            <label className="block text-white text-sm">Top-P</label>
+            <label className="block text-white text-sm">Diversité(Top-P)</label>
             <input
               type="number"
               step="0.05"
@@ -196,7 +196,7 @@ export default function ConversationPage() {
             />
           </div>
           <div>
-            <label className="block text-white text-sm">Max Tokens</label>
+            <label className="block text-white text-sm">Longueur maximale de la réponse(Max Tokens)</label>
             <input
               type="number"
               min="1"
@@ -215,7 +215,7 @@ export default function ConversationPage() {
             Appliquer
           </button>
         </div>
-        
+
 
         {/* sticky question bar */}
         <div className="sticky bottom-0 left-0 right-0 px-10 py-10 backdrop-blur-md flex justify-center w-full">

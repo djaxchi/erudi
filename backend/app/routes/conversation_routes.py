@@ -183,6 +183,7 @@ async def query(
     payload: ConversationQuery,
     db: Session = Depends(get_db),
 ):  
+    logging.info("Payload reçu : %s", payload.dict())
     device = "cuda" if torch.cuda.is_available() else "cpu"
     conversation = (
         db.query(Conversation)
@@ -264,6 +265,8 @@ async def query(
         pad_token_id=current_tokenizer.eos_token_id,
         stopping_criteria=stop_crit
     )
+
+    logging.info("Generation kwargs for Mistral : %s, %s, %s", generation_kwargs["max_new_tokens"], generation_kwargs["temperature"], generation_kwargs["top_p"])
 
     def run_generation():
         logging.info(f"Generating response for conversation {conversation_id} with question: {payload.question}")
