@@ -77,6 +77,10 @@ export default function ChatPage() {
     );
   };
 
+  const handleDelete = (id) => {
+    setConversations((prev) => prev.filter((conv) => conv.id !== id));
+  };
+
   return (
     <div className="flex h-screen">
       <Sidebar />
@@ -91,6 +95,7 @@ export default function ChatPage() {
           items={conversations}
           onItemClick={handleConversationClick}
           onRename={handleRename}
+          onDelete={handleDelete}
         />
       </aside>
 
