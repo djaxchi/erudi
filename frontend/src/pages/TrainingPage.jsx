@@ -68,20 +68,18 @@ export default function TrainingPage() {
   return (
     <div className="flex h-screen bg-[#071b18]">
       <Sidebar />
-
-      <main className="flex-1 p-8 space-y-8 overflow-auto">
-        <div className="flex gap-8">
+      
+      <main className="flex-1 p-4 md:p-8 space-y-8 overflow-auto custom-scroll">
+        {/* Top Section: Hardware + Model Info */}
+        <div className="flex flex-col lg:flex-row 2xl:h-[40%] gap-8">
           <HardwareInfo hw={hw} />
-          <div className="flex-1 min-w-[300px] bg-[#2B2B2B] rounded-2xl p-8 text-white shadow-lg flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-2xl font-bold">Model Name</h3>
+
+          <div className="flex-1 min-w-[300px] bg-[#2B2B2B] rounded-2xl p-6 text-white shadow-lg flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <h3 className="text-xl md:text-2xl font-bold">Model Name</h3>
               <input
-                className="bg-transparent border border-gray-400 rounded-full px-4 py-1 text-sm w-56 truncate placeholder-white/40 focus:border-emerald-400/50 focus:ring-0 focus:outline-none"
-                placeholder={
-                  selectedModel
-                    ? "Name you new model !"
-                    : "Select a model..."
-                }
+                className="bg-transparent border border-gray-400 rounded-full px-4 py-1 text-sm w-full sm:w-56 truncate placeholder-white/40 focus:border-emerald-400/50 focus:ring-0 focus:outline-none"
+                placeholder={selectedModel ? "Name your new model!" : "Select a model..."}
                 value={modelName}
                 onChange={e => setModelName(e.target.value)}
               />
@@ -93,16 +91,17 @@ export default function TrainingPage() {
               </div>
               <RefreshCcw
                 className="w-4 h-4 cursor-pointer hover:rotate-90 transition"
-                onClick={() => fetchModels()}
+                onClick={fetchModels}
                 title="Refresh models"
               />
             </div>
-            <div className="bg-gray-800/50 rounded-lg p-4 overflow-y-auto h-40 mt-2 shadow-lg">
+
+            <div className="bg-gray-800/50 rounded-lg p-4 overflow-y-auto max-h-40 mt-2 shadow-lg">
               {models.length === 0 ? (
                 <div className="text-white/60 text-sm">No local LLMs found.</div>
               ) : (
                 <ul className="space-y-2 text-white/80 text-sm">
-                  {models.map((model) => (
+                  {models.map(model => (
                     <li key={model.id} className="flex items-center gap-2">
                       <input
                         type="radio"
@@ -120,10 +119,13 @@ export default function TrainingPage() {
             </div>
           </div>
         </div>
-        <div className="flex gap-8">
+
+        {/* Bottom Section: Dataset */}
+        <div className="flex flex-col lg:h-[50%] 2xl:h-[56%] gap-8">
           <DatasetCard selectedModel={selectedModel} modelName={modelName} />
         </div>
       </main>
+
     </div>
   );
 }
