@@ -1,6 +1,8 @@
+import os
+import shutil
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import basic_routes, llm_routes, conversation_routes, message_routes, bd_routes, hardware_routes, folder_routes
+from .routes import basic_routes, llm_routes, conversation_routes, message_routes, bd_routes, hardware_routes, training_routes
 from .database import Base, engine
 from .models.Llm import Llm
 from sqlalchemy.orm import Session
@@ -9,10 +11,32 @@ from pydantic import BaseModel
 import logging
 from .models.Conversation import Conversation
 from .models.Message import Message
+from .models.TrainingJob import TrainingJob
 
 async def createTables():
     # Create all tables in the database
     Base.metadata.create_all(bind=engine)
+
+async def delete_all_data():
+    # Delete all data from the database
+    db: Session = SessionLocal()
+    try:
+        
+        if os.path.exists("data/models"):
+            shutil.rmtree("data/models")
+        os.makedirs("data/models", exist_ok=True)
+        db.query(Llm).delete()
+        db.query(Conversation).delete()
+        db.query(Message).delete()
+        db.query(TrainingJob).delete()
+
+        db.commit()
+        logging.info("All data deleted successfully.")
+    except Exception as e:
+        logging.error(f"Error deleting data: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 app = FastAPI()
 
@@ -51,4 +75,4 @@ app.include_router(conversation_routes.router)
 app.include_router(message_routes.router)
 app.include_router(bd_routes.router)
 app.include_router(hardware_routes.router)
-app.include_router(folder_routes.router)
+app.include_router(training_routes.router)
