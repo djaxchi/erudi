@@ -182,7 +182,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
   return (
     <div className="flex-1 bg-[#2B2B2B] rounded-2xl p-8 text-white flex flex-row gap-6 shadow-lg justify-center items-center">
       <div className="flex flex-col justify-center items-center gap-6 w-[50%]">
-        <div className="flex flex-row gap-8 w-full">
+        <div className="flex flex-row justify-center gap-8 lg:gap-24 w-full h-[80%]">
           <div className="flex flex-col gap-2 w-30">
             <div>
               <h3 className="text-xl font-bold mb-4">Dataset Type</h3>
@@ -232,7 +232,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
           </div>
         </div>
 
-        <div className="flex-1 flex items-end flex-col">
+        <div className="flex-1 flex lg:mt-12 items-end flex-col">
           {isTraining ? (
             <div className="w-full text-center">
               <div className="inline-flex items-center gap-2 py-3">
@@ -269,7 +269,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
         )}
       </div>
 
-      <div className="w-[50%] rounded-2xl flex flex-col gap-6 shadow-lg">
+      <div className="w-[50%] h-[80%] rounded-2xl flex flex-col gap-6 shadow-lg">
         <DragDropArea />
       </div>
     </div>

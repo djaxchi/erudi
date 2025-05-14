@@ -92,7 +92,7 @@ export default function CollapsibleSection({ title }) {
   };
 
   return (
-    <div className="text-gray-200">
+    <div className="text-gray-200 w-full">
       {errorMessage && (
         <div className="text-red-500 text-sm mb-2">{errorMessage}</div>
       )}
@@ -103,7 +103,7 @@ export default function CollapsibleSection({ title }) {
       >
         <div className="flex items-center gap-2">
           {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}          
-          <span className="font-semibold">{title}</span>
+          <span className="font-semibold text-xl sm:text-lg">{title}</span>
         </div>
 
         <div className="flex gap-3">
