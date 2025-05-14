@@ -36,7 +36,7 @@ export default function ArenaPage() {
       .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
   }, []);
 
-  const handleAsk = async () => {
+  const handleSend = async () => {
     if (!inputValue.trim() || loading) return;
     setLoading(true);
     setPanels((prev) =>
@@ -196,7 +196,7 @@ export default function ArenaPage() {
             <QuestionInput
               value={inputValue}
               onChange={setInputValue}
-              onSend={handleAsk}
+              onSend={handleSend}
               loading={loading}
               placeholder="Ask a question..."
             />
