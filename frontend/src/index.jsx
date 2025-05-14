@@ -13,11 +13,13 @@ setTimeout(() => {
 
     setTimeout(() => {
       loader.style.display = 'none';
-      const root = createRoot(body);
+      const container = document.getElementById('root');
+      const root = createRoot(container);
       root.render(<App />);
     }, 500); // Wait for fade-out
   } else {
+    const container = document.getElementById('root');
     const root = createRoot(body);
     root.render(<App />);
   }
-}, 2000); // Delay in ms
+}, 1000); // Delay in ms

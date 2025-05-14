@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight, Cog, RefreshCcw, Plus } from "lucide-react";
-import ConfirmationModal from "./ConfirmationModal";
+import ConfirmationModal from "./modals/ConfirmationModal";
 import SpinnerDots from "./Spinner";
+import PreparingModal from "./modals/PreparingModal";
 
 
 export default function CollapsibleSection({ title }) {
@@ -11,6 +12,7 @@ export default function CollapsibleSection({ title }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
@@ -45,7 +47,7 @@ export default function CollapsibleSection({ title }) {
 
   const handleConfirmDownload = async () => {
     if (!selectedModel) return;
-
+    setIsPreparing(true);
     setIsDownloading(true);
     setErrorMessage("");
     try {
@@ -139,11 +141,17 @@ export default function CollapsibleSection({ title }) {
 
       <ConfirmationModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onCancel={() => setIsModalOpen(false)}
         onConfirm={handleConfirmDownload}
-        title="Confirm Download"
-        message={`Are you sure you want to download "${selectedModel?.name}"?`}
+        text = {selectedModel?.name}
       />
+
+      <PreparingModal
+      isOpen={isPreparing}
+      onClose={() => setIsPreparing(false)}
+      />
+
+      {/* Spinner at the bottom */}
 
       {isDownloading && (
         <div className="fixed bottom-0 left-0 w-full flex items-center gap-2 pb-4 pl-4 z-50">
