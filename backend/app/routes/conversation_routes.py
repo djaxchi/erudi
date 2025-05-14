@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse
 import faiss
 from sentence_transformers import SentenceTransformer
 import numpy as np
-from ..prompting.builder import build_prompt
+from ..prompting.builder import build_default_prompt, build_custom_prompt
 import re
 import time
 
@@ -131,8 +131,8 @@ def get_conversation_history(db: Session, conversation_id: int):
         if len(messages) == 0 or len(messages) == 1:
             return formatted_messages
         for msg in messages:
-            prefix = "[USER]" if msg.sender == "user" else "[ASSISTANT]"
-            formatted_messages.append(f"{prefix} {msg.content}")
+            # prefix = "[USER]" if msg.sender == "user" else "[ASSISTANT]"
+            formatted_messages.append(f"{msg.content}")
         
         return formatted_messages
     except Exception as e:
@@ -185,6 +185,7 @@ async def query(
     db: Session = Depends(get_db),
 ):  
     logging.info("Payload reçu : %s", payload.dict())
+    user_prompt = payload.custom_prompt
     device = "cuda" if torch.cuda.is_available() else "cpu"
     conversation = (
         db.query(Conversation)
@@ -238,15 +239,31 @@ async def query(
 
     lang = payload.language
     max_tokens_out = payload.max_new_tokens or 3074
-    prompt = build_prompt(
-        question=payload.question,
-        language=lang,
-        context=relevant_context or None,
-        max_tokens=max_tokens_out
-    )
+
+    if payload.custom_prompt:
+        logging.info("➡️ Rendering custom prompt via Jinja")
+        prompt_text = build_custom_prompt(
+            payload.custom_prompt,
+            payload.question,
+            conversation_history,
+            relevant_context,
+            lang
+        )
+    else:
+        logging.info("➡️ Rendering default prompt")
+        prompt_text = build_default_prompt(
+            question=payload.question,
+            history=conversation_history,
+            context=relevant_context,
+            language=lang,
+            max_tokens=max_tokens_out
+        )
+
+    logging.info("Final prompt to model:\n%s", prompt_text)
+
 
     try:
-        input_ids = current_tokenizer.encode(prompt, return_tensors="pt").to(device)
+        input_ids = current_tokenizer.encode(prompt_text, return_tensors="pt").to(device)
         end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
         stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
     except Exception as e:
