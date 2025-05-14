@@ -14,10 +14,6 @@ export default function ConversationPage() {
   const [conversations, setConversations] = useState([]);
   const scrollRef = useRef(null);
 
-  const[temperature, setTemperature] = useState(0.5);
-  const[topP, setTopP] = useState(0.9);
-  const[maxTokens, setMaxTokens] = useState(3074);
-
   const[showPromptModal, setShowPromptModal] = useState(false);
   const[customPrompt, setCustomPrompt] = useState("");
 
