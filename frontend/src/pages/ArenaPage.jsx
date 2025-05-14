@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
-import { ask } from "../services/conversationService";
+import { ask, deleteConversations } from "../services/conversationService";
 import { Trash } from "lucide-react";
+
 
 const MAX_PANELS = 4;
 
@@ -39,21 +40,31 @@ export default function ArenaPage() {
   const handleSend = async () => {
     if (!inputValue.trim() || loading) return;
     setLoading(true);
-    setPanels((prev) =>
-      prev.map((panel) => ({
+
+    // Build the updated panels with the user message
+    let updatedPanels;
+    setPanels(prev => {
+      updatedPanels = prev.map(panel => ({
         ...panel,
         messages: [...panel.messages, { role: "user", content: inputValue }],
-      }))
-    );
+      }));
+      return updatedPanels;
+    });
+
+    // Wait for the state update to finish (next tick)
+    await new Promise(resolve => setTimeout(resolve, 0));
+
     try {
+      // Use updatedPanels for API calls
       const responses = await Promise.all(
-        panels.map((panel) => {
-          const llm = models.find((m) => m.name === panel.selectedModel);
+        updatedPanels.map(panel => {
+          const llm = models.find(m => m.name === panel.selectedModel);
           if (!llm) return Promise.resolve({ answer: "[Model not found]" });
           return ask({ question: inputValue, llmId: llm.id });
         })
       );
-      setPanels((prev) =>
+
+      setPanels(prev =>
         prev.map((panel, idx) => ({
           ...panel,
           messages: [
@@ -68,9 +79,19 @@ export default function ArenaPage() {
           ],
         }))
       );
+
+      const newIds = responses
+        .map(res => res.conversation?.id)
+        .filter(id => id !== undefined && id !== null);
+
+      setCreatedConversationIds(prev => {
+        const updated = [...new Set([...prev, ...newIds])];
+        createdConversationIdsRef.current = updated;
+        return updated;
+      });
     } catch (err) {
-      setPanels((prev) =>
-        prev.map((panel) => ({
+      setPanels(prev =>
+        prev.map(panel => ({
           ...panel,
           messages: [...panel.messages, { role: "llm", content: "[Erreur de réponse]" }],
         }))
@@ -213,6 +234,13 @@ export default function ArenaPage() {
         >
           +
         </button>
+        {loading && (
+          <div className="fixed inset-0 z-[100] bg-black bg-opacity-40 flex items-center justify-center cursor-progress select-none">
+            <div className="text-white text-xl font-bold animate-pulse">
+              Loading...
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
