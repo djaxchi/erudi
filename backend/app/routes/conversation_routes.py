@@ -20,6 +20,7 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 from ..prompting.builder import build_prompt
 import re
+import time
 
 loaded_model = None
 current_tokenizer  = None
