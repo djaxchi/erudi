@@ -1,5 +1,5 @@
 import React from "react";
-import { Brain, MessageSquare } from "lucide-react";
+import { Brain, MessageSquare, Swords} from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 /**
@@ -12,6 +12,7 @@ export default function Sidebar() {
     location.pathname === "/main_window/new-training";
   const isChatActive = location.pathname.startsWith("/main_window/chat") ||
     location.pathname.startsWith("/main_window/conversations");
+  const isArenaActive = location.pathname === "/main_window/arena";
 
   return (
     <div className="w-16 bg-[#121212] flex flex-col items-center">
@@ -37,6 +38,18 @@ export default function Sidebar() {
         <MessageSquare
           className={`w-6 h-6 ${
             isChatActive ? "text-green-400" : "text-gray-400"
+          }`}
+        />
+      </Link>
+      <Link
+        to="/main_window/arena"
+        className={`w-full flex justify-center items-center py-4 ${
+          isArenaActive ? "border-l-4 border-green-500" : ""
+        }`}
+      >
+        <Swords
+          className={`w-6 h-6 ${
+            isArenaActive ? "text-green-400" : "text-gray-400"
           }`}
         />
       </Link>
