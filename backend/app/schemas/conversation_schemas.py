@@ -30,6 +30,11 @@ class ConversationWithMessagesResponse(ConversationResponse):
 
 class ConversationQuery(BaseModel):
     question: str
+    history: Optional[List[dict]] = None    
+    language: Optional[str] = None         
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_new_tokens: Optional[int] = None 
 
 class ConversationQueryResponse(BaseModel):
     id: int
