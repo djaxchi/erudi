@@ -13,7 +13,16 @@ export default function ConversationPage() {
   const [messages, setMessages] = useState([]);
   const [conversations, setConversations] = useState([]);
   const scrollRef = useRef(null);
-  const [initialHandled, setInitialHandled] = useState(false);
+
+  const[temperature, setTemperature] = useState(0.5);
+  const[topP, setTopP] = useState(0.9);
+  const[maxTokens, setMaxTokens] = useState(3074);
+
+  const [settings, setSettings] = useState({
+    temperature : 0.5,
+    topP : 0.9,
+    maxTokens : 3074
+  })
 
   const fetchMessagesAndConversations = useCallback(async () => {
     try {
@@ -54,6 +63,9 @@ export default function ConversationPage() {
         await ask({
           question,
           conversationId: Number(id),
+        temperature : settings.temperature,
+        topP : settings.topP,
+        maxTokens : settings.maxTokens,
           onStreamChunk: (chunk) => {
             assistantMessage.content += chunk;
             setMessages((prev) =>
@@ -81,7 +93,7 @@ export default function ConversationPage() {
 
       await fetchMessagesAndConversations();
     },
-    [id, fetchMessagesAndConversations]
+    [id, settings, fetchMessagesAndConversations]
   );
 
   useEffect(() => {
@@ -182,6 +194,54 @@ export default function ConversationPage() {
             ))}
           </div>
         </div>
+
+
+        <div className="px-10 pb-4 flex items-end space-x-4">
+          <div>
+            <label className="block text-white text-sm">Temperature</label>
+            <input
+              type="number"
+              step="0.1"
+              min="0"
+              max="2"
+              value={temperature}
+              onChange={(e) => setTemperature(parseFloat(e.target.value))}
+              className="w-24 p-1 rounded"
+            />
+          </div>
+          <div>
+            <label className="block text-white text-sm">Top-P</label>
+            <input
+              type="number"
+              step="0.05"
+              min="0"
+              max="1"
+              value={topP}
+              onChange={(e) => setTopP(parseFloat(e.target.value))}
+              className="w-24 p-1 rounded"
+            />
+          </div>
+          <div>
+            <label className="block text-white text-sm">Max Tokens</label>
+            <input
+              type="number"
+              min="1"
+              max="2000"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(parseInt(e.target.value, 10))}
+              className="w-24 p-1 rounded"
+            />
+          </div>
+          <button
+            onClick={() => {
+              setSettings({ temperature, topP, maxTokens })
+            }}
+            className="bg-emerald-600 text-white py-2 px-4 rounded"
+          >
+            Appliquer
+          </button>
+        </div>
+        
 
         <div className="sticky bottom-0 left-0 right-0 px-10 py-10 backdrop-blur-md flex justify-center w-full">
           <div className="w-full max-w-lg">
