@@ -32,6 +32,7 @@ def download_llm(model_link: str, model_id: int, save_dir: str = "./data/models"
     """
     # Ensure the cache directory exists
     os.makedirs(save_dir, exist_ok=True)
+    os.makedirs(cache_dir, exist_ok=True)
 
     # Configure quantization
     bnb_config = BitsAndBytesConfig(
