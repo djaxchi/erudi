@@ -105,10 +105,10 @@ export default function ChatPage() {
           </GradientBox>
         ) : (
           /* Interface de création de chat */
-          <GradientBox className="w-[700px] max-w-full">
-            <div className="space-y-6">
+          <GradientBox className="w-[700px] mx-[60px] max-w-full">
+            <div className="space-y-6 ">
               {/* header row */}
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center mx-[10px] gap-2 flex-wrap">
                 <h2 className="text-white text-3xl font-bold whitespace-nowrap">
                   Chat with
                 </h2>
