@@ -17,6 +17,7 @@ export default function ConversationPage() {
 
   const[showPromptModal, setShowPromptModal] = useState(false);
   const[customPrompt, setCustomPrompt] = useState("");
+  const [initialHandled, setInitialHandled] = useState(false);
 
   const [settings, setSettings] = useState({
     temperature : 0.5,
