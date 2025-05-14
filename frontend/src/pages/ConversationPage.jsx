@@ -19,6 +19,9 @@ export default function ConversationPage() {
   const[topP, setTopP] = useState(0.9);
   const[maxTokens, setMaxTokens] = useState(3074);
 
+  const[showPromptModal, setShowPromptModal] = useState(false);
+  const[customPrompt, setCustomPrompt] = useState("");
+
   const [settings, setSettings] = useState({
     temperature : 0.5,
     topP : 0.9,
@@ -67,7 +70,8 @@ export default function ConversationPage() {
         temperature : settings.temperature,
         topP : settings.topP,
         maxTokens : settings.maxTokens,
-          onStreamChunk: (chunk) => {
+          customPrompt,
+        onStreamChunk: (chunk) => {
             assistantMessage.content += chunk;
             setMessages((prev) =>
               prev.map((msg) =>
@@ -94,7 +98,7 @@ export default function ConversationPage() {
 
       await fetchMessagesAndConversations();
     },
-    [id, settings, fetchMessagesAndConversations]
+    [id, settings, customPrompt, fetchMessagesAndConversations]
   );
 
   useEffect(() => {
@@ -171,6 +175,40 @@ export default function ConversationPage() {
 
       <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">
         <HeaderBar/>
+
+        {showPromptModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6">
+              <h2 className="text-xl font-semibold mb-4">Personnaliser le prompt</h2>
+              <textarea
+                className="w-full h-40 border rounded p-2 mb-4"
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+              />
+              <div className="flex justify-end space-x-2">
+                <button
+                  onClick={() => setShowPromptModal(false)}
+                  className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => {
+                    setShowPromptModal(false);
+                    // customPrompt contient maintenant la saisie utilisateur
+                  }}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+
+
         {/* message list */}
         <div
           ref={scrollRef}
@@ -201,7 +239,7 @@ export default function ConversationPage() {
 
         <div className="px-10 pb-4 flex items-end space-x-4">
           <div>
-            <label className="block text-white text-sm">Créativité(Température)</label>
+            <label className="block text-white text-sm">Créativité (Température)</label>
             <input
               type="number"
               step="0.1"
@@ -213,7 +251,7 @@ export default function ConversationPage() {
             />
           </div>
           <div>
-            <label className="block text-white text-sm">Diversité(Top-P)</label>
+            <label className="block text-white text-sm">Diversité (Top-P)</label>
             <input
               type="number"
               step="0.05"
@@ -225,7 +263,7 @@ export default function ConversationPage() {
             />
           </div>
           <div>
-            <label className="block text-white text-sm">Longueur maximale de la réponse(Max Tokens)</label>
+            <label className="block text-white text-sm">Longueur maximale de la réponse (Max Tokens)</label>
             <input
               type="number"
               min="1"
@@ -244,8 +282,14 @@ export default function ConversationPage() {
             Appliquer
           </button>
         </div>
+<button
+          onClick={() => setShowPromptModal(true)}
+          className="text-sm text-white underline"
+        >
+          Personnaliser le prompt
+        </button>
 
-
+        {/* sticky question bar */}
         <div className="sticky bottom-0 left-0 right-0 px-10 py-10 backdrop-blur-md flex justify-center w-full">
           <div className="w-full max-w-lg">
             <QuestionInput
