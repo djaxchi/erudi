@@ -85,35 +85,36 @@ export default function ConversationPage() {
   );
 
   useEffect(() => {
-  const run = async () => {
-    if (location.state && location.state.initialQuestion && !initialHandled) {
-      setInitialHandled(true);
-
-      await handleAsk(location.state.initialQuestion);
-
-      navigate(location.pathname, { replace: true, state: {} });
-    } else if (!location.state || !location.state.initialQuestion) {
+    const run = async () => {
+      // Always fetch conversations immediately for sidebar
       try {
-        const [msgRes, convRes] = await Promise.all([
-          fetch(`http://127.0.0.1:8000/conversations/${id}/messages`),
-          fetch(`http://127.0.0.1:8000/conversations`),
-        ]);
-        const msgs = await msgRes.json();
+        const convRes = await fetch("http://127.0.0.1:8000/conversations");
         const convs = await convRes.json();
         convs.sort(
-          (a, b) =>
-            new Date(b.last_message_time) - new Date(a.last_message_time)
+          (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
         );
-        setMessages(msgs);
         setConversations(convs);
       } catch (err) {
-        console.error("Fetch error:", err);
+        console.error("Fetch error (conversations):", err);
       }
-    }
-  };
 
-  run();
-}, [id, location.state, handleAsk, navigate, location.pathname, initialHandled]);
+      if (location.state && location.state.initialQuestion && !initialHandled) {
+        setInitialHandled(true);
+        await handleAsk(location.state.initialQuestion);
+        navigate(location.pathname, { replace: true, state: {} });
+      } else if (!location.state || !location.state.initialQuestion) {
+        try {
+          const msgRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/messages`);
+          const msgs = await msgRes.json();
+          setMessages(msgs);
+        } catch (err) {
+          console.error("Fetch error (messages):", err);
+        }
+      }
+    };
+
+    run();
+  }, [id, location.state, handleAsk, navigate, location.pathname, initialHandled]);
 
   useEffect(() => {
     if (scrollRef.current) {
