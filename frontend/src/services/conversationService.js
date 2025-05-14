@@ -25,7 +25,7 @@ export async function query(conversationId, question, {temperature = 0.5, topP =
     question,
     temperature : temperature,
     top_p: topP,
-    max_tokens : maxTokens
+    max_new_tokens : maxTokens
 
   }
 
@@ -34,10 +34,19 @@ export async function query(conversationId, question, {temperature = 0.5, topP =
   const res = await fetch(`${API}/conversations/${conversationId}/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, temperature, top_p : topP, max_tokens : maxTokens}),
+    body: JSON.stringify(body),
   });
 
-  if (!res.ok) throw new Error("Query failed");
+  if (!res.ok) {
+    let errJson;
+    try{
+      errJson = await res.json();
+    }catch{}
+    console.error("Query Error",res.status,errJson)
+    
+    
+    throw new Error("Query failed");
+  }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder("utf-8");
