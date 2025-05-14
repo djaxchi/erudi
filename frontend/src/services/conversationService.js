@@ -20,14 +20,35 @@ export async function addMessage(conversationId, content, sender = "user") {
   return res.json();
 }
 
-export async function query(conversationId, question, onChunk) {
+export async function query(conversationId, question, {temperature = 0.5, topP = 0.9, maxTokens = 3074, customPrompt = "", onStreamChunk} = {}) {
+  const body = {
+    question,
+    temperature : temperature,
+    top_p: topP,
+    max_new_tokens : maxTokens,
+    custom_prompt : customPrompt
+
+
+  }
+
+  console.log(body);
+  
   const res = await fetch(`${API}/conversations/${conversationId}/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify(body),
   });
 
-  if (!res.ok) throw new Error("Query failed");
+  if (!res.ok) {
+    let errJson;
+    try{
+      errJson = await res.json();
+    }catch{}
+    console.error("Query Error",res.status,errJson)
+    
+    
+    throw new Error("Query failed");
+  }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder("utf-8");
@@ -40,7 +61,7 @@ export async function query(conversationId, question, onChunk) {
 
     const chunk = decoder.decode(value, { stream: true });
     fullText += chunk;
-    if (onChunk) onChunk(chunk); // send partial result to the caller
+    if (onStreamChunk) onStreamChunk(chunk); // send partial result to the caller
   }
 
   return {
@@ -50,7 +71,7 @@ export async function query(conversationId, question, onChunk) {
   };
 }
 
-export async function ask({ question, conversationId = null, llmId = null, onStreamChunk }) {
+export async function ask({ question, conversationId = null, llmId = null, temperature, topP, maxTokens, customPrompt = "", onStreamChunk }) {
   if (!question.trim()) throw new Error("Question is empty");
 
   let convId = conversationId;
@@ -64,7 +85,7 @@ export async function ask({ question, conversationId = null, llmId = null, onStr
 
   const userMessage = await addMessage(convId, question);
   
-  const assistantMessage = await query(convId, question, onStreamChunk);
+  const assistantMessage = await query(convId, question, {temperature, topP, maxTokens, customPrompt, onStreamChunk});
 
   return {
     conversation: conversation ?? { id: convId },

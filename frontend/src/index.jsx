@@ -16,10 +16,10 @@ setTimeout(() => {
       const container = document.getElementById('root');
       const root = createRoot(container);
       root.render(<App />);
-    }, 500); // Wait for fade-out
+    }, 0); // Wait for fade-out
   } else {
     const container = document.getElementById('root');
     const root = createRoot(body);
     root.render(<App />);
   }
-}, 1000); // Delay in ms
+}, 0); // Delay in ms
