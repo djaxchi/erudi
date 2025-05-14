@@ -25,7 +25,9 @@ export async function query(conversationId, question, {temperature = 0.5, topP =
     question,
     temperature : temperature,
     top_p: topP,
-    max_new_tokens : maxTokens
+    max_new_tokens : maxTokens,
+    custom_prompt : customPrompt
+
 
   }
 
@@ -69,7 +71,7 @@ export async function query(conversationId, question, {temperature = 0.5, topP =
   };
 }
 
-export async function ask({ question, conversationId = null, llmId = null, temperature, topP, maxTokens, onStreamChunk }) {
+export async function ask({ question, conversationId = null, llmId = null, temperature, topP, maxTokens, customPrompt = "", onStreamChunk }) {
   if (!question.trim()) throw new Error("Question is empty");
 
   let convId = conversationId;
@@ -83,7 +85,7 @@ export async function ask({ question, conversationId = null, llmId = null, tempe
 
   const userMessage = await addMessage(convId, question);
   
-  const assistantMessage = await query(convId, question, {temperature, topP, maxTokens, onStreamChunk});
+  const assistantMessage = await query(convId, question, {temperature, topP, maxTokens, customPrompt, onStreamChunk});
 
   return {
     conversation: conversation ?? { id: convId },
