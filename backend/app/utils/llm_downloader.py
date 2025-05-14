@@ -5,12 +5,15 @@ import torch
 import logging
 import gc
 import shutil
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-HF_TOKEN = "***HF_TOKEN_REMOVED***"
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.info(f"Using device: {device}")

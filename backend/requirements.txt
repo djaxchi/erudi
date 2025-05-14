@@ -15,3 +15,7 @@ psutil
 py-cpuinfo
 gputil
 pydantic
+faiss-cpu
+sentence-transformers
+jinja2
+python-dotenv
