@@ -3,9 +3,8 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
-import { ask, deleteConversations } from "../services/conversationService";
+import { ask } from "../services/conversationService";
 import { Trash } from "lucide-react";
-
 
 const MAX_PANELS = 4;
 
@@ -35,7 +34,7 @@ export default function ArenaPage() {
       .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
   }, []);
 
-  const handleSend = async () => {
+  const handleAsk = async () => {
     if (!inputValue.trim() || loading) return;
     setLoading(true);
     setPanels((prev) =>
@@ -195,7 +194,7 @@ export default function ArenaPage() {
             <QuestionInput
               value={inputValue}
               onChange={setInputValue}
-              onSend={handleSend}
+              onSend={handleAsk}
               loading={loading}
               placeholder="Ask a question..."
             />
