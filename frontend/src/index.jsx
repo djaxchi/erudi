@@ -15,9 +15,9 @@ setTimeout(() => {
       loader.style.display = 'none';
       const root = createRoot(body);
       root.render(<App />);
-    }, 500); // Wait for fade-out
+    }, 0); // Wait for fade-out
   } else {
     const root = createRoot(body);
     root.render(<App />);
   }
-}, 2000); // Delay in ms
+}, 0); // Delay in ms

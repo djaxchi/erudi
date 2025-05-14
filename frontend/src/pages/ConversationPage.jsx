@@ -4,6 +4,7 @@ import Sidebar from "../components/Sidebar";
 import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import QuestionInput from "../components/QuestionInput";
 import { ask } from "../services/conversationService";
+import HeaderBar from "../components/HeaderBar";
 
 export default function ConversationPage() {
   const { id } = useParams();
@@ -130,6 +131,7 @@ export default function ConversationPage() {
 
       {/* ---------- Chat column ---------- */}
       <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">
+        <HeaderBar/>
         {/* message list */}
         <div
           ref={scrollRef}
