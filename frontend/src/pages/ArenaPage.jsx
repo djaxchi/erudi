@@ -17,8 +17,6 @@ export default function ArenaPage() {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
-  const [createdConversationIds, setCreatedConversationIds] = useState([]);
-  const createdConversationIdsRef = React.useRef(createdConversationIds);
 
   useEffect(() => {
     fetch("http://127.0.0.1:8000/main_window/llms/local")
@@ -37,63 +35,24 @@ export default function ArenaPage() {
       .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
   }, []);
 
-  const handleLeave = async () => {
-    try {
-      if (
-        Array.isArray(createdConversationIdsRef.current) &&
-        createdConversationIdsRef.current.length > 0
-      ) {
-        const response = await deleteConversations(createdConversationIdsRef.current);
-      }
-    } catch (error) {
-      console.error("Failed to delete conversations", error);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      handleLeave(); // This runs when the component unmounts (when you leave the page)
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      handleLeave(); // 🔒 Ferme l'app ou l'onglet = appel de l'API
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, []);
-
-  const handleAsk = async (inputValue) => {
+  const handleSend = async () => {
+    if (!inputValue.trim() || loading) return;
     setLoading(true);
-
-    // Build the updated panels with the user message
-    let updatedPanels;
-    setPanels(prev => {
-      updatedPanels = prev.map(panel => ({
+    setPanels((prev) =>
+      prev.map((panel) => ({
         ...panel,
         messages: [...panel.messages, { role: "user", content: inputValue }],
-      }));
-      return updatedPanels;
-    });
-
-    // Wait for the state update to finish (next tick)
-    await new Promise(resolve => setTimeout(resolve, 0));
-
+      }))
+    );
     try {
-      // Use updatedPanels for API calls
       const responses = await Promise.all(
-        updatedPanels.map(panel => {
-          const llm = models.find(m => m.name === panel.selectedModel);
+        panels.map((panel) => {
+          const llm = models.find((m) => m.name === panel.selectedModel);
           if (!llm) return Promise.resolve({ answer: "[Model not found]" });
           return ask({ question: inputValue, llmId: llm.id });
         })
       );
-
-      setPanels(prev =>
+      setPanels((prev) =>
         prev.map((panel, idx) => ({
           ...panel,
           messages: [
@@ -108,19 +67,9 @@ export default function ArenaPage() {
           ],
         }))
       );
-
-      const newIds = responses
-        .map(res => res.conversation?.id)
-        .filter(id => id !== undefined && id !== null);
-
-      setCreatedConversationIds(prev => {
-        const updated = [...new Set([...prev, ...newIds])];
-        createdConversationIdsRef.current = updated;
-        return updated;
-      });
     } catch (err) {
-      setPanels(prev =>
-        prev.map(panel => ({
+      setPanels((prev) =>
+        prev.map((panel) => ({
           ...panel,
           messages: [...panel.messages, { role: "llm", content: "[Erreur de réponse]" }],
         }))
@@ -245,8 +194,10 @@ export default function ArenaPage() {
           <div className="w-[700px] max-w-full">
             <QuestionInput
               value={inputValue}
-              onSend={handleAsk}
-              disabled={loading}
+              onChange={setInputValue}
+              onSend={handleSend}
+              loading={loading}
+              placeholder="Ask a question..."
             />
           </div>
         </div>
