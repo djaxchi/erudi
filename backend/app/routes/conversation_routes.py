@@ -239,24 +239,25 @@ async def query(
     lang = payload.language
     max_tokens_out = payload.max_new_tokens or 3074
 
-    if payload.custom_prompt:
-        logging.info("➡️ Rendering custom prompt via Jinja")
-        prompt_text = build_custom_prompt(
-            payload.custom_prompt,
-            payload.question,
-            conversation_history,
-            relevant_context,
-            lang
-        )
-    else:
-        logging.info("➡️ Rendering default prompt")
-        prompt_text = build_default_prompt(
+    prompt_text = build_default_prompt(
             question=payload.question,
             history=conversation_history,
             context=relevant_context,
             language=lang,
             max_tokens=max_tokens_out
         )
+
+    if payload.custom_prompt:
+        logging.info("➡️ Rendering custom prompt via Jinja")
+        prompt_text_customized = build_custom_prompt(
+            payload.custom_prompt,
+            payload.question,
+            conversation_history,
+            relevant_context,
+            lang
+        )
+        prompt_text = ( prompt_text + "\n Instructions Utilisateur Personnalisées : " + prompt_text_customized )
+
 
     logging.info("Final prompt to model:\n%s", prompt_text)
 
