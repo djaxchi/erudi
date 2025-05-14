@@ -157,7 +157,16 @@ export default function ChatCollapsibleSection({
         </div>
       </div>
 
-      {open && <div className="px-4 py-2">{renderItems()}</div>}
+      {open && (
+        <div className="px-4 py-2 max-h-[calc(100vh-220px)] overflow-y-auto">
+          <style>{`
+            ::-webkit-scrollbar {
+              display: none;
+            }
+          `}</style>
+          {renderItems()}
+        </div>
+      )}
 
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
