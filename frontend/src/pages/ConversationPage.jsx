@@ -134,8 +134,22 @@ export default function ConversationPage() {
       </aside>
 
       {/* ---------- Chat column ---------- */}
+      
       <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">
-        <HeaderBar/>
+        
+        <div className="relative flex justify-center w-full">
+          <HeaderBar
+        initialTemperature={settings.temperature}
+        initialTopP={settings.topP}
+        initialMaxTokens={settings.maxTokens}
+        onApply={(newSettings) => setSettings(newSettings)}
+        onCustomizePrompt={() => setShowPromptModal(true)}
+        />
+        </div>
+        
+
+
+
 
         {showPromptModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -209,58 +223,7 @@ export default function ConversationPage() {
           </div>
         </div>
 
-        {/* ───── Zones de paramètres LLM + bouton Appliquer ───── */}
-        <div className="px-10 pb-4 flex items-end space-x-4">
-          <div>
-            <label className="block text-white text-sm">Créativité (Température)</label>
-            <input
-              type="number"
-              step="0.1"
-              min="0"
-              max="2"
-              value={temperature}
-              onChange={(e) => setTemperature(parseFloat(e.target.value))}
-              className="w-24 p-1 rounded"
-            />
-          </div>
-          <div>
-            <label className="block text-white text-sm">Diversité (Top-P)</label>
-            <input
-              type="number"
-              step="0.05"
-              min="0"
-              max="1"
-              value={topP}
-              onChange={(e) => setTopP(parseFloat(e.target.value))}
-              className="w-24 p-1 rounded"
-            />
-          </div>
-          <div>
-            <label className="block text-white text-sm">Longueur maximale de la réponse (Max Tokens)</label>
-            <input
-              type="number"
-              min="1"
-              max="2000"
-              value={maxTokens}
-              onChange={(e) => setMaxTokens(parseInt(e.target.value, 10))}
-              className="w-24 p-1 rounded"
-            />
-          </div>
-          <button
-            onClick={() => {
-              setSettings({ temperature, topP, maxTokens })
-            }}
-            className="bg-emerald-600 text-white py-2 px-4 rounded"
-          >
-            Appliquer
-          </button>
-        </div>
-        <button
-          onClick={() => setShowPromptModal(true)}
-          className="text-sm text-white underline"
-        >
-          Personnaliser le prompt
-        </button>
+        
 
 
 
