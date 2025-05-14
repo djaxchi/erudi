@@ -47,42 +47,28 @@ export default function ChatPage() {
   };
 
   const handleAsk = useCallback(
-  async (question) => {
-    const llm = models.find((m) => m.name === selectedModel);
-    if (!llm) {
-      console.error("Selected model not found");
-      return;
-    }
-
-    try {
-      const partialMessage = { id: Date.now(), sender: "assistant", content: "" };
-
-      // Initialize the conversation first
-      const conversation = { id: Date.now(), last_message: "" }; // Temporary placeholder
-      setConversations((prev) => [...prev, conversation]);
-
-      // Call the `ask` function
-      await ask({
-        question,
-        llmId: llm.id,
-        onStreamChunk: (chunk) => {
-          partialMessage.content += chunk; // Append the chunk to the partial message
-          setConversations((prev) =>
-            prev.map((c) =>
-              c.id === conversation.id
-                ? { ...c, last_message: partialMessage.content }
-                : c
-            )
-          );
-        },
-      });
-
-      navigate(`/main_window/conversations/${conversation.id}`);
-    } catch (err) {
-      console.error("Failed to start conversation:", err);
-    }
-  },
-  [models, selectedModel, navigate]
+    async (question) => {
+      const llm = models.find((m) => m.name === selectedModel);
+      if (!llm) {
+        console.error("Selected model not found");
+        return;
+      }
+      try {
+        // 1. Create a new conversation
+        const res = await fetch("http://127.0.0.1:8000/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ llm_id: llm.id }),
+        });
+        if (!res.ok) throw new Error("Failed to create conversation");
+        const conversation = await res.json();
+        // 2. Redirect to ConversationPage and pass the question
+        navigate(`/main_window/conversations/${conversation.id}`, { state: { initialQuestion: question } });
+      } catch (err) {
+        console.error("Failed to start conversation:", err);
+      }
+    },
+    [models, selectedModel, navigate]
   );
 
   const handleRename = (id, newName) => {
