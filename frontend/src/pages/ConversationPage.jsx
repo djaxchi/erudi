@@ -146,8 +146,10 @@ export default function ConversationPage() {
       prev.map((c) => (c.id === cid ? { ...c, name: newName } : c))
     );
 
-  const handleDelete = (cid) => {
+  const handleDelete = async (cid) => {
     setConversations((prev) => prev.filter((conv) => conv.id !== cid));
+    await fetch(`http://127.0.0.1:8000/conversations/${cid}`, { method: "DELETE" });
+    await fetchMessagesAndConversations();
     if (cid === Number(id)) {
       navigate("/main_window/chat");
     }

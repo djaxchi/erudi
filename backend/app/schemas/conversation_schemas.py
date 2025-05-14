@@ -43,3 +43,6 @@ class ConversationQueryResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+class ConversationDeleteBulk(BaseModel):
+    conversation_ids: List[int]
