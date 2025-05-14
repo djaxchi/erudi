@@ -9,7 +9,7 @@ import gc
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-HF_TOKEN = "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"
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 logging.info(f"Using device: {device}")

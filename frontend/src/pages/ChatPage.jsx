@@ -47,21 +47,42 @@ export default function ChatPage() {
   };
 
   const handleAsk = useCallback(
-    async (question) => {
-      const llm = models.find((m) => m.name === selectedModel);
-      if (!llm) {
-        console.error("Selected model not found");
-        return;
-      }
+  async (question) => {
+    const llm = models.find((m) => m.name === selectedModel);
+    if (!llm) {
+      console.error("Selected model not found");
+      return;
+    }
 
-      try {
-        const { conversation } = await ask({ question, llmId: llm.id });
-        navigate(`/main_window/conversations/${conversation.id}`);
-      } catch (err) {
-        console.error("Failed to start conversation:", err);
-      }
-    },
-    [models, selectedModel, navigate]
+    try {
+      const partialMessage = { id: Date.now(), sender: "assistant", content: "" };
+
+      // Initialize the conversation first
+      const conversation = { id: Date.now(), last_message: "" }; // Temporary placeholder
+      setConversations((prev) => [...prev, conversation]);
+
+      // Call the `ask` function
+      await ask({
+        question,
+        llmId: llm.id,
+        onStreamChunk: (chunk) => {
+          partialMessage.content += chunk; // Append the chunk to the partial message
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === conversation.id
+                ? { ...c, last_message: partialMessage.content }
+                : c
+            )
+          );
+        },
+      });
+
+      navigate(`/main_window/conversations/${conversation.id}`);
+    } catch (err) {
+      console.error("Failed to start conversation:", err);
+    }
+  },
+  [models, selectedModel, navigate]
   );
 
   const handleRename = (id, newName) => {

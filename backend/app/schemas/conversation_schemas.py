@@ -27,3 +27,18 @@ class ConversationResponse(ConversationBase):
 
 class ConversationWithMessagesResponse(ConversationResponse):
     messages: List[MessageResponse]
+
+class ConversationQuery(BaseModel):
+    question: str
+    history: Optional[List[dict]] = None    
+    language: Optional[str] = None         
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_new_tokens: Optional[int] = None 
+
+class ConversationQueryResponse(BaseModel):
+    id: int
+    link: str
+    
+    class Config:
+        from_attributes = True
