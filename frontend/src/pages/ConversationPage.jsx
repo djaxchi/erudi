@@ -15,14 +15,15 @@ export default function ConversationPage() {
   const [conversations, setConversations] = useState([]);
   const scrollRef = useRef(null);
 
-  const[showPromptModal, setShowPromptModal] = useState(false);
-  const[customPrompt, setCustomPrompt] = useState("");
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState("");
   const [initialHandled, setInitialHandled] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const [settings, setSettings] = useState({
-    temperature : 0.5,
-    topP : 0.9,
-    maxTokens : 3074
+    temperature: 0.5,
+    topP: 0.9,
+    maxTokens: 3074
   })
 
   const fetchMessagesAndConversations = useCallback(async () => {
@@ -46,6 +47,7 @@ export default function ConversationPage() {
 
   const handleAsk = useCallback(
     async (question) => {
+      setLoading(true);
       const userMessage = {
         id: Date.now(),
         sender: "user",
@@ -64,11 +66,11 @@ export default function ConversationPage() {
         await ask({
           question,
           conversationId: Number(id),
-        temperature : settings.temperature,
-        topP : settings.topP,
-        maxTokens : settings.maxTokens,
+          temperature: settings.temperature,
+          topP: settings.topP,
+          maxTokens: settings.maxTokens,
           customPrompt,
-        onStreamChunk: (chunk) => {
+          onStreamChunk: (chunk) => {
             assistantMessage.content += chunk;
             setMessages((prev) =>
               prev.map((msg) =>
@@ -92,8 +94,8 @@ export default function ConversationPage() {
           content: assistantMessage.content,
         }),
       });
-
       await fetchMessagesAndConversations();
+      setLoading(false);
     },
     [id, settings, customPrompt, fetchMessagesAndConversations]
   );
@@ -168,23 +170,24 @@ export default function ConversationPage() {
           onSelect={handleConversationClick}
           onRename={handleRename}
           onDelete={handleDelete}
+          disabled={loading}
         />
       </aside>
 
       {/* ---------- Chat column ---------- */}
-      
+
       <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">
-        
+
         <div className="relative flex justify-center w-full">
           <HeaderBar
-        initialTemperature={settings.temperature}
-        initialTopP={settings.topP}
-        initialMaxTokens={settings.maxTokens}
-        onApply={(newSettings) => setSettings(newSettings)}
-        onCustomizePrompt={() => setShowPromptModal(true)}
-        />
+            initialTemperature={settings.temperature}
+            initialTopP={settings.topP}
+            initialMaxTokens={settings.maxTokens}
+            onApply={(newSettings) => setSettings(newSettings)}
+            onCustomizePrompt={() => setShowPromptModal(true)}
+          />
         </div>
-        
+
 
 
 
@@ -237,11 +240,10 @@ export default function ConversationPage() {
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`break-words w-fit max-w-[75%] p-4 rounded-2xl text-white whitespace-pre-wrap overflow-wrap break-word ${
-                  msg.sender === "user"
+                className={`break-words w-fit max-w-[75%] p-4 rounded-2xl text-white whitespace-pre-wrap overflow-wrap break-word ${msg.sender === "user"
                     ? "bg-[#191919] ml-auto rounded-tr-none"
                     : "mr-auto rounded-tl-none"
-                }`}
+                  }`}
               >
                 {msg.content}
               </div>
@@ -249,7 +251,7 @@ export default function ConversationPage() {
           </div>
         </div>
 
-        
+
 
 
 
@@ -262,6 +264,7 @@ export default function ConversationPage() {
             <QuestionInput
               onSend={handleAsk}
               backgroundClass="bg-emerald-900"
+              disabled={loading}
             />
           </div>
         </div>
