@@ -1,7 +1,6 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Float
 from sqlalchemy.sql import func
 from ..database import Base
-
 class TrainingJob(Base):
     __tablename__ = "training_jobs"
     
@@ -11,3 +10,6 @@ class TrainingJob(Base):
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    progress = Column(Float, default=0.0)
+    time_elapsed = Column(Float, default=0.0)
+    time_left = Column(Float, default=0.0)
