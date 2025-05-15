@@ -83,45 +83,75 @@ export default function ArenaPage() {
       }))
     );
 
-    // Wait for state update
-    await new Promise((resolve) => setTimeout(resolve, 0));
+   // Wait for state update
+await new Promise((resolve) => setTimeout(resolve, 0));
 
-    try {
-      const responses = await Promise.all(
-        panels.map((panel) => {
-          const llm = models.find((m) => m.name === panel.selectedModel);
-          if (!llm) return Promise.resolve("[Model not found]");
-          return askArena({
-            question: inputValue,
-            llmId: llm.id,
-            temperature: panel.temperature,
-            topP: panel.topP,
-            maxNewTokens: panel.maxTokens,
-            customPrompt: panel.customPrompt,
-          });
+// Pour chaque panel on va :
+// 1) ajouter un message assistant vide
+// 2) lancer askArena en streaming, et coller les chunks au fur et à mesure
+panels.forEach(panel => {
+  const llm = models.find(m => m.name === panel.selectedModel);
+  if (!llm) {
+    return setPanels(prev =>
+      prev.map(p =>
+        p.id === panel.id
+          ? {
+              ...p,
+              messages: [...p.messages, { role: "llm", content: "[Model not found]" }],
+            }
+          : p
+      )
+    );
+  }
+
+  // 1) on ajoute le message assistant vide
+  setPanels(prev =>
+    prev.map(p =>
+      p.id === panel.id
+        ? { ...p, messages: [...p.messages, { role: "llm", content: "" }] }
+        : p
+    )
+  );
+
+  // 2) on stream la réponse
+  askArena({
+    question:     inputValue,
+    llmId:        llm.id,
+    temperature:  panel.temperature,
+    topP:         panel.topP,
+    maxNewTokens: panel.maxTokens,
+    customPrompt: panel.customPrompt,
+    onStreamChunk: chunk => {
+      setPanels(prev =>
+        prev.map(p => {
+          if (p.id !== panel.id) return p;
+          const msgs = [...p.messages];
+          const last = msgs.pop();
+          msgs.push({ ...last, content: last.content + chunk });
+          return { ...p, messages: msgs };
         })
       );
-
-      setPanels((prev) =>
-        prev.map((panel, idx) => ({
-          ...panel,
-          messages: [
-            ...panel.messages,
-            { role: "llm", content: responses[idx] },
-          ],
-        }))
-      );
-    } catch (err) {
-      setPanels((prev) =>
-        prev.map((panel) => ({
-          ...panel,
-          messages: [
-            ...panel.messages,
-            { role: "llm", content: "[Erreur de réponse]" },
-          ],
-        }))
-      );
     }
+  }).catch(() => {
+    // en cas d’erreur de stream, on remplace le message vide par "[Erreur]"
+    setPanels(prev =>
+      prev.map(p =>
+        p.id === panel.id
+          ? {
+              ...p,
+              messages: [
+                ...p.messages.slice(0, -1),
+                { role: "llm", content: "[Erreur]" },
+              ],
+            }
+          : p
+      )
+    );
+  });
+});
+
+
+
     setInputValue("");
     setLoading(false);
   };
