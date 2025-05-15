@@ -5,7 +5,7 @@ import { Link, useLocation } from "react-router-dom";
 /**
  * Sidebar with icons that highlight based on the current route.
  */
-export default function Sidebar() {
+export default function Sidebar({ disabled = false }) {
   const location = useLocation();
   const isModelsActive =
     location.pathname === "/main_window/models" ||
@@ -14,7 +14,11 @@ export default function Sidebar() {
     location.pathname.startsWith("/main_window/conversations");
 
   return (
-    <div className="w-[8%] bg-[#121212] flex flex-col items-center">
+    <div
+      className={`w-[8%] bg-[#121212] flex flex-col items-center transition-opacity duration-200 ${
+        disabled ? "opacity-50 pointer-events-none select-none" : ""
+      }`}
+    >
       <Link
         to="/main_window/models"
         className={`w-full flex justify-center items-center py-4 ${
@@ -43,4 +47,5 @@ export default function Sidebar() {
       </Link>
     </div>
   );
+
 }
