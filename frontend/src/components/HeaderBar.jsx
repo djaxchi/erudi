@@ -156,6 +156,3 @@ export default function HeaderBar({
     </div>
   );
 }
-
-
-

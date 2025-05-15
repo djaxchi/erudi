@@ -2,7 +2,7 @@ import os
 import shutil
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import basic_routes, llm_routes, conversation_routes, message_routes, bd_routes, hardware_routes, training_routes
+from .routes import basic_routes, llm_routes, conversation_routes, message_routes, bd_routes, hardware_routes, training_routes, arena_routes
 from .database import Base, engine
 from .models.Llm import Llm
 from sqlalchemy.orm import Session
@@ -76,3 +76,4 @@ app.include_router(message_routes.router)
 app.include_router(bd_routes.router)
 app.include_router(hardware_routes.router)
 app.include_router(training_routes.router)
+app.include_router(arena_routes.router)
