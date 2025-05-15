@@ -137,7 +137,7 @@ export default function ChatCollapsibleSection({
 
   return (
     <div
-      className={`text-gray-200 ${disabled ? "pointer-events-none opacity-50" : ""}`}
+      className={`text-gray-200 ${disabled ? "pointer-events-none opacity-50 select-none" : ""}`}
     >
       <div
         className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
