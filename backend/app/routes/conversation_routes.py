@@ -286,7 +286,7 @@ async def query(
         input_ids=input_ids,
         streamer=streamer,
         max_new_tokens=max_tokens_out,
-        temperature=payload.temperature or 0.5,
+        temperature=payload.temperature or 0.9,
         top_p= payload.top_p or 0.9,
         do_sample=True,
         num_beams=1,
