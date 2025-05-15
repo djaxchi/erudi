@@ -1,106 +1,50 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
-import { ask, deleteConversations } from "../services/conversationService";
+import { askArena } from "../services/arenaService.js";
 import { Trash } from "lucide-react";
-
+import HeaderBar from "../components/HeaderBar";
 
 const MAX_PANELS = 4;
+const DEFAULT_SETTINGS = {
+  temperature: 0.5,
+  topP: 0.9,
+  maxTokens: 1000,
+  customPrompt: "",
+};
+
+function makePanel(id, modelName = "", models = []) {
+  return {
+    id,
+    selectedModel: modelName || (models[0]?.name ?? ""),
+    temperature: DEFAULT_SETTINGS.temperature,
+    topP: DEFAULT_SETTINGS.topP,
+    maxTokens: DEFAULT_SETTINGS.maxTokens,
+    customPrompt: DEFAULT_SETTINGS.customPrompt,
+    messages: [],
+    showPromptModal: false,
+  };
+}
 
 export default function ArenaPage() {
   const [models, setModels] = useState([]);
-  const [panels, setPanels] = useState([
-    { id: 0, selectedModel: "", messages: [] },
-    { id: 1, selectedModel: "", messages: [] },
-  ]);
+  const [panels, setPanels] = useState([]);
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
-  const [createdConversationIds, setCreatedConversationIds] = useState([]);
-  const createdConversationIdsRef = React.useRef(createdConversationIds);
 
+  // Fetch models and initialize panels
   useEffect(() => {
     fetch("http://127.0.0.1:8000/main_window/llms/local")
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setModels(data);
-          setPanels((prev) =>
-            prev.map((panel, idx) => ({
-              ...panel,
-              selectedModel: data[idx % data.length].name,
-            }))
-          );
-        }
+        setModels(data);
+        setPanels([0, 1].map(i => makePanel(i, data[i % data.length]?.name, data)));
       })
       .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
   }, []);
 
-  const handleSend = async () => {
-    if (!inputValue.trim() || loading) return;
-    setLoading(true);
-
-    // Build the updated panels with the user message
-    let updatedPanels;
-    setPanels(prev => {
-      updatedPanels = prev.map(panel => ({
-        ...panel,
-        messages: [...panel.messages, { role: "user", content: inputValue }],
-      }));
-      return updatedPanels;
-    });
-
-    // Wait for the state update to finish (next tick)
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    try {
-      // Use updatedPanels for API calls
-      const responses = await Promise.all(
-        updatedPanels.map(panel => {
-          const llm = models.find(m => m.name === panel.selectedModel);
-          if (!llm) return Promise.resolve({ answer: "[Model not found]" });
-          return ask({ question: inputValue, llmId: llm.id });
-        })
-      );
-
-      setPanels(prev =>
-        prev.map((panel, idx) => ({
-          ...panel,
-          messages: [
-            ...panel.messages,
-            {
-              role: "llm",
-              content:
-                responses[idx].answer ||
-                responses[idx].conversation?.messages?.slice(-1)[0]?.content ||
-                "",
-            },
-          ],
-        }))
-      );
-
-      const newIds = responses
-        .map(res => res.conversation?.id)
-        .filter(id => id !== undefined && id !== null);
-
-      setCreatedConversationIds(prev => {
-        const updated = [...new Set([...prev, ...newIds])];
-        createdConversationIdsRef.current = updated;
-        return updated;
-      });
-    } catch (err) {
-      setPanels(prev =>
-        prev.map(panel => ({
-          ...panel,
-          messages: [...panel.messages, { role: "llm", content: "[Erreur de réponse]" }],
-        }))
-      );
-    }
-    setInputValue("");
-    setLoading(false);
-  };
-
+  // Handle model change for a panel
   const handleModelChange = (panelId, newModel) => {
     setPanels((prev) =>
       prev.map((panel) =>
@@ -109,39 +53,91 @@ export default function ArenaPage() {
     );
   };
 
+  // Handle settings change for a panel
+  const handleSettingsChange = (panelId, newSettings) => {
+    setPanels((prev) =>
+      prev.map((panel) =>
+        panel.id === panelId ? { ...panel, ...newSettings } : panel
+      )
+    );
+  };
+
+  // Handle prompt customization for a panel
+  const handleCustomizePrompt = (panelId, show) => {
+    setPanels((prev) =>
+      prev.map((panel) =>
+        panel.id === panelId ? { ...panel, showPromptModal: show } : panel
+      )
+    );
+  };
+
+  // Handle prompt input and LLM response
+  const handleAsk = async (inputValue) => {
+    setLoading(true);
+
+    // Add user message to each panel
+    setPanels((prev) =>
+      prev.map((panel) => ({
+        ...panel,
+        messages: [...panel.messages, { role: "user", content: inputValue }],
+      }))
+    );
+
+    // Wait for state update
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    try {
+      const responses = await Promise.all(
+        panels.map((panel) => {
+          const llm = models.find((m) => m.name === panel.selectedModel);
+          if (!llm) return Promise.resolve("[Model not found]");
+          return askArena({
+            question: inputValue,
+            llmId: llm.id,
+            temperature: panel.temperature,
+            topP: panel.topP,
+            maxNewTokens: panel.maxTokens,
+            customPrompt: panel.customPrompt,
+          });
+        })
+      );
+
+      setPanels((prev) =>
+        prev.map((panel, idx) => ({
+          ...panel,
+          messages: [
+            ...panel.messages,
+            { role: "llm", content: responses[idx] },
+          ],
+        }))
+      );
+    } catch (err) {
+      setPanels((prev) =>
+        prev.map((panel) => ({
+          ...panel,
+          messages: [
+            ...panel.messages,
+            { role: "llm", content: "[Erreur de réponse]" },
+          ],
+        }))
+      );
+    }
+    setInputValue("");
+    setLoading(false);
+  };
+
   const handleAddPanel = () => {
     if (panels.length >= MAX_PANELS) return;
     const nextId = panels.length > 0 ? Math.max(...panels.map((p) => p.id)) + 1 : 0;
-    setPanels((prev) => [
-      ...prev,
-      {
-        id: nextId,
-        selectedModel: models[prev.length % models.length]?.name || "",
-        messages: [],
-      },
-    ]);
+    const defaultModel = models[panels.length % models.length]?.name || "";
+    setPanels((prev) => [...prev, makePanel(nextId, defaultModel, models)]);
   };
 
   const handleDeletePanel = (panelId) => {
     setPanels((prev) => prev.filter((panel) => panel.id !== panelId));
   };
 
-  // Grid layout logic
-  let gridCols = 1;
-  let gridRows = 1;
-  if (panels.length === 2) {
-    gridCols = 2;
-    gridRows = 1;
-  } else if (panels.length === 3) {
-    gridCols = 2;
-    gridRows = 2;
-  } else if (panels.length === 4) {
-    gridCols = 2;
-    gridRows = 2;
-  }
-
-  // For 3 panels, show them side by side (3 columns)
-  let gridPanels = panels;
+  // Grid layout logic (unchanged)
   let gridClass = "";
   if (panels.length === 1) {
     gridClass = "grid grid-cols-1 gap-4 w-full h-full";
@@ -152,31 +148,49 @@ export default function ArenaPage() {
   } else if (panels.length === 4) {
     gridClass = "grid grid-cols-2 grid-rows-2 gap-4 w-full";
   }
-  const renderChatPanel = (panel, idx) => (
-    <GradientBox
-      key={panel.id}
-      className="flex flex-col mx-2 min-w-[320px] h-full"
-    >
-      <div className="flex items-center justify-between pb-2">
-        {/* Chat with and model selector */}
-        <div className="flex items-center gap-2">
-          <h2 className="text-white text-3xl font-bold whitespace-nowrap">Chat with</h2>
-          <div className="relative">
-            <select
-              className="appearance-none pr-8 pl-4 py-1 rounded-full border border-emerald-400 bg-transparent text-white focus:outline-none text-sm"
-              onChange={(e) => handleModelChange(panel.id, e.target.value)}
-              value={panel.selectedModel}
-            >
-              {models.map((model) => (
-                <option key={model.id} value={model.name} className="text-black">
-                  {model.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
 
-        {/* Trash Button */}
+  const renderChatPanel = (panel) => (
+    <GradientBox key={panel.id} className="flex flex-col mx-2 min-w-[320px] h-full">
+      <div className="flex items-center justify-between pb-2">
+        <HeaderBar
+          initialTemperature={panel.temperature}
+          initialTopP={panel.topP}
+          initialMaxTokens={panel.maxTokens}
+          onApply={(newSettings) => handleSettingsChange(panel.id, newSettings)}
+          onCustomizePrompt={() => handleCustomizePrompt(panel.id, true)}
+          disabled={loading}
+          models={models}
+          currentModel={panel.selectedModel}
+          onModelChange={(modelName) => handleModelChange(panel.id, modelName)}
+        />
+        {panel.showPromptModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6">
+              <h2 className="text-xl font-semibold mb-4">Personnaliser le prompt</h2>
+              <textarea
+                className="w-full h-40 border rounded p-2 mb-4"
+                value={panel.customPrompt}
+                onChange={(e) =>
+                  handleSettingsChange(panel.id, { customPrompt: e.target.value })
+                }
+              />
+              <div className="flex justify-end space-x-2">
+                <button
+                  onClick={() => handleCustomizePrompt(panel.id, false)}
+                  className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => handleCustomizePrompt(panel.id, false)}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <button
           className="p-1 text-gray-400 hover:text-gray-200"
           onClick={() => handleDeletePanel(panel.id)}
@@ -185,7 +199,6 @@ export default function ArenaPage() {
           <Trash className="w-5 h-5" />
         </button>
       </div>
-
       <div className="flex-1 flex flex-col gap-2 pb-6 overflow-y-auto">
         {panel.messages.map((msg, idx) => (
           <div
@@ -205,25 +218,20 @@ export default function ArenaPage() {
 
   return (
     <div className="flex h-screen">
-      <Sidebar />
+      <Sidebar disabled={loading} />
       <main className="flex-1 flex flex-col bg-[#071b18] relative">
         <div className={`flex-1 p-8 ${gridClass}`}>
-          {gridPanels.map((panel, idx) =>
-            renderChatPanel(panel, idx)
-          )}
+          {panels.map(renderChatPanel)}
         </div>
         <div className="w-full flex justify-center items-center pb-8">
           <div className="w-[700px] max-w-full">
             <QuestionInput
-              value={inputValue}
-              onChange={setInputValue}
-              onSend={handleSend}
-              loading={loading}
-              placeholder="Ask a question..."
+              onSend={handleAsk}
+              backgroundClass="bg-emerald-900"
+              disabled={loading}
             />
           </div>
         </div>
-        {/* Floating + button */}
         <button
           className={`fixed bottom-8 right-8 z-50 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full w-14 h-14 flex items-center justify-center text-4xl shadow-lg transition-all duration-200 ${
             panels.length >= MAX_PANELS ? "opacity-50 cursor-not-allowed" : ""
