@@ -93,3 +93,15 @@ export async function ask({ question, conversationId = null, llmId = null, tempe
     assistantMessage,
   };
 }
+
+export async function deleteConversations(conversationIds) {
+  if (conversationIds.length === 0) return;
+
+  const res = await fetch(`${API}/conversations/delete_bulk`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ conversation_ids: conversationIds }),
+  });
+  if (!res.ok) throw new Error("Conversation deletion failed");
+  return res.json();
+}
