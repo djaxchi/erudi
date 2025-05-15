@@ -15,7 +15,7 @@ export default function Sidebar({ disabled = false }) {
 
   return (
     <div
-      className={`w-[8%] bg-[#121212] flex flex-col items-center transition-opacity duration-200 ${
+      className={`w-[6%] bg-[#121212] flex flex-col items-center transition-opacity duration-200 ${
         disabled ? "opacity-50 pointer-events-none select-none" : ""
       }`}
     >
