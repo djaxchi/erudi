@@ -21,6 +21,8 @@ export default function HardwareInfo({ hw }) {
             <InfoRow label="Available RAM :">{hw.ram_available} </InfoRow>
             <InfoRow label="Available CPU :">{hw.cpu_model}</InfoRow>
             <InfoRow label="Available GPU :">{hw.gpu_model}</InfoRow>
+            <InfoRow label="GPU Total Memory :">{hw.gpu_vram_total}</InfoRow>
+            <InfoRow label="GPU Free Memory :">{hw.gpu_vram_free}</InfoRow>
             <InfoRow label="Cuda Installed :">
             <div className="flex items-center gap-2">
                 <input
