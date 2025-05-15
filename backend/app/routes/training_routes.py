@@ -199,7 +199,7 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
             weight_decay=0.01,
             warmup_steps=100,
             fp16=True,
-            logging_steps=1,
+            logging_steps=20,
             save_strategy="epoch",
             save_steps=None,
             save_total_limit=1,
@@ -208,7 +208,7 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
             gradient_checkpointing=True,
             dataloader_num_workers=4,
             report_to=[],
-            logging_dir=None,
+            logging_dir=trained_model.link+"/logs",
             remove_unused_columns=False,
         )
         trainer = Trainer(

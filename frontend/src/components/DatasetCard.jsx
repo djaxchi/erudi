@@ -85,8 +85,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
       }
 
       const data = await response.json();
-      console.log("Statut de l'entraînement:", data);
-      
+
       setTrainingStatus(data.status);
       setProgress(data.progress || 0);
       setTimeElapsed(data.time_elapsed || 0);
@@ -127,7 +126,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
-    }, 3000);
+    }, 30000);
   };
 
   const submitTrainForm = async () => {

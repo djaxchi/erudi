@@ -17,7 +17,6 @@ class ProgressCallback(TrainerCallback):
         """Called at the beginning of training"""
         self.start_time = datetime.now()
         logging.info(f"Training started at {self.start_time}")
-        logging.info(f"State at the beginning: {state}")
 
         try:
             # Calculate progress percentage
