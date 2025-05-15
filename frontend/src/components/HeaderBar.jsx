@@ -3,41 +3,49 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import GradientBox from "./GradientBox";
 
-/**
- * Props:
- *   initialTemperature: number
- *   initialTopP: number
- *   initialMaxTokens: number
- *   onApply: (settings: { temperature: number; topP: number; maxTokens: number }) => void
- *   onCustomizePrompt: () => void
- */
+
 export default function HeaderBar({
   initialTemperature,
   initialTopP,
   initialMaxTokens,
   onApply,
   onCustomizePrompt,
+  disabled = false,
+  models = [],
+  currentModel = "",
+  onModelChange,
 }) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Local copies of your settings
   const [temperature, setTemperature] = useState(initialTemperature);
   const [topP, setTopP]           = useState(initialTopP);
   const [maxTokens, setMaxTokens] = useState(initialMaxTokens);
 
   const handleApply = () => {
     onApply({ temperature, topP, maxTokens });
-    setIsOpen(false); // optionally collapse after applying
+    setIsOpen(false);
   };
 
   return (
-    <div className="bg-[#143529] text-white rounded-2xl px-6 py-3 w-full max-w-4xl mx-6 mt-6 shadow-lg ">
-      {/* ─── TOP ROW ─────────────────────────────────────────────────────────── */}
+    <div
+      className={`bg-[#143529] text-white rounded-2xl px-6 py-3 w-full max-w-4xl mx-6 mt-6 shadow-lg ${
+        disabled ? "opacity-50 pointer-events-none select-none" : ""
+      }`}
+    >
       <div className="flex items-center justify-between">
         <div className="font-semibold text-lg">Chat with</div>
         <div className="flex items-center space-x-2">
-          <select className="bg-transparent text-white border-none focus:outline-none">
-            <option className="text-black">Mistral-7b-AO</option>
+          <select
+            className="bg-transparent text-white border-none focus:outline-none"
+            value={currentModel}
+            onChange={e => onModelChange && onModelChange(e.target.value)}
+            disabled={disabled}
+          >
+            {models.map((model) => (
+              <option key={model.id} value={model.name} className="text-black">
+                {model.name}
+              </option>
+            ))}
           </select>
           <button onClick={() => setIsOpen((v) => !v)}>
             {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -45,7 +53,6 @@ export default function HeaderBar({
         </div>
       </div>
 
-      {/* ─── COLLAPSIBLE PANEL ──────────────────────────────────────────────── */}
       <AnimatePresence initial={false}>
         {isOpen && (
           <motion.div
@@ -56,7 +63,6 @@ export default function HeaderBar({
             transition={{ type: "tween", duration: 0.2 }}
             className="overflow-hidden mt-4 rounded-xl"
           >
-            {/* ───── Zones de paramètres LLM + bouton Appliquer ───── */}
             <GradientBox className="flex flex-row justify-center items-center p-4 mb-4">
               <div className="flex flex-row justify-center items-center items-end space-x-4">
                 <div className="flex flex-col gap-1">
@@ -127,7 +133,6 @@ export default function HeaderBar({
                   Personnalise prompt
                 </button>
               </div>
-
 
             </GradientBox>
             <div className="flex justify-center mt-4">
