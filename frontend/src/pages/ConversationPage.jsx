@@ -158,11 +158,13 @@ export default function ConversationPage() {
 
   return (
     <div className="flex h-screen">
-      <Sidebar />
+      <Sidebar disabled = {loading} />
 
       <aside className="w-80 bg-[#272727] text-white flex flex-col p-6 space-y-6">
         <h1 className="text-3xl font-bold">History</h1>
-        <ChatCollapsibleSection title="Hot Chats" />
+        <ChatCollapsibleSection title="Hot Chats" 
+          disabled={loading}
+        />
         <ChatCollapsibleSection
           title="Previous Chats"
           items={conversations}
@@ -173,9 +175,6 @@ export default function ConversationPage() {
           disabled={loading}
         />
       </aside>
-
-      {/* ---------- Chat column ---------- */}
-
       <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">
 
         <div className="relative flex justify-center w-full">
@@ -187,11 +186,6 @@ export default function ConversationPage() {
             onCustomizePrompt={() => setShowPromptModal(true)}
           />
         </div>
-
-
-
-
-
         {showPromptModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6">
@@ -211,7 +205,6 @@ export default function ConversationPage() {
                 <button
                   onClick={() => {
                     setShowPromptModal(false);
-                    // customPrompt contient maintenant la saisie utilisateur
                   }}
                   className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
                 >
@@ -221,11 +214,6 @@ export default function ConversationPage() {
             </div>
           </div>
         )}
-
-
-
-
-        {/* message list */}
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto px-10 pt-10 pb-4"
@@ -250,15 +238,6 @@ export default function ConversationPage() {
             ))}
           </div>
         </div>
-
-
-
-
-
-
-
-
-        {/* sticky question bar */}
         <div className="sticky bottom-0 left-0 right-0 px-10 py-10 backdrop-blur-md flex justify-center w-full">
           <div className="w-full max-w-lg">
             <QuestionInput
