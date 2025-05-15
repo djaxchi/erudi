@@ -12,7 +12,7 @@ from ..models.Conversation import Conversation
 from ..models.Llm import Llm
 from ..models.Message import Message
 from ..routes.message_routes import add_message_to_conversation
-from ..schemas.conversation_schemas import ConversationCreate, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
+from ..schemas.conversation_schemas import ConversationCreate, ConversationDeleteBulk, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
 import threading
 from fastapi.responses import StreamingResponse
 import faiss
@@ -322,3 +322,21 @@ async def query(
             logging.info("Generation thread finished")
         
     return StreamingResponse(token_stream(), media_type="text/plain")
+
+@router.post("/conversations/delete_bulk")
+async def delete_bulk(
+    payload: ConversationDeleteBulk,
+    db: Session = Depends(get_db),
+):
+    """Delete multiple conversations by their IDs (body JSON)."""
+    try:
+        conversation_ids = payload.conversation_ids
+        db.query(Conversation).filter(Conversation.id.in_(conversation_ids)).delete(synchronize_session=False)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not delete conversations: {str(e)}",
+        )
+    return {"message": "Conversations deleted successfully"}
