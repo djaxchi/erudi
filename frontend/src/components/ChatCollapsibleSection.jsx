@@ -15,8 +15,9 @@ export default function ChatCollapsibleSection({
   items = [],
   selectedId,
   onSelect,
-  onRename, 
+  onRename,
   onDelete,
+  disabled = false,
 }) {
   const [open, setOpen] = useState(true);
   const [editingId, setEditingId] = useState(null);
@@ -40,7 +41,7 @@ export default function ChatCollapsibleSection({
       onRename?.(id, name);
     } catch (err) {
       console.error(err);
-      alert("Impossible de renommer la conversation – réessayez.");
+      alert("Impossible de renommer la conversation - réessayez.");
     } finally {
       setEditingId(null);
     }
@@ -52,9 +53,9 @@ export default function ChatCollapsibleSection({
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
-  
+
       if (!res.ok) throw new Error("Delete failed");
-  
+
       onDelete?.(id);
     } catch (err) {
       console.error(err);
@@ -81,11 +82,10 @@ export default function ChatCollapsibleSection({
                 navigate(`/main_window/conversations/${conv.id}`);
               }
             }}
-            className={`relative group py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${
-              isSelected
+            className={`relative group py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${isSelected
                 ? "bg-emerald-500/50 text-white"
                 : "hover:bg-gray-700 hover:text-white text-gray-300"
-            }`}
+              }`}
           >
             {isEditing ? (
               <input
@@ -94,7 +94,7 @@ export default function ChatCollapsibleSection({
                 onKeyDown={async (e) => {
                   if (e.key === "Enter" && tempName.trim()) {
                     await renameConversation(conv.id, tempName.trim());
-+                   e.stopPropagation();
+                    +                   e.stopPropagation();
                   }
                   if (e.key === "Escape") {
                     setEditingId(null);
@@ -120,8 +120,8 @@ export default function ChatCollapsibleSection({
               <X
                 onClick={(e) => {
                   e.stopPropagation();
-                    setPendingDeleteId(conv.id);
-                    setShowDeleteConfirm(true);
+                  setPendingDeleteId(conv.id);
+                  setShowDeleteConfirm(true);
                 }}
                 className="w-4 h-4 text-red-400 hover:text-red-300 cursor-pointer"
               />
@@ -131,12 +131,14 @@ export default function ChatCollapsibleSection({
       });
     }
 
-    
+
     <p className="italic">Nothing here…</p>
   };
 
   return (
-    <div className="text-gray-200">
+    <div
+      className={`text-gray-200 ${disabled ? "pointer-events-none opacity-50 select-none" : ""}`}
+    >
       <div
         className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
         onClick={() => setOpen(!open)}

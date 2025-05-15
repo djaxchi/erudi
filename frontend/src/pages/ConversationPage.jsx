@@ -15,14 +15,15 @@ export default function ConversationPage() {
   const [conversations, setConversations] = useState([]);
   const scrollRef = useRef(null);
 
-  const[showPromptModal, setShowPromptModal] = useState(false);
-  const[customPrompt, setCustomPrompt] = useState("");
+  const [showPromptModal, setShowPromptModal] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState("");
   const [initialHandled, setInitialHandled] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const [settings, setSettings] = useState({
-    temperature : 0.5,
-    topP : 0.9,
-    maxTokens : 3074
+    temperature: 0.5,
+    topP: 0.9,
+    maxTokens: 3074
   })
 
   const fetchMessagesAndConversations = useCallback(async () => {
@@ -46,6 +47,7 @@ export default function ConversationPage() {
 
   const handleAsk = useCallback(
     async (question) => {
+      setLoading(true);
       const userMessage = {
         id: Date.now(),
         sender: "user",
@@ -64,11 +66,11 @@ export default function ConversationPage() {
         await ask({
           question,
           conversationId: Number(id),
-        temperature : settings.temperature,
-        topP : settings.topP,
-        maxTokens : settings.maxTokens,
+          temperature: settings.temperature,
+          topP: settings.topP,
+          maxTokens: settings.maxTokens,
           customPrompt,
-        onStreamChunk: (chunk) => {
+          onStreamChunk: (chunk) => {
             assistantMessage.content += chunk;
             setMessages((prev) =>
               prev.map((msg) =>
@@ -92,8 +94,8 @@ export default function ConversationPage() {
           content: assistantMessage.content,
         }),
       });
-
       await fetchMessagesAndConversations();
+      setLoading(false);
     },
     [id, settings, customPrompt, fetchMessagesAndConversations]
   );
@@ -156,11 +158,13 @@ export default function ConversationPage() {
 
   return (
     <div className="flex h-screen">
-      <Sidebar />
+      <Sidebar disabled = {loading} />
 
       <aside className="w-80 bg-[#272727] text-white flex flex-col p-6 space-y-6">
         <h1 className="text-3xl font-bold">History</h1>
-        <ChatCollapsibleSection title="Hot Chats" />
+        <ChatCollapsibleSection title="Hot Chats" 
+          disabled={loading}
+        />
         <ChatCollapsibleSection
           title="Previous Chats"
           items={conversations}
@@ -168,27 +172,20 @@ export default function ConversationPage() {
           onSelect={handleConversationClick}
           onRename={handleRename}
           onDelete={handleDelete}
+          disabled={loading}
         />
       </aside>
-
-      {/* ---------- Chat column ---------- */}
-      
       <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">
-        
+
         <div className="relative flex justify-center w-full">
           <HeaderBar
-        initialTemperature={settings.temperature}
-        initialTopP={settings.topP}
-        initialMaxTokens={settings.maxTokens}
-        onApply={(newSettings) => setSettings(newSettings)}
-        onCustomizePrompt={() => setShowPromptModal(true)}
-        />
+            initialTemperature={settings.temperature}
+            initialTopP={settings.topP}
+            initialMaxTokens={settings.maxTokens}
+            onApply={(newSettings) => setSettings(newSettings)}
+            onCustomizePrompt={() => setShowPromptModal(true)}
+          />
         </div>
-        
-
-
-
-
         {showPromptModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6">
@@ -208,7 +205,6 @@ export default function ConversationPage() {
                 <button
                   onClick={() => {
                     setShowPromptModal(false);
-                    // customPrompt contient maintenant la saisie utilisateur
                   }}
                   className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
                 >
@@ -218,11 +214,6 @@ export default function ConversationPage() {
             </div>
           </div>
         )}
-
-
-
-
-        {/* message list */}
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto px-10 pt-10 pb-4"
@@ -237,31 +228,22 @@ export default function ConversationPage() {
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`break-words w-fit max-w-[75%] p-4 rounded-2xl text-white whitespace-pre-wrap overflow-wrap break-word ${
-                  msg.sender === "user"
+                className={`break-words w-fit max-w-[75%] p-4 rounded-2xl text-white whitespace-pre-wrap overflow-wrap break-word ${msg.sender === "user"
                     ? "bg-[#191919] ml-auto rounded-tr-none"
                     : "mr-auto rounded-tl-none"
-                }`}
+                  }`}
               >
                 {msg.content}
               </div>
             ))}
           </div>
         </div>
-
-        
-
-
-
-
-
-
-        {/* sticky question bar */}
         <div className="sticky bottom-0 left-0 right-0 px-10 py-10 backdrop-blur-md flex justify-center w-full">
           <div className="w-full max-w-lg">
             <QuestionInput
               onSend={handleAsk}
               backgroundClass="bg-emerald-900"
+              disabled={loading}
             />
           </div>
         </div>
