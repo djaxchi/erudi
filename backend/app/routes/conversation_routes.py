@@ -99,7 +99,7 @@ async def update_conversation(
     payload: ConversationUpdate,
     db: Session = Depends(get_db),
 ):
-    """Update conversation fields (currently only *name*)."""
+    """Update conversation fields (name and llm_id)."""
 
     conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -107,15 +107,24 @@ async def update_conversation(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    if payload.name != conversation.name:
+    updated = False
+
+    if payload.name is not None and payload.name != conversation.name:
         conversation.name = payload.name
+        updated = True
+
+    if payload.llm_id is not None and payload.llm_id != conversation.llm_id:
+        conversation.llm_id = payload.llm_id
+        updated = True
+
+    if updated:
         try:
             db.commit()
             db.refresh(conversation)
         except Exception as e:
             db.rollback()
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status_code=500,
                 detail=f"Could not update conversation: {str(e)}",
             )
 

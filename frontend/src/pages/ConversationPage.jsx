@@ -19,12 +19,43 @@ export default function ConversationPage() {
   const [customPrompt, setCustomPrompt] = useState("");
   const [initialHandled, setInitialHandled] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [models, setModels] = useState([]);
+  const [currentModel, setCurrentModel] = useState("");
 
   const [settings, setSettings] = useState({
     temperature: 0.5,
     topP: 0.9,
     maxTokens: 3074
   })
+
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/main_window/llms/local")
+      .then(res => res.json())
+      .then(data => {
+        setModels(data);
+        if (conversations.length > 0) {
+          const conv = conversations.find(c => c.id === Number(id));
+          if (conv) {
+            const model = data.find(m => m.id === conv.llm_id);
+            if (model) setCurrentModel(model.name);
+          }
+        }
+      });
+  }, [id, conversations]);
+
+  const handleModelChange = async (modelName) => {
+    setCurrentModel(modelName);
+    const model = models.find(m => m.name === modelName);
+    if (!model) return;
+    // Call API to update conversation's llm_id
+    await fetch(`http://127.0.0.1:8000/conversations/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ llm_id: model.id }),
+    });
+    // // Optionally, refresh conversations state here
+    // fetchMessagesAndConversations();
+  };
 
   const fetchMessagesAndConversations = useCallback(async () => {
     try {
@@ -102,7 +133,6 @@ export default function ConversationPage() {
 
   useEffect(() => {
     const run = async () => {
-      // Always fetch conversations immediately for sidebar
       try {
         const convRes = await fetch("http://127.0.0.1:8000/conversations");
         const convs = await convRes.json();
@@ -184,6 +214,10 @@ export default function ConversationPage() {
             initialMaxTokens={settings.maxTokens}
             onApply={(newSettings) => setSettings(newSettings)}
             onCustomizePrompt={() => setShowPromptModal(true)}
+            disabled={loading}
+            models={models}
+            currentModel={currentModel}
+            onModelChange={handleModelChange}
           />
         </div>
         {showPromptModal && (
