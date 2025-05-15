@@ -67,7 +67,9 @@ export default function DatasetCard({ selectedModel, modelName }) {
     );
   };
 
-  // Nouvelle fonction pour vérifier le statut d'entraînement
+  const [progress, setProgress] = useState(0);
+  const [timeElapsed, setTimeElapsed] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(null);
   const checkTrainingStatus = async (llmId) => {
     try {
       const response = await fetch(`${API_BASE}/training/${llmId}/status`);
@@ -83,7 +85,12 @@ export default function DatasetCard({ selectedModel, modelName }) {
       }
 
       const data = await response.json();
+      console.log("Statut de l'entraînement:", data);
+      
       setTrainingStatus(data.status);
+      setProgress(data.progress || 0);
+      setTimeElapsed(data.time_elapsed || 0);
+      setTimeLeft(data.time_left);
 
       // Traitement selon le statut
       if (data.status === "failed") {
@@ -235,11 +242,22 @@ export default function DatasetCard({ selectedModel, modelName }) {
         <div className="flex-1 flex items-end flex-col">
           {isTraining ? (
             <div className="w-full text-center">
+              <div className="w-full bg-gray-700 rounded-full h-4 mb-2">
+                <div
+                  className="bg-emerald-400 h-4 rounded-full transition-all"
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
+              <div className="text-emerald-400 text-sm">
+                {progress.toFixed(1)}% — 
+                {timeElapsed ? ` Écoulé: ${Math.round(timeElapsed)}s` : ""}
+                {timeLeft ? ` — Restant: ~${Math.round(timeLeft)}s` : ""}
+              </div>
               <div className="inline-flex items-center gap-2 py-3">
                 <Loader className="w-5 h-5 text-emerald-400 animate-spin" />
                 <span className="text-emerald-400">
-                  {trainingStatus === "running" 
-                    ? "Entraînement en cours..." 
+                  {trainingStatus === "running"
+                    ? "Entraînement en cours..."
                     : "Préparation de l'entraînement..."}
                 </span>
               </div>

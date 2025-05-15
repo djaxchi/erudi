@@ -14,6 +14,7 @@ from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 import torch
 from datasets import Dataset
 from ..database import SessionLocal
+from ..schemas.progress_callback import ProgressCallback
 
 router = APIRouter()
 
@@ -38,7 +39,10 @@ def get_training_status(llm_id: int, db: Session = Depends(get_db)):
     return {
         "status": status,
         "status_updated_at": updated_at,
-        "error_message": error_message if status == "failed" else None
+        "error_message": error_message if status == "failed" else None,
+        "progress": getattr(training_job, "progress", 0.0),
+        "time_elapsed": getattr(training_job, "time_elapsed", 0.0),
+        "time_left": getattr(training_job, "time_left", None),
     }
 
 @router.post("/train", status_code=200)
@@ -195,7 +199,7 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
             weight_decay=0.01,
             warmup_steps=100,
             fp16=True,
-            logging_steps=500,
+            logging_steps=1,
             save_strategy="epoch",
             save_steps=None,
             save_total_limit=1,
@@ -213,6 +217,7 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
             train_dataset=dataset["train"],
             eval_dataset=dataset["test"],
             data_collator=data_collator,
+            callbacks=[ProgressCallback(training_job_id=training_job.id, db_factory=SessionLocal)],
         )
         logging.info(f"Training args prepared")
 
