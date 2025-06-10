@@ -6,11 +6,28 @@ from ..models.Conversation import Conversation
 from ..models.Message import Message
 from ..schemas.message_schemas import MessageCreate, MessageResponse
 from datetime import datetime
-from transformers import pipeline
+from transformers import pipeline, AutoTokenizer
 import logging
 
-summarizer = pipeline("summarization", model="google/pegasus-xsum", tokenizer = "google/pegasus-xsum") 
-
+def init_summarizer():
+    """
+    Initialize the summarization pipeline.
+    This function is called once to set up the summarizer.
+    """
+    global summarizer
+    try:
+        if summarizer is not None:
+            logging.info("Summarizer already initialized, skipping re-initialization.")
+            return
+        model = AutoTokenizer.from_pretrained("t5-small", cache_dir="data/models_cache")
+        tokenizer = AutoTokenizer.from_pretrained("t5-small", cache_dir="data/models_cache")
+        summarizer = pipeline("summarization", model=model, tokenizer=tokenizer, device=0)
+        logging.info("Summarizer initialized successfully.")
+    except Exception as e:
+        logging.error(f"Error initializing summarizer: {e}")
+        raise e
+    
+summarizer = None
 router = APIRouter()
 
 @router.get("/conversations/{conversation_id}/messages", response_model=List[MessageResponse])
@@ -42,6 +59,7 @@ async def add_message_to_conversation(conversation_id: int, message: MessageCrea
         if len(words)<seuil:
             conversation.name = new_message.content.strip()
         else : 
+            init_summarizer()
             prompt=("Very short title, don't exceed 10 words : \n" + new_message.content)
             summary = summarizer(prompt, max_length=10, min_length=5, do_sample=False)[0]["summary_text"]
             conversation.name = summary
