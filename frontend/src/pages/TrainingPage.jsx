@@ -53,8 +53,8 @@ export default function TrainingPage() {
           disk_available: `${data.disk_available_gb} GB`,
           cpu_model: data.cpu_model,
           gpu_model: data.gpu_model ?? "No GPU detected",
-          gpu_vram_total: data.gpu_vram_total_gb ? `${data.gpu_vram_total_gb} GB` : "No GPU detected",
-          gpu_vram_free: data.gpu_vram_free_gb ? `${data.gpu_vram_free_gb} GB` : "No GPU detected",
+          gpu_vram_total: data.gpu_vram_total_gb ? `${data.gpu_vram_total_gb/1000} GB` : "No GPU detected",
+          gpu_vram_free: data.gpu_vram_free_gb ? `${data.gpu_vram_free_gb/1000} GB` : "No GPU detected",
           cuda_installed: {
             path: data.cuda_path ?? "Path/To/Cuda",
             ok: data.cuda_installed

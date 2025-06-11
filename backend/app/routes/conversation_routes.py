@@ -15,7 +15,7 @@ from ..routes.message_routes import add_message_to_conversation
 from ..schemas.conversation_schemas import ConversationCreate, ConversationDeleteBulk, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
 import threading
 from fastapi.responses import StreamingResponse
-import faiss
+from faiss import IndexFlatL2
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from ..prompting.builder import build_default_prompt, build_custom_prompt
@@ -169,7 +169,7 @@ def retrieve_context(query: str, conversation_history: List[str], top_k=3):
     message_embeddings = embedder.encode(conversation_history, convert_to_tensor=False)
    
     dimension = len(message_embeddings[0])
-    index = faiss.IndexFlatL2(dimension)
+    index = IndexFlatL2(dimension)
     index.add(np.array(message_embeddings))
    
     distances, indices = index.search(np.array([query_embedding.cpu().numpy()]), k=min(top_k, len(conversation_history)))
