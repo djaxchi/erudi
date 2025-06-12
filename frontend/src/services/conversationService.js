@@ -11,7 +11,7 @@ export async function createConversation(llmId) {
 }
 
 export async function addMessage(conversationId, content, sender = "user") {
-  const res = await fetch(`${API}/conversations/${conversationId}/messages`, {
+  const res = await fetch(`${API}/conversations/${conversationId}/add_user_input`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content, sender }),

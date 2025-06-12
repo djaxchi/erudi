@@ -35,7 +35,8 @@ class ConversationQuery(BaseModel):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_new_tokens: Optional[int] = None 
-    custom_prompt: Optional[str] = None 
+    custom_prompt: Optional[str] = None
+    n_msgs_to_get_from_conv: Optional[int] = None
 
 class ConversationQueryResponse(BaseModel):
     id: int

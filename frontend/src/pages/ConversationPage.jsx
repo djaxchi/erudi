@@ -60,7 +60,7 @@ export default function ConversationPage() {
   const fetchMessagesAndConversations = useCallback(async () => {
     try {
       const [msgRes, convRes] = await Promise.all([
-        fetch(`http://127.0.0.1:8000/conversations/${id}/messages`),
+        fetch(`http://127.0.0.1:8000/conversations/${id}/add_user_input`),
         fetch("http://127.0.0.1:8000/conversations"),
       ]);
       const msgs = await msgRes.json();
@@ -116,7 +116,7 @@ export default function ConversationPage() {
         console.error("Failed to send message:", err);
       }
 
-      await fetch(`http://127.0.0.1:8000/conversations/${id}/messages`, {
+      await fetch(`http://127.0.0.1:8000/conversations/${id}/add_user_input`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -150,7 +150,7 @@ export default function ConversationPage() {
         navigate(location.pathname, { replace: true, state: {} });
       } else if (!location.state || !location.state.initialQuestion) {
         try {
-          const msgRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/messages`);
+          const msgRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/add_user_input`);
           const msgs = await msgRes.json();
           setMessages(msgs);
         } catch (err) {
