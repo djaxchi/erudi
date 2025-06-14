@@ -1,9 +1,9 @@
 from ..schemas.message_schemas import MessageCreate, MessageResponse
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 import torch
 from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, pipeline, StoppingCriteria, StoppingCriteriaList
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, pipeline, StoppingCriteria, StoppingCriteriaList, AutoModelForSeq2SeqLM
 import logging
 from typing import List
 from ..database import get_db
@@ -28,11 +28,13 @@ current_tokenizer  = None
 loaded_model_id = None
 embedder = None
 summarizer = None
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 router = APIRouter()
 
 class StopOnEndToken(StoppingCriteria):
     def __init__(self, end_token_id: int):
+        super().__init__()
         self.end_token_id = end_token_id
     def __call__(self, input_ids, scores, **kwargs):
         # arrête si le dernier token généré est <|end|>
@@ -48,15 +50,21 @@ def init_summarizer():
         if summarizer is not None:
             logging.info("Summarizer already initialized, skipping re-initialization.")
             return
-        model = AutoTokenizer.from_pretrained("t5-small", cache_dir="data/models_cache")
         tokenizer = AutoTokenizer.from_pretrained("t5-small", cache_dir="data/models_cache")
-        summarizer = pipeline("summarization", model=model, tokenizer=tokenizer, device=0)
+        model = AutoModelForSeq2SeqLM.from_pretrained("t5-small", cache_dir="data/models_cache")
+
+        summarizer = pipeline(
+            "summarization",
+            model=model,
+            tokenizer=tokenizer,
+            device=0
+        )
         logging.info("Summarizer initialized successfully.")
     except Exception as e:
         logging.error(f"Error initializing summarizer: {e}")
         raise e
 
-@router.get("/conversations/{conversation_id}/add_user_input", response_model=List[MessageResponse])
+@router.get("/conversations/{conversation_id}/fetch_messages", response_model=List[MessageResponse])
 async def get_messages_by_conversation(conversation_id: int, db: Session = Depends(get_db)):
     """
     Fetch all messages for a specific conversation.
@@ -64,38 +72,7 @@ async def get_messages_by_conversation(conversation_id: int, db: Session = Depen
     messages = db.query(Message).filter(Message.conversation_id == conversation_id).all()
     return messages
 
-@router.post("/conversations/{conversation_id}/add_user_input", response_model=MessageResponse)
-async def add_message_to_conversation(conversation_id: int, message: MessageCreate, db: Session = Depends(get_db)):
-    """
-    Add a new message to a specific conversation and update the last_message_time.
-    """
-    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
-    if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
 
-    new_message = Message(conversation_id=conversation_id, **message.dict())
-    db.add(new_message)
-    db.flush()
-
-    count = db.query(Message).filter(Message.conversation_id == conversation_id).count()
-    if count==1:
-        seuil = 10
-        words = new_message.content.strip().split()
-
-        if len(words)<seuil:
-            conversation.name = new_message.content.strip()
-        else : 
-            init_summarizer()
-            prompt=("Very short title, don't exceed 10 words : \n" + new_message.content)
-            summary = summarizer(prompt, max_length=10, min_length=5, do_sample=False)[0]["summary_text"]
-            conversation.name = summary
-        logging.info("Premier message résumé pour le titre : %s", conversation.name)
-
-    conversation.last_message_time = datetime.utcnow()
-
-    db.commit()
-    db.refresh(new_message)
-    return new_message
 
 @router.delete("/messages/{message_id}")
 async def delete_message(message_id: int, db: Session = Depends(get_db)):
@@ -298,8 +275,8 @@ def retrieve_context(query: str, conversation_history, top_k=3):
     return relevant_context
 
 
-@router.post("/conversations/{conversation_id}/query", response_model=MessageResponse)
-async def query(
+@router.post("/conversations/{conversation_id}/query")
+async def query_and_respond(
     conversation_id: int,
     payload: ConversationQuery,
     db: Session = Depends(get_db),
@@ -316,6 +293,28 @@ async def query(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    # Add user message to database
+    user_message = Message(
+        conversation_id=conversation_id,
+        sender="user",
+        content=payload.question
+    )
+    db.add(user_message)
+    db.flush()
+
+    # Check if this is the first message and generate conversation title
+    count = db.query(Message).filter(Message.conversation_id == conversation_id).count()
+    if count == 1:
+        init_summarizer()
+        summary = summarizer(f"summarize in 5 words: {payload.question}", max_length=15, min_length=5, do_sample=False)[0]["summary_text"]
+        conversation.name = summary
+        logging.info("Premier message résumé pour le titre : %s", conversation.name)
+
+    # Update conversation timestamp
+    conversation.last_message_time = datetime.utcnow()
+    db.commit()
+
+    # Get LLM for response generation
     llm = db.query(Llm).filter(Llm.id == conversation.llm_id).first()
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
@@ -418,9 +417,11 @@ async def query(
     thread.start()
 
     async def token_stream():
+        assistant_response = ""
         try:
             for new_text in streamer:
                 cleand_out_token = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", new_text)
+                assistant_response += cleand_out_token
                 logging.info(f"Yielding token: {cleand_out_token}")
                 yield cleand_out_token
         except Exception as e:
@@ -428,6 +429,17 @@ async def query(
             raise HTTPException(status_code=500, detail="Streaming failed")
         finally:
             thread.join()
+            
+            # Save assistant's response to database
+            assistant_message = Message(
+                conversation_id=conversation_id,
+                sender="llm",
+                content=assistant_response.strip()
+            )
+            db.add(assistant_message)
+            conversation.last_message_time = datetime.utcnow()
+            db.commit()
+            
             logging.info("Generation thread finished")
         
     return StreamingResponse(token_stream(), media_type="text/plain")

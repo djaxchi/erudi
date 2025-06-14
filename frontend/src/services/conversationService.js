@@ -10,16 +10,6 @@ export async function createConversation(llmId) {
   return res.json();
 }
 
-export async function addMessage(conversationId, content, sender = "user") {
-  const res = await fetch(`${API}/conversations/${conversationId}/add_user_input`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, sender }),
-  });
-  if (!res.ok) throw new Error("Message creation failed");
-  return res.json();
-}
-
 export async function query(conversationId, question, {temperature = 0.5, topP = 0.9, maxTokens = 3074, customPrompt = "", onStreamChunk} = {}) {
   const body = {
     question,
@@ -27,8 +17,6 @@ export async function query(conversationId, question, {temperature = 0.5, topP =
     top_p: topP,
     max_new_tokens : maxTokens,
     custom_prompt : customPrompt
-
-
   }
 
   console.log(body);
@@ -83,13 +71,10 @@ export async function ask({ question, conversationId = null, llmId = null, tempe
     convId = conversation.id;
   }
 
-  const userMessage = await addMessage(convId, question);
-  
   const assistantMessage = await query(convId, question, {temperature, topP, maxTokens, customPrompt, onStreamChunk});
 
   return {
     conversation: conversation ?? { id: convId },
-    userMessage,
     assistantMessage,
   };
 }
