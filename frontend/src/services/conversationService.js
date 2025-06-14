@@ -49,7 +49,7 @@ export async function query(conversationId, question, {temperature = 0.5, topP =
 
     const chunk = decoder.decode(value, { stream: true });
     fullText += chunk;
-    if (onStreamChunk) onStreamChunk(chunk); // send partial result to the caller
+    if (onStreamChunk) onStreamChunk(chunk);
   }
 
   return {
@@ -59,19 +59,99 @@ export async function query(conversationId, question, {temperature = 0.5, topP =
   };
 }
 
-export async function ask({ question, conversationId = null, llmId = null, temperature, topP, maxTokens, customPrompt = "", onStreamChunk }) {
+export async function generateTitle(conversationId, question, {onStreamChunk} = {}) {
+  const body = {
+    question
+  }
+
+  console.log("Generating title with body:", body);
+  
+  const res = await fetch(`${API}/conversations/${conversationId}/generate_title`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    let errJson;
+    try{
+      errJson = await res.json();
+    }catch{}
+    console.error("Title Generation Error",res.status,errJson)
+    throw new Error("Title generation failed");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+
+  let fullTitle = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value, { stream: true });
+    fullTitle += chunk;
+    if (onStreamChunk) onStreamChunk(chunk);
+  }
+
+  return {
+    title: fullTitle.trim(),
+  };
+}
+
+export async function ask({ question, conversationId = null, llmId = null, temperature, topP, maxTokens, customPrompt = "", onStreamChunk, onTitleChunk }) {
   if (!question.trim()) throw new Error("Question is empty");
 
   let convId = conversationId;
   let conversation;
+  let isNewConversation = false;
 
   if (!convId) {
     if (!llmId) throw new Error("llmId is required to start a conversation");
     conversation = await createConversation(llmId);
     convId = conversation.id;
+    isNewConversation = true;
   }
 
-  const assistantMessage = await query(convId, question, {temperature, topP, maxTokens, customPrompt, onStreamChunk});
+  // Check if this is the first message in an existing conversation
+  if (!isNewConversation && conversationId) {
+    try {
+      const msgRes = await fetch(`${API}/conversations/${conversationId}/fetch_messages`);
+      const messages = await msgRes.json();
+      if (messages.length === 0) {
+        isNewConversation = true;
+      }
+    } catch (err) {
+      console.warn("Could not check message count, assuming not new conversation");
+    }
+  }
+  // Start both operations in parallel
+  const promises = [];
+
+  // Generate title asynchronously if this is a new conversation (don't await)
+  if (isNewConversation && onTitleChunk) {
+    const titlePromise = generateTitle(convId, question, { onStreamChunk: onTitleChunk })
+      .catch(err => {
+        console.error("Title generation failed:", err);
+      });
+    promises.push(titlePromise);
+  }
+
+  // Generate the assistant response (don't await yet)
+  const responsePromise = query(convId, question, {temperature, topP, maxTokens, customPrompt, onStreamChunk});
+  promises.push(responsePromise);
+
+  // Wait for the response (main content) to complete
+  const assistantMessage = await responsePromise;
+
+  // Optionally wait for title generation to complete in background
+  // (we don't need to block on this)
+  if (promises.length > 1) {
+    Promise.all(promises).catch(err => {
+      console.error("Some background operations failed:", err);
+    });
+  }
 
   return {
     conversation: conversation ?? { id: convId },

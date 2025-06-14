@@ -27,7 +27,6 @@ loaded_model = None
 current_tokenizer  = None
 loaded_model_id = None
 embedder = None
-summarizer = None
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 router = APIRouter()
@@ -40,29 +39,6 @@ class StopOnEndToken(StoppingCriteria):
         # arrête si le dernier token généré est <|end|>
         return input_ids[0, -1].item() == self.end_token_id
 
-def init_summarizer():
-    """
-    Initialize the summarization pipeline.
-    This function is called once to set up the summarizer.
-    """
-    global summarizer
-    try:
-        if summarizer is not None:
-            logging.info("Summarizer already initialized, skipping re-initialization.")
-            return
-        tokenizer = AutoTokenizer.from_pretrained("t5-small", cache_dir="data/models_cache")
-        model = AutoModelForSeq2SeqLM.from_pretrained("t5-small", cache_dir="data/models_cache")
-
-        summarizer = pipeline(
-            "summarization",
-            model=model,
-            tokenizer=tokenizer,
-            device=0
-        )
-        logging.info("Summarizer initialized successfully.")
-    except Exception as e:
-        logging.error(f"Error initializing summarizer: {e}")
-        raise e
 
 @router.get("/conversations/{conversation_id}/fetch_messages", response_model=List[MessageResponse])
 async def get_messages_by_conversation(conversation_id: int, db: Session = Depends(get_db)):
@@ -275,6 +251,127 @@ def retrieve_context(query: str, conversation_history, top_k=3):
     return relevant_context
 
 
+@router.post("/conversations/{conversation_id}/generate_title")
+async def generate_title(
+    conversation_id: int,
+    payload: ConversationQuery,
+    db: Session = Depends(get_db),
+):
+    """Generate a title for the conversation based on the first message."""
+
+
+    logging.info("Generating title for conversation %s", conversation_id)
+    
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    llm = db.query(Llm).filter(Llm.id == conversation.llm_id).first()
+    if not llm:
+        raise HTTPException(status_code=404, detail="LLM not found")
+    
+    global loaded_model, current_tokenizer, loaded_model_id
+
+    try:
+        if loaded_model_id != llm.id or loaded_model is None:
+            start = datetime.now()
+            logging.info(f"Loading model {llm.id} from {llm.link}")
+            loaded_model = AutoModelForCausalLM.from_pretrained(
+                llm.link, local_files_only=True, torch_dtype=torch.float16
+            )
+            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
+            loaded_model_id = llm.id
+            loaded_model.eval()
+            loaded_model.to(device)
+            logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
+        else:
+            logging.info(f"Model {llm.id} already loaded")
+            loaded_model.eval()
+            loaded_model.to(device)
+    except Exception as e:
+        logging.exception("Failed to load model or tokenizer")
+        raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
+
+    try:
+        title_generation_prompt = f"""<|system|>You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation.<|end|>
+
+<|user|>Create a 2-to-5-word title for: {payload.question}
+
+Examples:
+- How to cook pasta? → Pasta Cooking Guide
+- What is machine learning? → Machine Learning Basics
+- Help me with Python code → Python Code Help
+
+Your very short title:<|end|>
+<|assistant|>"""
+        input_ids = current_tokenizer.encode(title_generation_prompt, return_tensors="pt").to(device)
+        end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
+        stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
+    except Exception as e:
+        logging.exception("Failed to tokenize prompt")
+        raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
+    
+    streamer = TextIteratorStreamer(current_tokenizer, skip_prompt=True, skip_special_tokens=True)
+
+    generation_kwargs = dict(
+        input_ids=input_ids,
+        streamer=streamer,
+        max_new_tokens=15,
+        temperature=0.05,
+        top_p=0.3,
+        do_sample=False,
+        num_beams=1,
+        pad_token_id=current_tokenizer.eos_token_id,
+        stopping_criteria=stop_crit
+    )
+
+    def run_title_generation():
+        try:
+            with torch.no_grad():
+                loaded_model.generate(**generation_kwargs)
+        except Exception as e:
+            logging.exception(f"Title generation failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Title generation error: {str(e)}")
+
+    title_thread = threading.Thread(target=run_title_generation)
+    title_thread.start()
+
+    async def title_stream():
+        generated_title = ""
+        try:
+            for new_text in streamer:
+                if new_text.strip() == "" or "<" in new_text or ">" in new_text or "|" in new_text:
+                    continue
+                cleaned_token = new_text[0].upper() + new_text[1:]
+                generated_title += cleaned_token
+                logging.info(f"Yielding title token: {cleaned_token}")
+                yield cleaned_token
+        except Exception as e:
+            logging.exception("Title streaming failed")
+            raise HTTPException(status_code=500, detail="Title streaming failed")
+        finally:
+            title_thread.join()
+            words = generated_title.strip().split()
+            if "\"" in words or "\'" in words or "“" in words or "”" in words or "‘" in words or "’" in words or "«" in words or "»" in words: 
+                words.remove("\"")
+                words.remove("\'")
+                words.remove("“")
+                words.remove("”")
+                words.remove("‘")
+                words.remove("’")
+                words.remove("«")
+                words.remove("»")
+            words = [re.sub(r"<.*?>", "", word) for word in words if word]
+            final_title = " ".join(words[:6]) if len(words) >= 6 else " ".join(words)
+            
+            conversation.name = final_title
+            db.add(conversation)
+            db.commit()
+            logging.info("Title generated and saved: %s", conversation.name)
+        
+    return StreamingResponse(title_stream(), media_type="text/plain")
+
+
 @router.post("/conversations/{conversation_id}/query")
 async def query_and_respond(
     conversation_id: int,
@@ -283,7 +380,6 @@ async def query_and_respond(
 ):  
     logging.info("Payload reçu : %s", payload.dict())
     user_prompt = payload.custom_prompt
-    device = "cuda" if torch.cuda.is_available() else "cpu"
     conversation = (
         db.query(Conversation)
         .filter(Conversation.id == conversation_id)
@@ -301,16 +397,7 @@ async def query_and_respond(
     )
     db.add(user_message)
     db.flush()
-
-    # Check if this is the first message and generate conversation title
-    count = db.query(Message).filter(Message.conversation_id == conversation_id).count()
-    if count == 1:
-        init_summarizer()
-        summary = summarizer(f"summarize in 5 words: {payload.question}", max_length=15, min_length=5, do_sample=False)[0]["summary_text"]
-        conversation.name = summary
-        logging.info("Premier message résumé pour le titre : %s", conversation.name)
-
-    # Update conversation timestamp
+    
     conversation.last_message_time = datetime.utcnow()
     db.commit()
 
@@ -404,7 +491,7 @@ async def query_and_respond(
 
     logging.info("Generation kwargs for Mistral : %s, %s, %s", generation_kwargs["max_new_tokens"], generation_kwargs["temperature"], generation_kwargs["top_p"])
 
-    def run_generation():
+    def run_response_inference():
         logging.info(f"Generating response for conversation {conversation_id} with question: {payload.question}")
         try:
             with torch.no_grad():
@@ -413,10 +500,10 @@ async def query_and_respond(
             logging.exception(f"Generation failed : {e}")
             raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
-    thread = threading.Thread(target=run_generation)
-    thread.start()
+    response_thread = threading.Thread(target=run_response_inference)
+    response_thread.start()
 
-    async def token_stream():
+    async def assistant_response_token_stream():
         assistant_response = ""
         try:
             for new_text in streamer:
@@ -428,9 +515,8 @@ async def query_and_respond(
             logging.exception("Streaming failed")
             raise HTTPException(status_code=500, detail="Streaming failed")
         finally:
-            thread.join()
-            
-            # Save assistant's response to database
+            response_thread.join()
+
             assistant_message = Message(
                 conversation_id=conversation_id,
                 sender="llm",
@@ -442,7 +528,7 @@ async def query_and_respond(
             
             logging.info("Generation thread finished")
         
-    return StreamingResponse(token_stream(), media_type="text/plain")
+    return (StreamingResponse(assistant_response_token_stream(), media_type="text/plain"))
 
 @router.post("/conversations/delete_bulk")
 async def delete_bulk(

@@ -11,9 +11,9 @@ export default function ConversationPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [messages, setMessages] = useState([]);
-  const [conversations, setConversations] = useState([]);
+  const [messages, setMessages] = useState([]);  const [conversations, setConversations] = useState([]);
   const scrollRef = useRef(null);
+  const [currentTitle, setCurrentTitle] = useState("");
 
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
@@ -78,6 +78,13 @@ export default function ConversationPage() {
   const handleAsk = useCallback(
     async (question) => {
       setLoading(true);
+      
+      const isFirstMessage = messages.length === 0;
+      
+      if (isFirstMessage) {
+        setCurrentTitle("");
+      }
+
       const userMessage = {
         id: Date.now(),
         sender: "user",
@@ -93,14 +100,67 @@ export default function ConversationPage() {
       setMessages((prev) => [...prev, userMessage, assistantMessage]);
 
       try {
-        await ask({
-          question,
-          conversationId: Number(id),
-          temperature: settings.temperature,
-          topP: settings.topP,
-          maxTokens: settings.maxTokens,
-          customPrompt,
-          onStreamChunk: (chunk) => {
+        // Step 1: Generate title first if it's the first message
+        if (isFirstMessage) {
+          try {
+            const titleRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/generate_title`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ question }),
+            });
+            
+            if (titleRes.ok) {
+              const reader = titleRes.body.getReader();
+              const decoder = new TextDecoder("utf-8");
+              let fullTitle = "";
+
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                fullTitle += chunk;
+                
+                setCurrentTitle(prev => {
+                  const newTitle = prev + chunk;
+                  setConversations(prevConvs => 
+                    prevConvs.map(conv => 
+                      conv.id === Number(id) 
+                        ? { ...conv, name: newTitle.trim() || "New Conversation" }
+                        : conv
+                    )
+                  );
+                  return newTitle;
+                });
+              }
+            }
+          } catch (err) {
+            console.error("Title generation failed:", err);
+          }
+        }
+
+        // Step 2: Generate response after title is complete
+        const responseRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/query`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question,
+            temperature: settings.temperature,
+            top_p: settings.topP,
+            max_new_tokens: settings.maxTokens,
+            custom_prompt: customPrompt,
+          }),
+        });
+        
+        if (responseRes.ok) {
+          const reader = responseRes.body.getReader();
+          const decoder = new TextDecoder("utf-8");
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
             assistantMessage.content += chunk;
             setMessages((prev) =>
               prev.map((msg) =>
@@ -109,16 +169,24 @@ export default function ConversationPage() {
                   : msg
               )
             );
-          },
-        });
+          }
+        } else {
+          throw new Error("Query failed");
+        }
+
       } catch (err) {
         console.error("Failed to send message:", err);
       }
 
       await fetchMessagesAndConversations();
+      
+      if (isFirstMessage) {
+        setTimeout(() => setCurrentTitle(""), 3000);
+      }
+      
       setLoading(false);
     },
-    [id, settings, customPrompt, fetchMessagesAndConversations]
+    [id, settings, customPrompt, fetchMessagesAndConversations, messages.length]
   );
 
   useEffect(() => {
@@ -197,9 +265,7 @@ export default function ConversationPage() {
           disabled={loading}
         />
       </aside>
-      <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">
-
-        <div className="relative flex justify-center w-full">
+      <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">        <div className="relative flex justify-center w-full">
           <HeaderBar
             initialTemperature={settings.temperature}
             initialTopP={settings.topP}
@@ -212,6 +278,7 @@ export default function ConversationPage() {
             onModelChange={handleModelChange}
           />
         </div>
+        
         {showPromptModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6">
