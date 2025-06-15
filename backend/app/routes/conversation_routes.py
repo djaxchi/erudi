@@ -29,6 +29,8 @@ loaded_model_id = None
 embedder = None
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+conversation_summary_cache = {}
+
 router = APIRouter()
 
 class StopOnEndToken(StoppingCriteria):
@@ -36,7 +38,6 @@ class StopOnEndToken(StoppingCriteria):
         super().__init__()
         self.end_token_id = end_token_id
     def __call__(self, input_ids, scores, **kwargs):
-        # arrête si le dernier token généré est <|end|>
         return input_ids[0, -1].item() == self.end_token_id
 
 
@@ -114,6 +115,12 @@ async def delete_conversation(conversation_id: int, db: Session = Depends(get_db
     conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    global conversation_summary_cache
+    if conversation_id in conversation_summary_cache:
+        del conversation_summary_cache[conversation_id]
+        logging.info(f"Cleared summary cache for deleted conversation {conversation_id}")
+    
     db.delete(conversation)
     db.commit()
     return {"message": "Conversation deleted successfully"}
@@ -173,82 +180,183 @@ def get_conversation_history(db: Session, conversation_id: int):
         logging.exception(f"Error retrieving conversation history: {e}")
         return []
 
-def retrieve_context(query: str, conversation_history, top_k=3):
-
+def retrieve_context(query: str, conversation_history, conversation_id: int, top_k=3, n_last_turns=2):
+    """
+    Retrieve relevant context from the conversation history based on semantic similarity and recency.
+    Uses SentenceTransformer for embeddings and FAISS for similarity search.
+    Args:
+        query (str): The user's query.
+        conversation_history (list): List of (sender, message) tuples.
+        conversation_id (int): The ID of the conversation for caching purposes.
+        top_k (int): Number of semantically relevant turns to retrieve.
+        n_last_turns (int): Number of last turns to include.
+    Returns:
+        str: Formatted context string.
+    """
     def get_embedder():
         global embedder
         if embedder is None:
             logging.info("Loading the Embedder")
-            start = datetime.now()
-
             os.makedirs(CACHE_DIR, exist_ok=True)
-
-            embedder = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", cache_folder=CACHE_DIR)
-            logging.info(f"Embedder loaded in {datetime.now() - start} seconds")
+            embedder = SentenceTransformer(
+                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                cache_folder=CACHE_DIR
+            )
+            logging.info("Embedder loaded")
         return embedder
 
-    if conversation_history is None or len(conversation_history) < 2:
-        return ""
-   
-    embedder = get_embedder()
-    semantic_context = "* The most relevant previous messages based on semantic similarity:\n"
-    recency_context = "* The last two turns between you and the user:\n"
-    if len(conversation_history) >= 4:
-        logging.info("Using semantic search for context retrieval")
-        query_embedding = embedder.encode(query, convert_to_tensor=True)
-        message_embeddings = embedder.encode([msg[1] for msg in conversation_history], convert_to_tensor=False)
-    
-        dimension = len(message_embeddings[0])
-        index = IndexFlatL2(dimension)
-        index.add(np.array(message_embeddings))
-    
-        _, indices = index.search(np.array([query_embedding.cpu().numpy()]), k=min(top_k, len(conversation_history)))
+    def get_cached_summary(conversation_id: int, current_message_count: int):
+        """Get cached summary or determine if regeneration is needed."""
+        global conversation_summary_cache
+        
+        if conversation_id not in conversation_summary_cache:
+            return None, True
+        
+        cache_entry = conversation_summary_cache[conversation_id]
+        cached_count = cache_entry["message_count"]
+        
+        if current_message_count >= cached_count * 2:
+            logging.info(f"Summary cache expired for conversation {conversation_id}: {cached_count} -> {current_message_count} messages")
+            return None, True
+        
+        logging.info(f"Using cached summary for conversation {conversation_id}: {cached_count} messages")
+        return cache_entry["summary"], False
 
-        already_used_messages = set()
-        already_used_messages.add(query)
-        for idx in indices[0]:
-            sender = conversation_history[idx][0]
-            message_text = conversation_history[idx][1]
-            if message_text in already_used_messages:
-                continue
+    def cache_summary(conversation_id: int, summary: str, message_count: int):
+        """Cache the generated summary."""
+        global conversation_summary_cache
+        conversation_summary_cache[conversation_id] = {
+            "summary": summary,
+            "message_count": message_count,
+            "generated_at": datetime.now()
+        }
+        logging.info(f"Cached summary for conversation {conversation_id} with {message_count} messages")
+
+    def generate_conversation_summary(history):
+        """Generate a quick summary of the conversation history."""
+        if not loaded_model or not current_tokenizer or len(history) < 10:
+            return ""
+        
+        conv_text = ""
+        for sender, msg in history:
+            role = "User" if sender == "user" else "Assistant"
+            conv_text += f"{role}: {msg}\n"
+        
+        if len(conv_text) > 4000:
+            conv_text = conv_text[:4000] + "..."
+        
+        summary_prompt = f"""<|system|>You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.<|end|>
+
+<|user|>Summarize this conversation:
+
+{conv_text}
+
+Summary:<|end|>
+<|assistant|>"""
+        
+        try:
+            input_ids = current_tokenizer.encode(summary_prompt, return_tensors="pt").to(device)
+            end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
+            stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
             
-            if sender != "user":
-                sender = "[assistant]"
-            else:
-                sender = "[user]"
+            with torch.no_grad():
+                output = loaded_model.generate(
+                    input_ids,
+                    max_new_tokens=150,
+                    temperature=0.3,
+                    top_p=0.8,
+                    do_sample=True,
+                    num_beams=1,
+                    pad_token_id=current_tokenizer.eos_token_id,
+                    stopping_criteria=stop_crit
+                )
+            
+            full_response = current_tokenizer.decode(output[0], skip_special_tokens=True)
+            summary = full_response.split("<|assistant|>")[-1].strip()
+            summary = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", summary).strip()
+            
+            return summary
+            
+        except Exception as e:
+            logging.exception(f"Summary generation failed: {e}")
+            return ""
 
-            if sender == "[assistant]" and idx > 0:
-                prev_sender, prev_msg = conversation_history[idx - 1]
-                if (prev_msg) not in already_used_messages:
-                    semantic_context += f"[user]: {prev_msg}\n"
-                    already_used_messages.add(prev_msg)
-                    semantic_context += f"{sender}: {message_text}\n"
-                    already_used_messages.add(message_text)
-            elif sender == "[user]" and idx + 1 < len(conversation_history):
-                next_sender, next_msg = conversation_history[idx + 1]
-                if (next_msg) not in already_used_messages:
-                    semantic_context += f"{sender}: {message_text}\n"
-                    already_used_messages.add(message_text)
-                    semantic_context += f"[assistant]: {next_msg}\n"
-                    already_used_messages.add(next_msg)
-                    
+    history = conversation_history[:-1]
+    if not history or len(history) < 2:
+        return ""
 
+    context_lines = []
+    current_message_count = len(conversation_history)
 
+    # Conv summary context
+    summary_threshold = n_last_turns * 2 * 5 
+    if len(history) > summary_threshold and loaded_model and current_tokenizer:
+        cached_summary, need_regenerate = get_cached_summary(conversation_id, current_message_count)
+        
+        if need_regenerate:
+            logging.info(f"Generating new conversation summary for {len(history)} messages")
+            summary = generate_conversation_summary(history)
+            if summary:
+                cache_summary(conversation_id, summary, current_message_count)
+        else:
+            summary = cached_summary
+        
+        if summary:
+            context_lines.append("  - Conversation Summary:\n")
+            context_lines.append(f"{summary}")
+            context_lines.append("")
 
-        last_two_turns = conversation_history[-5:-1]
-        recency_context += "\n".join([f"[assistant]: {msg}" if sender != "user" else f"[user]: {msg}" for sender, msg in last_two_turns])
+    n_recent = n_last_turns * 2
+    if len(history) > n_recent + 5:
+        semantic_history = history[:-n_recent]
     else:
-        recency_context += "\n".join([f"[assistant]: {msg}" if sender != "user" else f"[user]: {msg}" for sender, msg in conversation_history])
-    
-    relevant_context = "Here is some context about the conversation you had so far:\n\n"
-    if semantic_context != "* The most relevant previous messages based on semantic similarity:\n":
-        relevant_context += semantic_context
-        relevant_context +="\n\n"
-        relevant_context += recency_context
-    else:
-        relevant_context += recency_context
+        semantic_history = []
 
-    return relevant_context
+    # Semantic context
+    if len(semantic_history) >= top_k * 2:
+        get_embedder()
+        query_emb = embedder.encode(query, convert_to_tensor=True)
+        messages = [msg[1] for msg in semantic_history]
+        msg_embs = embedder.encode(messages, convert_to_tensor=False)
+        index = IndexFlatL2(len(msg_embs[0]))
+        index.add(np.array(msg_embs))
+        _, idxs = index.search(np.array([query_emb.cpu().numpy()]), k=min(top_k, len(semantic_history)))
+
+        used = set()
+        semantic_lines = []
+        for idx in idxs[0]:
+            sender, msg = semantic_history[idx]
+            if msg in used:
+                continue
+            used.add(msg)
+            if sender == "user" and idx + 1 < len(semantic_history):
+                next_sender, next_msg = semantic_history[idx + 1]
+                if next_msg not in used:
+                    semantic_lines.append(f"[user]: {msg}")
+                    used.add(next_msg)
+                    semantic_lines.append(f"[assistant]: {next_msg}")
+            elif sender != "user" and idx > 0:
+                prev_sender, prev_msg = semantic_history[idx - 1]
+                if prev_msg not in used:
+                    semantic_lines.append(f"[user]: {prev_msg}")
+                    used.add(prev_msg)
+                    semantic_lines.append(f"[assistant]: {msg}")
+        if semantic_lines:
+            context_lines.append(f"  - Here are the {len(semantic_lines)//2} most relevant previous message exchanges:")
+            context_lines.extend(semantic_lines)
+            context_lines.append("")
+
+    # Recency context
+    recent = history[-n_recent:] if len(history) >= n_recent else history
+    if recent:
+        context_lines.append(f"  - Here are the {len(recent)} most recent messages:")
+        for sender, msg in recent:
+            role = "[user]" if sender == "user" else "[assistant]"
+            context_lines.append(f"{role}: {msg}")
+
+    if not context_lines:
+        return ""
+    return "Here is context about the conversation you had so far:\n\n" + "\n".join(context_lines)
 
 
 @router.post("/conversations/{conversation_id}/generate_title")
@@ -389,7 +497,6 @@ async def query_and_respond(
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Add user message to database
     user_message = Message(
         conversation_id=conversation_id,
         sender="user",
@@ -401,7 +508,6 @@ async def query_and_respond(
     conversation.last_message_time = datetime.utcnow()
     db.commit()
 
-    # Get LLM for response generation
     llm = db.query(Llm).filter(Llm.id == conversation.llm_id).first()
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
@@ -436,7 +542,13 @@ async def query_and_respond(
         else:
             logging.info(f"Retrieving context for conversation {conversation_id}")
             start = datetime.now()
-            context = retrieve_context(payload.question, conversation_history, top_k=payload.n_msgs_to_get_from_conv or 3)
+            context = retrieve_context(
+                payload.question, 
+                conversation_history, 
+                conversation_id,
+                top_k=payload.n_relevent_msgs_to_get or 3,
+                n_last_turns=payload.n_last_turns_to_get  or 2,
+            )
             logging.info(f"Found relevant context: {context[:100]}... in {datetime.now() - start} seconds")
     except Exception as e:
         logging.exception("Failed to retrieve context")
@@ -538,6 +650,13 @@ async def delete_bulk(
     """Delete multiple conversations by their IDs (body JSON)."""
     try:
         conversation_ids = payload.conversation_ids
+        
+        global conversation_summary_cache
+        for conv_id in conversation_ids:
+            if conv_id in conversation_summary_cache:
+                del conversation_summary_cache[conv_id]
+                logging.info(f"Cleared summary cache for deleted conversation {conv_id}")
+        
         db.query(Conversation).filter(Conversation.id.in_(conversation_ids)).delete(synchronize_session=False)
         db.commit()
     except Exception as e:
@@ -547,3 +666,32 @@ async def delete_bulk(
             detail=f"Could not delete conversations: {str(e)}",
         )
     return {"message": "Conversations deleted successfully"}
+
+@router.post("/conversations/{conversation_id}/store_error_message")
+async def store_error_message(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+):
+    """Store an error message in the conversation when generation fails."""
+    
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Create an error message from the assistant
+    error_message = Message(
+        conversation_id=conversation_id,
+        sender="llm",
+        content="[ERROR_MESSAGE_SYSTEM] I apologize, but I encountered an error while generating a response. Please try asking your question again."
+    )
+    
+    try:
+        db.add(error_message)
+        conversation.last_message_time = datetime.utcnow()
+        db.commit()
+        logging.info(f"Stored error message for conversation {conversation_id}")
+        return {"message": "Error message stored successfully", "error_message_id": error_message.id}
+    except Exception as e:
+        db.rollback()
+        logging.exception(f"Failed to store error message for conversation {conversation_id}")
+        raise HTTPException(status_code=500, detail=f"Failed to store error message: {str(e)}")

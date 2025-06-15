@@ -34,6 +34,16 @@ export async function query(conversationId, question, {temperature = 0.5, topP =
     }catch{}
     console.error("Query Error",res.status,errJson)
     
+    // Store error message in database for conversation continuity
+    try {
+      await fetch(`${API}/conversations/${conversationId}/store_error_message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      console.log("Error message stored in database");
+    } catch (storeError) {
+      console.error("Failed to store error message:", storeError);
+    }
     
     throw new Error("Query failed");
   }
@@ -114,7 +124,6 @@ export async function ask({ question, conversationId = null, llmId = null, tempe
     isNewConversation = true;
   }
 
-  // Check if this is the first message in an existing conversation
   if (!isNewConversation && conversationId) {
     try {
       const msgRes = await fetch(`${API}/conversations/${conversationId}/fetch_messages`);
@@ -126,10 +135,8 @@ export async function ask({ question, conversationId = null, llmId = null, tempe
       console.warn("Could not check message count, assuming not new conversation");
     }
   }
-  // Start both operations in parallel
   const promises = [];
 
-  // Generate title asynchronously if this is a new conversation (don't await)
   if (isNewConversation && onTitleChunk) {
     const titlePromise = generateTitle(convId, question, { onStreamChunk: onTitleChunk })
       .catch(err => {
@@ -138,15 +145,11 @@ export async function ask({ question, conversationId = null, llmId = null, tempe
     promises.push(titlePromise);
   }
 
-  // Generate the assistant response (don't await yet)
   const responsePromise = query(convId, question, {temperature, topP, maxTokens, customPrompt, onStreamChunk});
   promises.push(responsePromise);
 
-  // Wait for the response (main content) to complete
   const assistantMessage = await responsePromise;
 
-  // Optionally wait for title generation to complete in background
-  // (we don't need to block on this)
   if (promises.length > 1) {
     Promise.all(promises).catch(err => {
       console.error("Some background operations failed:", err);

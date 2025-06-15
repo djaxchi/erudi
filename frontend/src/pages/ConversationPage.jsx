@@ -21,12 +21,19 @@ export default function ConversationPage() {
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState([]);
   const [currentModel, setCurrentModel] = useState("");
-
   const [settings, setSettings] = useState({
     temperature: 0.9,
     topP: 0.9,
     maxTokens: 200
   })
+
+  // Utility function to clean error messages for display
+  const getDisplayContent = (content) => {
+    if (content.includes("[ERROR_MESSAGE_SYSTEM]")) {
+      return content.replace("[ERROR_MESSAGE_SYSTEM] ", "❌ ");
+    }
+    return content;
+  };
 
   useEffect(() => {
     fetch("http://127.0.0.1:8000/main_window/llms/local")
@@ -100,7 +107,6 @@ export default function ConversationPage() {
       setMessages((prev) => [...prev, userMessage, assistantMessage]);
 
       try {
-        // Step 1: Generate title first if it's the first message
         if (isFirstMessage) {
           try {
             const titleRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/generate_title`, {
@@ -139,7 +145,6 @@ export default function ConversationPage() {
           }
         }
 
-        // Step 2: Generate response after title is complete
         const responseRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/query`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -156,12 +161,25 @@ export default function ConversationPage() {
           const reader = responseRes.body.getReader();
           const decoder = new TextDecoder("utf-8");
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
-            assistantMessage.content += chunk;
+              const chunk = decoder.decode(value, { stream: true });
+              assistantMessage.content += chunk;
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessage.id
+                    ? { ...msg, content: assistantMessage.content }
+                    : msg
+                )
+              );
+            }          } catch (streamError) {
+            console.error("Streaming error:", streamError);
+            
+            // If streaming failed mid-way, append an error note with robust header
+            assistantMessage.content += "\n\n[ERROR_MESSAGE_SYSTEM] Connection interrupted while generating response.";
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === assistantMessage.id
@@ -169,9 +187,37 @@ export default function ConversationPage() {
                   : msg
               )
             );
+            
+            try {
+              await fetch(`http://127.0.0.1:8000/conversations/${id}/store_error_message`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+              });
+            } catch (storeError) {
+              console.error("Failed to store error message:", storeError);
+            }
           }
         } else {
-          throw new Error("Query failed");
+          console.error("Server error during response generation:", responseRes.status);
+          
+          try {
+            await fetch(`http://127.0.0.1:8000/conversations/${id}/store_error_message`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+            });
+            console.log("Error message stored in database");
+          } catch (storeError) {
+            console.error("Failed to store error message:", storeError);
+          }
+            // Update the assistant message with error content using robust header
+          assistantMessage.content = "[ERROR_MESSAGE_SYSTEM] I apologize, but I encountered an error while generating a response. Please try asking your question again.";
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessage.id
+                ? { ...msg, content: assistantMessage.content }
+                : msg
+            )
+          );
         }
 
       } catch (err) {
@@ -315,18 +361,17 @@ export default function ConversationPage() {
             msOverflowStyle: "none",
           }}
         >
-          <style>{`::-webkit-scrollbar { display: none; }`}</style>
-
-          <div className="flex flex-col gap-6">
+          <style>{`::-webkit-scrollbar { display: none; }`}</style>          <div className="flex flex-col gap-6">
             {messages.map((msg) => (
               <div
-                key={msg.id}
-                className={`break-words w-fit max-w-[75%] p-4 rounded-2xl text-white whitespace-pre-wrap overflow-wrap break-word ${msg.sender === "user"
-                    ? "bg-[#191919] ml-auto rounded-tr-none"
-                    : "mr-auto rounded-tl-none"
-                  }`}
-              >
-                {msg.content}
+                key={msg.id}                className={`break-words w-fit max-w-[75%] p-4 rounded-2xl whitespace-pre-wrap overflow-wrap break-word ${
+                  msg.sender === "user"
+                    ? "bg-[#191919] ml-auto rounded-tr-none text-white"
+                    : msg.content.includes("[ERROR_MESSAGE_SYSTEM]")
+                    ? "mr-auto rounded-tl-none bg-emerald text-red-400"
+                    : "mr-auto rounded-tl-none bg-emerald-900 text-white"
+                }`}              >
+                {getDisplayContent(msg.content)}
               </div>
             ))}
           </div>
