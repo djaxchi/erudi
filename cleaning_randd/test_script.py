@@ -8,8 +8,14 @@ from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from typing import List
+from transformers import GPT2LMHeadModel, GPT2TokenizerFast
+import torch
+import math
+
+
 
 # — Only needs these NLTK models once:
+nltk.download('punkt_tab', quiet=True)
 nltk.download("punkt", quiet=True)
 nltk.download("stopwords", quiet=True)
 nltk.download("wordnet", quiet=True)
@@ -65,29 +71,48 @@ def tokenize_and_lemmatize(text: str) -> List[str]:
     text = lowercase(text)
     # 2) remove punctuation & URLs
     text = remove_punctuation(remove_urls(text))
+
+    ppl = calculate_perplexity(text)
+
     # 3) word tokenize
     tokens = word_tokenize(text)
     # 4) drop stop-words
     tokens = remove_stopwords(tokens)
     # 5) lemmatize
-    return lemmatize_tokens(tokens)
+    return lemmatize_tokens(tokens), ppl
+
+def calculate_perplexity(text):
+    model_name = "gpt2"
+    model = GPT2LMHeadModel.from_pretrained(model_name)
+    tokenizer = GPT2TokenizerFast.from_pretrained(model_name)
+    model.eval()
+
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=1024)
+    with torch.no_grad():
+        outputs = model(**inputs, labels=inputs["input_ids"])
+        loss = outputs.loss
+    return math.exp(loss.item())
+
+
 
 
 # ——————————————————————————————————————————————————————————
 def main():
-    p = argparse.ArgumentParser(description="Load text(s) and output lemmatized tokens")
-    p.add_argument("input", help="Path to a .txt file or folder of .txt files")
-    args = p.parse_args()
+    
 
-    docs = load_texts(args.input)
-    if not docs:
-        print("No .txt files found at", args.input)
-        return
-
+    docs = load_texts("dataset/badText.txt")
+    
     for i, doc in enumerate(docs, 1):
-        lemmas = tokenize_and_lemmatize(doc)
+        lemmas, ppl = tokenize_and_lemmatize(doc)
         print(f"\nDocument {i}/{len(docs)}: {len(lemmas)} lemmas")
         print("First 20 lemmas:", lemmas[:20])
+        print(f"Perplexity: {ppl:.2f}")
+        if ppl < 100:
+            print("Texte de bonne qualité linguistique.")
+        elif ppl < 200:
+            print("Texte acceptable mais à vérifier.")
+        else:
+            print("Texte de mauvaise qualité ou bruit possible.")
 
 
 if __name__ == "__main__":

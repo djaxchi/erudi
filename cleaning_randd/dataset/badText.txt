@@ -1,0 +1,7 @@
+Introduciton a l'informatik!!!
+
+L informatik est la science du traitement autoamtique d information... Elle permet de concevoir des algo et de progrmmer des ordinateurs pour résoudre prblèmes compliqués. Cette displine comprend plsieurs domaines, genre la programmation, systèmes d'exploitation, réseaus et securité info.
+
+Qualité cod est tres important pour garantir maintenabilité et perf des apps. Donc, il faut suivre bonnes pratiques : doc claire, nommage, test unitaire.
+
+Enfin, info évolue vite, ce qui demande apprendre continuellement pour etre a jour avec dernières tech.

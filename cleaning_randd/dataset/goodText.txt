@@ -1,0 +1,7 @@
+Introduction à l'informatique
+
+L'informatique est la science du traitement automatique de l'information. Elle permet de concevoir des algorithmes et de programmer des ordinateurs afin de résoudre des problèmes complexes. Cette discipline comprend plusieurs domaines, notamment la programmation, les systèmes d'exploitation, les réseaux et la sécurité informatique.
+
+La qualité du code est essentielle pour garantir la maintenabilité et la performance des applications. Par conséquent, il est recommandé de suivre des bonnes pratiques telles que la documentation claire, le respect des conventions de nommage, et la réalisation de tests unitaires.
+
+Enfin, l'informatique évolue rapidement, ce qui exige un apprentissage continu pour rester à jour avec les dernières technologies.
