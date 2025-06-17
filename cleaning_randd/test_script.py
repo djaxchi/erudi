@@ -13,9 +13,8 @@ import torch
 import math
 
 
-
 # — Only needs these NLTK models once:
-nltk.download('punkt_tab', quiet=True)
+nltk.download("punkt_tab", quiet=True)
 nltk.download("punkt", quiet=True)
 nltk.download("stopwords", quiet=True)
 nltk.download("wordnet", quiet=True)
@@ -81,6 +80,7 @@ def tokenize_and_lemmatize(text: str) -> List[str]:
     # 5) lemmatize
     return lemmatize_tokens(tokens), ppl
 
+
 def calculate_perplexity(text):
     model_name = "gpt2"
     model = GPT2LMHeadModel.from_pretrained(model_name)
@@ -94,14 +94,11 @@ def calculate_perplexity(text):
     return math.exp(loss.item())
 
 
-
-
 # ——————————————————————————————————————————————————————————
 def main():
-    
 
-    docs = load_texts("dataset/badText.txt")
-    
+    docs = load_texts("cleaning_randd/dataset/lyrics.txt")
+
     for i, doc in enumerate(docs, 1):
         lemmas, ppl = tokenize_and_lemmatize(doc)
         print(f"\nDocument {i}/{len(docs)}: {len(lemmas)} lemmas")
