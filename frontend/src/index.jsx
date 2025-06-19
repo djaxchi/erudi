@@ -3,23 +3,22 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
 
-setTimeout(() => {
+function renderApp() {
+  const container = document.getElementById('root');
+  if (!container) return;
+  const root = createRoot(container);
+  root.render(<App />);
+
   const loader = document.getElementById('loader');
-  const body = document.body;
-
   if (loader) {
-    loader.style.opacity = '0';
     loader.style.transition = 'opacity 0.5s ease';
-
-    setTimeout(() => {
-      loader.style.display = 'none';
-      const container = document.getElementById('root');
-      const root = createRoot(container);
-      root.render(<App />);
-    }, 0); // Wait for fade-out
-  } else {
-    const container = document.getElementById('root');
-    const root = createRoot(body);
-    root.render(<App />);
+    loader.style.opacity = '0';
+    setTimeout(() => loader.remove(), 500);
   }
-}, 0); // Delay in ms
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', renderApp);
+} else {
+  renderApp();
+}

@@ -1,5 +1,5 @@
 from ..schemas.message_schemas import MessageCreate, MessageResponse
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
 import torch
 from datetime import datetime
@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from faiss import IndexFlatL2
 from sentence_transformers import SentenceTransformer
 import numpy as np
-from ..prompting.builder import build_default_prompt, build_custom_prompt
+from ..prompting.builder import build_default_prompt
 import re
 import os
 from dotenv import load_dotenv
@@ -557,23 +557,21 @@ async def query_and_respond(
 
     lang = payload.language
     max_tokens_out = payload.max_new_tokens or 3074
-
+    custom_sys_prompt = payload.custom_prompt if payload.custom_prompt else None
+    messages_starred = []
+    if conversation_history:
+        for msg in conversation_history:
+            msg_starred_object = db.query(Message).filter(Message.content == msg[1], Message.starred == True).first()
+            if msg_starred_object:
+                messages_starred.append(msg_starred_object.content)
     prompt_text = build_default_prompt(
             question=payload.question,
             context=context,
             language=lang,
-            max_tokens=max_tokens_out
+            max_tokens=max_tokens_out,
+            custom_sys_prompt=custom_sys_prompt,
+            messages_starred=messages_starred,
         )
-
-    if payload.custom_prompt:
-        logging.info("➡️ Rendering custom prompt via Jinja")
-        prompt_text_customized = build_custom_prompt(
-            payload.custom_prompt,
-            payload.question,
-            context,
-            lang
-        )
-        prompt_text = ( prompt_text + "\n Instructions Utilisateur Personnalisées : " + prompt_text_customized )
 
 
     logging.info("Final prompt to model:\n%s", prompt_text)
@@ -695,3 +693,52 @@ async def store_error_message(
         db.rollback()
         logging.exception(f"Failed to store error message for conversation {conversation_id}")
         raise HTTPException(status_code=500, detail=f"Failed to store error message: {str(e)}")
+    
+
+@router.post("/conversations/star_message")
+async def star_message(
+    message: str = Body(..., embed=True),
+    db: Session = Depends(get_db),
+):
+    """Star a message in the conversation."""
+    
+    message = db.query(Message).filter(Message.content == message).first()
+    if not message:
+        raise HTTPException(status_code=404, detail="Message to star not found")
+    
+    message.starred = True
+    try:
+        db.commit()
+        logging.info(f"Message {message.id} starred successfully.")
+        return {
+            "state": "success",
+            "message": "Message starred successfully"
+        }
+    except Exception as e:
+        db.rollback()
+        logging.exception(f"Failed to star message.")
+        raise HTTPException(status_code=500, detail=f"Failed to star message: {str(e)}")
+    
+@router.post("/conversations/unstar_message")
+async def unstar_message(
+    message: str = Body(..., embed=True),
+    db: Session = Depends(get_db),
+):
+    """Unstar a message in the conversation."""
+    
+    message = db.query(Message).filter(Message.content == message).first()
+    if not message:
+        raise HTTPException(status_code=404, detail="Message to unstar not found")
+    
+    message.starred = False
+    try:
+        db.commit()
+        logging.info(f"Message {message.id} unstarred successfully.")
+        return {
+            "state": "success",
+            "message": "Message unstarred successfully"
+        }
+    except Exception as e:
+        db.rollback()
+        logging.exception(f"Failed to unstar message.")
+        raise HTTPException(status_code=500, detail=f"Failed to unstar message: {str(e)}")

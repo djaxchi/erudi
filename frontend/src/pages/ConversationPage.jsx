@@ -5,13 +5,17 @@ import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import QuestionInput from "../components/QuestionInput";
 import { ask } from "../services/conversationService";
 import HeaderBar from "../components/HeaderBar";
+import { Copy, Check, Star } from "lucide-react";
 
 export default function ConversationPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [messages, setMessages] = useState([]);  const [conversations, setConversations] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [copiedMessageId, setCopiedMessageId] = useState(null);
+  const [starredIds, setStarredIds] = useState({});
+  const [conversations, setConversations] = useState([]);
   const scrollRef = useRef(null);
   const [currentTitle, setCurrentTitle] = useState("");
 
@@ -71,6 +75,10 @@ export default function ConversationPage() {
         fetch("http://127.0.0.1:8000/conversations"),
       ]);
       const msgs = await msgRes.json();
+      // initialize starred state from backend
+      const starredMap = {};
+      msgs.forEach(m => { if (m.starred) starredMap[m.id] = true; });
+      setStarredIds(starredMap);
       const convs = await convRes.json();
       convs.sort(
         (a, b) =>
@@ -256,6 +264,10 @@ export default function ConversationPage() {
         try {
           const msgRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/fetch_messages`);
           const msgs = await msgRes.json();
+          // initialize starred state on initial load
+          const starredMap = {};
+          msgs.forEach(m => { if (m.starred) starredMap[m.id] = true; });
+          setStarredIds(starredMap);
           setMessages(msgs);
         } catch (err) {
           console.error("Fetch error (messages):", err);
@@ -289,6 +301,22 @@ export default function ConversationPage() {
     await fetchMessagesAndConversations();
     if (cid === Number(id)) {
       navigate("/main_window/chat");
+    }
+  };
+
+  // Toggle star state and send appropriate POST
+  const toggleStar = async (msgId, content) => {
+    const isStarred = starredIds[msgId];
+    const url = `http://127.0.0.1:8000/conversations/${isStarred ? 'unstar_message' : 'star_message'}`;
+    try {
+      await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message : content }),
+      });
+      setStarredIds(prev => ({ ...prev, [msgId]: !isStarred }));
+    } catch (err) {
+      console.error('Star toggle failed:', err);
     }
   };
 
@@ -362,18 +390,55 @@ export default function ConversationPage() {
           }}
         >
           <style>{`::-webkit-scrollbar { display: none; }`}</style>          <div className="flex flex-col gap-6">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}                className={`break-words w-fit max-w-[75%] p-4 rounded-2xl whitespace-pre-wrap overflow-wrap break-word ${
-                  msg.sender === "user"
-                    ? "bg-[#191919] ml-auto rounded-tr-none text-white"
-                    : msg.content.includes("[ERROR_MESSAGE_SYSTEM]")
-                    ? "mr-auto rounded-tl-none bg-emerald text-red-400"
-                    : "mr-auto rounded-tl-none bg-emerald-900 text-white"
-                }`}              >
-                {getDisplayContent(msg.content)}
-              </div>
-            ))}
+            {messages.map((msg) => {
+              const isUser = msg.sender === 'user';
+              const alignmentClass = isUser ? 'items-end' : 'items-start';
+              const bubbleClass = isUser
+                ? 'bg-[#191919] ml-auto rounded-tr-none text-white'
+                : msg.content.includes('[ERROR_MESSAGE_SYSTEM]')
+                ? 'bg-emerald text-red-400 mr-auto rounded-tl-none'
+                : 'bg-emerald-900 text-white mr-auto rounded-tl-none';
+              return (
+                <div key={msg.id} className={`group flex flex-col mb-2 ${alignmentClass}`}>  
+                  <div
+                    className={`break-words w-fit max-w-[75%] p-4 rounded-2xl whitespace-pre-wrap overflow-wrap break-word ${bubbleClass}`}
+                  >
+                    {getDisplayContent(msg.content)}
+                  </div>
+                  <div className="flex mt-1 space-x-2 opacity-0 group-hover:opacity-100">
+                    {/* Copy button */}
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(msg.content).then(() => {
+                          setCopiedMessageId(msg.id);
+                          setTimeout(() => setCopiedMessageId(null), 1000);
+                        });
+                      }}
+                      className="text-gray-400 hover:text-white transition-colors"
+                      title="Copy message"
+                    >
+                      {copiedMessageId === msg.id ? (
+                        <Check size={16} className="text-green-400" />
+                      ) : (
+                        <Copy size={16} />
+                      )}
+                    </button>
+                    {/* Star button */}
+                    <button
+                      onClick={() => toggleStar(msg.id, msg.content)}
+                      className="text-gray-400 hover:text-white transition-colors"
+                      title="Star message"
+                    >
+                      <Star
+                        size={16}
+                        className={starredIds[msg.id] ? 'text-yellow-400' : ''}
+                        fill={starredIds[msg.id] ? 'currentColor' : 'none'}
+                      />
+                    </button>
+                  </div>
+                 </div>
+               );
+             })}
           </div>
         </div>
         <div className="sticky bottom-0 left-0 right-0 px-10 py-10 backdrop-blur-md flex justify-center w-full">

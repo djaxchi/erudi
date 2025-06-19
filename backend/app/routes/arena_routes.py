@@ -1,3 +1,5 @@
+import logging
+from ..schemas.arena_schemas import ArenaQueryPayload
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -11,7 +13,7 @@ from transformers import (
 import torch, re, threading
 from ..database import get_db
 from ..models.Llm import Llm
-from ..prompting.builder import build_default_prompt, build_custom_prompt
+from ..prompting.builder import build_default_prompt
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 
@@ -29,7 +31,7 @@ _loaded_model_id = None
 @router.post("/{llm_id}/query")
 async def query_arena(
     llm_id: int,
-    payload: dict,
+    payload: ArenaQueryPayload,
     db: Session = Depends(get_db)
 ):
     """
@@ -37,10 +39,17 @@ async def query_arena(
     - llm_id: ID du modèle
     - payload: { question, temperature?, topP?, maxNewTokens?, customPrompt? }
     """
-    question = payload.get("question")
+    question = payload.question
+    temperature = payload.temperature or 0.9
+    top_p = payload.top_p or 0.9
+    max_new_tokens = payload.max_new_tokens or 200
+    custom_prompt = payload.custom_prompt or ""
+
     if not question:
         raise HTTPException(status_code=400, detail="Missing 'question'")
+    logging.info(f"Querying LLM from DB")
     llm = db.query(Llm).filter(Llm.id == llm_id).first()
+    logging.info(f"Querying LLM from DB ------------ Finished")
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
 
@@ -56,26 +65,13 @@ async def query_arena(
         _loaded_model.to(device).eval()
         _loaded_model_id = llm_id
 
-    # Construit un prompt minimal (pas d'historique)
-    prompt = f"{payload.get('customPrompt','')}\n{question}".strip()
-
     prompt_text = build_default_prompt(
             question=question,
-            history=None,
-            context=None,
-            language="fr",
-            max_tokens=payload.get("maxNewTokens")
+            max_tokens=max_new_tokens, 
+            custom_sys_prompt=custom_prompt
         )
 
-    if payload.get("customPrompt"):
-        prompt_text_customized = build_custom_prompt(
-            payload["customPrompt"],
-            question,
-            None,
-            None,
-            "fr"
-        )
-        prompt_text = ( prompt_text + "\n Instructions Utilisateur Personnalisées : " + prompt_text_customized )
+    
 
 
     input_ids = _current_tokenizer.encode(prompt_text, return_tensors="pt").to(device)
@@ -88,9 +84,6 @@ async def query_arena(
         _current_tokenizer, skip_prompt=True, skip_special_tokens=True
     )
 
-    max_new_tokens = payload.get("maxNewTokens",1000)
-    temperature = payload.get("temperature", 0.5 )
-    top_p = payload.get("toP, 0.9")
 
     def run_generation():
         with torch.no_grad():

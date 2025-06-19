@@ -29,8 +29,7 @@ class ConversationWithMessagesResponse(ConversationResponse):
     messages: List[MessageResponse]
 
 class ConversationQuery(BaseModel):
-    question: str
-    history: Optional[List[dict]] = None    
+    question: str 
     language: Optional[str] = None         
     temperature: Optional[float] = None
     top_p: Optional[float] = None
