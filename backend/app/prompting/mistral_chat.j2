@@ -1,17 +1,9 @@
 <|system|>
 {{ system_instruction }}
 {% if context %}
-Contexte pertinent :
 {{ context }}
 {% endif %}
 <|end|>
 
-{% for text in history %}
-<|user|>{{ text }}<|end|>
-{% endfor %}
-
 <|user|>{{ question }}<|end|>
 <|assistant|>
-
-
-

@@ -12,6 +12,7 @@ class MessageResponse(MessageBase):
     id: int
     conversation_id: int
     timestamp: datetime
+    starred: bool
 
     class Config:
         from_attributes = True

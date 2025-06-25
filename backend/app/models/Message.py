@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from ..database import Base
 from datetime import datetime
@@ -11,5 +11,5 @@ class Message(Base):
     sender = Column(String, nullable=False)  # "user" or "llm"
     content = Column(String, nullable=False)  # The message content
     timestamp = Column(DateTime, default=datetime.utcnow)
-
+    starred = Column(Boolean, default=False, nullable=False)  # True if starred
     conversation = relationship("Conversation", back_populates="messages")
