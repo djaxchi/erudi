@@ -36,7 +36,7 @@ module.exports = {
       meta: {
         "Content-Security-Policy": `
           default-src 'self';
-          connect-src 'self' http://localhost:8000/ http://127.0.0.1:8000/ ws://127.0.0.1:8000/ ws://localhost:3000/;
+          connect-src *;
           script-src 'self' 'unsafe-inline';
           style-src 'self' 'unsafe-inline';
           img-src 'self' data:;

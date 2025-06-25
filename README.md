@@ -12,7 +12,7 @@ Docker
 
 git clone https://github.com/votre-utilisateur/smarter.git
 cd smarter
-
+rqe: SMARTER est l'ancien nom... C'est Erudi maintenant
 2. Installer les dépendances de l'interface
 
 cd frontend

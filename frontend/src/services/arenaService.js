@@ -17,9 +17,9 @@ export async function askArena({
     body: JSON.stringify({
       question: question,
       temperature: temperature,
-      topP: topP,
-      maxNewTokens: maxNewTokens,
-      customPrompt: customPrompt,
+      top_p: topP,
+      max_new_tokens: maxNewTokens,
+      custom_prompt: customPrompt,
     }),
   });
   if (!res.ok) throw new Error("Arena query failed");

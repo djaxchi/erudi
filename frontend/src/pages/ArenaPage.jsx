@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import Sidebar from "../components/Sidebar";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
@@ -10,7 +10,7 @@ const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
   temperature: 0.5,
   topP: 0.9,
-  maxTokens: 1000,
+  maxTokens: 200,
   customPrompt: "",
 };
 
@@ -33,175 +33,188 @@ export default function ArenaPage() {
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Fetch models and initialize panels
+  const streamingPanels = useRef(new Set());
+  const buffersRef = useRef({});
+  const flushIntervalRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     fetch("http://127.0.0.1:8000/main_window/llms/local")
       .then((res) => res.json())
       .then((data) => {
         setModels(data);
-        setPanels([0, 1].map(i => makePanel(i, data[i % data.length]?.name, data)));
+        setPanels(
+          [0, 1].map((i) => makePanel(i, data[i % data.length]?.name, data))
+        );
       })
-      .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
+      .catch((err) =>
+        console.error("Erreur lors du fetch des modèles:", err)
+      );
   }, []);
 
-  // Handle model change for a panel
-  const handleModelChange = (panelId, newModel) => {
+  const handleModelChange = (panelId, newModel) =>
     setPanels((prev) =>
-      prev.map((panel) =>
-        panel.id === panelId ? { ...panel, selectedModel: newModel } : panel
+      prev.map((p) =>
+        p.id === panelId ? { ...p, selectedModel: newModel } : p
       )
     );
-  };
 
-  // Handle settings change for a panel
-  const handleSettingsChange = (panelId, newSettings) => {
+  const handleSettingsChange = (panelId, newSettings) =>
     setPanels((prev) =>
-      prev.map((panel) =>
-        panel.id === panelId ? { ...panel, ...newSettings } : panel
-      )
+      prev.map((p) => (p.id === panelId ? { ...p, ...newSettings } : p))
     );
-  };
 
-  // Handle prompt customization for a panel
-  const handleCustomizePrompt = (panelId, show) => {
+  const handleCustomizePrompt = (panelId, show) =>
     setPanels((prev) =>
-      prev.map((panel) =>
-        panel.id === panelId ? { ...panel, showPromptModal: show } : panel
-      )
+      prev.map((p) => (p.id === panelId ? { ...p, showPromptModal: show } : p))
     );
-  };
 
-  // Handle prompt input and LLM response
   const handleAsk = async (inputValue) => {
+    if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
     setLoading(true);
 
-    // Add user message to each panel
-    setPanels((prev) =>
-      prev.map((panel) => ({
-        ...panel,
-        messages: [...panel.messages, { role: "user", content: inputValue }],
-      }))
-    );
+    const withPlaceholders = panels.map((panel) => ({
+      ...panel,
+      messages: [
+        ...panel.messages,
+        { role: "user", content: inputValue },
+        { role: "llm", content: "" },
+      ],
+    }));
+    setPanels(withPlaceholders);
 
-   // Wait for state update
-await new Promise((resolve) => setTimeout(resolve, 0));
+    buffersRef.current = {};
+    streamingPanels.current = new Set(withPlaceholders.map((p) => p.id));
+    withPlaceholders.forEach((p) => {
+      buffersRef.current[p.id] = [];
+    });
 
-// Pour chaque panel on va :
-// 1) ajouter un message assistant vide
-// 2) lancer askArena en streaming, et coller les chunks au fur et à mesure
-panels.forEach(panel => {
-  const llm = models.find(m => m.name === panel.selectedModel);
-  if (!llm) {
-    return setPanels(prev =>
-      prev.map(p =>
-        p.id === panel.id
-          ? {
-              ...p,
-              messages: [...p.messages, { role: "llm", content: "[Model not found]" }],
-            }
-          : p
-      )
-    );
-  }
+    const flushBuffers = () => {
+      const stillStreaming = streamingPanels.current.size > 0;
+      const activeIds = stillStreaming
+        ? Array.from(streamingPanels.current)
+        : Object.keys(buffersRef.current).map(Number);
 
-  // 1) on ajoute le message assistant vide
-  setPanels(prev =>
-    prev.map(p =>
-      p.id === panel.id
-        ? { ...p, messages: [...p.messages, { role: "llm", content: "" }] }
-        : p
-    )
-  );
+      const ready = stillStreaming
+        ? activeIds.every((id) => buffersRef.current[id].length > 0)
+        : activeIds.some((id) => buffersRef.current[id].length > 0);
 
-  // 2) on stream la réponse
-  askArena({
-    question:     inputValue,
-    llmId:        llm.id,
-    temperature:  panel.temperature,
-    topP:         panel.topP,
-    maxNewTokens: panel.maxTokens,
-    customPrompt: panel.customPrompt,
-    onStreamChunk: chunk => {
-      setPanels(prev =>
-        prev.map(p => {
-          if (p.id !== panel.id) return p;
-          const msgs = [...p.messages];
-          const last = msgs.pop();
-          msgs.push({ ...last, content: last.content + chunk });
-          return { ...p, messages: msgs };
+      if (!ready) return;
+
+      setPanels((prev) =>
+        prev.map((p) => {
+          const buf = buffersRef.current[p.id];
+          if (buf?.length) {
+            const nextTok = buf.shift();
+            const msgs = [...p.messages];
+            msgs[msgs.length - 1] = {
+              ...msgs[msgs.length - 1],
+              content: msgs[msgs.length - 1].content + nextTok,
+            };
+            return { ...p, messages: msgs };
+          }
+          return p;
         })
       );
-    }
-  }).catch(() => {
-    // en cas d’erreur de stream, on remplace le message vide par "[Erreur]"
-    setPanels(prev =>
-      prev.map(p =>
-        p.id === panel.id
-          ? {
-              ...p,
-              messages: [
-                ...p.messages.slice(0, -1),
-                { role: "llm", content: "[Erreur]" },
-              ],
-            }
-          : p
-      )
-    );
-  });
-});
 
+      if (
+        !stillStreaming &&
+        activeIds.every((id) => buffersRef.current[id].length === 0)
+      ) {
+        clearInterval(flushIntervalRef.current);
+        flushIntervalRef.current = null;
+        setLoading(false);
+      }
+    };
+    flushIntervalRef.current = setInterval(flushBuffers, 50);
 
+    withPlaceholders.forEach((panel) => {
+      const llm = models.find((m) => m.name === panel.selectedModel);
+      if (!llm) {
+        buffersRef.current[panel.id].push("[Model not found]");
+        streamingPanels.current.delete(panel.id);
+        if (streamingPanels.current.size === 0) setLoading(false);
+        return;
+      }
+
+      askArena({
+        question:     inputValue,
+        llmId:        llm.id,
+        temperature:  panel.temperature,
+        topP:         panel.topP,
+        maxNewTokens: panel.maxTokens,
+        customPrompt: panel.customPrompt,
+        onStreamChunk: (chunk) => {
+          buffersRef.current[panel.id].push(chunk);
+        },
+      })
+        .then(() => {
+          streamingPanels.current.delete(panel.id);
+          if (streamingPanels.current.size === 0) setLoading(false);
+        })
+        .catch(() => {
+          buffersRef.current[panel.id].push("[Erreur]");
+          streamingPanels.current.delete(panel.id);
+          if (streamingPanels.current.size === 0) setLoading(false);
+        });
+    });
 
     setInputValue("");
-    setLoading(false);
   };
 
   const handleAddPanel = () => {
     if (panels.length >= MAX_PANELS) return;
-    const nextId = panels.length > 0 ? Math.max(...panels.map((p) => p.id)) + 1 : 0;
+    const nextId = panels.length
+      ? Math.max(...panels.map((p) => p.id)) + 1
+      : 0;
     const defaultModel = models[panels.length % models.length]?.name || "";
     setPanels((prev) => [...prev, makePanel(nextId, defaultModel, models)]);
   };
 
-  const handleDeletePanel = (panelId) => {
-    setPanels((prev) => prev.filter((panel) => panel.id !== panelId));
-  };
+  const handleDeletePanel = (panelId) =>
+    setPanels((prev) => prev.filter((p) => p.id !== panelId));
 
-  // Grid layout logic (unchanged)
   let gridClass = "";
-  if (panels.length === 1) {
-    gridClass = "grid grid-cols-1 gap-4 w-full h-full";
-  } else if (panels.length === 2) {
-    gridClass = "grid grid-cols-2 gap-4 w-full";
-  } else if (panels.length === 3) {
-    gridClass = "grid grid-cols-3 gap-4 w-full";
-  } else if (panels.length === 4) {
-    gridClass = "grid grid-cols-2 grid-rows-2 gap-4 w-full";
-  }
+  if (panels.length === 1) gridClass = "grid-cols-1";
+  else if (panels.length === 2) gridClass = "grid-cols-2";
+  else if (panels.length === 3) gridClass = "grid-cols-3";
+  else if (panels.length === 4) gridClass = "grid-cols-2 grid-rows-2";
 
   const renderChatPanel = (panel) => (
-    <GradientBox key={panel.id} className="flex flex-col mx-2 min-w-[320px] h-full">
+    <GradientBox
+      key={panel.id}
+      className="flex flex-col mx-2 min-w-[320px] h-full"
+    >
       <div className="flex items-center justify-between pb-2">
         <HeaderBar
           initialTemperature={panel.temperature}
           initialTopP={panel.topP}
           initialMaxTokens={panel.maxTokens}
-          onApply={(newSettings) => handleSettingsChange(panel.id, newSettings)}
+          onApply={(s) => handleSettingsChange(panel.id, s)}
           onCustomizePrompt={() => handleCustomizePrompt(panel.id, true)}
           disabled={loading}
           models={models}
           currentModel={panel.selectedModel}
-          onModelChange={(modelName) => handleModelChange(panel.id, modelName)}
+          onModelChange={(m) => handleModelChange(panel.id, m)}
         />
         {panel.showPromptModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6">
-              <h2 className="text-xl font-semibold mb-4">Personnaliser le prompt</h2>
+              <h2 className="text-xl font-semibold mb-4">
+                Personnaliser le prompt
+              </h2>
               <textarea
                 className="w-full h-40 border rounded p-2 mb-4"
                 value={panel.customPrompt}
                 onChange={(e) =>
-                  handleSettingsChange(panel.id, { customPrompt: e.target.value })
+                  handleSettingsChange(panel.id, {
+                    customPrompt: e.target.value,
+                  })
                 }
               />
               <div className="flex justify-end space-x-2">
@@ -229,7 +242,9 @@ panels.forEach(panel => {
           <Trash className="w-5 h-5" />
         </button>
       </div>
-      <div className="flex-1 flex flex-col gap-2 pb-6 overflow-y-auto">
+
+      {/* scrollable messages area */}
+      <div className="flex-1 overflow-y-auto flex flex-col gap-2 pb-6">
         {panel.messages.map((msg, idx) => (
           <div
             key={idx}
@@ -250,9 +265,12 @@ panels.forEach(panel => {
     <div className="flex h-screen">
       <Sidebar disabled={loading} />
       <main className="flex-1 flex flex-col bg-[#071b18] relative">
-        <div className={`flex-1 p-8 ${gridClass}`}>
+        {/* grid with panels, full height */}
+        <div className={`flex-1 p-8 grid gap-4 ${gridClass} h-full`}>
           {panels.map(renderChatPanel)}
         </div>
+
+        {/* input bar */}
         <div className="w-full flex justify-center items-center pb-8">
           <div className="w-[700px] max-w-full">
             <QuestionInput
@@ -262,23 +280,22 @@ panels.forEach(panel => {
             />
           </div>
         </div>
+
+        {/* add-panel button */}
         <button
           className={`fixed bottom-8 right-8 z-50 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full w-14 h-14 flex items-center justify-center text-4xl shadow-lg transition-all duration-200 ${
             panels.length >= MAX_PANELS ? "opacity-50 cursor-not-allowed" : ""
           }`}
           onClick={handleAddPanel}
           disabled={panels.length >= MAX_PANELS}
-          title={panels.length >= MAX_PANELS ? "Maximum 4 panels" : "Add chat panel"}
+          title={
+            panels.length >= MAX_PANELS
+              ? "Maximum 4 panels"
+              : "Add chat panel"
+          }
         >
           +
         </button>
-        {loading && (
-          <div className="fixed inset-0 z-[100] bg-black bg-opacity-40 flex items-center justify-center cursor-progress select-none">
-            <div className="text-white text-xl font-bold animate-pulse">
-              Loading...
-            </div>
-          </div>
-        )}
       </main>
     </div>
   );

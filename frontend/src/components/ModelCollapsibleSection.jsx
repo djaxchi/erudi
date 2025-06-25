@@ -63,6 +63,7 @@ export default function CollapsibleSection({ title }) {
         eventSource.onmessage = (event) => {
           if (event.data === "installed") {
             setIsDownloading(false);
+            fetchModels();
             eventSource.close();
           }
           if (event.data.startsWith("error")) {
