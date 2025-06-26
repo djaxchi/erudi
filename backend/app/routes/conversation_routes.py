@@ -1,4 +1,4 @@
-from ..schemas.message_schemas import MessageCreate, MessageResponse
+from app.schemas.message_schemas import MessageCreate, MessageResponse
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from transformers import StoppingCriteria, StoppingCriteriaList
@@ -7,18 +7,18 @@ from datetime import datetime
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
 import logging
 from typing import List
-from ..database import get_db
-from ..models.Conversation import Conversation
-from ..models.Llm import Llm
-from ..models.Message import Message
-from ..routes.message_routes import add_message_to_conversation
-from ..schemas.conversation_schemas import ConversationCreate, ConversationDeleteBulk, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
+from app.database import get_db
+from app.models.Conversation import Conversation
+from app.models.Llm import Llm
+from app.models.Message import Message
+from app.routes.message_routes import add_message_to_conversation
+from app.schemas.conversation_schemas import ConversationCreate, ConversationDeleteBulk, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
 import threading
 from fastapi.responses import StreamingResponse
 from faiss import IndexFlatL2
 from sentence_transformers import SentenceTransformer
 import numpy as np
-from ..prompting.builder import build_default_prompt, build_custom_prompt
+from app.prompting.builder import build_default_prompt, build_custom_prompt
 import re
 import time
 

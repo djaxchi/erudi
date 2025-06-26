@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from ..database import get_db
-from ..models.Conversation import Conversation
-from ..models.Message import Message
-from ..schemas.message_schemas import MessageCreate, MessageResponse
+from app.database import get_db
+from app.models.Conversation import Conversation
+from app.models.Message import Message
+from app.schemas.message_schemas import MessageCreate, MessageResponse
 from datetime import datetime
 from transformers import pipeline, AutoTokenizer
 import logging

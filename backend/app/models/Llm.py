@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String
-from ..database import Base
+from app.database import Base
 
 class Llm(Base):
     __tablename__ = "llms"

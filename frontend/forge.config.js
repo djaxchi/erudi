@@ -4,6 +4,12 @@ const { FuseV1Options, FuseVersion } = require("@electron/fuses");
 module.exports = {
   packagerConfig: {
     asar: true,
+    extraFiles: [
+      {
+        from: "../backend/dist/erudi-backend.exe",
+        to: "./erudi-backend.exe",
+      },
+    ],
   },
   rebuildConfig: {},
   makers: [

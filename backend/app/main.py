@@ -2,16 +2,26 @@ import os
 import shutil
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import basic_routes, llm_routes, conversation_routes, message_routes, bd_routes, hardware_routes, training_routes, arena_routes
-from .database import Base, engine
-from .models.Llm import Llm
+from app.routes import (
+    basic_routes,
+    llm_routes,
+    conversation_routes,
+    message_routes,
+    bd_routes,
+    hardware_routes,
+    training_routes,
+    arena_routes,
+)
+from app.database import Base, engine
+from app.models.Llm import Llm
 from sqlalchemy.orm import Session
-from .database import SessionLocal
+from app.database import SessionLocal
 from pydantic import BaseModel
 import logging
-from .models.Conversation import Conversation
-from .models.Message import Message
-from .models.TrainingJob import TrainingJob
+from app.models.Conversation import Conversation
+from app.models.Message import Message
+from app.models.TrainingJob import TrainingJob
+
 
 async def createTables():
     # Create all tables in the database
@@ -77,3 +87,10 @@ app.include_router(bd_routes.router)
 app.include_router(hardware_routes.router)
 app.include_router(training_routes.router)
 app.include_router(arena_routes.router)
+
+
+def start_app():
+    import uvicorn
+
+    logging.info("Launching FastAPI backend...")
+    uvicorn.run(app, host="127.0.0.1", port=8000)

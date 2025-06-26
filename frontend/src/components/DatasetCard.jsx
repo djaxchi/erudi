@@ -5,14 +5,13 @@ import { Check, Folder, Loader } from "lucide-react";
 
 const API_BASE = "http://localhost:8000";
 
-
 export default function DatasetCard({ selectedModel, modelName }) {
   const [type, setType] = useState("Textuel");
   const types = ["Textuel", "Images", "Audio"];
 
   const [dataPath, setDataPath] = useState("/AppData/DataStorage/");
   const [paths, setPaths] = useState([]);
-  
+
   // Nouveaux états pour le suivi d'entraînement
   const [isTraining, setIsTraining] = useState(false);
   const [trainingStatus, setTrainingStatus] = useState(null);
@@ -33,7 +32,6 @@ export default function DatasetCard({ selectedModel, modelName }) {
   }, []);
 
   const openExplorer = async () => {
-    
     if (window.electron) {
       const selectedPath = await window.electron.openDirectory();
       if (selectedPath) {
@@ -42,7 +40,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
         console.log("Chemin du dossier sélectionné :", selectedPath);
       }
     } else {
-      console.error('window.electron est undefined');
+      console.error("window.electron est undefined");
     }
   };
 
@@ -73,7 +71,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
   const checkTrainingStatus = async (llmId) => {
     try {
       const response = await fetch(`${API_BASE}/training/${llmId}/status`);
-      
+
       if (!response.ok) {
         if (response.status === 404) {
           // Le job de training n'existe plus (probablement supprimé après un échec)
@@ -106,7 +104,9 @@ export default function DatasetCard({ selectedModel, modelName }) {
       return false;
     } catch (error) {
       console.error("Erreur lors de la vérification du statut:", error);
-      setTrainingError(`Erreur lors de la vérification du statut: ${error.message}`);
+      setTrainingError(
+        `Erreur lors de la vérification du statut: ${error.message}`
+      );
       setIsTraining(false);
       return true; // Arrêter le polling en cas d'erreur
     }
@@ -121,7 +121,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
     // Vérifier toutes les 3 secondes
     pollingRef.current = setInterval(async () => {
       const shouldStop = await checkTrainingStatus(llmId);
-      
+
       if (shouldStop && pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
@@ -171,7 +171,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
       // Activer l'état d'entraînement
       setIsTraining(true);
       setTrainingStatus("pending");
-      
+
       const response = await fetch(`${API_BASE}/train`, {
         method: "POST",
         headers: {
@@ -190,7 +190,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
 
       const data = await response.json();
       console.log("Réponse du backend:", data);
-      
+
       // Récupérer l'ID du modèle en entraînement et démarrer le polling
       if (data.llm_in_training_id) {
         setTrainingId(data.llm_in_training_id);
@@ -198,7 +198,6 @@ export default function DatasetCard({ selectedModel, modelName }) {
       } else {
         throw new Error("ID du modèle en entraînement non reçu");
       }
-      
     } catch (error) {
       console.error("Erreur lors de l'envoi des infos d'entrainement:", error);
       setErrorMsg("Une erreur est survenue.");
@@ -235,7 +234,6 @@ export default function DatasetCard({ selectedModel, modelName }) {
               onChange={onFilesChosen}
             />
           </div>
-
           <div className="flex flex-col gap-1 w-[50%]">
             <h3 className="text-xl font-bold mb-2">Dataset</h3>
             <div
@@ -261,29 +259,62 @@ export default function DatasetCard({ selectedModel, modelName }) {
 
         <div className="flex-1 flex lg:mt-12 items-end flex-col">
           {isTraining ? (
-            <div className="w-full text-center">
-              <div className="w-full bg-gray-700 rounded-full h-4 mb-2">
-                <div
-                  className="bg-emerald-400 h-4 rounded-full transition-all"
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-              <div className="text-emerald-400 text-sm">
-                {progress.toFixed(1)}% — 
-                {timeElapsed ? ` Écoulé: ${Math.round(timeElapsed)}s` : ""}
-                {timeLeft ? ` — Restant: ~${Math.round(timeLeft)}s` : ""}
-              </div>
-              <div className="inline-flex items-center gap-2 py-3">
-                <Loader className="w-5 h-5 text-emerald-400 animate-spin" />
-                <span className="text-emerald-400">
-                  {trainingStatus === "running"
-                    ? "Entraînement en cours..."
-                    : "Préparation de l'entraînement..."}
-                </span>
+            <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+              <div className="bg-[#1a1a1a] p-6 rounded-2xl shadow-xl flex flex-col items-center space-y-4 w-56">
+                {/* 1) Ring container */}
+                <div className="relative w-20 h-20">
+                  <svg
+                    className="absolute inset-0 transform -rotate-90"
+                    viewBox="0 0 100 100"
+                  >
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="45"
+                      className="stroke-gray-700 stroke-4 fill-none"
+                    />
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="45"
+                      className="stroke-emerald-400 stroke-4 fill-none transition-[stroke-dashoffset] duration-300 ease-out"
+                      style={{
+                        strokeDasharray: 2 * Math.PI * 45,
+                        strokeDashoffset:
+                          2 * Math.PI * 45 * (1 - progress / 100),
+                      }}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-emerald-400 font-medium">
+                      {progress.toFixed(0)}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* 2) Elapsed / remaining */}
+                <div className="text-gray-300 text-sm text-center">
+                  {timeElapsed != null && (
+                    <>
+                      Écoulé : {Math.round(timeElapsed)} s<br />
+                    </>
+                  )}
+                  {timeLeft != null && <>Restant : ~{Math.round(timeLeft)} s</>}
+                </div>
+
+                {/* 3) Spinner + status */}
+                <div className="flex items-center space-x-2">
+                  <Loader className="w-5 h-5 text-emerald-400 animate-spin" />
+                  <span className="text-emerald-400 text-sm">
+                    {trainingStatus === "running"
+                      ? "Entraînement en cours..."
+                      : "Préparation..."}
+                  </span>
+                </div>
               </div>
             </div>
           ) : (
-            <button 
+            <button
               className="w-40 mx-auto py-3 rounded-full border border-emerald-400/20 text-emerald-400 font-semibold hover:bg-emerald-400/10 transition"
               onClick={simulateTraining}
             >
@@ -291,15 +322,19 @@ export default function DatasetCard({ selectedModel, modelName }) {
             </button>
           )}
         </div>
-        
+
         {errorMsg && (
-          <div className="text-red-400 text-sm mt-2 text-center w-full">{errorMsg}</div>
+          <div className="text-red-400 text-sm mt-2 text-center w-full">
+            {errorMsg}
+          </div>
         )}
-        
+
         {trainingError && (
-          <div className="text-red-400 text-sm mt-2 text-center w-full">{trainingError}</div>
+          <div className="text-red-400 text-sm mt-2 text-center w-full">
+            {trainingError}
+          </div>
         )}
-        
+
         {trainingStatus === "completed" && (
           <div className="text-emerald-400 text-sm mt-2 text-center w-full">
             Entraînement terminé avec succès!
