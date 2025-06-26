@@ -5,6 +5,7 @@ import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
 import { ask } from "../services/conversationService";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -12,6 +13,11 @@ export default function ChatPage() {
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [conversations, setConversations] = useState([]);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const toggleSidebar = () => {
+    setCollapsed((prev) => !prev);
+  };
 
   useEffect(() => {
     fetch("http://127.0.0.1:8000/main_window/llms/local")
@@ -31,7 +37,8 @@ export default function ChatPage() {
         const res = await fetch("http://127.0.0.1:8000/conversations");
         const data = await res.json();
         const sorted = data.sort(
-          (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
+          (a, b) =>
+            new Date(b.last_message_time) - new Date(a.last_message_time)
         );
         setConversations(sorted);
       } catch (err) {
@@ -63,7 +70,9 @@ export default function ChatPage() {
         if (!res.ok) throw new Error("Failed to create conversation");
         const conversation = await res.json();
         // 2. Redirect to ConversationPage and pass the question
-        navigate(`/main_window/conversations/${conversation.id}`, { state: { initialQuestion: question } });
+        navigate(`/main_window/conversations/${conversation.id}`, {
+          state: { initialQuestion: question },
+        });
       } catch (err) {
         console.error("Failed to start conversation:", err);
       }
@@ -86,17 +95,34 @@ export default function ChatPage() {
       <Sidebar />
 
       {/* barre latérale */}
-      <aside className="w-80 bg-[#272727] text-white flex flex-col p-6 space-y-6">
-        <h1 className="text-3xl font-bold">History</h1>
+      <aside
+        className={`relative bg-[#272727] text-white transition-all duration-300 ease-in-out ${
+          collapsed ? "w-0 p-0" : "w-80 p-6 space-y-6"
+        }`}
+      >
+        {/* Collapse / expand button */}
+        <button
+          onClick={toggleSidebar}
+          className="absolute top-4 -right-4 bg-[#272727] border border-[#444] rounded-full p-1 hover:bg-[#333] focus:outline-none z-50"
+        >
+          {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+        </button>
 
-        <ChatCollapsibleSection title="Hot Chats" />
-        <ChatCollapsibleSection
-          title="Previous Chats"
-          items={conversations}
-          onItemClick={handleConversationClick}
-          onRename={handleRename}
-          onDelete={handleDelete}
-        />
+        {/* Content only when expanded */}
+        {!collapsed && (
+          <>
+            <h1 className="text-3xl font-bold">History</h1>
+
+            <ChatCollapsibleSection title="Hot Chats" />
+            <ChatCollapsibleSection
+              title="Previous Chats"
+              items={conversations}
+              onItemClick={handleConversationClick}
+              onRename={handleRename}
+              onDelete={handleDelete}
+            />
+          </>
+        )}
       </aside>
 
       {/* zone centrale */}

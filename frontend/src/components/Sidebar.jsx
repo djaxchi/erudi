@@ -53,7 +53,7 @@ export default function Sidebar({ disabled = false }) {
         }`}
       >
         <Swords
-          className={`w-6 h-6 ${
+          className={`w-[50%] sm:w-[40%] xl:w-[25%] h-auto aspect-square ${
             isArenaActive ? "text-green-400" : "text-gray-400"
           }`}
         />

@@ -129,6 +129,27 @@ export default function DatasetCard({ selectedModel, modelName }) {
     }, 30000);
   };
 
+  const simulateTraining = () => {
+    setIsTraining(true);
+    setTrainingStatus("running");
+    setProgress(0);
+    setTimeElapsed(0);
+    setTimeLeft(20);
+
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setIsTraining(false);
+          setTrainingStatus("completed");
+          return 100;
+        }
+        return prev + 50;
+      });
+      setTimeElapsed((prev) => prev + 1);
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+  };
   const submitTrainForm = async () => {
     setErrorMsg("");
     setTrainingError("");
@@ -264,7 +285,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
           ) : (
             <button 
               className="w-40 mx-auto py-3 rounded-full border border-emerald-400/20 text-emerald-400 font-semibold hover:bg-emerald-400/10 transition"
-              onClick={submitTrainForm}
+              onClick={simulateTraining}
             >
               Train
             </button>

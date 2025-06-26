@@ -5,6 +5,7 @@ import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import QuestionInput from "../components/QuestionInput";
 import { ask } from "../services/conversationService";
 import HeaderBar from "../components/HeaderBar";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export default function ConversationPage() {
   const { id } = useParams();
@@ -25,18 +26,23 @@ export default function ConversationPage() {
   const [settings, setSettings] = useState({
     temperature: 0.9,
     topP: 0.9,
-    maxTokens: 200
-  })
+    maxTokens: 200,
+  });
+  const [collapsed, setCollapsed] = useState(false);
+
+  const toggleSidebar = () => {
+    setCollapsed((prev) => !prev);
+  };
 
   useEffect(() => {
     fetch("http://127.0.0.1:8000/main_window/llms/local")
-      .then(res => res.json())
-      .then(data => {
+      .then((res) => res.json())
+      .then((data) => {
         setModels(data);
         if (conversations.length > 0) {
-          const conv = conversations.find(c => c.id === Number(id));
+          const conv = conversations.find((c) => c.id === Number(id));
           if (conv) {
-            const model = data.find(m => m.id === conv.llm_id);
+            const model = data.find((m) => m.id === conv.llm_id);
             if (model) setCurrentModel(model.name);
           }
         }
@@ -45,7 +51,7 @@ export default function ConversationPage() {
 
   const handleModelChange = async (modelName) => {
     setCurrentModel(modelName);
-    const model = models.find(m => m.name === modelName);
+    const model = models.find((m) => m.name === modelName);
     if (!model) return;
     // Call API to update conversation's llm_id
     await fetch(`http://127.0.0.1:8000/conversations/${id}`, {
@@ -66,8 +72,7 @@ export default function ConversationPage() {
       const msgs = await msgRes.json();
       const convs = await convRes.json();
       convs.sort(
-        (a, b) =>
-          new Date(b.last_message_time) - new Date(a.last_message_time)
+        (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
       );
       setMessages(msgs);
       setConversations(convs);
@@ -137,7 +142,8 @@ export default function ConversationPage() {
         const convRes = await fetch("http://127.0.0.1:8000/conversations");
         const convs = await convRes.json();
         convs.sort(
-          (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
+          (a, b) =>
+            new Date(b.last_message_time) - new Date(a.last_message_time)
         );
         setConversations(convs);
       } catch (err) {
@@ -150,7 +156,9 @@ export default function ConversationPage() {
         navigate(location.pathname, { replace: true, state: {} });
       } else if (!location.state || !location.state.initialQuestion) {
         try {
-          const msgRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/messages`);
+          const msgRes = await fetch(
+            `http://127.0.0.1:8000/conversations/${id}/messages`
+          );
           const msgs = await msgRes.json();
           setMessages(msgs);
         } catch (err) {
@@ -160,7 +168,14 @@ export default function ConversationPage() {
     };
 
     run();
-  }, [id, location.state, handleAsk, navigate, location.pathname, initialHandled]);
+  }, [
+    id,
+    location.state,
+    handleAsk,
+    navigate,
+    location.pathname,
+    initialHandled,
+  ]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -181,7 +196,9 @@ export default function ConversationPage() {
 
   const handleDelete = async (cid) => {
     setConversations((prev) => prev.filter((conv) => conv.id !== cid));
-    await fetch(`http://127.0.0.1:8000/conversations/${cid}`, { method: "DELETE" });
+    await fetch(`http://127.0.0.1:8000/conversations/${cid}`, {
+      method: "DELETE",
+    });
     await fetchMessagesAndConversations();
     if (cid === Number(id)) {
       navigate("/main_window/chat");
@@ -190,25 +207,41 @@ export default function ConversationPage() {
 
   return (
     <div className="flex h-screen">
-      <Sidebar disabled = {loading} />
+      <Sidebar disabled={loading} />
+      {/* barre latérale */}
+      <aside
+        className={`relative bg-[#272727] text-white transition-all duration-300 ease-in-out ${
+          collapsed ? "w-0 p-0" : "w-80 p-6 space-y-6"
+        }`}
+      >
+        {/* Collapse / expand button */}
+        <button
+          onClick={toggleSidebar}
+          className="absolute top-4 -right-4 bg-[#272727] border border-[#444] rounded-full p-1 hover:bg-[#333] focus:outline-none z-50"
+        >
+          {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+        </button>
 
-      <aside className="w-80 bg-[#272727] text-white flex flex-col p-6 space-y-6">
-        <h1 className="text-3xl font-bold">History</h1>
-        <ChatCollapsibleSection title="Hot Chats" 
-          disabled={loading}
-        />
-        <ChatCollapsibleSection
-          title="Previous Chats"
-          items={conversations}
-          selectedId={Number(id)}
-          onSelect={handleConversationClick}
-          onRename={handleRename}
-          onDelete={handleDelete}
-          disabled={loading}
-        />
+        {/* Content only when expanded */}
+        {!collapsed && (
+          <>
+            <h1 className="text-3xl font-bold">History</h1>
+
+            <ChatCollapsibleSection title="Hot Chats" disabled={loading} />
+            <ChatCollapsibleSection
+              title="Previous Chats"
+              items={conversations}
+              selectedId={Number(id)}
+              onSelect={handleConversationClick}
+              onRename={handleRename}
+              onDelete={handleDelete}
+              disabled={loading}
+            />
+          </>
+        )}
       </aside>
-      <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">
 
+      <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">
         <div className="relative flex justify-center w-full">
           <HeaderBar
             initialTemperature={settings.temperature}
@@ -225,7 +258,9 @@ export default function ConversationPage() {
         {showPromptModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6">
-              <h2 className="text-xl font-semibold mb-4">Personnaliser le prompt</h2>
+              <h2 className="text-xl font-semibold mb-4">
+                Personnaliser le prompt
+              </h2>
               <textarea
                 className="w-full h-40 border rounded p-2 mb-4"
                 value={customPrompt}
@@ -252,7 +287,7 @@ export default function ConversationPage() {
         )}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto px-10 pt-10 pb-4"
+          className="flex-1 overflow-y-auto px-10 pt-10 pb-4 custom-scroll"
           style={{
             scrollbarWidth: "none",
             msOverflowStyle: "none",
@@ -264,10 +299,11 @@ export default function ConversationPage() {
             {messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`break-words w-fit max-w-[75%] p-4 rounded-2xl text-white whitespace-pre-wrap overflow-wrap break-word ${msg.sender === "user"
+                className={`break-words w-fit max-w-[75%] p-4 rounded-2xl text-white whitespace-pre-wrap overflow-wrap break-word ${
+                  msg.sender === "user"
                     ? "bg-[#191919] ml-auto rounded-tr-none"
                     : "mr-auto rounded-tl-none"
-                  }`}
+                }`}
               >
                 {msg.content}
               </div>
