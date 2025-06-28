@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ..database import get_db
-from ..models.Llm import Llm
-from ..models.Conversation import Conversation
-from ..models.Message import Message
+from app.database import get_db
+from app.models.Llm import Llm
+from app.models.Conversation import Conversation
+from app.models.Message import Message
 
 # routes only for testing purposes
 

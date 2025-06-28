@@ -1,4 +1,4 @@
-from ..schemas.message_schemas import MessageCreate, MessageResponse
+from app.schemas.message_schemas import MessageCreate, MessageResponse
 from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
 import torch
@@ -6,17 +6,17 @@ from datetime import datetime
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, pipeline, StoppingCriteria, StoppingCriteriaList, AutoModelForSeq2SeqLM
 import logging
 from typing import List
-from ..database import get_db
-from ..models.Conversation import Conversation
-from ..models.Llm import Llm
-from ..models.Message import Message
-from ..schemas.conversation_schemas import ConversationCreate, ConversationDeleteBulk, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
+from app.database import get_db
+from app.models.Conversation import Conversation
+from app.models.Llm import Llm
+from app.models.Message import Message
+from app.schemas.conversation_schemas import ConversationCreate, ConversationDeleteBulk, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
 import threading
 from fastapi.responses import StreamingResponse
 from faiss import IndexFlatL2
 from sentence_transformers import SentenceTransformer
 import numpy as np
-from ..prompting.builder import build_default_prompt
+from app.prompting.builder import build_default_prompt
 import re
 import os
 from dotenv import load_dotenv

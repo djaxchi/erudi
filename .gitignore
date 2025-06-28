@@ -104,3 +104,8 @@ backend/app/prompting/__pycache__
 # Secrets : il faut le mettre dans le gitignore une fois mis en prod
 .env
 .env.example
+
+# distribution
+dist
+build
+backend.spec
