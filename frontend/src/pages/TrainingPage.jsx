@@ -34,7 +34,7 @@ export default function TrainingPage() {
   const fetchModels = () => {
     fetch(`${API_BASE_URL}/main_window/llms/local`)
       .then(res => {
-        if (!res.ok) setErrorMessage("Failed to fetch your local models. Please try again. If the issue persists, contact the Erudi team for support.");
+        if (!res.ok) setErrorMessage("Failed to fetch your local models. Please try again. If the issue persists, contact the erudi team for support.");
         return res.json();
       })
       .then(data => {
@@ -43,7 +43,7 @@ export default function TrainingPage() {
       })
       .catch(err => {
         console.error("Erreur models:", err);
-        setErrorMessage("Failed to fetch your local models. Please try again. If the issue persists, contact the Erudi team for support.");
+        setErrorMessage("Failed to fetch your local models. Please try again. If the issue persists, contact the erudi team for support.");
         setModels([]);
       });
   };
@@ -51,7 +51,7 @@ export default function TrainingPage() {
   useEffect(() => {
     fetch(`${API_BASE_URL}/hardware/training`)
       .then(res => {
-        if (!res.ok) setErrorMessage("Failed to fetch hardware information. Please try again. If the issue persists, contact the Erudi team for support.");
+        if (!res.ok) setErrorMessage("Failed to fetch hardware information. Please try again. If the issue persists, contact the erudi team for support.");
         return res.json();
       })
       .then(data => {
@@ -72,7 +72,7 @@ export default function TrainingPage() {
       })
       .catch(err => {
         console.error("Erreur hardware:", err);
-        setErrorMessage("Failed to fetch hardware information. Please try again. If the issue persists, contact the Erudi team for support.");
+        setErrorMessage("Failed to fetch hardware information. Please try again. If the issue persists, contact the erudi team for support.");
         // Set default values in case of error
         setHw({
           storage_path: "Error fetching",
@@ -138,7 +138,7 @@ export default function TrainingPage() {
 
   const handleFineTuningError = (error) => {
     console.error('Fine-tuning error:', error);
-    setErrorMessage("Fine-tuning failed. Please try again. If the issue persists, contact the Erudi team for support.");
+    setErrorMessage("Fine-tuning failed. Please try again. If the issue persists, contact the erudi team for support.");
   };
 
   const resetDatasetCard = () => {

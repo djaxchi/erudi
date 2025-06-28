@@ -1,31 +1,30 @@
 import gc
-
-from app.models.VectorStore import VectorStore
-from app.models.KnowledgeBase import KnowledgeBase
-from app.schemas.message_schemas import MessageResponse
-from fastapi import APIRouter, Depends, HTTPException, Body, status
-from sqlalchemy.orm import Session
-import torch
-from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, BitsAndBytesConfig
+import os
+import re
+import threading
 import logging
+import numpy as np
+from datetime import datetime
 from typing import List
+from fastapi import APIRouter, Depends, HTTPException, Body, status
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, BitsAndBytesConfig
+import torch
+from faiss import IndexFlatL2
+import faiss
+from sentence_transformers import SentenceTransformer
+from app.schemas.message_schemas import MessageResponse
+from app.schemas.conversation_schemas import ConversationCreate, ConversationDeleteBulk, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
 from app.database import get_db
 from app.utils.file_processor import chunk_by_tokens
 from app.utils.global_variables_util import CACHE_DIR, BASE_PATH
 from app.models.Conversation import Conversation
 from app.models.Llm import Llm
 from app.models.Message import Message
-from app.schemas.conversation_schemas import ConversationCreate, ConversationDeleteBulk, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
-import threading
-from fastapi.responses import StreamingResponse
-from faiss import IndexFlatL2
-import faiss
-from sentence_transformers import SentenceTransformer
-import numpy as np
+from app.models.VectorStore import VectorStore
+from app.models.KnowledgeBase import KnowledgeBase
 from app.prompting.builder import build_conv_prompt
-import re
-import os
 loaded_model = None
 current_tokenizer  = None
 loaded_model_id = None

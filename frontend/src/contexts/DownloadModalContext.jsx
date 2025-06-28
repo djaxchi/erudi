@@ -101,8 +101,8 @@ export function DownloadModalProvider({ children }) {
       clearInterval(intervalRef.current)
       setIsDownloading(false)
       const errorMsg = isFineTuning 
-        ? 'An error occured during training. Please try again or contact the Erudi team.' 
-        : 'An error occured during download. Please check your connection and try again. If the problem persists, please contact the Erudi team.'
+        ? 'An error occured during training. Please try again or contact the erudi team.' 
+        : 'An error occured during download. Please check your connection and try again. If the problem persists, please contact the erudi team.'
       setErrorMessage(errorMsg)
       callbacksRef.current.onError?.(errorMsg)
     }

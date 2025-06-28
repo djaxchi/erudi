@@ -101,7 +101,7 @@ async def train_llm_route(payload: TrainingInfo, background_tasks: BackgroundTas
                 # Check if the user has reached the limit of 5 completed training
                 completed_jobs = db.query(TrainingJob).filter(TrainingJob.status == "completed").count()
                 if completed_jobs >= 5:
-                    raise HTTPException(status_code=400, detail="You can only train 5 models using Erudi's Community Edition.")
+                    raise HTTPException(status_code=400, detail="You can only train 5 models using erudi's Community Edition.")
         """
 
 

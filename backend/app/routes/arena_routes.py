@@ -1,28 +1,24 @@
 from datetime import datetime
 import logging
-from app.schemas.arena_schemas import ArenaQueryPayload
+import re
+import os
+import threading
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    TextIteratorStreamer,
-    BitsAndBytesConfig,
-)
-import torch, re, threading
+from app.schemas.arena_schemas import ArenaQueryPayload
 from app.database import get_db
 from app.models.Llm import Llm
 from app.prompting.builder import build_conv_prompt
-import os
-
-from sentence_transformers import SentenceTransformer
-import faiss
 from app.utils.file_processor import chunk_by_tokens
 from app.utils.global_variables_util import CACHE_DIR, BASE_PATH
 from app.models.KnowledgeBase import KnowledgeBase
 from app.models.VectorStore import VectorStore
 from typing import List
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, BitsAndBytesConfig
+import torch
+from sentence_transformers import SentenceTransformer
+import faiss
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 

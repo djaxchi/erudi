@@ -10,6 +10,7 @@ from typing import List
 import regex as re
 from transformers import AutoTokenizer
 from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
 
 from app.utils.global_variables_util import CACHE_DIR, BASE_PATH
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+from pathlib import Path
 import shutil
 
 from app.utils.global_variables_util import HF_TOKEN, BASE_PATH
@@ -22,7 +23,6 @@ from app.models.DownloadJob import DownloadJobModel
 from app.models.KnowledgeBase import KnowledgeBase
 from app.models.VectorStore import VectorStore
 from app.models.StaticHardwareInfos import StaticHardwareInfo
-
 from huggingface_hub import HfApi
 
 async def createTables():
@@ -34,12 +34,14 @@ async def delete_all_data():
     db: Session = SessionLocal()
     try:
         
-        if os.path.exists("data/models"):
-            shutil.rmtree("data/models")
-        os.makedirs("data/models", exist_ok=True)
-        if os.path.exists("data/indexes"):
-            shutil.rmtree("data/indexes")
-        os.makedirs("data/indexes", exist_ok=True)
+        models_path = os.path.join(BASE_PATH, "data", "models")
+        if os.path.exists(models_path):
+            shutil.rmtree(models_path)
+        os.makedirs(models_path, exist_ok=True)
+        indexes_path = os.path.join(BASE_PATH, "data", "indexes")
+        if os.path.exists(indexes_path):
+            shutil.rmtree(indexes_path)
+        os.makedirs(indexes_path, exist_ok=True)
         db.query(Llm).delete()
         db.query(Conversation).delete()
         db.query(Message).delete()

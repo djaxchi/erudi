@@ -8,29 +8,25 @@ import ArenaPage from "./pages/ArenaPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import { DownloadModalProvider } from "./contexts/DownloadModalContext";
 import LoadingScreen from "./components/LoadingScreen";
-import { API_BASE_URL } from "./config/api";
 
 export default function App() {
   const [isBackendReady, setIsBackendReady] = useState(false);
 
-  
   useEffect(() => {
-    const checkBackendHealth = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/main_window/health`, {
-          method: 'GET',
-        });
-        
-        if (response.ok) {
-          setIsBackendReady(true);
-        } else {
-          throw new Error('Backend not ready');
-        }
-      } catch (error) {
-        setTimeout(checkBackendHealth, 2000);
+    const api = window.electron;
+    if (!api) return;
+    
+    // Au montage, interroge l'état et bascule direct si déjà prêt
+    api.getBackendStatus?.().then(s => {
+      if (s?.backendReady) setIsBackendReady(true);
+    });
+    
+    const detach = api.onBackendEvent(evt => {
+      if (evt.event === 'ready') {
+        setIsBackendReady(true);
       }
-    };
-    checkBackendHealth();
+    });
+    return () => detach && detach();
   }, []);
 
   if (!isBackendReady) {

@@ -1,3 +1,4 @@
+from app.database import Base
 from sqlalchemy import Column, Integer, String, ForeignKey
 from app.database import Base
 from sqlalchemy.orm import relationship
@@ -7,8 +8,8 @@ class Llm(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True) # defiines if the model is downloaded or not
-    local = Column(Integer, nullable=False) # defines local path if model is local, huggingface link othewise
-    link = Column(String, nullable=True)
+    local = Column(Integer, nullable=False) # defines local or not
+    link = Column(String, nullable=True) #  local link if dowloaded huggingface link othewise
     type = Column(String, nullable=False)  # Type of the model (e.g., "mistral", "gemma")
     description = Column(String, nullable=True)  # Optional description of the model
     is_attached_to_kb = Column(Integer, default=0)  # 0 or 1 Indicates if the model is attached to a knowledge base

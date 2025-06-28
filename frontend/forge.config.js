@@ -6,7 +6,7 @@ module.exports = {
   packagerConfig: {
     asar: true,
     prune: true,
-    icon: path.resolve(__dirname, "assets", "icon.png"),
+    icon: path.resolve(__dirname, "assets", "icon.ico"),
     // Unpack native modules for performance
     asarUnpack: ["**/*.node"],
     // Exclude unnecessary files to slim bundle
@@ -23,11 +23,11 @@ module.exports = {
       path.resolve(__dirname, "../dist/backend")
     ],
     win32metadata: {
-      CompanyName: "Erudi AI",
-      FileDescription: "Erudi AI Desktop App",
-      OriginalFilename: "ErudiSetup.exe",
-      ProductName: "Erudi",
-      InternalName: "Erudi"
+      CompanyName: "erudi AI",
+      FileDescription: "erudi AI Desktop App",
+      OriginalFilename: "erudiSetup.exe",
+      ProductName: "erudi",
+      InternalName: "erudi"
     }
   },
 
@@ -40,17 +40,45 @@ module.exports = {
     {
       name: "@felixrieseberg/electron-forge-maker-nsis",
       config: {
-        oneClick: false,
-        perMachine: false,
-        allowToChangeInstallationDirectory: true,
-        createDesktopShortcut: true,
-        createStartMenuShortcut: true,
-        shortcutName: "Erudi",
-        license: path.resolve(__dirname, "LICENSE.txt"),
-        include: "../dist/backend/backend.exe",
-        installerIcon: path.resolve(__dirname, "assets", "icon.ico"),
-        uninstallerIcon: path.resolve(__dirname, "assets", "icon.ico"),
-        installerHeaderIcon: path.resolve(__dirname, "assets", "icon.ico")
+        // Windows code signing to be filled in when we have a certificate
+        // codesigning: {
+        //   certificateFile: process.env.WIN_CERT_FILE,
+        //   certificatePassword: process.env.WIN_CERT_PASS,
+        //   timestampServer: 'http://timestamp.digicert.com',
+        //   description: 'erudi',
+        //   website: 'https://erudi.ai'
+        // },
+
+        // Auto‑update config – commented until configured on Git
+        // updater: {
+        //   url: 'https://downloads.erudi.ai/desktop',
+        //   updaterCacheDirName: 'erudi-updater',
+        //   channel: 'latest',
+        //   publisherName: 'erudi AI'
+        // },
+
+        // IMPORTANT: The maker expects getAppBuilderConfig (not getAdditionalConfig)
+        // Everything returned merges straight into electron-builder's config.
+        getAppBuilderConfig: () => ({
+          artifactName: "${productName}-Setup-${version}-${os}.${ext}",
+          win: { icon: path.resolve(__dirname,'assets','icon.ico') },
+          nsis: {
+            oneClick: false,
+            perMachine: false,
+            allowToChangeInstallationDirectory: true,
+            createDesktopShortcut: true,
+            createStartMenuShortcut: true,
+            shortcutName: 'erudi',
+            runAfterFinish: true,
+            license: path.resolve(__dirname, 'LICENSE.txt'),
+            installerIcon: path.resolve(__dirname, 'assets', 'icon.ico'),
+            uninstallerIcon: path.resolve(__dirname, 'assets', 'icon.ico'),
+            installerHeaderIcon: path.resolve(__dirname, 'assets', 'icon.ico'),
+            include: path.resolve(__dirname, 'scripts', 'uninstall_cleanup.nsh'),
+            installerLanguages: ['en_US', 'fr_FR'],
+            displayLanguageSelector: true,
+          }
+        })
       }
     },
     {
@@ -144,16 +172,11 @@ module.exports = {
       
       await fs.ensureDir(releaseDir);
       
-      const existingFiles = await fs.readdir(releaseDir);
-      const exeCount = existingFiles.filter(file => file.endsWith('.exe')).length;
-      const nextVersion = exeCount + 1;
-      
       for (const result of makeResults) {
         for (const artifact of result.artifacts) {
           if (artifact.endsWith('.exe')) {
             const fileName = path.basename(artifact);
-            const newName = fileName.replace('.exe', `-alpha-v0.${nextVersion}.exe`);
-            const destPath = path.join(releaseDir, newName);
+            const destPath = path.join(releaseDir, fileName);
             
             await fs.copy(artifact, destPath);
           }
@@ -163,6 +186,7 @@ module.exports = {
       // Nettoyage automatique après copie - tout est intégré dans le .exe
       await fs.remove(path.join(__dirname, 'out'));
       await fs.remove(path.join(__dirname, '.webpack'));
+      // Do NOT remove the BACKEND files and dir until the final building method has been found.
       await fs.remove(path.join(__dirname, '../build'));
       await fs.remove(path.join(__dirname, '../dist'));
       await fs.remove(path.join(__dirname, '../backend.spec'));

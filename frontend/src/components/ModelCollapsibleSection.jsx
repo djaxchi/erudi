@@ -57,7 +57,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
         }
       } catch (err) {
         console.error("Failed to fetch models:", err);
-        setErrorMessage("Failed to fetch available models. Please try again and contact the Erudi team for support.");
+        setErrorMessage("Failed to fetch available models. Please try again and contact the erudi team for support.");
       } finally {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         setLoading(false);
@@ -72,11 +72,11 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
       const url = `${API_BASE_URL}/main_window/llms/local`;
       const res = await fetch(url);
       if (res.ok) setModels(await res.json());
-      else setErrorMessage("Failed to fetch local models. Please try again and contact the Erudi team for support.");
+      else setErrorMessage("Failed to fetch local models. Please try again and contact the erudi team for support.");
     } 
     catch (err) {
       console.error("Failed to fetch local models:", err);
-      setErrorMessage("Failed to fetch local models. Please try again and contact the Erudi team for support.");
+      setErrorMessage("Failed to fetch local models. Please try again and contact the erudi team for support.");
     } 
     finally {
       await new Promise((resolve) => setTimeout(resolve, 1000));

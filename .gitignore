@@ -9,5 +9,94 @@ build/
 .DS_Store
 Thumbs.db
 
-# To never push the exe built files
-releases/*.exe
+# Coverage directory used by tools like istanbul
+frontend/coverage
+frontend/*.lcov
+
+# nyc test coverage
+frontend/.nyc_output
+
+# node-waf configuration
+frontend/.lock-wscript
+
+# Compiled binary addons (https://nodejs.org/api/addons.html)
+frontend/build/Release
+
+# Dependency directories
+frontend/node_modules/
+frontend/jspm_packages/
+
+# TypeScript v1 declaration files
+frontend/typings/
+
+# TypeScript cache
+frontend/*.tsbuildinfo
+
+# Optional npm cache directory
+frontend/.npm
+
+# Optional eslint cache
+frontend/.eslintcache
+
+# Optional REPL history
+frontend/.node_repl_history
+
+# Output of 'npm pack'
+frontend/*.tgz
+
+# Yarn Integrity file
+frontend/.yarn-integrity
+
+# dotenv environment variables file
+frontend/.env
+frontend/.env.test
+
+# parcel-bundler cache (https://parceljs.org/)
+frontend/.cache
+
+# next.js build output
+frontend/.next
+
+# nuxt.js build output
+frontend/.nuxt
+
+# vuepress build output
+frontend/.vuepress/dist
+
+# Serverless directories
+frontend/.serverless/
+
+# FuseBox cache
+frontend/.fusebox/
+
+# DynamoDB Local files
+frontend/.dynamodb/
+
+# Webpack
+frontend/.webpack/
+
+# Vite
+frontend/.vite/
+
+# Electron-Forge
+frontend/out/
+
+backend/venv
+frontend/venv
+backend/app/__pycache__
+backend/app/models/__pycache__
+backend/app/routes/__pycache__
+backend/app/utils/__pycache__
+backend/app/schemas/__pycache__
+backend/data
+backend/app/prompting/__pycache__
+
+# Secrets : il faut le mettre dans le gitignore une fois mis en prod
+.env
+.env.example
+
+# distribution
+dist
+build
+backend.spec
+releases

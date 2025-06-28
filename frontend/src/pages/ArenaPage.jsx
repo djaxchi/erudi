@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useRef } from "react";
-import Sidebar from "../components/Sidebar";
-import GradientBox from "../components/GradientBox";
-import QuestionInput from "../components/QuestionInput";
+import Sidebar from "../components/Sidebar.jsx";
+import GradientBox from "../components/GradientBox.jsx";
+import QuestionInput from "../components/QuestionInput.jsx";
 import { askArena } from "../services/arenaService.js";
 import { Trash } from "lucide-react";
-import HeaderBar from "../components/HeaderBar";
-import { API_BASE_URL } from "../config/api";
-import TypingIndicator from "../components/TypingIndicator";
+import HeaderBar from "../components/HeaderBar.jsx";
+import { API_BASE_URL } from "../config/api.js";
+import TypingIndicator from "../components/TypingIndicator.jsx";
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
