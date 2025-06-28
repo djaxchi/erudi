@@ -1,83 +1,62 @@
-const { app, BrowserWindow, ipcMain, dialog} = require("electron");
-const path = require("node:path");
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const path = require("path");
+const { spawn } = require("child_process");
+const waitOn = require("wait-on");
 
-// Add this line to define the entry point
-const MAIN_WINDOW_WEBPACK_ENTRY = process.env.MAIN_WINDOW_WEBPACK_ENTRY || 'http://localhost:3000';
+// ── DO NOT redeclare these! They’re injected at build time:
+//    MAIN_WINDOW_WEBPACK_ENTRY
+//    MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY
 
-if (require("electron-squirrel-startup")) {
-  app.quit();
-}
+let backendProc;
 
-const createWindow = () => {
+async function createWindow() {
+  // 1) Launch the bundled backend
+  const backendExe = path.join(process.resourcesPath, "backend", "backend.exe");
+  backendProc = spawn(backendExe, [], { stdio: "ignore" });
+  backendProc.on("exit", () => app.quit());
+
+  // 2) Wait for FastAPI to come up
+  try {
+    await waitOn({ resources: ["http://127.0.0.1:8000/health"], timeout: 10_000 });
+  } catch (err) {
+    console.error("Backend failed to start:", err);
+  }
+
+  // 3) Create the BrowserWindow
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    webPreferences: {
-      preload: path.join(__dirname, '..', '..', '..', 'frontend', 'src', 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
-      enableRemoteModule: false,
-      webSecurity: true,
-    },
     autoHideMenuBar: true,
+    webPreferences: {
+      preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
   });
 
-  // Add global drag & drop support after DOM is ready
-  mainWindow.webContents.on('dom-ready', () => {
-    mainWindow.webContents.executeJavaScript(`
-      // Block navigation everywhere, but let events bubble to React
-      ['dragover','drop'].forEach(type =>
-        window.addEventListener(type, e => e.preventDefault(), false)
-      );
-    `);
+  // 4) Load your renderer bundle
+  await mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+
+  // 5) IPC handler
+  ipcMain.handle("dialog:openDirectory", async () => {
+    const { filePaths } = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+    return filePaths[0];
   });
+}
 
-  // Extra safety - Block any navigation the renderer still tries to start
-  mainWindow.webContents.on('will-navigate', (event) => {
-    event.preventDefault(); // cancel stray navigations (file://, http://, etc.)
-  });
-
-  mainWindow.webContents.session.clearCache();
-
-  // Add CSP headers to allow backend connections
-  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';"
-        ]
-      }
-    });
-  });
-
-  mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
-
-  // Ouvrir l'explorateur de fichiers et récupérer le chemin
-  ipcMain.handle('dialog:openDirectory', async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ['openDirectory']
-    });
-    return result.filePaths[0];
-  });
-
-  mainWindow.webContents.openDevTools();
-};
-
-app.commandLine.appendSwitch("no-sandbox")
+app.commandLine.appendSwitch("no-sandbox");
 
 app.whenReady().then(() => {
   createWindow();
-});
-
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+  if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  if (backendProc) backendProc.kill();
 });

@@ -1,9 +1,9 @@
 import gc
 
-from ..models.VectorStore import VectorStore
+from app.models.VectorStore import VectorStore
 
-from ..models.KnowledgeBase import KnowledgeBase
-from ..schemas.message_schemas import MessageCreate, MessageResponse
+from app.models.KnowledgeBase import KnowledgeBase
+from app.schemas.message_schemas import MessageCreate, MessageResponse
 from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
 import torch
@@ -11,19 +11,19 @@ from datetime import datetime
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, BitsAndBytesConfig
 import logging
 from typing import List
-from ..database import get_db
-from ..utils.file_processor import chunk_by_tokens
-from ..models.Conversation import Conversation
-from ..models.Llm import Llm
-from ..models.Message import Message
-from ..schemas.conversation_schemas import ConversationCreate, ConversationDeleteBulk, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
+from app.database import get_db
+from app.utils.file_processor import chunk_by_tokens
+from app.models.Conversation import Conversation
+from app.models.Llm import Llm
+from app.models.Message import Message
+from app.schemas.conversation_schemas import ConversationCreate, ConversationDeleteBulk, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
 import threading
 from fastapi.responses import StreamingResponse
 from faiss import IndexFlatL2
 import faiss
 from sentence_transformers import SentenceTransformer
 import numpy as np
-from ..prompting.builder import build_conv_prompt
+from app.prompting.builder import build_conv_prompt
 import re
 import os
 from dotenv import load_dotenv

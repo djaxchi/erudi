@@ -2,7 +2,7 @@ from datetime import datetime
 import logging
 from transformers import TrainerCallback
 
-from ..models.TrainingJob import TrainingJob
+from app.models.TrainingJob import TrainingJob
 
 class TrainingProgressCallback(TrainerCallback):
     def __init__(self, training_job_id, db_factory):

@@ -8,20 +8,23 @@ from .models.StaticHardwareInfos import StaticHardwareInfo
 from .routes import knowledgeBase_routes
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import basic_routes, llm_routes, conversation_routes, bd_routes, hardware_routes, training_routes, arena_routes
-from .database import Base, engine
-from .models.Llm import Llm
+from app.routes import basic_routes, llm_routes, conversation_routes, bd_routes, hardware_routes, training_routes, arena_routes
+from app.database import Base, engine
+from app.models.Llm import Llm
 from sqlalchemy.orm import Session
-from .database import SessionLocal
+from app.database import SessionLocal
 from pydantic import BaseModel
 import logging
-from .models.Conversation import Conversation
-from .models.Message import Message
-from .models.TrainingJob import TrainingJob
-from .models.DownloadJob import DownloadJobModel
-from .models.KnowledgeBase import KnowledgeBase
-from .models.VectorStore import VectorStore
-from .models.StaticHardwareInfos import StaticHardwareInfo
+from app.models.Conversation import Conversation
+from app.models.Message import Message
+from app.models.TrainingJob import TrainingJob
+from app.models.Conversation import Conversation
+from app.models.Message import Message
+from app.models.TrainingJob import TrainingJob
+from app.models.DownloadJob import DownloadJobModel
+from app.models.KnowledgeBase import KnowledgeBase
+from app.models.VectorStore import VectorStore
+from app.models.StaticHardwareInfos import StaticHardwareInfo
 
 from huggingface_hub import HfApi
 from dotenv import load_dotenv

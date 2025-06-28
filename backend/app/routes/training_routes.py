@@ -3,20 +3,20 @@ import gc
 import logging
 import shutil
 
-from ..models.TrainingJob import TrainingJob
-from ..models.Llm import Llm
+from app.models.TrainingJob import TrainingJob
+from app.models.Llm import Llm
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends 
 from sqlalchemy.orm import Session
-from ..database import get_db
-from ..schemas.training_schemas import TrainingInfo
-from ..utils.file_processor import process_pdfs_to_causal_dataset
+from app.database import get_db
+from app.schemas.training_schemas import TrainingInfo
+from app.utils.file_processor import process_pdfs_to_causal_dataset
 import re
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling, BitsAndBytesConfig, Trainer
 from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 import torch
 from datasets import Dataset
-from ..database import SessionLocal
-from ..schemas.progress_callback import TrainingProgressCallback
+from app.database import SessionLocal
+from app.schemas.progress_callback import TrainingProgressCallback
 
 router = APIRouter()
 

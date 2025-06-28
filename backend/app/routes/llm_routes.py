@@ -9,13 +9,13 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from ..database import SessionLocal, get_db
-from ..models.Llm import Llm
-from ..schemas.llm_schemas import LLMCreate, LLMResponse
-from ..models.DownloadJob import DownloadJobModel
-from ..schemas.DownloadJobResponse import DownloadJobResponse
+from app.models.Llm import Llm
+from app.schemas.llm_schemas import LLMCreate, LLMResponse
+from app.database import SessionLocal, get_db
+from app.models.DownloadJob import DownloadJobModel
+from app.schemas.DownloadJobResponse import DownloadJobResponse
 
-from ..utils.llm_downloader import download_llm
+from app.utils.llm_downloader import download_llm
 import logging
 
 from typing import List

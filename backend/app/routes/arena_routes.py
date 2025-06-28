@@ -1,6 +1,6 @@
 from datetime import datetime
 import logging
-from ..schemas.arena_schemas import ArenaQueryPayload
+from app.schemas.arena_schemas import ArenaQueryPayload
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
