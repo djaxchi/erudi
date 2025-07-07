@@ -26,9 +26,34 @@ import numpy as np
 from app.prompting.builder import build_conv_prompt
 import re
 import os
+import sys
 from dotenv import load_dotenv
-load_dotenv()
-CACHE_DIR = os.getenv("CACHE_DIR")
+from app.database import data_dir
+
+# ─── 0) calcul de la racine selon dev vs PyInstaller ────────────────────────
+if getattr(sys, "frozen", False):
+    # en one-dir PyInstaller, _MEIPASS pointe vers dist/backend
+    base_path = sys._MEIPASS
+else:
+    # en dev, ce fichier est dans backend/app/
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
+# ─── 1) charger .env si jamais (en dev) ───────────────────────────────────
+# on pointe vers la .env à la racine du projet si besoin :
+dotenv_path = os.path.join(base_path, "..", ".env")
+load_dotenv(dotenv_path)
+
+# ─── 2) récupérer CACHE_DIR ou fournir un fallback ────────────────────────
+env_cache = os.getenv("CACHE_DIR")
+if env_cache:
+    # si la valeur est relative, on la résout par rapport à base_path
+    CACHE_DIR = os.path.normpath(os.path.join(base_path, env_cache))
+else:
+    # sinon on crée un dossier cache local sous dist/backend/cache
+    CACHE_DIR = os.path.join(base_path, "/data/models_cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+logging.info(f"CACHE_DIR resolved to: {CACHE_DIR}")
 
 loaded_model = None
 current_tokenizer  = None
@@ -60,14 +85,22 @@ GEMMA_RE = re.compile(
 
 def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
     kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == llm.kb_id).first()
+    
+    # Nettoyage du lien (supprime un "./" éventuel)
+    raw_link = kb.index_path.lstrip("./")
+    # Si c’est un chemin local, on le joint à base_path
+    if not raw_link.startswith(("http://", "https://")):
+        index_path = os.path.normpath(os.path.join(base_path, raw_link))
+    else:
+        index_path = raw_link
 
-    if not os.path.exists(kb.index_path):
+    if not os.path.exists(index_path):
         raise HTTPException(
             status_code=404,
             detail=f"Knowledge Base index not found for LLM {llm.id}"
         )
     try:
-        faiss_index = faiss.read_index(kb.index_path)
+        faiss_index = faiss.read_index(index_path)
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -129,7 +162,6 @@ def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
                         status_code=500,
                         detail=f"Error fetching vector text: {e}"
                     )
-    return relevant_texts
     return relevant_texts
 
 def get_embedder():
@@ -505,6 +537,15 @@ async def generate_title(
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     model_type = llm.type
+
+    # Nettoyage du lien (supprime un "./" éventuel)
+    raw_link = llm.link.lstrip("./")
+    # Si c’est un chemin local, on le joint à base_path
+    if not raw_link.startswith(("http://", "https://")):
+        model_path = os.path.normpath(os.path.join(base_path, raw_link))
+    else:
+        model_path = raw_link
+
     global loaded_model, current_tokenizer, loaded_model_id
 
     try:
@@ -517,7 +558,7 @@ async def generate_title(
                 clear_gpu_memory()
 
             start = datetime.now()
-            logging.info(f"Loading model {llm.id} from {llm.link}")
+            logging.info(f"Loading model {llm.id} from {model_path}")
 
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -535,14 +576,14 @@ async def generate_title(
                 attn_impl = None
 
             loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link,
+                model_path,
                 local_files_only=True,
                 torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
                 quantization_config=bnb_config if model_type == "mistral" else None,
                 attn_implementation=attn_impl,
                 low_cpu_mem_usage=True if model_type == "mistral" else False,
             )
-            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True, use_fast=True)
+            current_tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True, use_fast=True)
             loaded_model_id = llm.id
             loaded_model.eval()
             loaded_model.to(device)
@@ -713,6 +754,15 @@ async def query_and_respond(
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     model_type = llm.type
+
+    # Nettoyage du lien (supprime un "./" éventuel)
+    raw_link = llm.link.lstrip("./")
+    # Si c’est un chemin local, on le joint à base_path
+    if not raw_link.startswith(("http://", "https://")):
+        model_path = os.path.normpath(os.path.join(base_path, raw_link))
+    else:
+        model_path = raw_link
+    
     global loaded_model, current_tokenizer, loaded_model_id
 
     try:
@@ -736,14 +786,14 @@ async def query_and_respond(
                 attn_impl = None
 
             loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link,
+                model_path,
                 local_files_only=True,
                 torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
                 quantization_config=bnb_config if model_type == "mistral" else None,
                 low_cpu_mem_usage=True if model_type == "mistral" else False,
                 attn_implementation=attn_impl,
             )
-            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True, use_fast=True)
+            current_tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True, use_fast=True)
             loaded_model_id = llm.id
             loaded_model.eval()
             loaded_model.to(device)
@@ -764,6 +814,14 @@ async def query_and_respond(
         else:
             logging.info(f"Retrieving context for conversation {conversation_id}")
             start = datetime.now()
+            logging.info(
+            "Calling retrieve_context with:\n"
+            f"  question={payload.question!r}\n"
+            f"  conversation_history={conversation_history!r}\n"
+            f"  conversation_id={conversation_id!r}\n"
+            f"  top_k={payload.n_relevent_msgs_to_get!r}\n"
+            f"  n_last_turns={payload.n_last_turns_to_get!r}"
+            )
             context = retrieve_context(
                 payload.question, 
                 conversation_history, 

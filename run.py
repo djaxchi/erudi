@@ -1,10 +1,12 @@
 # run.py
-import logging
+import logging, sys
 
 # 1) Set up console logging so you actually see startup messages
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+
 )
 
 # 2) Import your FastAPI app object directly
