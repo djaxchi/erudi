@@ -11,11 +11,21 @@ from transformers import (
     StoppingCriteriaList,
 )
 import torch, re, threading
-from ..database import get_db
-from ..models.Llm import Llm
-from ..prompting.builder import build_default_prompt
+from app.database import get_db
+from app.models.Llm import Llm
+from app.prompting.builder import build_default_prompt
+import os
+import sys
+import logging
 
 router = APIRouter(prefix="/arena", tags=["arena"])
+
+# ── Détermine base_path selon dev vs prod PyInstaller ─────────────────────
+if getattr(sys, "frozen", False):
+    base_path = sys._MEIPASS           # dist/backend
+else:
+    base_path = os.path.dirname(os.path.abspath(__file__))
+logging.info(f"[INIT] arena base_path = {base_path}")
 
 class StopOnEndToken(StoppingCriteria):
     def __init__(self, end_token_id: int):
@@ -56,14 +66,30 @@ async def query_arena(
     global _loaded_model, _current_tokenizer, _loaded_model_id
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if _loaded_model_id != llm_id or _loaded_model is None:
-        _loaded_model = AutoModelForCausalLM.from_pretrained(
-            llm.link, local_files_only=True, torch_dtype=torch.float16
-        )
-        _current_tokenizer = AutoTokenizer.from_pretrained(
-            llm.link, local_files_only=True
-        )
-        _loaded_model.to(device).eval()
-        _loaded_model_id = llm_id
+        # Nettoyage du lien (supprime un "./" éventuel)
+        raw_link = llm.link.lstrip("./")
+        # Si c’est un chemin local, on le joint à base_path
+        if not raw_link.startswith(("http://", "https://")):
+            model_path = os.path.normpath(os.path.join(base_path, raw_link))
+        else:
+            model_path = raw_link
+
+        logging.info(f"[ARENA] Loading model {llm_id} from {model_path}")
+        try:
+            _loaded_model = AutoModelForCausalLM.from_pretrained(
+                model_path, local_files_only=True, torch_dtype=torch.float16
+            )
+            _current_tokenizer = AutoTokenizer.from_pretrained(
+                model_path, local_files_only=True
+            )
+            _loaded_model = _loaded_model.to(device).eval()
+            _loaded_model_id = llm_id
+        except Exception as e:
+            logging.exception("Failed to load arena model")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Model loading error: {e}"
+            )
 
     prompt_text = build_default_prompt(
             question=question,
@@ -86,19 +112,21 @@ async def query_arena(
 
 
     def run_generation():
-        with torch.no_grad():
-            _loaded_model.generate(
-                input_ids=input_ids,
-                streamer=streamer,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                do_sample=True,
-                pad_token_id=_current_tokenizer.eos_token_id,
-                stopping_criteria=stop_crit,
-            )
-    threading.Thread(target=run_generation).start()
-
+        try:
+            with torch.no_grad():
+                _loaded_model.generate(
+                    input_ids=input_ids,
+                    streamer=streamer,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    do_sample=True,
+                    pad_token_id=_current_tokenizer.eos_token_id,
+                    stopping_criteria=stop_crit,
+                )
+        except Exception as e:
+            logging.exception("Arena generation failed")
+    threading.Thread(target=run_generation, daemon=True).start()
     async def event_stream():
         pattern = re.compile(r"<\|/?(?:assistant|system|user|end)\|>")
         for token in streamer:

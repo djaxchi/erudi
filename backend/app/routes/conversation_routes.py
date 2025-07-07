@@ -19,9 +19,37 @@ import numpy as np
 from app.prompting.builder import build_default_prompt
 import re
 import os
+import sys
 from dotenv import load_dotenv
-load_dotenv()
-CACHE_DIR = os.getenv("CACHE_DIR")
+from app.database import data_dir
+
+import os, sys, logging
+from dotenv import load_dotenv
+
+# ─── 0) calcul de la racine selon dev vs PyInstaller ────────────────────────
+if getattr(sys, "frozen", False):
+    # en one-dir PyInstaller, _MEIPASS pointe vers dist/backend
+    base_path = sys._MEIPASS
+else:
+    # en dev, ce fichier est dans backend/app/
+    base_path = os.path.dirname(os.path.abspath(__file__))
+
+# ─── 1) charger .env si jamais (en dev) ───────────────────────────────────
+# on pointe vers la .env à la racine du projet si besoin :
+dotenv_path = os.path.join(base_path, "..", ".env")
+load_dotenv(dotenv_path)
+
+# ─── 2) récupérer CACHE_DIR ou fournir un fallback ────────────────────────
+env_cache = os.getenv("CACHE_DIR")
+if env_cache:
+    # si la valeur est relative, on la résout par rapport à base_path
+    CACHE_DIR = os.path.normpath(os.path.join(base_path, env_cache))
+else:
+    # sinon on crée un dossier cache local sous dist/backend/cache
+    CACHE_DIR = os.path.join(base_path, "cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+logging.info(f"CACHE_DIR resolved to: {CACHE_DIR}")
 
 loaded_model = None
 current_tokenizer  = None
@@ -518,10 +546,28 @@ async def query_and_respond(
         if loaded_model_id != llm.id or loaded_model is None:
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
+            model_path = llm.link
+            # ─── 1) Déterminer la racine du bundle ───────────────────────────────────────
+            if getattr(sys, "frozen", False):
+                # onedir : _MEIPASS est dist/backend
+                base_path = sys._MEIPASS
+            else:
+                # dev : __file__ se trouve dans backend/app/
+                base_path = os.path.dirname(os.path.abspath(__file__))
+
+            # ─── 2) Construire le chemin absolu vers le modèle ──────────────────────────
+            link = llm.link  # ex. "./data/models/1" ou "data/models/1"
+            # on fait PATH = base_path + link, puis on normalise
+            model_path = os.path.normpath(os.path.join(base_path, link))
+
+            logging.info(f"Loading model from local folder: {model_path}")
+
             loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link, local_files_only=True, torch_dtype=torch.float16
+                model_path, local_files_only=True, torch_dtype=torch.float16
             )
-            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
+            current_tokenizer = AutoTokenizer.from_pretrained(
+                model_path, local_files_only=True
+            )
             loaded_model_id = llm.id
             loaded_model.eval()
             loaded_model.to(device)
@@ -542,6 +588,14 @@ async def query_and_respond(
         else:
             logging.info(f"Retrieving context for conversation {conversation_id}")
             start = datetime.now()
+            logging.info(
+            "Calling retrieve_context with:\n"
+            f"  question={payload.question!r}\n"
+            f"  conversation_history={conversation_history!r}\n"
+            f"  conversation_id={conversation_id!r}\n"
+            f"  top_k={payload.n_relevent_msgs_to_get!r}\n"
+            f"  n_last_turns={payload.n_last_turns_to_get!r}"
+            )
             context = retrieve_context(
                 payload.question, 
                 conversation_history, 
