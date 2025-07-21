@@ -1,5 +1,6 @@
 from fastapi import APIRouter
-import psutil, cpuinfo, GPUtil, shutil, os
+# import GPUtil
+import psutil, cpuinfo, shutil, os
 from app.schemas.hardware_schemas import HardwareInfo
 
 router = APIRouter(tags=["hardware"])
@@ -21,10 +22,15 @@ def get_hardware_info():
     cpu_model = info.get("brand_raw", "Unknown")
 
     # GPU
+    """
     gpus = GPUtil.getGPUs()
     gpu_model = gpus[0].name if gpus else None
     gpu_vram_total = gpus[0].memoryTotal if gpus else None
     gpu_vram_free = gpus[0].memoryFree if gpus else None
+    """
+    gpu_model = "On MacOS"
+    gpu_vram_total = None
+    gpu_vram_free = None
 
     # CUDA
     nvcc_path = shutil.which("nvcc")
