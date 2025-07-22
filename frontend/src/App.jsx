@@ -7,8 +7,47 @@ import ChatPage from "./pages/ChatPage";
 import ConversationPage from "./pages/ConversationPage";
 import TrainingPage from "./pages/TrainingPage";
 import ArenaPage from "./pages/ArenaPage";
+import LoadingPage from "./pages/LoadingPage";
+import { useState, useEffect } from "react";
 
 export default function App() {
+  const [backendReady, setBackendReady] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    // Poll every 500ms until /health returns OK or we hit an error
+    const checkBackend = async () => {
+      try {
+        const res = await fetch("http://127.0.0.1:8000/health");
+        if (!mounted) return;
+        if (res.ok) {
+          setBackendReady(true);
+          return;
+        }
+      } catch (e) {
+        // ignore, retry
+      }
+      // After 10s of retries, show an error screen
+      if (mounted && !backendReady && !error) {
+        setTimeout(checkBackend, 500);
+      }
+    };
+
+    checkBackend();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // While waiting for backend:
+  if (!backendReady) {
+    return <LoadingPage />;
+  }
+
+  // Once ready, render your normal router
   return (
     <Router>
       <Routes>
@@ -22,7 +61,7 @@ export default function App() {
         <Route path="/main_window/conversations/:id" element={<ConversationPage />} />
         <Route path="/main_window/new-training" element={<TrainingPage />} />
         <Route path="/main_window/arena" element={<ArenaPage />} />
-        </Routes>
+      </Routes>
     </Router>
   );
 }
