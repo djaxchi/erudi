@@ -12,6 +12,7 @@ import logging
 from .models.Conversation import Conversation
 from .models.Message import Message
 from .models.TrainingJob import TrainingJob
+from huggingface_hub import HfApi
 
 async def createTables():
     # Create all tables in the database
@@ -44,20 +45,32 @@ app = FastAPI()
 async def startup_event():
     await createTables()
 
-    db: Session = SessionLocal()
+    api = HfApi()
+    hf_models = api.list_models(search="Mistral-7B v0.3", limit=None)
     
-    try:
-        if db.query(Llm).first() is None:
 
-            llm1 = Llm(name="Mistral-7B : Base Model", local=0, link="mistralai/Mistral-7B-Instruct-v0.3")
-            db.add_all([llm1])
-            db.commit()
-            logging.info("Startup: Mistral LLM created successfully in DB.")
-        else:
-            logging.info("Startup: Mistral LLM already exists in DB, skipping creation.")
-    except Exception as e:
-        logging.error(f"Error creating first LLM: {e}")
+    db: Session = SessionLocal()
+    try:
+        for m in hf_models:
+            print(m)
+            if m.modelId == "mistralai/Mistral-7B-Instruct-v0.3":
+                continue
+
+            exists = db.query(Llm).filter_by(link=m.modelId).first()
+            if exists:
+                continue
+
+            llm_entry = Llm(
+                name=m.modelId.split("/")[-1],  
+                local=0,
+                link=m.modelId               
+            )
+            db.add(llm_entry)
+
+        db.commit()
+    except Exception:
         db.rollback()
+        raise
     finally:
         db.close()
 
