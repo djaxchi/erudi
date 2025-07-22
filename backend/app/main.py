@@ -44,6 +44,7 @@ app = FastAPI()
 @app.on_event("startup")
 async def startup_event():
     await createTables()
+    # await delete_all_data()
 
     api = HfApi()
     hf_models = api.list_models(search="Mistral-7B v0.3", limit=None)
@@ -51,8 +52,32 @@ async def startup_event():
 
     db: Session = SessionLocal()
     try:
+        base_mistral = Llm(
+                name="Mistral-7B-Instruct-v0.3",  
+                local=0,
+                link="mistralai/Mistral-7B-Instruct-v0.3"           
+            )
+        base_gemma1B = Llm(
+                name="Gemma-3-1B-it",  
+                local=0,
+                link="google/gemma-3-1b-it"           
+            )
+        base_gemma2B = Llm(
+                name="Gemma-2-2B-it",  
+                local=0,
+                link="google/gemma-2-2b-it"           
+            )
+        base_gemma4B = Llm(
+                name="Gemma-3-4B-it",  
+                local=0,
+                link="google/gemma-3-4b-it"           
+            )
+        db.add(base_mistral)
+        db.add(base_gemma1B)
+        db.add(base_gemma2B)
+        db.add(base_gemma4B)
+
         for m in hf_models:
-            print(m)
             if m.modelId == "mistralai/Mistral-7B-Instruct-v0.3":
                 continue
 
@@ -66,9 +91,10 @@ async def startup_event():
                 link=m.modelId               
             )
             db.add(llm_entry)
-
+        
         db.commit()
-    except Exception:
+    except Exception as e:
+        logging.error(f"Error during startup event: {e}")
         db.rollback()
         raise
     finally:

@@ -111,37 +111,43 @@ async def download_llm_route(
     # notify client that download has started
     await queue.put("started")
 
-    def update_database_after_download(model_id: int, save_dir: str):
-        # signal 100% progress
-        MAIN_LOOP.call_soon_threadsafe(queue.put_nowait, "progress:100%")
-        with Session(db.get_bind()) as session:
-            old_llm = session.query(Llm).filter(Llm.id == model_id).first()
+    def download_and_update(model_link: str, old_model_id: int, save_dir: str):
+        try:
+            session = Session(db.get_bind())
+            old_llm = session.query(Llm).filter(Llm.id == old_model_id).first()
             if old_llm:
                 new_llm = Llm(
                     name=old_llm.name,
-                    link=f"{save_dir}/{model_id}",
                     local=True,
                 )
                 session.add(new_llm)
                 session.commit()
+                new_llm.link = f"{save_dir}/{new_llm.id}"
+                session.commit()
                 logging.info(f"New LLM created for '{new_llm.name}' with id {new_llm.id}")
-        # finally signal installed
-        MAIN_LOOP.call_soon_threadsafe(queue.put_nowait, "installed")
-
-    def download_and_update(model_link: str, model_id: int, save_dir: str, callback):
-        try:
-            download_llm(model_link=model_link, model_id=model_id, save_dir=save_dir)
-            callback(model_id, save_dir)
+                download_llm(model_link=model_link, model_id=new_llm.id, save_dir=save_dir)
+                MAIN_LOOP.call_soon_threadsafe(queue.put_nowait, "progress:100%")
+                MAIN_LOOP.call_soon_threadsafe(queue.put_nowait, "installed")
         except Exception as e:
             logging.error(f"Error during download: {e}")
+            if session and new_llm:
+                try:
+                    session.delete(new_llm)
+                    session.commit()
+                    logging.info(f"Rolled back LLM creation for id {new_llm.id}")
+                except Exception as rollback_error:
+                    logging.error(f"Failed to rollback LLM creation: {rollback_error}")
+                    session.rollback()
             MAIN_LOOP.call_soon_threadsafe(queue.put_nowait, f"error:{e}")
+        finally:
+            if session:
+                session.close()
 
     background_tasks.add_task(
         download_and_update,
         model_link=llm.link,
-        model_id=llm.id,
+        old_model_id=llm.id,
         save_dir="./data/models",
-        callback=update_database_after_download,
     )
 
     return {"message": f"Download started for LLM '{llm.name}'"}

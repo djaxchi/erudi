@@ -70,6 +70,5 @@ def download_llm(model_link: str, model_id: int, save_dir: str = "./data/models"
     del tokenizer
     gc.collect()
     torch.cuda.empty_cache()
-    shutil.rmtree(cache_dir, ignore_errors=True)
     
     return save_dir

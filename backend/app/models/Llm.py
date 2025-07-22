@@ -9,4 +9,4 @@ class Llm(Base):
     # defiines if the model is downloaded or not
     local = Column(Integer, nullable=False)
     # defines local path if model is local, huggingface link othewise
-    link = Column(String, nullable=False)
+    link = Column(String, nullable=True)
