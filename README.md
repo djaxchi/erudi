@@ -54,3 +54,6 @@ python -m venv venv
 ./venv/Scripts/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
+
+
+pyinstaller --name backend --clean --onedir --console --paths=backend --add-data "backend/data;data" --add-data "backend/app/prompting;app/prompting" --hidden-import jinja2 --hidden-import sqlalchemy run.py

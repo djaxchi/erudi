@@ -949,7 +949,14 @@ async def query_and_respond(
             
             logging.info("Generation thread finished")
         
-    return (StreamingResponse(assistant_response_token_stream(), media_type="text/plain"))
+    return StreamingResponse(
+     assistant_response_token_stream(),
+     media_type="text/event-stream",
+     headers={
+         "Cache-Control": "no-cache",
+         "X-Accel-Buffering": "no"       
+     },
+ )
 
 @router.post("/conversations/delete_bulk")
 async def delete_bulk(

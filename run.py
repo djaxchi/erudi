@@ -1,6 +1,13 @@
 # run.py
 import logging, sys
+import asyncio
+from asyncio import WindowsSelectorEventLoopPolicy
 
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
+
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
 # 1) Set up console logging so you actually see startup messages
 logging.basicConfig(
     level=logging.INFO,
