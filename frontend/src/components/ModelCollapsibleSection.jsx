@@ -1,95 +1,130 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { ChevronDown, ChevronRight, Cog, RefreshCcw, Plus } from "lucide-react";
 import ConfirmationModal from "./modals/ConfirmationModal";
 import SpinnerDots from "./Spinner";
 import PreparingModal from "./modals/PreparingModal";
 
+const API_BASE = "http://127.0.0.1:8000/main_window";
 
 export default function CollapsibleSection({ title }) {
   const [open, setOpen] = useState(true);
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(false);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState(null);
-  const [isDownloading, setIsDownloading] = useState(false);
+
+  // download states
   const [isPreparing, setIsPreparing] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadStatus, setDownloadStatus] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // ref for polling interval
+  const pollingRef = useRef(null);
+
   useEffect(() => {
-    const fetchModels = async () => {
+    // cleanup on unmount
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    async function fetchModels() {
       setLoading(true);
       try {
-        const endpoint =
+        const url =
           title === "Local Models"
-            ? "http://127.0.0.1:8000/main_window/llms/local"
-            : "http://127.0.0.1:8000/main_window/llms/remote";
-        const response = await fetch(endpoint);
-        if (response.ok) {
-          const data = await response.json();
-          setModels(data);
-        } else {
-          console.error(`Failed to fetch ${title.toLowerCase()}`);
-        }
-      } catch (error) {
-        console.error("Error fetching models:", error);
+            ? `${API_BASE}/llms/local`
+            : `${API_BASE}/llms/remote`;
+        const res = await fetch(url);
+        if (res.ok) setModels(await res.json());
+      } catch (err) {
+        console.error("Failed to fetch models:", err);
       } finally {
         setLoading(false);
       }
-    };
-
+    }
     fetchModels();
   }, [title]);
 
   const handleModelClick = (model) => {
     setSelectedModel(model);
     setIsModalOpen(true);
+    setErrorMessage("");
+  };
+
+  const checkDownloadStatus = async (llmId) => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/llms/${llmId}/download/status`
+      );
+      if (!res) throw new Error("status fetch failed");
+      const data = await res.json();
+      setDownloadProgress(data.progress);
+      setDownloadStatus(data.status);
+
+      if (data.status === "completed") {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+        setIsDownloading(false);
+        setIsPreparing(false);
+        reloadModels();
+      } else if (data.status === "failed") {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+        setErrorMessage("Download failed.");
+        setIsDownloading(false);
+        setIsPreparing(false);
+      }
+    } catch (err) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+      setErrorMessage("Error checking download status.");
+      setIsDownloading(false);
+      setIsPreparing(false);
+    }
+  };
+
+  const reloadModels = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/llms/local`);
+      if (res.ok) setModels(await res.json());
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleConfirmDownload = async () => {
     if (!selectedModel) return;
+    setIsModalOpen(false);
     setIsPreparing(true);
     setIsDownloading(true);
+    setDownloadProgress(0);
+    setDownloadStatus("pending");
     setErrorMessage("");
-    try {
-      const response = await fetch(
-        `http://127.0.0.1:8000/main_window/llms/${selectedModel.id}/download`,
-        { method: "POST" }
-      );
-      if (response.ok) {
-        const eventSource = new EventSource(
-          `http://127.0.0.1:8000/main_window/llms/${selectedModel.id}/status/stream`
-        );
 
-        eventSource.onmessage = (event) => {
-          if (event.data === "installed") {
-            setIsDownloading(false);
-            fetchModels();
-            eventSource.close();
-          }
-          if (event.data.startsWith("error")) {
-            setErrorMessage("Download failed.");
-            setIsDownloading(false);
-            eventSource.close();
-          }
-        };
-
-        eventSource.onerror = () => {
-          setErrorMessage("Error during download stream.");
-          setIsDownloading(false);
-          eventSource.close();
-        };
-      } else {
-        setErrorMessage("Failed to start download. Please try again.");
-        setIsDownloading(false);
-      }
-    } catch (error) {
-      console.error("Error downloading model:", error);
-      setErrorMessage("An error occurred while starting the download.");
+    // start the job
+    const res = await fetch(
+      `${API_BASE}/llms/${selectedModel.id}/download`,
+      { method: "POST" }
+    );
+    if (!res.ok) {
+      setErrorMessage("Failed to start download.");
       setIsDownloading(false);
-    } finally {
-      setIsModalOpen(false);
-      setSelectedModel(null);
+      setIsPreparing(false);
+      return;
     }
+
+    // begin polling every 2s
+    pollingRef.current = setInterval(() => {
+      checkDownloadStatus(selectedModel.id);
+    }, 2000);
   };
 
   return (
@@ -103,13 +138,19 @@ export default function CollapsibleSection({ title }) {
         onClick={() => setOpen(!open)}
       >
         <div className="flex items-center gap-2">
-          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}          
+          {open ? (
+            <ChevronDown className="w-4 h-4" />
+          ) : (
+            <ChevronRight className="w-4 h-4" />
+          )}
           <span className="font-semibold text-xl sm:text-lg">{title}</span>
         </div>
-
         <div className="flex gap-3">
           <Cog className="w-4 h-4 hover:opacity-70" />
-          <RefreshCcw className="w-4 h-4 hover:opacity-70" />
+          <RefreshCcw
+            className="w-4 h-4 hover:opacity-70 cursor-pointer"
+            onClick={reloadModels}
+          />
           <Plus className="w-4 h-4 hover:opacity-70" />
         </div>
       </div>
@@ -119,19 +160,15 @@ export default function CollapsibleSection({ title }) {
           {loading ? (
             <p className="italic">Loading...</p>
           ) : title === "Local Models" && models.length > 0 ? (
-            models.map((model) => (
-              <p key={model.id} className="py-1">
-                {model.name}
-              </p>
-            ))
+            models.map((m) => <p key={m.id} className="py-1">{m.name}</p>)
           ) : title === "Available Models" && models.length > 0 ? (
-            models.map((model) => (
+            models.map((m) => (
               <p
-                key={model.id}
+                key={m.id}
                 className="py-1 cursor-pointer hover:text-blue-500"
-                onClick={() => handleModelClick(model)}
+                onClick={() => handleModelClick(m)}
               >
-                {model.name}
+                {m.name}
               </p>
             ))
           ) : (
@@ -144,23 +181,24 @@ export default function CollapsibleSection({ title }) {
         isOpen={isModalOpen}
         onCancel={() => setIsModalOpen(false)}
         onConfirm={handleConfirmDownload}
-        text = {selectedModel?.name}
+        text={selectedModel?.name}
       />
 
-      <PreparingModal
-      isOpen={isPreparing}
-      onClose={() => setIsPreparing(false)}
-      />
-
-      {/* Spinner at the bottom */}
+      <PreparingModal isOpen={isPreparing} onClose={() => {}} />
 
       {isDownloading && (
-        <div className="fixed bottom-0 left-0 w-full flex items-center gap-2 pb-4 pl-4 z-50">
-          <SpinnerDots size={30} dotSize={4} colorClass="bg-green-400" />
+        <div className="fixed bottom-0 left-0 w-full px-4 pb-4 z-50">
+          <div className="w-full bg-gray-700 rounded h-2 overflow-hidden">
+            <div
+              className="bg-emerald-500 h-2"
+              style={{ width: `${downloadProgress}%` }}
+            />
+          </div>
+          <p className="text-xs text-white mt-1">
+            Downloading... {downloadProgress}%
+          </p>
         </div>
       )}
     </div>
   );
 }
-
-

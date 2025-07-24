@@ -12,6 +12,7 @@ import logging
 from .models.Conversation import Conversation
 from .models.Message import Message
 from .models.TrainingJob import TrainingJob
+from .models.DownloadJob import DownloadJobModel
 from huggingface_hub import HfApi
 
 async def createTables():

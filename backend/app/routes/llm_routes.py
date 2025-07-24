@@ -1,12 +1,16 @@
 import asyncio
+from datetime import datetime
 import os
 from collections import defaultdict
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..models.Llm import Llm
 from ..schemas.llm_schemas import LLMCreate, LLMResponse
+from ..models.DownloadJob import DownloadJobModel
+from ..schemas.DownloadJobResponse import DownloadJobResponse
 
 from ..utils.llm_downloader import download_llm
 import logging
@@ -79,78 +83,90 @@ async def search_llms(name: str, db: Session = Depends(get_db)):
     llms = db.query(Llm).filter(Llm.name.ilike(f"%{name}%")).all()
     return llms
 
-@router.get("/llms/{llm_id}/status/stream")
-async def stream_status(llm_id: int):
-    queue = _status_queues[llm_id]
-    async def event_generator():
-        try:
-            while True:
-                try:
-                    msg = await asyncio.wait_for(queue.get(), timeout=15.0)
-                except asyncio.TimeoutError:
-                    yield ":\n\n"
-                else:
-                    yield f"data: {msg}\n\n"
-                    if msg.startswith("installed") or msg.startswith("error"):
-                        break
-        finally:
-            _status_queues.pop(llm_id, None)
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
-@router.post("/llms/{llm_id}/download")
+@router.post(
+    "/llms/{llm_id}/download",
+    response_model=DownloadJobResponse,
+    status_code=200,
+)
 async def download_llm_route(
     llm_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
+    """
+    Start a new DownloadJobModel for the given LLM. Returns the DownloadJobModel record.
+    """
     llm = db.query(Llm).filter(Llm.id == llm_id).first()
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
 
-    queue = _status_queues[llm_id]
-    # notify client that download has started
-    await queue.put("started")
-
-    def download_and_update(model_link: str, old_model_id: int, save_dir: str):
-        try:
-            session = Session(db.get_bind())
-            old_llm = session.query(Llm).filter(Llm.id == old_model_id).first()
-            if old_llm:
-                new_llm = Llm(
-                    name=old_llm.name,
-                    local=True,
-                )
-                session.add(new_llm)
-                session.commit()
-                new_llm.link = f"{save_dir}/{new_llm.id}"
-                session.commit()
-                logging.info(f"New LLM created for '{new_llm.name}' with id {new_llm.id}")
-                download_llm(model_link=model_link, model_id=new_llm.id, save_dir=save_dir)
-                MAIN_LOOP.call_soon_threadsafe(queue.put_nowait, "progress:100%")
-                MAIN_LOOP.call_soon_threadsafe(queue.put_nowait, "installed")
-        except Exception as e:
-            logging.error(f"Error during download: {e}")
-            if session and new_llm:
-                try:
-                    session.delete(new_llm)
-                    session.commit()
-                    logging.info(f"Rolled back LLM creation for id {new_llm.id}")
-                except Exception as rollback_error:
-                    logging.error(f"Failed to rollback LLM creation: {rollback_error}")
-                    session.rollback()
-            MAIN_LOOP.call_soon_threadsafe(queue.put_nowait, f"error:{e}")
-        finally:
-            if session:
-                session.close()
-
-    background_tasks.add_task(
-        download_and_update,
+    # Create persistent DownloadJobModel
+    job = DownloadJobModel(
+        model_id=llm_id,
         model_link=llm.link,
-        old_model_id=llm.id,
-        save_dir="./data/models",
+        status="pending",
+        total_bytes=0.0,
+        progress=0.0,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    def _download_task(model_link: str, model_id: str, save_dir: str, job_id: int):
+        try:
+            # mark RUNNING
+            session = SessionLocal()
+            dj = session.query(DownloadJobModel).get(job_id)
+            dj.status = "running"
+            dj.updated_at = datetime.utcnow()
+            session.commit()
+            session.close()
+
+            # call the downloader (it will spawn its own updater thread)
+            import asyncio
+            asyncio.run(
+                download_llm(
+                    model_link=model_link,
+                    model_id=str(model_id),
+                    save_dir=save_dir,
+                    job_id=job_id,
+                )
+            )
+        except Exception as e:
+            session = SessionLocal()
+            dj = session.query(DownloadJobModel).get(job_id)
+            dj.status = "failed"
+            dj.error_message = str(e)
+            dj.updated_at = datetime.utcnow()
+            session.commit()
+            session.close()
+
+    # 2) enqueue background
+    background_tasks.add_task(
+        _download_task,
+        llm.link,
+        llm_id,
+        "./data/models",
+        job.id,
     )
 
-    return {"message": f"Download started for LLM '{llm.name}'"}
+    # 3) immediately return the DB row
+    return job
 
-
-
+@router.get(
+    "/llms/{llm_id}/download/status",
+    response_model=DownloadJobResponse,
+    status_code=200,
+)
+def get_download_status(
+    job_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Fetch the DownloadJobModel by its job_id.
+    """
+    job = db.query(DownloadJobModel).get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Download job not found")
+    return job
