@@ -2,6 +2,10 @@ import threading
 from typing import Callable, Optional
 import shutil
 import logging
+
+from ..models.Llm import Llm
+logger = logging.getLogger("uvicorn.error")
+logger.setLevel(logging.INFO)
 import gc
 from datetime import datetime
 
@@ -30,7 +34,7 @@ load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-logging.info(f"Using device: {device}")
+logger.info(f"Using device: {device}")
 
 FILES_TO_EXCLUDE = ["consolidated.safetensors"]
 
@@ -42,7 +46,7 @@ class DownloadJob:
         self.downloaded_bytes = 0
         self.eta_seconds = None
         self._lock = Lock()
-        logging.info("DownloadJob initialized")
+        logger.info("DownloadJob initialized")
 
     def update(self, bytes_downloaded: int):
         """
@@ -70,7 +74,7 @@ class DownloadJob:
         Périodiquement (toutes les `interval` secondes), calcule et stocke
         l'estimation du temps restant en secondes, basé sur la vitesse actuelle.
         """
-        logging.info("Starting ETA monitoring")
+        logger.info("Starting ETA monitoring")
         last_time = time.time()
         last_downloaded = 0
         while True:
@@ -90,13 +94,13 @@ class DownloadJob:
                 remaining = total - current
                 self.eta_seconds = remaining / rate
                 elapsed = current_time - last_time
-                logging.info(f"Estimated time elapsed: {elapsed} / {self.eta_seconds:.2f} estimated total seconds")
+                logger.info(f"Estimated time elapsed: {elapsed} / {self.eta_seconds:.2f} estimated total seconds")
             else:
-                logging.info("Not enough data to estimate ETA")
+                logger.info("Not enough data to estimate ETA")
 
             last_time = current_time
             last_downloaded = current
-        logging.info("ETA monitoring complete")
+        logger.info("ETA monitoring complete")
 
 def make_callback(job: DownloadJob):
     def after_chunk(size, value, **kwargs):
@@ -105,27 +109,40 @@ def make_callback(job: DownloadJob):
     return Callback(size=job.total_bytes, hooks={"transfer-chunk": after_chunk})
 
 
-def update_db_with_progress(job: DownloadJob, job_id: int):
+def update_db_with_progress(job: DownloadJob, job_id: int, model_id: int):
     """
     *Only updates* an existing DownloadJobModel row.
     """
     session = SessionLocal()
     dbj = session.query(DownloadJobModel).get(job_id)
-    start = datetime.utcnow()
+    llm = session.query(Llm).get(model_id)
+    if not dbj or not llm:
+        logger.error(f"Job {job_id} or LLM {model_id} not found in DB.")
+        session.close()
+        return
+    start = datetime.now()
     try:
         while job.percent < 100.0:
             time.sleep(1)
             dbj.total_bytes = job.total_bytes
             dbj.progress = job.percent
-            dbj.total_time_elapsed = (datetime.utcnow() - start).total_seconds()
+            dbj.total_time_elapsed = (datetime.now() - start).total_seconds()
             dbj.time_left = job.eta_seconds or 0.0
             session.commit()
+            logger.info(f"Updated job {job_id}: {dbj.progress:.2f}% complete, {dbj.time_left:.2f}s left")
         dbj.progress = 100.0
         dbj.status = "completed"
+        llm.local = 1
         session.commit()
     except Exception as e:
         dbj.status = "failed"
         dbj.error_message = str(e)
+        job.local_model_id = -1
+        shutil.rmtree(job.local_model_link, ignore_errors=True)
+        job.local_model_link = ""
+        job.updated_at = datetime.now()
+        session.delete(llm)
+        logger.error(f"Error updating job {job_id}: {e}")
         session.commit()
     finally:
         session.close()
@@ -142,7 +159,7 @@ async def download_files_concurrent(hf_file_system: HfFileSystem, callback: Call
         remote = f"{repo_id}/{path}"
         local_path = os.path.join(local_dir, path)
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        logging.info(f"Scheduling download: {path}")
+        logger.info(f"Scheduling download: {path}")
         jobs.append(loop.run_in_executor(
             None,
             hf_file_system.get_file,
@@ -155,15 +172,14 @@ async def download_files_concurrent(hf_file_system: HfFileSystem, callback: Call
 
 async def download_llm(
         model_link: str,
-        model_id: str,
-        save_dir: str = "./data/models",
+        model_id: int,
+        save_dir: str,
         job_id: Optional[int] = None,
         )->str:
     
     # Prépare dossier
-    save_dir = os.path.join(save_dir, model_id)
     os.makedirs(save_dir, exist_ok=True)
-    logging.info(f"Starting download of repo: {model_link} → {save_dir}")
+    logger.info(f"Starting download of repo: {model_link} → {save_dir}")
 
     # Init API et FS avec token
     api = HfApi(token=HF_TOKEN)
@@ -176,7 +192,7 @@ async def download_llm(
     file_sizes = {s.rfilename: s.size for s in info.siblings if s.size}
     file_sizes = {f: size for f, size in file_sizes.items() if f not in FILES_TO_EXCLUDE}
     job.total_bytes = sum(file_sizes.values())
-    logging.info(f"Total to download: {job.total_bytes} bytes ({job.total_bytes/1024**2:.2f} MB)")
+    logger.info(f"Total to download: {job.total_bytes} bytes ({job.total_bytes/1024**2:.2f} MB)")
     
     # 2. Créer callback partagé
     callback = make_callback(job)
@@ -187,12 +203,12 @@ async def download_llm(
     misc = [f for f in all_files if not f.endswith(".safetensors")]
     shards = [f for f in all_files if f.endswith(".safetensors")]
 
-    logging.info(f"Phases: misc={len(misc)}, shards={len(shards)} files")
+    logger.info(f"Phases: misc={len(misc)}, shards={len(shards)} files")
 
     if job_id is not None:
         threading.Thread(
             target=update_db_with_progress,
-            args=(job, job_id),
+            args=(job, job_id, model_id),
             daemon=True
         ).start()
     eta_task = asyncio.create_task(job.monitor_eta(interval=20.0))
@@ -200,17 +216,18 @@ async def download_llm(
     # 5. Phase 1: misc séquentiel
     for path in misc:
         await asyncio.to_thread(fs.get_file, f"{model_link}/{path}", os.path.join(save_dir, path), callback)
-        logging.info(f"Loaded misc: {path}")
+        logger.info(f"Loaded misc: {path}")
 
     # 6. Phase 2: shards en parallèle
     tasks_shards = [(model_link, f) for f in shards]
     await download_files_concurrent(fs, callback, tasks_shards, save_dir)
-    logging.info("Shards downloaded.")
+    logger.info("Shards downloaded.")
 
     # 7. Attendre la fin des suivis
     await eta_task
 
-    logging.info("All files downloaded.")
+    logger.info("All files downloaded.")
+    # 8. Nettoyage et mise à jour de la bd
+    
 
     return save_dir
-

@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime
 import os
 from collections import defaultdict
+import shutil
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -97,14 +98,28 @@ async def download_llm_route(
     """
     Start a new DownloadJobModel for the given LLM. Returns the DownloadJobModel record.
     """
-    llm = db.query(Llm).filter(Llm.id == llm_id).first()
-    if not llm:
+    remote_llm = db.query(Llm).filter(Llm.id == llm_id).first()
+    if not remote_llm:
         raise HTTPException(status_code=404, detail="LLM not found")
+
+    # Create new instance of Llm
+    local_llm = Llm(
+        name=remote_llm.name,
+        local=2,  # 2 means downloading
+    )
+    db.add(local_llm)
+    db.commit()
+    db.refresh(local_llm)
+    local_llm.link = f"./data/models/{local_llm.id}"
+    db.commit()
+    logger.info(f"Created local LLM entry: {local_llm.name} - {local_llm.link}")
 
     # Create persistent DownloadJobModel
     job = DownloadJobModel(
-        model_id=llm_id,
-        model_link=llm.link,
+        remote_model_id=llm_id,
+        local_model_id=local_llm.id,
+        remote_model_link=remote_llm.link,
+        local_model_link=local_llm.link,
         status="pending",
         total_bytes=0.0,
         progress=0.0,
@@ -113,13 +128,13 @@ async def download_llm_route(
     db.commit()
     db.refresh(job)
 
-    def _download_task(model_link: str, model_id: str, save_dir: str, job_id: int):
+    def _download_task(model_link: str, model_id: int, save_dir: str, job_id: int):
         try:
             # mark RUNNING
             session = SessionLocal()
             dj = session.query(DownloadJobModel).get(job_id)
             dj.status = "running"
-            dj.updated_at = datetime.utcnow()
+            dj.updated_at = datetime.now()
             session.commit()
             session.close()
 
@@ -128,7 +143,7 @@ async def download_llm_route(
             asyncio.run(
                 download_llm(
                     model_link=model_link,
-                    model_id=str(model_id),
+                    model_id=model_id,
                     save_dir=save_dir,
                     job_id=job_id,
                 )
@@ -138,16 +153,16 @@ async def download_llm_route(
             dj = session.query(DownloadJobModel).get(job_id)
             dj.status = "failed"
             dj.error_message = str(e)
-            dj.updated_at = datetime.utcnow()
+            dj.updated_at = datetime.now()
             session.commit()
             session.close()
 
     # 2) enqueue background
     background_tasks.add_task(
         _download_task,
-        llm.link,
-        llm_id,
-        "./data/models",
+        remote_llm.link,
+        local_llm.id,
+        local_llm.link,
         job.id,
     )
 
@@ -155,7 +170,7 @@ async def download_llm_route(
     return job
 
 @router.get(
-    "/llms/{llm_id}/download/status",
+    "/downloads/{job_id}/status",
     response_model=DownloadJobResponse,
     status_code=200,
 )
@@ -169,4 +184,23 @@ def get_download_status(
     job = db.query(DownloadJobModel).get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Download job not found")
+    
+    if job.status == "failed":
+        llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
+        if not llm:
+            raise HTTPException(status_code=404, detail="LLM not found")
+        db.delete(llm)
+        job.local_model_id = -1
+        shutil.rmtree(job.local_model_link, ignore_errors=True)
+        job.local_model_link = ""
+        job.updated_at = datetime.now()
+        db.commit()
+        db.refresh(job)
+    elif job.status == "completed":
+        llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
+        if not llm:
+            raise HTTPException(status_code=404, detail="LLM not found")
+        llm.local = 1
+        db.commit()
+        db.refresh(llm)
     return job

@@ -4,7 +4,7 @@ import ConfirmationModal from "./modals/ConfirmationModal";
 import SpinnerDots from "./Spinner";
 import PreparingModal from "./modals/PreparingModal";
 
-const API_BASE = "http://127.0.0.1:8000/main_window";
+const API_BASE = "http://127.0.0.1:8000"; // remove /main_window prefix here
 
 export default function CollapsibleSection({ title }) {
   const [open, setOpen] = useState(true);
@@ -21,26 +21,26 @@ export default function CollapsibleSection({ title }) {
   const [downloadStatus, setDownloadStatus] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
 
+  // store the background job ID
+  const [jobId, setJobId] = useState(null);
+
   // ref for polling interval
   const pollingRef = useRef(null);
 
-  useEffect(() => {
-    // cleanup on unmount
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-      }
-    };
+  // cleanup on unmount
+  useEffect(() => () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
   }, []);
 
+  // fetch models
   useEffect(() => {
     async function fetchModels() {
       setLoading(true);
       try {
         const url =
           title === "Local Models"
-            ? `${API_BASE}/llms/local`
-            : `${API_BASE}/llms/remote`;
+            ? `${API_BASE}/main_window/llms/local`
+            : `${API_BASE}/main_window/llms/remote`;
         const res = await fetch(url);
         if (res.ok) setModels(await res.json());
       } catch (err) {
@@ -58,45 +58,39 @@ export default function CollapsibleSection({ title }) {
     setErrorMessage("");
   };
 
-  const checkDownloadStatus = async (llmId) => {
+  const reloadModels = async () => {
+    setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/llms/${llmId}/download/status`
-      );
-      if (!res) throw new Error("status fetch failed");
+      const url = `${API_BASE}/main_window/llms/local`;
+      const res = await fetch(url);
+      if (res.ok) setModels(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkDownloadStatus = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/main_window/downloads/${id}/status`);
+      if (!res.ok) throw new Error("status fetch failed");
       const data = await res.json();
       setDownloadProgress(data.progress);
       setDownloadStatus(data.status);
 
-      if (data.status === "completed") {
+      if (data.status === "completed" || data.status === "failed") {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
-        setIsDownloading(false);
         setIsPreparing(false);
-        reloadModels();
-      } else if (data.status === "failed") {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-        setErrorMessage("Download failed.");
         setIsDownloading(false);
-        setIsPreparing(false);
+        if (data.status === "completed") reloadModels();
+        else setErrorMessage("Download failed.");
       }
     } catch (err) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
       setErrorMessage("Error checking download status.");
-      setIsDownloading(false);
       setIsPreparing(false);
-    }
-  };
-
-  const reloadModels = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/llms/local`);
-      if (res.ok) setModels(await res.json());
-    } finally {
-      setLoading(false);
+      setIsDownloading(false);
     }
   };
 
@@ -109,9 +103,8 @@ export default function CollapsibleSection({ title }) {
     setDownloadStatus("pending");
     setErrorMessage("");
 
-    // start the job
     const res = await fetch(
-      `${API_BASE}/llms/${selectedModel.id}/download`,
+      `${API_BASE}/main_window/llms/${selectedModel.id}/download`,
       { method: "POST" }
     );
     if (!res.ok) {
@@ -121,10 +114,9 @@ export default function CollapsibleSection({ title }) {
       return;
     }
 
-    // begin polling every 2s
-    pollingRef.current = setInterval(() => {
-      checkDownloadStatus(selectedModel.id);
-    }, 2000);
+    const job = await res.json();
+    setJobId(job.id);
+    pollingRef.current = setInterval(() => checkDownloadStatus(job.id), 2000);
   };
 
   return (
@@ -138,11 +130,7 @@ export default function CollapsibleSection({ title }) {
         onClick={() => setOpen(!open)}
       >
         <div className="flex items-center gap-2">
-          {open ? (
-            <ChevronDown className="w-4 h-4" />
-          ) : (
-            <ChevronRight className="w-4 h-4" />
-          )}
+          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           <span className="font-semibold text-xl sm:text-lg">{title}</span>
         </div>
         <div className="flex gap-3">
@@ -194,9 +182,7 @@ export default function CollapsibleSection({ title }) {
               style={{ width: `${downloadProgress}%` }}
             />
           </div>
-          <p className="text-xs text-white mt-1">
-            Downloading... {downloadProgress}%
-          </p>
+          <p className="text-xs text-white mt-1">Downloading... {downloadProgress}%</p>
         </div>
       )}
     </div>

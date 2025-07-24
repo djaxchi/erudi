@@ -6,8 +6,10 @@ class DownloadJobModel(Base):
     __tablename__ = "download_jobs"
 
     id = Column(Integer, primary_key=True, index=True)
-    model_id = Column(String, nullable=False)
-    model_link = Column(String, nullable=False)
+    remote_model_id = Column(String, nullable=False)
+    local_model_id = Column(String, nullable=True)
+    remote_model_link = Column(String, nullable=False)
+    local_model_link = Column(String, nullable=True)
     status = Column(String, default="pending")  # pending, running, completed, failed
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

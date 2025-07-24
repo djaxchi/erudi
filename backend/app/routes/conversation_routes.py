@@ -505,7 +505,7 @@ async def query_and_respond(
     db.add(user_message)
     db.flush()
     
-    conversation.last_message_time = datetime.utcnow()
+    conversation.last_message_time = datetime.now()
     db.commit()
 
     llm = db.query(Llm).filter(Llm.id == conversation.llm_id).first()
@@ -633,7 +633,7 @@ async def query_and_respond(
                 content=assistant_response.strip()
             )
             db.add(assistant_message)
-            conversation.last_message_time = datetime.utcnow()
+            conversation.last_message_time = datetime.now()
             db.commit()
             
             logging.info("Generation thread finished")
@@ -685,7 +685,7 @@ async def store_error_message(
     
     try:
         db.add(error_message)
-        conversation.last_message_time = datetime.utcnow()
+        conversation.last_message_time = datetime.now()
         db.commit()
         logging.info(f"Stored error message for conversation {conversation_id}")
         return {"message": "Error message stored successfully", "error_message_id": error_message.id}

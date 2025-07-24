@@ -4,9 +4,11 @@ from datetime import datetime
 
 class DownloadJobResponse(BaseModel):
     job_id:             int                = Field(..., alias="id")
-    llm_id:             str                = Field(..., alias="model_id")
-    model_link:         str
-    status:             str
+    remote_model_id:         str
+    local_model_id:          Optional[int] = None
+    remote_model_link:       str
+    local_model_link:        Optional[str] = None
+    status:             str  # pending, running, completed, failed
     total_bytes:        float
     progress:           float
     total_time_elapsed: float
