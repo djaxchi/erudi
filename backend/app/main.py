@@ -149,7 +149,7 @@ async def startup_populate_database():
 @app.on_event("startup")
 async def startup_event():
     await createTables()
-    await delete_all_data()
+    #await delete_all_data()
     await startup_populate_database()
 
 app.add_middleware(

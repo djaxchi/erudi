@@ -86,7 +86,7 @@ export default function ChatPage() {
       <Sidebar />
 
       {/* barre latérale */}
-      <aside className="w-80 bg-[#272727] text-white flex flex-col p-6 space-y-6">
+      <aside className="w-[30%] sm:w-[35%] xl:w-[25%] bg-[#272727] text-white flex flex-col p-6 space-y-6">
         <h1 className="text-3xl font-bold">History</h1>
 
         <ChatCollapsibleSection title="Hot Chats" />

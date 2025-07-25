@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
 import torch
 from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, pipeline, StoppingCriteria, StoppingCriteriaList, AutoModelForSeq2SeqLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, pipeline, StoppingCriteria, StoppingCriteriaList, AutoModelForSeq2SeqLM, BitsAndBytesConfig
 import logging
 from typing import List
 from ..database import get_db
@@ -30,6 +30,16 @@ embedder = None
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 conversation_summary_cache = {}
+
+# The quantization configuration for the model
+# It is here for the moment, but it will soon be dynamically adapted based on the model and hardware
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16,
+    bnb_4bit_use_double_quant=True,
+)
+flash_attn_impl = False
 
 router = APIRouter()
 
@@ -385,7 +395,12 @@ async def generate_title(
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
             loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link, local_files_only=True, torch_dtype=torch.float16
+                llm.link,
+                local_files_only=True,
+                torch_dtype=torch.float16,
+                quantization_config=bnb_config,
+                attn_implementation="flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa",
+                low_cpu_mem_usage=True,
             )
             current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
             loaded_model_id = llm.id
@@ -519,7 +534,12 @@ async def query_and_respond(
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
             loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link, local_files_only=True, torch_dtype=torch.float16
+                llm.link,
+                local_files_only=True,
+                torch_dtype=torch.bfloat16,
+                quantization_config=bnb_config,
+                low_cpu_mem_usage=True,
+                attn_implementation="flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa",
             )
             current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
             loaded_model_id = llm.id
@@ -688,6 +708,10 @@ async def store_error_message(
         conversation.last_message_time = datetime.now()
         db.commit()
         logging.info(f"Stored error message for conversation {conversation_id}")
+        if loaded_model or current_tokenizer :
+            loaded_model = None
+            current_tokenizer = None
+            logging.info("Cleared model cache after error message storage")
         return {"message": "Error message stored successfully", "error_message_id": error_message.id}
     except Exception as e:
         db.rollback()

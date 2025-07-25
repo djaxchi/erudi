@@ -1,78 +1,87 @@
+"""
+Utility for downloading LLM repositories from Hugging Face with progress
+tracking and database updates.
+"""
+
+# Standard library imports
+import os
+import time
 import threading
-from typing import Callable, Optional
 import shutil
 import logging
-
-from ..models.Llm import Llm
-logger = logging.getLogger("uvicorn.error")
-logger.setLevel(logging.INFO)
+import asyncio
 import gc
 from datetime import datetime
-
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-from huggingface_hub import HfApi, hf_hub_download
-from dotenv import load_dotenv
-
-import asyncio
-import time
-import os
-from datetime import datetime
 from threading import Lock
+from typing import Callable, Optional, List, Tuple
 
-from huggingface_hub import HfApi, HfFileSystem
-from fsspec.callbacks import Callback  # ← le callback attendu par get_file
+# Third-party imports
+import torch  # type: ignore
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig  # type: ignore
+from huggingface_hub import HfApi, HfFileSystem  # type: ignore
+from fsspec.callbacks import Callback  # type: ignore
 
-from sqlalchemy.orm import Session
-from ..models.DownloadJob import DownloadJobModel
+# Local application imports
 from ..database import SessionLocal
+from ..models.DownloadJob import DownloadJobModel
+from ..models.Llm import Llm
 
+# Configure logger
+logger = logging.getLogger("uvicorn.error")
+logger.setLevel(logging.INFO)
 
-
-
-load_dotenv()
-HF_TOKEN = os.getenv("HF_TOKEN")
-
+# Environment and device setup
+HF_TOKEN = os.getenv("HF_TOKEN", "")
 device = "cuda" if torch.cuda.is_available() else "cpu"
+FILES_TO_EXCLUDE = ["consolidated.safetensors"]
 logger.info(f"Using device: {device}")
 
-FILES_TO_EXCLUDE = ["consolidated.safetensors"]
 
 class DownloadJob:
-    """Suit la progression globale d'un téléchargement multi-fichiers concurrent,
-    et estime dynamiquement le temps restant (ETA)."""
-    def __init__(self):
-        self.total_bytes = 0
-        self.downloaded_bytes = 0
-        self.eta_seconds = None
+    """
+    Tracks download progress across multiple files and estimates ETA.
+
+    Attributes:
+        total_bytes (int): Total bytes to download.
+        downloaded_bytes (int): Bytes downloaded so far.
+        eta_seconds (Optional[float]): Estimated seconds remaining.
+    """
+
+    def __init__(self) -> None:
+        self.total_bytes: int = 0
+        self.downloaded_bytes: int = 0
+        self.eta_seconds: Optional[float] = None
         self._lock = Lock()
         logger.info("DownloadJob initialized")
 
-    def update(self, bytes_downloaded: int):
+    def update(self, bytes_downloaded: int) -> None:
         """
-        Met à jour le nombre d'octets téléchargés.
-        Doit être appelé à chaque chunk reçu.
+        Update the downloaded byte count for the job.
+
+        Args:
+            bytes_downloaded (int): Number of bytes downloaded in this chunk.
         """
         with self._lock:
             self.downloaded_bytes += bytes_downloaded
 
     @property
     def percent(self) -> float:
+        """
+        Compute the percentage of completion.
+
+        Returns:
+            float: Progress percentage [0.0–100.0].
+        """
         if self.total_bytes == 0:
             return 0.0
         return (self.downloaded_bytes / self.total_bytes) * 100
 
-    def __str__(self):
-        base = (f"Download progress: {self.percent:.2f}% "
-                f"({self.downloaded_bytes}/{self.total_bytes} bytes)")
-        if self.eta_seconds is not None:
-            base += f" | ETA: {self.eta_seconds:.2f}s"
-        return base
-
-    async def monitor_eta(self, interval: float = 20.0):
+    async def monitor_eta(self, interval: float = 20.0) -> None:
         """
-        Périodiquement (toutes les `interval` secondes), calcule et stocke
-        l'estimation du temps restant en secondes, basé sur la vitesse actuelle.
+        Periodically estimate remaining time based on current download rate.
+
+        Args:
+            interval (float): Seconds between ETA calculations.
         """
         logger.info("Starting ETA monitoring")
         last_time = time.time()
@@ -85,51 +94,67 @@ class DownloadJob:
             if current >= total:
                 break
 
-            current_time = time.time()
+            now = time.time()
             delta_bytes = current - last_downloaded
-            delta_time = current_time - last_time
+            delta_time = now - last_time
 
             if delta_time > 0 and delta_bytes > 0:
                 rate = delta_bytes / delta_time
-                remaining = total - current
-                self.eta_seconds = remaining / rate
-                elapsed = current_time - last_time
-                logger.info(f"Estimated time elapsed: {elapsed} / {self.eta_seconds:.2f} estimated total seconds")
-            else:
-                logger.info("Not enough data to estimate ETA")
+                self.eta_seconds = (total - current) / rate
 
-            last_time = current_time
+            last_time = now
             last_downloaded = current
+
         logger.info("ETA monitoring complete")
 
-def make_callback(job: DownloadJob):
-    def after_chunk(size, value, **kwargs):
-        job.update(value - job.downloaded_bytes)
+
+def make_callback(job: DownloadJob) -> Callback:
+    """
+    Create an fsspec Callback to update DownloadJob on each transfer chunk.
+
+    Args:
+        job (DownloadJob): Tracker instance to update.
+
+    Returns:
+        Callback: Configured fsspec callback.
+    """
+    def after_chunk(size: int, value: int, **kwargs) -> None:
+        # Calculate bytes since last update and guard against negative
+        delta = value - job.downloaded_bytes if value is not None else 0
+        job.update(max(delta, 0))
 
     return Callback(size=job.total_bytes, hooks={"transfer-chunk": after_chunk})
 
 
-def update_db_with_progress(job: DownloadJob, job_id: int, model_id: int):
+def update_db_with_progress(job: DownloadJob, job_id: int, model_id: int) -> None:
     """
-    *Only updates* an existing DownloadJobModel row.
+    Periodically update DownloadJobModel row in the database.
+
+    Args:
+        job (DownloadJob): Tracker instance with progress state.
+        job_id (int): Primary key of the DownloadJobModel to update.
+        model_id (int): LLM model ID to mark local on completion.
     """
     session = SessionLocal()
-    dbj = session.query(DownloadJobModel).get(job_id)
-    llm = session.query(Llm).get(model_id)
-    if not dbj or not llm:
-        logger.error(f"Job {job_id} or LLM {model_id} not found in DB.")
-        session.close()
-        return
-    start = datetime.now()
     try:
+        dbj = session.query(DownloadJobModel).get(job_id)
+        llm = session.query(Llm).get(model_id)
+        if not dbj or not llm:
+            logger.error(f"DB row for job {job_id} or model {model_id} not found")
+            return
+
+        start_time = datetime.utcnow()
+        # Loop until download completes
         while job.percent < 100.0:
             time.sleep(1)
             dbj.total_bytes = job.total_bytes
             dbj.progress = job.percent
-            dbj.total_time_elapsed = (datetime.now() - start).total_seconds()
+            dbj.total_time_elapsed = (datetime.utcnow() - start_time).total_seconds()
             dbj.time_left = job.eta_seconds or 0.0
             session.commit()
-            logger.info(f"Updated job {job_id}: {dbj.progress:.2f}% complete, {dbj.time_left:.2f}s left")
+            logger.info(f"Job {job_id}: {dbj.progress:.2f}% complete")
+
+        # Finalize job state
         dbj.progress = 100.0
         dbj.status = "completed"
         llm.local = 1
@@ -142,92 +167,108 @@ def update_db_with_progress(job: DownloadJob, job_id: int, model_id: int):
         job.local_model_link = ""
         job.updated_at = datetime.now()
         session.delete(llm)
-        logger.error(f"Error updating job {job_id}: {e}")
         session.commit()
+        logger.error(f"Job {job_id} failed: {e}")
     finally:
         session.close()
 
 
-async def download_files_concurrent(hf_file_system: HfFileSystem, callback: Callback, tasks: list, local_dir: str):
+async def download_files_concurrent(
+    fs: HfFileSystem,
+    callback: Callback,
+    tasks: List[Tuple[str, str]],
+    local_dir: str
+) -> None:
     """
-    Télécharge en parallèle une liste de (repo_id, path) via threads.
-    'tasks' est une liste de tuples (repo_id, path).
+    Download multiple files concurrently using asyncio Executor.
+
+    Args:
+        fs (HfFileSystem): Hugging Face filesystem instance.
+        callback (Callback): Callback for progress updates.
+        tasks (List[Tuple[str,str]]): List of (repo_id, file_path).
+        local_dir (str): Base local directory to save files.
     """
     loop = asyncio.get_running_loop()
-    jobs = []
+    coros = []
     for repo_id, path in tasks:
         remote = f"{repo_id}/{path}"
-        local_path = os.path.join(local_dir, path)
-        os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        logger.info(f"Scheduling download: {path}")
-        jobs.append(loop.run_in_executor(
-            None,
-            hf_file_system.get_file,
-            remote,
-            local_path,
-            callback
-        ))
-    await asyncio.gather(*jobs)
+        dest = os.path.join(local_dir, path)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        coros.append(loop.run_in_executor(None, fs.get_file, remote, dest, callback))
+    await asyncio.gather(*coros)
 
 
 async def download_llm(
-        model_link: str,
-        model_id: int,
-        save_dir: str,
-        job_id: Optional[int] = None,
-        )->str:
-    
-    # Prépare dossier
-    os.makedirs(save_dir, exist_ok=True)
-    logger.info(f"Starting download of repo: {model_link} → {save_dir}")
+    model_link: str,
+    model_id: int,
+    save_dir: str,
+    job_id: Optional[int] = None
+) -> str:
+    """
+    Download a Hugging Face repo with progress tracking and optional DB updates.
 
-    # Init API et FS avec token
+    Args:
+        model_link (str): Hugging Face repo ID.
+        model_id (int): Database ID of the LLM model.
+        save_dir (str): Base directory for downloads.
+        job_id (Optional[int]): DownloadJobModel ID to update.
+
+    Returns:
+        str: Final local path containing downloaded files.
+    """
+    # Prepare local path
+    os.makedirs(save_dir, exist_ok=True)
+    logger.info(f"Starting download for {model_link} → {save_dir}")
+
+    # Initialize HF API & filesystem
     api = HfApi(token=HF_TOKEN)
     fs = HfFileSystem(token=HF_TOKEN)
 
+    # Initialize tracking
     job = DownloadJob()
 
-    # 1. Récupération des tailles et calcul total
+    # Gather file sizes and compute total
     info = api.repo_info(model_link, files_metadata=True)
-    file_sizes = {s.rfilename: s.size for s in info.siblings if s.size}
-    file_sizes = {f: size for f, size in file_sizes.items() if f not in FILES_TO_EXCLUDE}
+    file_sizes = {
+        s.rfilename: s.size
+        for s in info.siblings
+        if s.size and s.rfilename not in FILES_TO_EXCLUDE
+    }
     job.total_bytes = sum(file_sizes.values())
-    logger.info(f"Total to download: {job.total_bytes} bytes ({job.total_bytes/1024**2:.2f} MB)")
-    
-    # 2. Créer callback partagé
+    logger.info(f"Total size: {job.total_bytes} bytes")
+
+    # Create progress callback
     callback = make_callback(job)
     callback.set_size(job.total_bytes)
 
-    # 3. Séparer les tâches : misc puis shards
-    all_files = [f for f in api.list_repo_files(model_link) if f in file_sizes]
-    misc = [f for f in all_files if not f.endswith(".safetensors")]
-    shards = [f for f in all_files if f.endswith(".safetensors")]
-
-    logger.info(f"Phases: misc={len(misc)}, shards={len(shards)} files")
-
+    # Start DB updater if requested
     if job_id is not None:
         threading.Thread(
             target=update_db_with_progress,
             args=(job, job_id, model_id),
             daemon=True
         ).start()
-    eta_task = asyncio.create_task(job.monitor_eta(interval=20.0))
 
-    # 5. Phase 1: misc séquentiel
+    # Start ETA monitoring
+    eta_task = asyncio.create_task(job.monitor_eta(interval=5.0))
+
+    # Split tasks into misc and shard files
+    all_files = [f for f in api.list_repo_files(model_link) if f in file_sizes]
+    misc = [f for f in all_files if not f.endswith(".safetensors")]
+    shards = [f for f in all_files if f.endswith(".safetensors")]
+
+    # Download misc sequentially
     for path in misc:
         await asyncio.to_thread(fs.get_file, f"{model_link}/{path}", os.path.join(save_dir, path), callback)
-        logger.info(f"Loaded misc: {path}")
+        logger.info(f"Downloaded {path}")
 
-    # 6. Phase 2: shards en parallèle
-    tasks_shards = [(model_link, f) for f in shards]
-    await download_files_concurrent(fs, callback, tasks_shards, save_dir)
-    logger.info("Shards downloaded.")
+    # Download shards concurrently
+    shard_tasks = [(model_link, path) for path in shards]
+    await download_files_concurrent(fs, callback, shard_tasks, save_dir)
+    logger.info("All shards downloaded")
 
-    # 7. Attendre la fin des suivis
+    # Wait for ETA monitor to finish
     await eta_task
-
-    logger.info("All files downloaded.")
-    # 8. Nettoyage et mise à jour de la bd
-    
+    logger.info("Download complete")
 
     return save_dir

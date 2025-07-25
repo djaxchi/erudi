@@ -2,8 +2,10 @@ import React from "react";
 import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
 import TrainNewModelCard from "../components/TrainNewModelCard";
+import { useDownloadModal } from "../contexts/DownloadModalContext";
 
 export default function LandingPage() {
+  const { open } = useDownloadModal();
   return (
     <div className="flex h-screen">
       {/* Left mini sidebar */}
@@ -13,7 +15,10 @@ export default function LandingPage() {
       <aside className="w-[30%] sm:w-[35%] xl:w-[25%]  bg-[#272727] text-white flex flex-col p-6 space-y-6">
         <h1 className="text-3xl font-bold">Models</h1>
         <ModelCollapsibleSection title="Local Models" />
-        <ModelCollapsibleSection title="Available Models" />
+        <ModelCollapsibleSection
+         title="Available Models"
+         onDownload={(model) => open(model)}
+       />
       </aside>
 
       {/* Main content */}

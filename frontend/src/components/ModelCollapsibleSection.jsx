@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+/*import React, { useState, useEffect, useRef } from "react";
 import { ChevronDown, ChevronRight, Cog, RefreshCcw, Plus } from "lucide-react";
 import ConfirmationModal from "./modals/ConfirmationModal";
 import SpinnerDots from "./Spinner";
@@ -183,6 +183,125 @@ export default function CollapsibleSection({ title }) {
             />
           </div>
           <p className="text-xs text-white mt-1">Downloading... {downloadProgress}%</p>
+        </div>
+      )}
+    </div>
+  );
+}*/
+
+// src/components/CollapsibleSection.jsx
+import React, { useState, useEffect } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Cog,
+  RefreshCcw,
+  Plus,
+} from "lucide-react";
+import { useDownloadModal } from "../contexts/DownloadModalContext";
+
+const API_BASE = "http://127.0.0.1:8000";
+
+export default function CollapsibleSection({ title }) {
+  const [openSection, setOpenSection] = useState(true);
+  const [models, setModels] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const { open: openDownload } = useDownloadModal();
+
+  // fetch models
+  useEffect(() => {
+    async function fetchModels() {
+      setLoading(true);
+      try {
+        const url =
+          title === "Local Models"
+            ? `${API_BASE}/main_window/llms/local`
+            : `${API_BASE}/main_window/llms/remote`;
+        const res = await fetch(url);
+        if (res.ok) setModels(await res.json());
+      } catch (err) {
+        console.error("Failed to fetch models:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchModels();
+  }, [title]);
+  
+  const reloadModels = async () => {
+    setLoading(true);
+    try {
+      const url = `${API_BASE}/main_window/llms/local`;
+      const res = await fetch(url);
+      if (res.ok) setModels(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleModelClick = (model) => {
+    setErrorMessage("");
+    openDownload(model, {
+      onComplete: reloadModels,
+      onError: (err) => setErrorMessage(err ?? "Download failed."),
+    });
+  };
+
+  return (
+    <div className="text-gray-200 w-full">
+      {errorMessage && (
+        <div className="text-red-500 text-sm mb-2">{errorMessage}</div>
+      )}
+
+      {/* Section header */}
+      <div
+        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
+        onClick={() => setOpenSection((prev) => !prev)}
+      >
+        <div className="flex items-center gap-2">
+          {openSection ? (
+            <ChevronDown className="w-4 h-4" />
+          ) : (
+            <ChevronRight className="w-4 h-4" />
+          )}
+          <span className="font-semibold text-xl sm:text-lg">{title}</span>
+        </div>
+        <div className="flex gap-3">
+          <Cog className="w-4 h-4 hover:opacity-70" />
+          <RefreshCcw
+            className="w-4 h-4 hover:opacity-70 cursor-pointer"
+            onClick={reloadModels}
+          />
+          <Plus className="w-4 h-4 hover:opacity-70" />
+        </div>
+      </div>
+
+      {/* Section body */}
+      {openSection && (
+        <div className="px-10 py-2 text-sm text-gray-500">
+          {loading ? (
+            <p className="italic">Loading...</p>
+          ) : models.length > 0 ? (
+            models.map((m) => (
+              <p
+                key={m.id}
+                className={`py-1 ${
+                  title !== "Local Models"
+                    ? "cursor-pointer hover:text-blue-500"
+                    : ""
+                }`}
+                onClick={() =>
+                  title !== "Local Models" && handleModelClick(m)
+                }
+              >
+                {m.name}
+              </p>
+            ))
+          ) : (
+            <p className="italic">Nothing here…</p>
+          )}
         </div>
       )}
     </div>
