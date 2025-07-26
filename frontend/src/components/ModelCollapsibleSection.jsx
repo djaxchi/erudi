@@ -280,14 +280,14 @@ export default function CollapsibleSection({ title }) {
 
       {/* Section body */}
       {openSection && (
-        <div className="px-10 py-2 text-sm text-gray-500">
+        <div className="px-10 py-2 text-sm text-gray-500 max-h-[50vh] max-w-full overflow-y-auto overflow-x-visible custom-scroll">
           {loading ? (
             <p className="italic">Loading...</p>
           ) : models.length > 0 ? (
             models.map((m) => (
               <p
                 key={m.id}
-                className={`py-1 ${
+                className={`py-1 max-w-full ${
                   title !== "Local Models"
                     ? "cursor-pointer hover:text-blue-500"
                     : ""

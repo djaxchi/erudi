@@ -37,7 +37,6 @@ export default function ChatCollapsibleSection({
 
       if (!res.ok) throw new Error("Rename failed");
 
-      // notify parent so it can refresh its list, if desired
       onRename?.(id, name);
     } catch (err) {
       console.error(err);
@@ -82,10 +81,11 @@ export default function ChatCollapsibleSection({
                 navigate(`/main_window/conversations/${conv.id}`);
               }
             }}
-            className={`relative group py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${isSelected
+            className={`relative group py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${
+              isSelected
                 ? "bg-emerald-500/50 text-white"
                 : "hover:bg-gray-700 hover:text-white text-gray-300"
-              }`}
+            }`}
           >
             {isEditing ? (
               <input
@@ -94,7 +94,7 @@ export default function ChatCollapsibleSection({
                 onKeyDown={async (e) => {
                   if (e.key === "Enter" && tempName.trim()) {
                     await renameConversation(conv.id, tempName.trim());
-                    +                   e.stopPropagation();
+                    e.stopPropagation();
                   }
                   if (e.key === "Escape") {
                     setEditingId(null);
@@ -131,13 +131,12 @@ export default function ChatCollapsibleSection({
       });
     }
 
-
-    <p className="italic">Nothing here…</p>
+    return <p className="italic">Nothing here…</p>;
   };
 
   return (
     <div
-      className={`text-gray-200 ${disabled ? "pointer-events-none opacity-50 select-none" : ""}`}
+      className={`text-gray-200 h-full ${disabled ? "pointer-events-none opacity-50 select-none" : ""}`}
     >
       <div
         className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
@@ -160,12 +159,7 @@ export default function ChatCollapsibleSection({
       </div>
 
       {open && (
-        <div className="px-4 py-2 max-h-[calc(100vh-220px)] overflow-y-auto">
-          <style>{`
-            ::-webkit-scrollbar {
-              display: none;
-            }
-          `}</style>
+        <div className="px-4 py-2 max-h-[88%] overflow-y-auto overflow-x-visible custom-scroll">
           {renderItems()}
         </div>
       )}

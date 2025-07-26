@@ -89,7 +89,9 @@ export default function ChatPage() {
       <aside className="w-[30%] sm:w-[35%] xl:w-[25%] bg-[#272727] text-white flex flex-col p-6 space-y-6">
         <h1 className="text-3xl font-bold">History</h1>
 
-        <ChatCollapsibleSection title="Hot Chats" />
+        {/*<ChatCollapsibleSection title="Hot Chats"
+          disabled={loading}
+        />} coming in next version*/}
         <ChatCollapsibleSection
           title="Previous Chats"
           items={conversations}
