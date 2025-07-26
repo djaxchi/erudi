@@ -3,6 +3,8 @@ from datetime import datetime
 import os
 from collections import defaultdict
 import shutil
+import asyncio
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -143,7 +145,7 @@ async def download_llm_route(
             session.close()
 
             # call the downloader (it will spawn its own updater thread)
-            import asyncio
+            
             asyncio.run(
                 download_llm(
                     model_link=model_link,
@@ -173,12 +175,46 @@ async def download_llm_route(
     # 3) immediately return the DB row
     return job
 
+
+@router.post(
+    "/downloads/{job_id}/cancel",
+    status_code=200,
+)
+def cancel_download(
+    job_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Cancel a download job by its job_id.
+    """
+    job = db.query(DownloadJobModel).get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Download job not found")
+
+    if job.status in ["completed", "failed"]:
+        raise HTTPException(status_code=400, detail="Cannot cancel completed or failed jobs")
+
+    # Mark the job as cancelled
+    job.status = "cancelled"
+    job.updated_at = datetime.now()
+    db.commit()
+
+    # Clean up local model if it exists
+    if job.local_model_link:
+        shutil.rmtree(job.local_model_link, ignore_errors=True)
+        job.local_model_link = ""
+        job.local_model_id = -1
+
+    db.commit()
+    return {"message": "Download job cancelled successfully"}
+
+
 @router.get(
     "/downloads/{job_id}/status",
     response_model=DownloadJobResponse,
     status_code=200,
 )
-def get_download_status(
+def get_download_status_by_jobId(
     job_id: int,
     db: Session = Depends(get_db),
 ):
@@ -186,6 +222,47 @@ def get_download_status(
     Fetch the DownloadJobModel by its job_id.
     """
     job = db.query(DownloadJobModel).get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Download job not found")
+    
+    if job.status == "failed" or job.status == "cancelled":
+        llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
+        if not llm:
+            raise HTTPException(status_code=404, detail="LLM not found")
+        db.delete(llm)
+        job.local_model_id = -1
+        shutil.rmtree(job.local_model_link, ignore_errors=True)
+        job.local_model_link = ""
+        job.updated_at = datetime.now()
+        db.commit()
+        db.refresh(job)
+    elif job.status == "completed":
+        llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
+        if not llm:
+            raise HTTPException(status_code=404, detail="LLM not found")
+        llm.local = 1
+        db.commit()
+        db.refresh(llm)
+    return job
+
+
+@router.get(
+    "/downloads/status",
+    response_model=DownloadJobResponse,
+    status_code=200,
+)
+def get_download_status_without_jobId(
+    db: Session = Depends(get_db),
+):
+    """
+    Fetch the DownloadJobModel by its job_id.
+    """
+    sixty_seconds_ago = datetime.now() - timedelta(seconds=60)
+    job = db.query(DownloadJobModel)\
+           .filter(DownloadJobModel.status.in_(["running", "pending"]))\
+           .filter(DownloadJobModel.updated_at >= sixty_seconds_ago)\
+           .order_by(DownloadJobModel.updated_at.desc())\
+           .first()
     if not job:
         raise HTTPException(status_code=404, detail="Download job not found")
     

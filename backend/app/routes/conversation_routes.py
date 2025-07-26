@@ -701,7 +701,8 @@ async def query_and_respond(
                 loaded_model.generate(**generation_kwargs)
         except Exception as e:
             logging.exception(f"Generation failed : {e}")
-            raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
+            logging.error(f"Generation error: {str(e)}")
+            streamer.send("[ERROR_MESSAGE_SYSTEM] Generation failed due to an error. Please try again or contact developer team.")
 
     response_thread = threading.Thread(target=run_response_inference)
     response_thread.start()
