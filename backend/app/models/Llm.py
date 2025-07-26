@@ -5,8 +5,7 @@ class Llm(Base):
     __tablename__ = "llms"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    # defiines if the model is downloaded or not
-    local = Column(Integer, nullable=False)
-    # defines local path if model is local, huggingface link othewise
+    name = Column(String, index=True) # defiines if the model is downloaded or not
+    local = Column(Integer, nullable=False) # defines local path if model is local, huggingface link othewise
     link = Column(String, nullable=True)
+    type = Column(String, nullable=False)  # Type of the model (e.g., "mistral", "gemma")

@@ -58,27 +58,32 @@ async def startup_populate_database():
         base_mistral_instr = Llm(
                 name="Mistral-7B-Instruct-v0.3",  
                 local=0,
-                link="mistralai/Mistral-7B-Instruct-v0.3"
+                link="mistralai/Mistral-7B-Instruct-v0.3",
+                type="mistral"
             )
         base_mistral = Llm(
                 name="Mistral-7B-v0.3",  
                 local=0,
-                link="mistralai/Mistral-7B-v0.3"
+                link="mistralai/Mistral-7B-v0.3",
+                type="mistral"
             )
         base_gemma1B = Llm(
                 name="Gemma-3-1B-it",  
                 local=0,
-                link="google/gemma-3-1b-it"           
+                link="google/gemma-3-1b-it",
+                type="gemma"
             )
         base_gemma2B = Llm(
                 name="Gemma-2-2B-it",  
                 local=0,
-                link="google/gemma-2-2b-it"           
+                link="google/gemma-2-2b-it",
+                type="gemma"
             )
         base_gemma4B = Llm(
                 name="Gemma-3-4B-it",  
                 local=0,
-                link="google/gemma-3-4b-it"           
+                link="google/gemma-3-4b-it",
+                type="gemma"
             )
         db.add(base_mistral_instr)
         db.add(base_mistral)
@@ -115,7 +120,8 @@ async def startup_populate_database():
             llm_entry = Llm(
                 name=m.modelId.split("/")[-1],  
                 local=0,
-                link=m.modelId               
+                link=m.modelId,
+                type="mistral" if "mistral" in m.modelId else "gemma"
             )
             db.add(llm_entry)
         db.commit()
@@ -127,16 +133,34 @@ async def startup_populate_database():
         ).all()
         for job in unfinished_jobs:
             job.status = "failed"
-            job.error_message = "Job was not completed due to application shutdown."
-            job.local_model_id = -1
-            shutil.rmtree(job.local_model_link, ignore_errors=True)
-            job.local_model_link = ""
-            job.updated_at = datetime.now()
             llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
             if llm:
                 db.delete(llm)
+            job.error_message = "Downloading was not completed due to application shutdown."
+            job.local_model_id = -1
+            job.updated_at = datetime.now()
+            shutil.rmtree(job.local_model_link, ignore_errors=True)
+            job.local_model_link = ""
+            
             db.commit()
             logging.warning(f"Marked unfinished job {job.id} as failed.")
+        db.commit()
+
+        # Check the TrainingJobs to delete running-but-unfinished jobs (in case of server crash)
+        unfinished_jobs = db.query(TrainingJob).filter(
+            TrainingJob.status.in_(["running", "pending"])
+        ).all()
+        for job in unfinished_jobs:
+            job.status = "failed"
+            job.error_message = "Training was not completed due to application shutdown."
+            llm = db.query(Llm).filter(Llm.id == job.llm_id).first()
+            if llm:
+                db.delete(llm)
+            job.llm_id = -1
+            job.updated_at = datetime.now()
+            
+            db.commit()
+            logging.warning(f"Marked unfinished TrainingJob {job.id} as failed.")
         db.commit()
 
     except Exception as e:
@@ -149,7 +173,7 @@ async def startup_populate_database():
 @app.on_event("startup")
 async def startup_event():
     await createTables()
-    #await delete_all_data()
+    # await delete_all_data()
     await startup_populate_database()
 
 app.add_middleware(

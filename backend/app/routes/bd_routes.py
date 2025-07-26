@@ -31,9 +31,9 @@ async def fill_database_with_test_data(db: Session = Depends(get_db)):
     """
     try:
         # Add test LLMs
-        llm1 = Llm(name="Test Model 1", local=1, link="/models/test_model_1")
-        llm2 = Llm(name="Test Model 2", local=0, link="https://huggingface.co/test_model_2")
-        llm3 = Llm(name="Mistral-7B : Base Model", local=0, link="mistralai/Mistral-7B-Instruct-v0.3")
+        llm1 = Llm(name="Test Model 1", local=1, link="/models/test_model_1", type="mistral")
+        llm2 = Llm(name="Test Model 2", local=0, link="https://huggingface.co/test_model_2", type="gemma")
+        llm3 = Llm(name="Mistral-7B : Base Model", local=0, link="mistralai/Mistral-7B-Instruct-v0.3", type="mistral")
         db.add_all([llm1, llm2, llm3])
         db.commit()
 

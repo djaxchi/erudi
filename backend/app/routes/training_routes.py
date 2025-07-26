@@ -32,7 +32,6 @@ def get_training_status(llm_id: int, db: Session = Depends(get_db)):
     updated_at = training_job.updated_at
 
     if status == "failed":
-        db.delete(training_job)
         db.delete(db.query(Llm).filter(Llm.id == llm_id).first())
         db.commit()
 
@@ -86,7 +85,7 @@ async def train_llm_route(payload: TrainingInfo, background_tasks: BackgroundTas
 
 
         logging.info(f"creating objects for {payload.modelName}")
-        trained_model = Llm(name=payload.modelName, link='/', local=True)
+        trained_model = Llm(name=payload.modelName, link='/', local=False, type=base_model_db.type)
         db.add(trained_model)
         db.flush()
         trained_model.link = f"./data/models/{trained_model.id}"
@@ -126,13 +125,33 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
     
     db = SessionLocal()
     try:
-        
-        base_model_db = db.query(Llm).filter(Llm.id == base_model_db_id).first()
         training_job = db.query(TrainingJob).filter(TrainingJob.id == training_job_id).first()
+    except Exception as e:
+        logging.error(f"Error querying the training job: {e}")
+        db.close()
+        return
+    try:
+        base_model_db = db.query(Llm).filter(Llm.id == base_model_db_id).first()
+    except Exception as e:
+        logging.error(f"Error querying the model to be trained: {e}")
+        db.close()
+        return
+    try:
         trained_model = db.query(Llm).filter(Llm.id == trained_model_id).first()
-
+    except Exception as e:
+        logging.error(f"Error querying the new trained model: {e}")
+        db.close()
+        return
+    
+    try:
         if not trained_model:
             logging.error("Trained model not found in background task")
+            return
+        if not training_job:
+            logging.error("Training job not found in background task")
+            return
+        if not base_model_db:
+            logging.error("Base model not found in background task")
             return
         
         training_job.status = "running"
@@ -245,6 +264,7 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
 
         training_job.status = "completed"
         training_job.updated_at = datetime.now()
+        trained_model.local = True
         db.commit()
         logging.info(f"Training job status updated to completed for model {trained_model.id}")
         
@@ -256,14 +276,14 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
         logging.error(f"Error during training or database update: {e}")
         
         try:
-            if training_job and training_job.id:
-                training_job = db.query(TrainingJob).filter(TrainingJob.id == training_job.id).first()
-                if training_job:
-                    training_job.status = "failed"
-                    training_job.updated_at = datetime.now()
-                    training_job.error_message = str(e)
-                    db.commit()
-                logging.info(f"Training job status updated to failed for model {trained_model.id}")
+            if training_job:
+                training_job.status = "failed"
+                training_job.updated_at = datetime.now()
+                training_job.error_message = str(e)
+                if trained_model:
+                    db.delete(trained_model)
+                db.commit()
+            logging.info(f"Training job status updated to failed for model {trained_model.id}")
                 
             if model:
                 del model

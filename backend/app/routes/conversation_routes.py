@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from faiss import IndexFlatL2
 from sentence_transformers import SentenceTransformer
 import numpy as np
-from ..prompting.builder import build_default_prompt
+from ..prompting.builder import build_conv_prompt
 import re
 import os
 from dotenv import load_dotenv
@@ -190,7 +190,7 @@ def get_conversation_history(db: Session, conversation_id: int):
         logging.exception(f"Error retrieving conversation history: {e}")
         return []
 
-def retrieve_context(query: str, conversation_history, conversation_id: int, top_k=3, n_last_turns=2):
+def retrieve_context(query: str, conversation_history, conversation_id: int, top_k=3, n_last_turns=2, model_type="mistral"):
     """
     Retrieve relevant context from the conversation history based on semantic similarity and recency.
     Uses SentenceTransformer for embeddings and FAISS for similarity search.
@@ -200,6 +200,7 @@ def retrieve_context(query: str, conversation_history, conversation_id: int, top
         conversation_id (int): The ID of the conversation for caching purposes.
         top_k (int): Number of semantically relevant turns to retrieve.
         n_last_turns (int): Number of last turns to include.
+        model_type (str): The type of model to use for prompt engineering.
     Returns:
         str: Formatted context string.
     """
@@ -242,8 +243,15 @@ def retrieve_context(query: str, conversation_history, conversation_id: int, top
         }
         logging.info(f"Cached summary for conversation {conversation_id} with {message_count} messages")
 
-    def generate_conversation_summary(history):
-        """Generate a quick summary of the conversation history."""
+    def generate_conversation_summary(history, model_type="mistral"):
+        """
+        Generate a quick summary of the conversation history.
+        Args:
+            history (list): List of (sender, message) tuples.
+            model_type (str): The type of model to use for summarization.
+        Returns:
+            str: The generated summary.
+        """
         if not loaded_model or not current_tokenizer or len(history) < 10:
             return ""
         
@@ -255,7 +263,7 @@ def retrieve_context(query: str, conversation_history, conversation_id: int, top
         if len(conv_text) > 4000:
             conv_text = conv_text[:4000] + "..."
         
-        summary_prompt = f"""<|system|>You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.<|end|>
+        mistral_summary_prompt = f"""<|system|>You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.<|end|>
 
 <|user|>Summarize this conversation:
 
@@ -264,9 +272,23 @@ def retrieve_context(query: str, conversation_history, conversation_id: int, top
 Summary:<|end|>
 <|assistant|>"""
         
+        gemma_summary_prompt = f"""<start_of_turn>user
+You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.
+
+Summarize this conversation:
+
+{conv_text}
+
+Summary:<end_of_turn>
+<start_of_turn>model
+"""
         try:
-            input_ids = current_tokenizer.encode(summary_prompt, return_tensors="pt").to(device)
-            end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
+            if model_type == "mistral":
+                input_ids = current_tokenizer.encode(mistral_summary_prompt, return_tensors="pt").to(device)
+                end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
+            elif model_type == "gemma":
+                input_ids = current_tokenizer.encode(gemma_summary_prompt, return_tensors="pt").to(device)
+                end_ids = current_tokenizer.encode("<end_of_turn>", add_special_tokens=False)
             stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
             
             with torch.no_grad():
@@ -305,7 +327,7 @@ Summary:<|end|>
         
         if need_regenerate:
             logging.info(f"Generating new conversation summary for {len(history)} messages")
-            summary = generate_conversation_summary(history)
+            summary = generate_conversation_summary(history, model_type=model_type)
             if summary:
                 cache_summary(conversation_id, summary, current_message_count)
         else:
@@ -387,7 +409,7 @@ async def generate_title(
     llm = db.query(Llm).filter(Llm.id == conversation.llm_id).first()
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
-    
+    model_type = llm.type
     global loaded_model, current_tokenizer, loaded_model_id
 
     try:
@@ -398,9 +420,9 @@ async def generate_title(
                 llm.link,
                 local_files_only=True,
                 torch_dtype=torch.float16,
-                quantization_config=bnb_config,
+                quantization_config=bnb_config if model_type == "mistral" else None,
                 attn_implementation="flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa",
-                low_cpu_mem_usage=True,
+                low_cpu_mem_usage=True if model_type == "mistral" else False,
             )
             current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
             loaded_model_id = llm.id
@@ -416,7 +438,7 @@ async def generate_title(
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
     try:
-        title_generation_prompt = f"""<|system|>You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation.<|end|>
+        mistral_title_generation_prompt = f"""<|system|>You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation.<|end|>
 
 <|user|>Create a 2-to-5-word title for: {payload.question}
 
@@ -427,8 +449,26 @@ Examples:
 
 Your very short title:<|end|>
 <|assistant|>"""
-        input_ids = current_tokenizer.encode(title_generation_prompt, return_tensors="pt").to(device)
-        end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
+        
+        gemma_title_generation_prompt = f"""<start_of_turn>user
+You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation. Do NOT add any extra text, polite statements, or whatsoever. ONLY return the title.
+
+Examples you need to follow:
+- user: How to cook pasta? model: Pasta Cooking Guide
+- user: What is machine learning? model: Machine Learning Basics
+- user: Help me with Python code model: Python Code Help
+- user: Hey what's up ? model: Chill Conversation
+- user: Can you help me with my homework?? I struggle with my maths excercice about Bayes' Theorem. Explain it please.. model: Bayes' Theorem Explained
+
+Create a 2-to-5-word title for: {payload.question}<end_of_turn>
+<start_of_turn>model
+"""
+        if model_type == "mistral":
+            input_ids = current_tokenizer.encode(mistral_title_generation_prompt, return_tensors="pt").to(device)
+            end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
+        elif model_type == "gemma":
+            input_ids = current_tokenizer.encode(gemma_title_generation_prompt, return_tensors="pt").to(device)
+            end_ids = current_tokenizer.encode("<end_of_turn>", add_special_tokens=False)
         stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
@@ -463,7 +503,14 @@ Your very short title:<|end|>
         generated_title = ""
         try:
             for new_text in streamer:
-                if new_text.strip() == "" or "<" in new_text or ">" in new_text or "|" in new_text:
+                if (
+                    (model_type == "mistral"
+                    and new_text.strip() == "" or "<" in new_text or ">" in new_text or "|" in new_text or "end" in new_text or "assistant" in new_text or "system" in new_text or "user" in new_text or "title" in new_text or "Your very short title" in new_text or "Examples:" in new_text or "Create a 2-to-5-word title for:" in new_text
+                    )
+                    or (model_type == "gemma"
+                    and new_text.strip() == "" or "<start_of" in new_text or "<end_of" in new_text or "_turn>" in new_text or "assistant" in new_text or "system" in new_text or "user" in new_text or "title" in new_text or "Your very short title" in new_text or "Examples:" in new_text or "Create a 2-to-5-word title for:" in new_text
+                    )
+                ):
                     continue
                 cleaned_token = new_text[0].upper() + new_text[1:]
                 generated_title += cleaned_token
@@ -475,7 +522,22 @@ Your very short title:<|end|>
         finally:
             title_thread.join()
             words = generated_title.strip().split()
-            if "\"" in words or "\'" in words or "“" in words or "”" in words or "‘" in words or "’" in words or "«" in words or "»" in words: 
+            if (
+                "\"" in words
+                or "\'" in words
+                or "“" in words
+                or "”" in words
+                or "‘" in words
+                or "’" in words
+                or "«" in words
+                or "»" in words
+                or "title" in words
+                or "your" in words
+                or "here's" in words
+                or "Okay" in words
+                or "," in words
+                or ":" in words
+            ):
                 words.remove("\"")
                 words.remove("\'")
                 words.remove("“")
@@ -484,6 +546,12 @@ Your very short title:<|end|>
                 words.remove("’")
                 words.remove("«")
                 words.remove("»")
+                words.remove("title")
+                words.remove("your")
+                words.remove("here's")
+                words.remove("Okay")
+                words.remove(",")
+                words.remove(":")
             words = [re.sub(r"<.*?>", "", word) for word in words if word]
             final_title = " ".join(words[:6]) if len(words) >= 6 else " ".join(words)
             
@@ -526,7 +594,7 @@ async def query_and_respond(
     llm = db.query(Llm).filter(Llm.id == conversation.llm_id).first()
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
-    
+    model_type = llm.type
     global loaded_model, current_tokenizer, loaded_model_id
 
     try:
@@ -536,10 +604,10 @@ async def query_and_respond(
             loaded_model = AutoModelForCausalLM.from_pretrained(
                 llm.link,
                 local_files_only=True,
-                torch_dtype=torch.bfloat16,
-                quantization_config=bnb_config,
-                low_cpu_mem_usage=True,
-                attn_implementation="flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa",
+                torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
+                quantization_config=bnb_config if model_type == "mistral" else None,
+                low_cpu_mem_usage=True if model_type == "mistral" else False,
+                attn_implementation="flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else None,
             )
             current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
             loaded_model_id = llm.id
@@ -568,6 +636,7 @@ async def query_and_respond(
                 conversation_id,
                 top_k=payload.n_relevent_msgs_to_get or 3,
                 n_last_turns=payload.n_last_turns_to_get  or 2,
+                model_type=model_type
             )
             logging.info(f"Found relevant context: {context[:100]}... in {datetime.now() - start} seconds")
     except Exception as e:
@@ -584,13 +653,14 @@ async def query_and_respond(
             msg_starred_object = db.query(Message).filter(Message.content == msg[1], Message.starred == True).first()
             if msg_starred_object:
                 messages_starred.append(msg_starred_object.content)
-    prompt_text = build_default_prompt(
+    prompt_text = build_conv_prompt(
             question=payload.question,
             context=context,
             language=lang,
             max_tokens=max_tokens_out,
             custom_sys_prompt=custom_sys_prompt,
             messages_starred=messages_starred,
+            model_type=model_type,
         )
 
 
@@ -599,7 +669,10 @@ async def query_and_respond(
 
     try:
         input_ids = current_tokenizer.encode(prompt_text, return_tensors="pt").to(device)
-        end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
+        if model_type == "mistral":
+            end_ids = current_tokenizer.encode("<end>", add_special_tokens=False)
+        elif model_type == "gemma":
+            end_ids = current_tokenizer.encode("<end_of_turn>", add_special_tokens=False)
         stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
@@ -637,7 +710,11 @@ async def query_and_respond(
         assistant_response = ""
         try:
             for new_text in streamer:
-                cleand_out_token = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", new_text)
+                if model_type == "mistral":
+                    cleand_out_token = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", new_text)
+                elif model_type == "gemma":
+                    gemma_token_pattern = r"<start_of_turn>model|<end_of_turn>|<start_of_turn>|of_turn>|<start_of_turn>|"
+                    cleand_out_token = re.sub(gemma_token_pattern, "", new_text)
                 assistant_response += cleand_out_token
                 logging.info(f"Yielding token: {cleand_out_token}")
                 yield cleand_out_token

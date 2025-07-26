@@ -53,6 +53,9 @@ async def get_llm_by_id(llm_id: int, db: Session = Depends(get_db)):
 
 @router.post("/llms", response_model=LLMResponse)
 async def create_llm(llm: LLMCreate, db: Session = Depends(get_db)):
+    model_type = llm.get("type", None)
+    if not model_type:
+        raise HTTPException(status_code=400, detail="Model type (e.g. 'mistral', 'gemma') is required")
     db_llm = Llm(**llm.dict())
     db.add(db_llm)
     db.commit()
@@ -106,6 +109,7 @@ async def download_llm_route(
     local_llm = Llm(
         name=remote_llm.name,
         local=2,  # 2 means downloading
+        type=remote_llm.type,
     )
     db.add(local_llm)
     db.commit()

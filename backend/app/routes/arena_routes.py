@@ -13,7 +13,7 @@ from transformers import (
 import torch, re, threading
 from ..database import get_db
 from ..models.Llm import Llm
-from ..prompting.builder import build_default_prompt
+from ..prompting.builder import build_conv_prompt
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 
@@ -65,7 +65,7 @@ async def query_arena(
         _loaded_model.to(device).eval()
         _loaded_model_id = llm_id
 
-    prompt_text = build_default_prompt(
+    prompt_text = build_conv_prompt(
             question=question,
             max_tokens=max_new_tokens, 
             custom_sys_prompt=custom_prompt
