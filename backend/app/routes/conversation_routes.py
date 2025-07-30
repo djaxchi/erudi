@@ -1,9 +1,10 @@
+import gc
 from ..schemas.message_schemas import MessageCreate, MessageResponse
 from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
 import torch
 from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, pipeline, StoppingCriteria, StoppingCriteriaList, AutoModelForSeq2SeqLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, BitsAndBytesConfig
 import logging
 from typing import List
 from ..database import get_db
@@ -33,23 +34,32 @@ conversation_summary_cache = {}
 
 # The quantization configuration for the model
 # It is here for the moment, but it will soon be dynamically adapted based on the model and hardware
-bnb_config = BitsAndBytesConfig(
+"""bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.bfloat16,
+    bnb_4bit_compute_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
     bnb_4bit_use_double_quant=True,
-)
+)"""
 flash_attn_impl = False
+
+MISTRAL_RE = re.compile(
+    r"(?:<s>|</s>|\[/?INST\]|\<\|/?(?:assistant|user|system|end)\|\>)"
+)
+
+GEMMA_RE = re.compile(
+    r"(?:<bos>|</s>|<eos>|"
+    r"<start_of_turn>(?:\s*(?:user|model|assistant|system))?|"
+    r"<end_of_turn>)"
+)
 
 router = APIRouter()
 
-class StopOnEndToken(StoppingCriteria):
-    def __init__(self, end_token_id: int):
-        super().__init__()
-        self.end_token_id = end_token_id
-    def __call__(self, input_ids, scores, **kwargs):
-        return input_ids[0, -1].item() == self.end_token_id
-
+def clear_gpu_memory():
+    """Clear GPU memory and cache"""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+    gc.collect()
 
 @router.get("/conversations/{conversation_id}/fetch_messages", response_model=List[MessageResponse])
 async def get_messages_by_conversation(conversation_id: int, db: Session = Depends(get_db)):
@@ -285,11 +295,11 @@ Summary:<end_of_turn>
         try:
             if model_type == "mistral":
                 input_ids = current_tokenizer.encode(mistral_summary_prompt, return_tensors="pt").to(device)
-                end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
+                end_ids = [4, 2]
             elif model_type == "gemma":
                 input_ids = current_tokenizer.encode(gemma_summary_prompt, return_tensors="pt").to(device)
-                end_ids = current_tokenizer.encode("<end_of_turn>", add_special_tokens=False)
-            stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
+                end_ids = [1, 106]
+            
             
             with torch.no_grad():
                 output = loaded_model.generate(
@@ -297,16 +307,21 @@ Summary:<end_of_turn>
                     max_new_tokens=150,
                     temperature=0.3,
                     top_p=0.8,
-                    do_sample=True,
                     num_beams=1,
-                    pad_token_id=current_tokenizer.eos_token_id,
-                    stopping_criteria=stop_crit
+                    pad_token_id=0 if model_type == "gemma" else None,
+                    end_token_id=end_ids,
+                    do_sample=True,
                 )
             
             full_response = current_tokenizer.decode(output[0], skip_special_tokens=True)
-            summary = full_response.split("<|assistant|>")[-1].strip()
-            summary = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", summary).strip()
-            
+
+            if model_type == "mistral":
+                summary = MISTRAL_RE.sub("", full_response)
+            elif model_type.startswith("gemma"):
+                summary = GEMMA_RE.sub("", full_response)
+            else:
+                summary = full_response
+
             return summary
             
         except Exception as e:
@@ -413,18 +428,41 @@ async def generate_title(
     global loaded_model, current_tokenizer, loaded_model_id
 
     try:
-        if loaded_model_id != llm.id or loaded_model is None:
+        if loaded_model_id != llm.id:
+            if loaded_model is not None:
+                del loaded_model
+                clear_gpu_memory()
+            if current_tokenizer is not None:
+                del current_tokenizer
+                clear_gpu_memory()
+
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
+
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_storage=torch.uint8
+            )
+            
+            if model_type == "mistral":
+                attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
+            elif model_type == "gemma":
+                attn_impl = "eager"
+            else:
+                attn_impl = None
+
             loaded_model = AutoModelForCausalLM.from_pretrained(
                 llm.link,
                 local_files_only=True,
-                torch_dtype=torch.float16,
+                torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
                 quantization_config=bnb_config if model_type == "mistral" else None,
-                attn_implementation="flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa",
+                attn_implementation=attn_impl,
                 low_cpu_mem_usage=True if model_type == "mistral" else False,
             )
-            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
+            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True, use_fast=True)
             loaded_model_id = llm.id
             loaded_model.eval()
             loaded_model.to(device)
@@ -465,11 +503,10 @@ Create a 2-to-5-word title for: {payload.question}<end_of_turn>
 """
         if model_type == "mistral":
             input_ids = current_tokenizer.encode(mistral_title_generation_prompt, return_tensors="pt").to(device)
-            end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
+            end_ids = [4, 2]
         elif model_type == "gemma":
             input_ids = current_tokenizer.encode(gemma_title_generation_prompt, return_tensors="pt").to(device)
-            end_ids = current_tokenizer.encode("<end_of_turn>", add_special_tokens=False)
-        stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
+            end_ids = [1, 106]
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
@@ -482,10 +519,10 @@ Create a 2-to-5-word title for: {payload.question}<end_of_turn>
         max_new_tokens=15,
         temperature=0.05,
         top_p=0.3,
-        do_sample=False,
         num_beams=1,
-        pad_token_id=current_tokenizer.eos_token_id,
-        stopping_criteria=stop_crit
+        pad_token_id=0 if model_type == "gemma" else None,
+        eos_token_id=end_ids,
+        do_sample=True,
     )
 
     def run_title_generation():
@@ -503,12 +540,13 @@ Create a 2-to-5-word title for: {payload.question}<end_of_turn>
         generated_title = ""
         try:
             for new_text in streamer:
+                
                 if (
                     (model_type == "mistral"
-                    and new_text.strip() == "" or "<" in new_text or ">" in new_text or "|" in new_text or "end" in new_text or "assistant" in new_text or "system" in new_text or "user" in new_text or "title" in new_text or "Your very short title" in new_text or "Examples:" in new_text or "Create a 2-to-5-word title for:" in new_text
+                    and new_text.strip() == "" or "<" in new_text or ">" in new_text or "INST" in new_text or "/" in new_text or "[" in new_text or "|" in new_text or "end" in new_text or "assistant" in new_text or "system" in new_text or "user" in new_text or "title" in new_text or "Your very short title" in new_text or "Examples:" in new_text or "Create a 2-to-5-word title for:" in new_text
                     )
                     or (model_type == "gemma"
-                    and new_text.strip() == "" or "<start_of" in new_text or "<end_of" in new_text or "_turn>" in new_text or "assistant" in new_text or "system" in new_text or "user" in new_text or "title" in new_text or "Your very short title" in new_text or "Examples:" in new_text or "Create a 2-to-5-word title for:" in new_text
+                    and new_text.strip() == "" or "<start_of" in new_text or "bos" in new_text or "eos" in new_text or ">" in new_text or "<" in new_text or "<end_of" in new_text or "_turn>" in new_text or "assistant" in new_text or "system" in new_text or "user" in new_text or "title" in new_text or "Your very short title" in new_text or "Examples:" in new_text or "Create a 2-to-5-word title for:" in new_text
                     )
                 ):
                     continue
@@ -601,15 +639,31 @@ async def query_and_respond(
         if loaded_model_id != llm.id or loaded_model is None:
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
+
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_storage=torch.uint8
+            )
+
+            if model_type == "mistral":
+                attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
+            elif model_type == "gemma":
+                attn_impl = "eager"
+            else:
+                attn_impl = None
+
             loaded_model = AutoModelForCausalLM.from_pretrained(
                 llm.link,
                 local_files_only=True,
                 torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
                 quantization_config=bnb_config if model_type == "mistral" else None,
                 low_cpu_mem_usage=True if model_type == "mistral" else False,
-                attn_implementation="flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else None,
+                attn_implementation=attn_impl,
             )
-            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
+            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True, use_fast=True)
             loaded_model_id = llm.id
             loaded_model.eval()
             loaded_model.to(device)
@@ -638,7 +692,7 @@ async def query_and_respond(
                 n_last_turns=payload.n_last_turns_to_get  or 2,
                 model_type=model_type
             )
-            logging.info(f"Found relevant context: {context[:100]}... in {datetime.now() - start} seconds")
+            
     except Exception as e:
         logging.exception("Failed to retrieve context")
         raise HTTPException(status_code=500, detail=f"Context retrieval error: {str(e)}")
@@ -670,10 +724,9 @@ async def query_and_respond(
     try:
         input_ids = current_tokenizer.encode(prompt_text, return_tensors="pt").to(device)
         if model_type == "mistral":
-            end_ids = current_tokenizer.encode("<end>", add_special_tokens=False)
+            end_ids = [4, 2]
         elif model_type == "gemma":
-            end_ids = current_tokenizer.encode("<end_of_turn>", add_special_tokens=False)
-        stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
+            end_ids = [1, 106]
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
@@ -684,12 +737,13 @@ async def query_and_respond(
         input_ids=input_ids,
         streamer=streamer,
         max_new_tokens=max_tokens_out,
-        temperature=payload.temperature or 0.9,
+        temperature=payload.temperature or 0.7,
         top_p= payload.top_p or 0.9,
-        do_sample=True,
+        top_k=64,
         num_beams=1,
-        pad_token_id=current_tokenizer.eos_token_id,
-        stopping_criteria=stop_crit
+        pad_token_id=0 if model_type == "gemma" else None,
+        eos_token_id=end_ids,
+        do_sample=True,
     )
 
     logging.info("Generation kwargs for Mistral : %s, %s, %s", generation_kwargs["max_new_tokens"], generation_kwargs["temperature"], generation_kwargs["top_p"])
@@ -702,7 +756,7 @@ async def query_and_respond(
         except Exception as e:
             logging.exception(f"Generation failed : {e}")
             logging.error(f"Generation error: {str(e)}")
-            streamer.send("[ERROR_MESSAGE_SYSTEM] Generation failed due to an error. Please try again or contact developer team.")
+            raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
     response_thread = threading.Thread(target=run_response_inference)
     response_thread.start()
@@ -710,21 +764,29 @@ async def query_and_respond(
     async def assistant_response_token_stream():
         assistant_response = ""
         try:
-            for new_text in streamer:
+            for new_text in streamer:          
                 if model_type == "mistral":
-                    cleand_out_token = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", new_text)
-                elif model_type == "gemma":
-                    gemma_token_pattern = r"<start_of_turn>model|<end_of_turn>|<start_of_turn>|of_turn>|<start_of_turn>|"
-                    cleand_out_token = re.sub(gemma_token_pattern, "", new_text)
-                assistant_response += cleand_out_token
-                logging.info(f"Yielding token: {cleand_out_token}")
-                yield cleand_out_token
+                    cleaned = MISTRAL_RE.sub("", new_text)
+                elif model_type.startswith("gemma"):
+                    cleaned = GEMMA_RE.sub("", new_text)
+                else:
+                    cleaned = new_text
+                    
+                assistant_response += cleaned
+                logging.info(f"Yielding token: {cleaned}")
+                if cleaned:
+                    yield cleaned
+
         except Exception as e:
             logging.exception("Streaming failed")
-            raise HTTPException(status_code=500, detail="Streaming failed")
+            error_msg = "[ERROR_MESSAGE_SYSTEM] Generation failed due to an error. Please try again or contact developer team."
+            assistant_response = error_msg
+            yield error_msg
+            raise HTTPException(status_code=500, detail=f"Streaming error: {str(e)}")
         finally:
             response_thread.join()
 
+            # Store the response (either successful or error message)
             assistant_message = Message(
                 conversation_id=conversation_id,
                 sender="llm",

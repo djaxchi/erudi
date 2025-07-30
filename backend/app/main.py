@@ -135,11 +135,11 @@ async def startup_populate_database():
             job.status = "failed"
             llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
             if llm:
+                shutil.rmtree(llm.link, ignore_errors=True)
                 db.delete(llm)
             job.error_message = "Downloading was not completed due to application shutdown."
             job.local_model_id = -1
             job.updated_at = datetime.now()
-            shutil.rmtree(job.local_model_link, ignore_errors=True)
             job.local_model_link = ""
             
             db.commit()
@@ -155,6 +155,7 @@ async def startup_populate_database():
             job.error_message = "Training was not completed due to application shutdown."
             llm = db.query(Llm).filter(Llm.id == job.llm_id).first()
             if llm:
+                shutil.rmtree(llm.link, ignore_errors=True)
                 db.delete(llm)
             job.llm_id = -1
             job.updated_at = datetime.now()

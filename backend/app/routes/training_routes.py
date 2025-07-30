@@ -1,5 +1,7 @@
 from datetime import datetime
+import gc
 import logging
+import shutil
 
 from ..models.TrainingJob import TrainingJob
 from ..models.Llm import Llm
@@ -14,9 +16,17 @@ from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 import torch
 from datasets import Dataset
 from ..database import SessionLocal
-from ..schemas.progress_callback import ProgressCallback
+from ..schemas.progress_callback import TrainingProgressCallback
 
 router = APIRouter()
+
+def clean_memory():
+    """
+    Clean up memory by deleting unused variables and running garbage collection.
+    """
+    gc.collect()
+    torch.cuda.empty_cache()
+    logging.info("Memory cleaned up")
 
 @router.get("/training/{llm_id}/status")
 def get_training_status(llm_id: int, db: Session = Depends(get_db)):
@@ -32,7 +42,12 @@ def get_training_status(llm_id: int, db: Session = Depends(get_db)):
     updated_at = training_job.updated_at
 
     if status == "failed":
-        db.delete(db.query(Llm).filter(Llm.id == llm_id).first())
+        llm = db.query(Llm).filter(Llm.id == llm_id).first()
+        if llm:
+            if not error_message:
+                llm.error_message = "An unknown error occurred during training."
+            shutil.rmtree(llm.link, ignore_errors=True)
+            db.delete(llm)
         db.commit()
 
     return {
@@ -49,6 +64,8 @@ async def train_llm_route(payload: TrainingInfo, background_tasks: BackgroundTas
     """
     Fine-tune an LLM and update the database after the training is complete.
     """
+    
+    clean_memory()
     
     # Process the PDF files into a dataset
     if not payload.paths:
@@ -114,6 +131,8 @@ async def train_llm_route(payload: TrainingInfo, background_tasks: BackgroundTas
         logging.error(f"Error starting training: {e}")
         raise HTTPException(status_code=500, detail=f"Error starting training: {e}")
     
+
+flash_attn_impl = False
     
 def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: int = None, trained_model_id: int = None):
     """
@@ -127,51 +146,62 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
     try:
         training_job = db.query(TrainingJob).filter(TrainingJob.id == training_job_id).first()
     except Exception as e:
-        logging.error(f"Error querying the training job: {e}")
+        logging.error(f"Error finding in db the training job: {e}")
         db.close()
-        return
+        raise HTTPException(status_code=500, detail=f"Error finding training job in database: {e}")
     try:
         base_model_db = db.query(Llm).filter(Llm.id == base_model_db_id).first()
     except Exception as e:
-        logging.error(f"Error querying the model to be trained: {e}")
+        logging.error(f"Error finding in db the model to be trained: {e}")
         db.close()
-        return
+        raise HTTPException(status_code=500, detail=f"Error finding base model in database: {e}")
     try:
         trained_model = db.query(Llm).filter(Llm.id == trained_model_id).first()
     except Exception as e:
-        logging.error(f"Error querying the new trained model: {e}")
+        logging.error(f"Error finding in db the new trained model: {e}")
         db.close()
-        return
+        raise HTTPException(status_code=500, detail=f"Error finding trained model in database: {e}")
     
     try:
         if not trained_model:
             logging.error("Trained model not found in background task")
-            return
+            raise HTTPException(status_code=400, detail="Trained model not found.")
         if not training_job:
             logging.error("Training job not found in background task")
-            return
+            raise HTTPException(status_code=400, detail="Training job not found.")
         if not base_model_db:
             logging.error("Base model not found in background task")
-            return
-        
+            raise HTTPException(status_code=400, detail="Base model not found.")
+
         training_job.status = "running"
         training_job.updated_at = datetime.now()
         db.commit()
         logging.info(f"Training job status updated to running for model {trained_model.id}")
         
-        if not training_job:
-            raise HTTPException(status_code=400, detail="Training job not found.")
-        
-        if not base_model_db:
-            raise HTTPException(status_code=400, detail="Base model not found.")
-
         logging.info(f"Loading model and tokenizer from {base_model_db.link}")
         start = datetime.now()
+        
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16 if base_model_db.type == "gemma" else torch.float16,
+        )
+        if base_model_db.type == "mistral":
+            attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
+        elif base_model_db.type == "gemma":
+            attn_impl = "eager"
+        else:
+            attn_impl = None
         model = AutoModelForCausalLM.from_pretrained(
             base_model_db.link,
-            torch_dtype=torch.float16,
-            attn_implementation="sdpa",
-        ).to(device)
+            quantization_config=bnb_config if base_model_db.type == "mistral" else None,
+            torch_dtype=torch.bfloat16 if base_model_db.type == "gemma" else torch.float16,
+            attn_implementation=attn_impl,
+            low_cpu_mem_usage=True if base_model_db.type == "mistral" else False,
+            device_map="auto",
+        )
+        
         tokenizer = AutoTokenizer.from_pretrained(base_model_db.link)
         tokenizer.pad_token = tokenizer.eos_token
         logging.info(f"Model and tokenizer loaded in {datetime.now() - start}")
@@ -206,13 +236,12 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
         peft_cfg = LoraConfig(
             r=16,
             lora_alpha=32,
-            target_modules=["q_proj","v_proj","k_proj","o_proj"],
+            target_modules=["q_proj","v_proj","k_proj","o_proj"] if base_model_db.type == "mistral" else ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
             lora_dropout=0.1,
             bias="none",
             task_type="CAUSAL_LM",
             modules_to_save=["embed_tokens","lm_head"],
         )
-
         model = prepare_model_for_kbit_training(model)
         model = get_peft_model(model, peft_cfg)
 
@@ -227,7 +256,7 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
             weight_decay=0.01,
             warmup_steps=100,
             fp16=True,
-            logging_steps=20,
+            logging_steps=1,
             save_strategy="epoch",
             save_steps=None,
             save_total_limit=1,
@@ -235,7 +264,6 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
             max_grad_norm=0.3,
             gradient_checkpointing=True,
             dataloader_num_workers=4,
-            report_to=[],
             logging_dir=trained_model.link+"/logs",
             remove_unused_columns=False,
         )
@@ -245,7 +273,7 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
             train_dataset=dataset["train"],
             eval_dataset=dataset["test"],
             data_collator=data_collator,
-            callbacks=[ProgressCallback(training_job_id=training_job.id, db_factory=SessionLocal)],
+            callbacks=[TrainingProgressCallback(training_job_id=training_job.id, db_factory=SessionLocal)],
         )
         logging.info(f"Training args prepared")
 
@@ -281,16 +309,15 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
                 training_job.updated_at = datetime.now()
                 training_job.error_message = str(e)
                 if trained_model:
+                    shutil.rmtree(trained_model.link, ignore_errors=True)
                     db.delete(trained_model)
                 db.commit()
             logging.info(f"Training job status updated to failed for model {trained_model.id}")
                 
-            if model:
-                del model
-            if tokenizer:
-                del tokenizer
+            torch.cuda.empty_cache()
         except Exception as inner_e:
             logging.error(f"Failed to update training status: {inner_e}")
 
     finally:
         db.close()
+        torch.cuda.empty_cache()

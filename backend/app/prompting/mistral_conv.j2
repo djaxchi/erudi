@@ -1,9 +1,6 @@
-<|system|>
+<s>[INST]
 {{ system_instruction }}
 {% if context %}
 {{ context }}
 {% endif %}
-<|end|>
-
-<|user|>{{ question }}<|end|>
-<|assistant|>
+{{ question }}[/INST]
