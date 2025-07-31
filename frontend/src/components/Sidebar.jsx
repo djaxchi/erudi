@@ -16,18 +16,18 @@ export default function Sidebar({ disabled = false }) {
 
   return (
     <div
-      className={`w-[6%] bg-[#121212] flex flex-col items-center transition-opacity duration-200 ${
+      className={`w-[4.8%] bg-[#121212] flex flex-col items-center transition-opacity duration-200 ${
         disabled ? "opacity-50 pointer-events-none select-none" : ""
       }`}
     >
       <Link
         to="/main_window/models"
-        className={`w-full flex justify-center items-center py-4 ${
-          isModelsActive ? "border-l-4 border-green-500" : ""
+        className={`w-full flex justify-center items-center py-4 border-l-4 ${
+          isModelsActive ? "border-green-500" : "border-transparent"
         }`}
       >
       <Brain
-  className={`w-[50%] sm:w-[40%] xl:w-[25%] h-auto aspect-square ${
+  className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
     isModelsActive ? "text-green-400" : "text-gray-400"
   }`}
 />
@@ -36,24 +36,24 @@ export default function Sidebar({ disabled = false }) {
 
       <Link
         to="/main_window/chat"
-        className={`w-full flex justify-center items-center py-4 ${
-          isChatActive ? "border-l-4 border-green-500" : ""
+        className={`w-full flex justify-center items-center py-4 border-l-4 ${
+          isChatActive ? "border-green-500" : "border-transparent"
         }`}
       >
         <MessageSquare
-          className={`w-[50%] sm:w-[40%] xl:w-[25%] h-auto aspect-square  ${
+          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square  ${
             isChatActive ? "text-green-400" : "text-gray-400"
           }`}
         />
       </Link>
       <Link
         to="/main_window/arena"
-        className={`w-full flex justify-center items-center py-4 ${
-          isArenaActive ? "border-l-4 border-green-500" : ""
+        className={`w-full flex justify-center items-center py-4 border-l-4 ${
+          isArenaActive ? "border-green-500" : "border-transparent"
         }`}
       >
         <Swords
-          className={`w-6 h-6 ${
+          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
             isArenaActive ? "text-green-400" : "text-gray-400"
           }`}
         />

@@ -93,12 +93,12 @@ async def train_llm_route(payload: TrainingInfo, background_tasks: BackgroundTas
 
     try:
 
-
-        # Check if the user has reached the limit of 5 completed training
-        completed_jobs = db.query(TrainingJob).filter(TrainingJob.status == "completed").count()
-        if completed_jobs >= 5:
-            raise HTTPException(status_code=400, detail="You can only train 5 models using Erudi's Communit Edition.")
-
+        """
+                # Check if the user has reached the limit of 5 completed training
+                completed_jobs = db.query(TrainingJob).filter(TrainingJob.status == "completed").count()
+                if completed_jobs >= 5:
+                    raise HTTPException(status_code=400, detail="You can only train 5 models using Erudi's Community Edition.")
+"""
 
 
         logging.info(f"creating objects for {payload.modelName}")
@@ -193,13 +193,19 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
             attn_impl = "eager"
         else:
             attn_impl = None
+        
+        # Nettoyage de la mémoire avant le chargement du modèle
+        torch.cuda.empty_cache()
+        gc.collect()
+        
         model = AutoModelForCausalLM.from_pretrained(
             base_model_db.link,
             quantization_config=bnb_config if base_model_db.type == "mistral" else None,
-            torch_dtype=torch.bfloat16 if base_model_db.type == "gemma" else torch.float16,
+            torch_dtype=torch.float16,
             attn_implementation=attn_impl,
-            low_cpu_mem_usage=True if base_model_db.type == "mistral" else False,
+            low_cpu_mem_usage=True,
             device_map="auto",
+            max_memory={0: "5GB"}, 
         )
         
         tokenizer = AutoTokenizer.from_pretrained(base_model_db.link)
@@ -211,7 +217,7 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
                 batch["text"],
                 truncation=True,
                 padding="max_length",
-                max_length=512,
+                max_length=128,
             )
         
         logging.info(f"Loading dataset from {dataset_path}")
@@ -220,7 +226,8 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
         text_data = [line for line in text_data if line.strip()]
         dataset_dict = [{"text": line} for line in text_data]
         dataset = Dataset.from_list(dataset_dict)
-        dataset = dataset.train_test_split(test_size=0.05, seed=42)
+        dataset = dataset.train_test_split(test_size=0.01, seed=42)
+        
         dataset = dataset.map(
             tokenize_fn,
             batched=True,
@@ -234,13 +241,13 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
         logging.info(f"Dataset loaded from {dataset_path}: train={len(dataset['train'])}, test={len(dataset['test'])}")
 
         peft_cfg = LoraConfig(
-            r=16,
-            lora_alpha=32,
-            target_modules=["q_proj","v_proj","k_proj","o_proj"] if base_model_db.type == "mistral" else ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_dropout=0.1,
+            r=4,
+            lora_alpha=8,
+            target_modules= ["q_proj", "v_proj", "k_proj", "o_proj"] if base_model_db.type == "mistral" else ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+            lora_dropout=0.0,
             bias="none",
             task_type="CAUSAL_LM",
-            modules_to_save=["embed_tokens","lm_head"],
+            modules_to_save=[],
         )
         model = prepare_model_for_kbit_training(model)
         model = get_peft_model(model, peft_cfg)
@@ -250,30 +257,34 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
             output_dir=trained_model.link,
             overwrite_output_dir=True,
             per_device_train_batch_size=1,
-            gradient_accumulation_steps=4,
+            gradient_accumulation_steps=1,
             num_train_epochs=5,
-            learning_rate=1e-4,
-            weight_decay=0.01,
-            warmup_steps=100,
-            fp16=True,
-            logging_steps=1,
-            save_strategy="epoch",
+            learning_rate=5e-5,
+            weight_decay=0.0,
+            warmup_steps=0,
+            fp16=False,
+            logging_steps=5,
+            save_strategy="no",
             save_steps=None,
             save_total_limit=1,
-            optim="paged_adamw_8bit",
-            max_grad_norm=0.3,
-            gradient_checkpointing=True,
-            dataloader_num_workers=4,
-            logging_dir=trained_model.link+"/logs",
-            remove_unused_columns=False,
+            optim="adamw_torch",
+            max_grad_norm=1.0,
+            gradient_checkpointing=False,
+            dataloader_num_workers=0,
+            logging_dir=None,
+            remove_unused_columns=True,
+            dataloader_pin_memory=False,
+            eval_strategy="no",
+            report_to="none",
         )
         trainer = Trainer(
             model=model,
             args=training_args,
             train_dataset=dataset["train"],
-            eval_dataset=dataset["test"],
+            eval_dataset=None,
             data_collator=data_collator,
             callbacks=[TrainingProgressCallback(training_job_id=training_job.id, db_factory=SessionLocal)],
+
         )
         logging.info(f"Training args prepared")
 
@@ -321,3 +332,5 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
     finally:
         db.close()
         torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+        gc.collect()

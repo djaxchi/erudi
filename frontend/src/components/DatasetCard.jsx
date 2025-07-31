@@ -126,7 +126,7 @@ export default function DatasetCard({ selectedModel, modelName }) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
-    }, 30000);
+    }, 1000);
   };
 
   const submitTrainForm = async () => {
