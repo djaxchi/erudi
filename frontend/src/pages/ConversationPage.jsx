@@ -326,9 +326,9 @@ export default function ConversationPage() {
 
       <aside className="w-80 bg-[#272727] text-white flex flex-col p-6 space-y-6">
         <h1 className="text-3xl font-bold">History</h1>
-        <ChatCollapsibleSection title="Hot Chats" 
+        {/*<ChatCollapsibleSection title="Hot Chats"
           disabled={loading}
-        />
+        />} coming in next version*/}
         <ChatCollapsibleSection
           title="Previous Chats"
           items={conversations}
@@ -396,8 +396,8 @@ export default function ConversationPage() {
               const bubbleClass = isUser
                 ? 'bg-[#191919] ml-auto rounded-tr-none text-white'
                 : msg.content.includes('[ERROR_MESSAGE_SYSTEM]')
-                ? 'bg-emerald text-red-400 mr-auto rounded-tl-none'
-                : 'bg-emerald-900 text-white mr-auto rounded-tl-none';
+                ? 'text-red-400 mr-auto rounded-tl-none'
+                : ' text-white mr-auto rounded-tl-none';
               return (
                 <div key={msg.id} className={`group flex flex-col mb-2 ${alignmentClass}`}>  
                   <div

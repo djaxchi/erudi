@@ -1,12 +1,18 @@
+import gc
+
+from ..models.VectorStore import VectorStore
+
+from ..models.KnowledgeBase import KnowledgeBase
 from ..schemas.message_schemas import MessageCreate, MessageResponse
 from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
 import torch
 from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, pipeline, StoppingCriteria, StoppingCriteriaList, AutoModelForSeq2SeqLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, BitsAndBytesConfig
 import logging
 from typing import List
 from ..database import get_db
+from ..utils.file_processor import chunk_by_tokens
 from ..models.Conversation import Conversation
 from ..models.Llm import Llm
 from ..models.Message import Message
@@ -14,9 +20,10 @@ from ..schemas.conversation_schemas import ConversationCreate, ConversationDelet
 import threading
 from fastapi.responses import StreamingResponse
 from faiss import IndexFlatL2
+import faiss
 from sentence_transformers import SentenceTransformer
 import numpy as np
-from ..prompting.builder import build_default_prompt
+from ..prompting.builder import build_conv_prompt
 import re
 import os
 from dotenv import load_dotenv
@@ -31,15 +38,119 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 conversation_summary_cache = {}
 
+# The quantization configuration for the model
+# It is here for the moment, but it will soon be dynamically adapted based on the model and hardware
+"""bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
+    bnb_4bit_use_double_quant=True,
+)"""
+flash_attn_impl = False
+
+MISTRAL_RE = re.compile(
+    r"(?:<s>|</s>|\[/?INST\]|\<\|/?(?:assistant|user|system|end)\|\>)"
+)
+
+GEMMA_RE = re.compile(
+    r"(?:<bos>|</s>|<eos>|"
+    r"<start_of_turn>(?:\s*(?:user|model|assistant|system))?|"
+    r"<end_of_turn>)"
+)
+
+def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
+    kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == llm.kb_id).first()
+
+    if not os.path.exists(kb.index_path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Knowledge Base index not found for LLM {llm.id}"
+        )
+    try:
+        faiss_index = faiss.read_index(kb.index_path)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read FAISS index for Knowledge Base {kb.id}: {str(e)}"
+        )
+    if not faiss_index:
+        raise HTTPException(
+            status_code=404,
+            detail=f"FAISS index not found for Knowledge Base {kb.id}"
+        )
+    
+    # Get the VectorStore for this KB
+    vector_store = db.query(VectorStore).filter(VectorStore.kb_id == kb.id).first()
+    if not vector_store:
+        raise HTTPException(
+            status_code=404,
+            detail=f"VectorStore not found for Knowledge Base {kb.id}"
+        )
+    
+    get_embedder()
+    chunks = chunk_by_tokens(text=query)
+    relevant_texts = []
+    if not chunks or len(chunks) < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid text chunks found in the query."
+        )
+    else:
+        for chunk in chunks:
+            if not chunk.strip():
+                continue
+            try:
+                query_emb = embedder.encode(chunk, convert_to_tensor=True)
+            except Exception as e:
+                logging.error(f"Error embedding chunk: {e}")
+                continue
+            if query_emb is None or query_emb.numel() == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Error embedding chunk."
+                )
+            try:
+                _, idxs = faiss_index.search(query_emb.cpu().numpy().reshape(1, -1), k=3)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error searching FAISS index: {str(e)}"
+                )
+            for idx in idxs[0]:  # idxs is 2D array, take first row
+                if idx < 0:
+                    continue
+                try:
+                    # Get text from vectors_data JSON using FAISS ID as key
+                    faiss_id_str = str(idx)
+                    if faiss_id_str in vector_store.vectors_data:
+                        relevant_texts.append(vector_store.vectors_data[faiss_id_str])
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Error fetching vector text: {e}"
+                    )
+    return relevant_texts
+    return relevant_texts
+
+def get_embedder():
+        global embedder
+        if embedder is None:
+            logging.info("Loading the Embedder")
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            embedder = SentenceTransformer(
+                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                cache_folder=CACHE_DIR
+            )
+            logging.info("Embedder loaded")
+        return embedder
 router = APIRouter()
 
-class StopOnEndToken(StoppingCriteria):
-    def __init__(self, end_token_id: int):
-        super().__init__()
-        self.end_token_id = end_token_id
-    def __call__(self, input_ids, scores, **kwargs):
-        return input_ids[0, -1].item() == self.end_token_id
-
+def clear_gpu_memory():
+    """Clear GPU memory and cache"""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+    gc.collect()
 
 @router.get("/conversations/{conversation_id}/fetch_messages", response_model=List[MessageResponse])
 async def get_messages_by_conversation(conversation_id: int, db: Session = Depends(get_db)):
@@ -180,7 +291,7 @@ def get_conversation_history(db: Session, conversation_id: int):
         logging.exception(f"Error retrieving conversation history: {e}")
         return []
 
-def retrieve_context(query: str, conversation_history, conversation_id: int, top_k=3, n_last_turns=2):
+def retrieve_context(query: str, conversation_history, conversation_id: int, top_k=3, n_last_turns=2, model_type="mistral"):
     """
     Retrieve relevant context from the conversation history based on semantic similarity and recency.
     Uses SentenceTransformer for embeddings and FAISS for similarity search.
@@ -190,20 +301,10 @@ def retrieve_context(query: str, conversation_history, conversation_id: int, top
         conversation_id (int): The ID of the conversation for caching purposes.
         top_k (int): Number of semantically relevant turns to retrieve.
         n_last_turns (int): Number of last turns to include.
+        model_type (str): The type of model to use for prompt engineering.
     Returns:
         str: Formatted context string.
     """
-    def get_embedder():
-        global embedder
-        if embedder is None:
-            logging.info("Loading the Embedder")
-            os.makedirs(CACHE_DIR, exist_ok=True)
-            embedder = SentenceTransformer(
-                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                cache_folder=CACHE_DIR
-            )
-            logging.info("Embedder loaded")
-        return embedder
 
     def get_cached_summary(conversation_id: int, current_message_count: int):
         """Get cached summary or determine if regeneration is needed."""
@@ -232,8 +333,15 @@ def retrieve_context(query: str, conversation_history, conversation_id: int, top
         }
         logging.info(f"Cached summary for conversation {conversation_id} with {message_count} messages")
 
-    def generate_conversation_summary(history):
-        """Generate a quick summary of the conversation history."""
+    def generate_conversation_summary(history, model_type="mistral"):
+        """
+        Generate a quick summary of the conversation history.
+        Args:
+            history (list): List of (sender, message) tuples.
+            model_type (str): The type of model to use for summarization.
+        Returns:
+            str: The generated summary.
+        """
         if not loaded_model or not current_tokenizer or len(history) < 10:
             return ""
         
@@ -245,7 +353,7 @@ def retrieve_context(query: str, conversation_history, conversation_id: int, top
         if len(conv_text) > 4000:
             conv_text = conv_text[:4000] + "..."
         
-        summary_prompt = f"""<|system|>You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.<|end|>
+        mistral_summary_prompt = f"""<|system|>You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.<|end|>
 
 <|user|>Summarize this conversation:
 
@@ -254,10 +362,24 @@ def retrieve_context(query: str, conversation_history, conversation_id: int, top
 Summary:<|end|>
 <|assistant|>"""
         
+        gemma_summary_prompt = f"""<start_of_turn>user
+You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.
+
+Summarize this conversation:
+
+{conv_text}
+
+Summary:<end_of_turn>
+<start_of_turn>model
+"""
         try:
-            input_ids = current_tokenizer.encode(summary_prompt, return_tensors="pt").to(device)
-            end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
-            stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
+            if model_type == "mistral":
+                input_ids = current_tokenizer.encode(mistral_summary_prompt, return_tensors="pt").to(device)
+                end_ids = [4, 2]
+            elif model_type == "gemma":
+                input_ids = current_tokenizer.encode(gemma_summary_prompt, return_tensors="pt").to(device)
+                end_ids = [1, 106]
+            
             
             with torch.no_grad():
                 output = loaded_model.generate(
@@ -265,16 +387,21 @@ Summary:<|end|>
                     max_new_tokens=150,
                     temperature=0.3,
                     top_p=0.8,
-                    do_sample=True,
                     num_beams=1,
-                    pad_token_id=current_tokenizer.eos_token_id,
-                    stopping_criteria=stop_crit
+                    pad_token_id=0 if model_type == "gemma" else None,
+                    end_token_id=end_ids,
+                    do_sample=True,
                 )
             
             full_response = current_tokenizer.decode(output[0], skip_special_tokens=True)
-            summary = full_response.split("<|assistant|>")[-1].strip()
-            summary = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", summary).strip()
-            
+
+            if model_type == "mistral":
+                summary = MISTRAL_RE.sub("", full_response)
+            elif model_type.startswith("gemma"):
+                summary = GEMMA_RE.sub("", full_response)
+            else:
+                summary = full_response
+
             return summary
             
         except Exception as e:
@@ -295,7 +422,7 @@ Summary:<|end|>
         
         if need_regenerate:
             logging.info(f"Generating new conversation summary for {len(history)} messages")
-            summary = generate_conversation_summary(history)
+            summary = generate_conversation_summary(history, model_type=model_type)
             if summary:
                 cache_summary(conversation_id, summary, current_message_count)
         else:
@@ -377,17 +504,45 @@ async def generate_title(
     llm = db.query(Llm).filter(Llm.id == conversation.llm_id).first()
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
-    
+    model_type = llm.type
     global loaded_model, current_tokenizer, loaded_model_id
 
     try:
-        if loaded_model_id != llm.id or loaded_model is None:
+        if loaded_model_id != llm.id:
+            if loaded_model is not None:
+                del loaded_model
+                clear_gpu_memory()
+            if current_tokenizer is not None:
+                del current_tokenizer
+                clear_gpu_memory()
+
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
-            loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link, local_files_only=True, torch_dtype=torch.float16
+
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_storage=torch.uint8
             )
-            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
+            
+            if model_type == "mistral":
+                attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
+            elif model_type == "gemma":
+                attn_impl = "eager"
+            else:
+                attn_impl = None
+
+            loaded_model = AutoModelForCausalLM.from_pretrained(
+                llm.link,
+                local_files_only=True,
+                torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
+                quantization_config=bnb_config if model_type == "mistral" else None,
+                attn_implementation=attn_impl,
+                low_cpu_mem_usage=True if model_type == "mistral" else False,
+            )
+            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True, use_fast=True)
             loaded_model_id = llm.id
             loaded_model.eval()
             loaded_model.to(device)
@@ -401,7 +556,7 @@ async def generate_title(
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
     try:
-        title_generation_prompt = f"""<|system|>You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation.<|end|>
+        mistral_title_generation_prompt = f"""<|system|>You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation.<|end|>
 
 <|user|>Create a 2-to-5-word title for: {payload.question}
 
@@ -412,9 +567,26 @@ Examples:
 
 Your very short title:<|end|>
 <|assistant|>"""
-        input_ids = current_tokenizer.encode(title_generation_prompt, return_tensors="pt").to(device)
-        end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
-        stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
+        
+        gemma_title_generation_prompt = f"""<start_of_turn>user
+You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation. Do NOT add any extra text, polite statements, or whatsoever. ONLY return the title.
+
+Examples you need to follow:
+- user: How to cook pasta? model: Pasta Cooking Guide
+- user: What is machine learning? model: Machine Learning Basics
+- user: Help me with Python code model: Python Code Help
+- user: Hey what's up ? model: Chill Conversation
+- user: Can you help me with my homework?? I struggle with my maths excercice about Bayes' Theorem. Explain it please.. model: Bayes' Theorem Explained
+
+Create a 2-to-5-word title for: {payload.question}<end_of_turn>
+<start_of_turn>model
+"""
+        if model_type == "mistral":
+            input_ids = current_tokenizer.encode(mistral_title_generation_prompt, return_tensors="pt").to(device)
+            end_ids = [4, 2]
+        elif model_type == "gemma":
+            input_ids = current_tokenizer.encode(gemma_title_generation_prompt, return_tensors="pt").to(device)
+            end_ids = [1, 106]
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
@@ -427,10 +599,10 @@ Your very short title:<|end|>
         max_new_tokens=15,
         temperature=0.05,
         top_p=0.3,
-        do_sample=False,
         num_beams=1,
-        pad_token_id=current_tokenizer.eos_token_id,
-        stopping_criteria=stop_crit
+        pad_token_id=0 if model_type == "gemma" else None,
+        eos_token_id=end_ids,
+        do_sample=True,
     )
 
     def run_title_generation():
@@ -448,7 +620,15 @@ Your very short title:<|end|>
         generated_title = ""
         try:
             for new_text in streamer:
-                if new_text.strip() == "" or "<" in new_text or ">" in new_text or "|" in new_text:
+                
+                if (
+                    (model_type == "mistral"
+                    and new_text.strip() == "" or "<" in new_text or ">" in new_text or "INST" in new_text or "/" in new_text or "[" in new_text or "|" in new_text or "end" in new_text or "assistant" in new_text or "system" in new_text or "user" in new_text or "title" in new_text or "Your very short title" in new_text or "Examples:" in new_text or "Create a 2-to-5-word title for:" in new_text
+                    )
+                    or (model_type == "gemma"
+                    and new_text.strip() == "" or "<start_of" in new_text or "bos" in new_text or "eos" in new_text or ">" in new_text or "<" in new_text or "<end_of" in new_text or "_turn>" in new_text or "assistant" in new_text or "system" in new_text or "user" in new_text or "title" in new_text or "Your very short title" in new_text or "Examples:" in new_text or "Create a 2-to-5-word title for:" in new_text
+                    )
+                ):
                     continue
                 cleaned_token = new_text[0].upper() + new_text[1:]
                 generated_title += cleaned_token
@@ -460,7 +640,22 @@ Your very short title:<|end|>
         finally:
             title_thread.join()
             words = generated_title.strip().split()
-            if "\"" in words or "\'" in words or "“" in words or "”" in words or "‘" in words or "’" in words or "«" in words or "»" in words: 
+            if (
+                "\"" in words
+                or "\'" in words
+                or "“" in words
+                or "”" in words
+                or "‘" in words
+                or "’" in words
+                or "«" in words
+                or "»" in words
+                or "title" in words
+                or "your" in words
+                or "here's" in words
+                or "Okay" in words
+                or "," in words
+                or ":" in words
+            ):
                 words.remove("\"")
                 words.remove("\'")
                 words.remove("“")
@@ -469,6 +664,12 @@ Your very short title:<|end|>
                 words.remove("’")
                 words.remove("«")
                 words.remove("»")
+                words.remove("title")
+                words.remove("your")
+                words.remove("here's")
+                words.remove("Okay")
+                words.remove(",")
+                words.remove(":")
             words = [re.sub(r"<.*?>", "", word) for word in words if word]
             final_title = " ".join(words[:6]) if len(words) >= 6 else " ".join(words)
             
@@ -505,23 +706,44 @@ async def query_and_respond(
     db.add(user_message)
     db.flush()
     
-    conversation.last_message_time = datetime.utcnow()
+    conversation.last_message_time = datetime.now()
     db.commit()
 
     llm = db.query(Llm).filter(Llm.id == conversation.llm_id).first()
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
-    
+    model_type = llm.type
     global loaded_model, current_tokenizer, loaded_model_id
 
     try:
         if loaded_model_id != llm.id or loaded_model is None:
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
-            loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link, local_files_only=True, torch_dtype=torch.float16
+
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_storage=torch.uint8
             )
-            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True)
+
+            if model_type == "mistral":
+                attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
+            elif model_type == "gemma":
+                attn_impl = "eager"
+            else:
+                attn_impl = None
+
+            loaded_model = AutoModelForCausalLM.from_pretrained(
+                llm.link,
+                local_files_only=True,
+                torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
+                quantization_config=bnb_config if model_type == "mistral" else None,
+                low_cpu_mem_usage=True if model_type == "mistral" else False,
+                attn_implementation=attn_impl,
+            )
+            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True, use_fast=True)
             loaded_model_id = llm.id
             loaded_model.eval()
             loaded_model.to(device)
@@ -534,10 +756,10 @@ async def query_and_respond(
         logging.exception("Failed to load model or tokenizer")
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
+    context = None
     try :
         conversation_history = get_conversation_history(db, conversation_id)
         if not conversation_history:
-            context = ""
             logging.info("No previous messages in conversation, skipping context retrieval")
         else:
             logging.info(f"Retrieving context for conversation {conversation_id}")
@@ -548,13 +770,27 @@ async def query_and_respond(
                 conversation_id,
                 top_k=payload.n_relevent_msgs_to_get or 3,
                 n_last_turns=payload.n_last_turns_to_get  or 2,
+                model_type=model_type
             )
-            logging.info(f"Found relevant context: {context[:100]}... in {datetime.now() - start} seconds")
+            
     except Exception as e:
         logging.exception("Failed to retrieve context")
         raise HTTPException(status_code=500, detail=f"Context retrieval error: {str(e)}")
     
-
+    if llm.is_attached_to_kb:
+        try:
+            kb_knowledge = get_relevant_texts_if_kb(query=payload.question, llm=llm, db=db)
+            if not kb_knowledge:
+                logging.info("No relevant texts found in Knowledge Base")
+            else:
+                if context:
+                    context += "\n\nAlso: You are attached to a Knowledge Base. Here is context you need to know for this query:\n" + "\n".join(kb_knowledge)
+                else:
+                    context = "You are attached to a Knowledge Base. Here is context you need to know for this query:\n" + "\n".join(kb_knowledge)
+        except Exception as e:
+            logging.exception("Failed to retrieve Knowledge Base context")
+            raise HTTPException(status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}")
+        
     lang = payload.language
     max_tokens_out = payload.max_new_tokens or 3074
     custom_sys_prompt = payload.custom_prompt if payload.custom_prompt else None
@@ -564,13 +800,14 @@ async def query_and_respond(
             msg_starred_object = db.query(Message).filter(Message.content == msg[1], Message.starred == True).first()
             if msg_starred_object:
                 messages_starred.append(msg_starred_object.content)
-    prompt_text = build_default_prompt(
+    prompt_text = build_conv_prompt(
             question=payload.question,
             context=context,
             language=lang,
             max_tokens=max_tokens_out,
             custom_sys_prompt=custom_sys_prompt,
             messages_starred=messages_starred,
+            model_type=model_type,
         )
 
 
@@ -579,8 +816,10 @@ async def query_and_respond(
 
     try:
         input_ids = current_tokenizer.encode(prompt_text, return_tensors="pt").to(device)
-        end_ids = current_tokenizer.encode("<|end|>", add_special_tokens=False)
-        stop_crit = StoppingCriteriaList([StopOnEndToken(end_ids[-1])])
+        if model_type == "mistral":
+            end_ids = [4, 2]
+        elif model_type == "gemma":
+            end_ids = [1, 106]
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
@@ -591,12 +830,13 @@ async def query_and_respond(
         input_ids=input_ids,
         streamer=streamer,
         max_new_tokens=max_tokens_out,
-        temperature=payload.temperature or 0.9,
+        temperature=payload.temperature or 0.7,
         top_p= payload.top_p or 0.9,
-        do_sample=True,
+        top_k=64,
         num_beams=1,
-        pad_token_id=current_tokenizer.eos_token_id,
-        stopping_criteria=stop_crit
+        pad_token_id=0 if model_type == "gemma" else None,
+        eos_token_id=end_ids,
+        do_sample=True,
     )
 
     logging.info("Generation kwargs for Mistral : %s, %s, %s", generation_kwargs["max_new_tokens"], generation_kwargs["temperature"], generation_kwargs["top_p"])
@@ -608,6 +848,7 @@ async def query_and_respond(
                 loaded_model.generate(**generation_kwargs)
         except Exception as e:
             logging.exception(f"Generation failed : {e}")
+            logging.error(f"Generation error: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
     response_thread = threading.Thread(target=run_response_inference)
@@ -616,24 +857,36 @@ async def query_and_respond(
     async def assistant_response_token_stream():
         assistant_response = ""
         try:
-            for new_text in streamer:
-                cleand_out_token = re.sub(r"<\|/?(?:assistant|system|user|end)\|>", "", new_text)
-                assistant_response += cleand_out_token
-                logging.info(f"Yielding token: {cleand_out_token}")
-                yield cleand_out_token
+            for new_text in streamer:          
+                if model_type == "mistral":
+                    cleaned = MISTRAL_RE.sub("", new_text)
+                elif model_type.startswith("gemma"):
+                    cleaned = GEMMA_RE.sub("", new_text)
+                else:
+                    cleaned = new_text
+                    
+                assistant_response += cleaned
+                logging.info(f"Yielding token: {cleaned}")
+                if cleaned:
+                    yield cleaned
+
         except Exception as e:
             logging.exception("Streaming failed")
-            raise HTTPException(status_code=500, detail="Streaming failed")
+            error_msg = "[ERROR_MESSAGE_SYSTEM] Generation failed due to an error. Please try again or contact developer team."
+            assistant_response = error_msg
+            yield error_msg
+            raise HTTPException(status_code=500, detail=f"Streaming error: {str(e)}")
         finally:
             response_thread.join()
 
+            # Store the response (either successful or error message)
             assistant_message = Message(
                 conversation_id=conversation_id,
                 sender="llm",
                 content=assistant_response.strip()
             )
             db.add(assistant_message)
-            conversation.last_message_time = datetime.utcnow()
+            conversation.last_message_time = datetime.now()
             db.commit()
             
             logging.info("Generation thread finished")
@@ -685,9 +938,15 @@ async def store_error_message(
     
     try:
         db.add(error_message)
-        conversation.last_message_time = datetime.utcnow()
+        conversation.last_message_time = datetime.now()
         db.commit()
         logging.info(f"Stored error message for conversation {conversation_id}")
+        if loaded_model :
+            loaded_model = None
+            logging.info("Cleared model cache after error message storage")
+        if current_tokenizer :
+            current_tokenizer = None
+            logging.info("Cleared tokenizer cache after error message storage")
         return {"message": "Error message stored successfully", "error_message_id": error_message.id}
     except Exception as e:
         db.rollback()

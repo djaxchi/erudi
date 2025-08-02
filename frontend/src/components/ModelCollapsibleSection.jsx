@@ -1,166 +1,260 @@
-import React, { useState, useEffect } from "react";
-import { ChevronDown, ChevronRight, Cog, RefreshCcw, Plus } from "lucide-react";
-import ConfirmationModal from "./modals/ConfirmationModal";
-import SpinnerDots from "./Spinner";
-import PreparingModal from "./modals/PreparingModal";
 
+// src/components/CollapsibleSection.jsx
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Cog,
+  RefreshCcw,
+  Plus,
+  X,
+  HelpCircle,
+} from "lucide-react";
+import { useDownloadModal } from "../contexts/DownloadModalContext";
 
-export default function CollapsibleSection({ title }) {
-  const [open, setOpen] = useState(true);
+const API_BASE = "http://127.0.0.1:8000";
+
+const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
+  const [openSection, setOpenSection] = useState(true);
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(null);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [isPreparing, setIsPreparing] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
 
-  useEffect(() => {
-    const fetchModels = async () => {
-      setLoading(true);
-      try {
-        const endpoint =
-          title === "Local Models"
-            ? "http://127.0.0.1:8000/main_window/llms/local"
-            : "http://127.0.0.1:8000/main_window/llms/remote";
-        const response = await fetch(endpoint);
-        if (response.ok) {
-          const data = await response.json();
-          setModels(data);
-        } else {
-          console.error(`Failed to fetch ${title.toLowerCase()}`);
-        }
-      } catch (error) {
-        console.error("Error fetching models:", error);
-      } finally {
-        setLoading(false);
+  const { open: openDownload } = useDownloadModal();
+
+  // Expose reloadLocalModels to parent via ref
+  useImperativeHandle(ref, () => ({
+    reloadLocalModels
+  }));
+
+  // TooltipIcon component
+  const TooltipIcon = () => {
+    const iconRef = useRef(null);
+    
+    const handleMouseEnter = () => {
+      if (iconRef.current) {
+        const rect = iconRef.current.getBoundingClientRect();
+        const tooltipWidth = 300; // Approximate tooltip width
+        const windowWidth = window.innerWidth;
+        
+        // Check if tooltip would go off-screen to the right
+        const wouldOverflow = rect.right + 8 + tooltipWidth > windowWidth;
+        
+        setTooltipPosition({
+          top: rect.top + window.scrollY + (rect.height / 2), // Center vertically with the icon
+          left: wouldOverflow 
+            ? rect.left + window.scrollX - 8 - tooltipWidth // Position to the left if would overflow
+            : rect.right + window.scrollX + 8, // 8px to the right of the icon
+          isLeftSide: wouldOverflow
+        });
       }
+      setTooltipVisible(true);
     };
 
-    fetchModels();
-  }, [title]);
+    const handleMouseLeave = () => {
+      setTooltipVisible(false);
+    };
 
-  const handleModelClick = (model) => {
-    setSelectedModel(model);
-    setIsModalOpen(true);
+    return (
+      <div 
+        ref={iconRef}
+        className="relative"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 hover:text-emerald-400 transition-colors cursor-help" />
+      </div>
+    );
   };
 
-  const handleConfirmDownload = async () => {
-    if (!selectedModel) return;
-    setIsPreparing(true);
-    setIsDownloading(true);
-    setErrorMessage("");
-    try {
-      const response = await fetch(
-        `http://127.0.0.1:8000/main_window/llms/${selectedModel.id}/download`,
-        { method: "POST" }
-      );
-      if (response.ok) {
-        const eventSource = new EventSource(
-          `http://127.0.0.1:8000/main_window/llms/${selectedModel.id}/status/stream`
-        );
-
-        eventSource.onmessage = (event) => {
-          if (event.data === "installed") {
-            setIsDownloading(false);
-            fetchModels();
-            eventSource.close();
-          }
-          if (event.data.startsWith("error")) {
-            setErrorMessage("Download failed.");
-            setIsDownloading(false);
-            eventSource.close();
-          }
-        };
-
-        eventSource.onerror = () => {
-          setErrorMessage("Error during download stream.");
-          setIsDownloading(false);
-          eventSource.close();
-        };
-      } else {
-        setErrorMessage("Failed to start download. Please try again.");
-        setIsDownloading(false);
+  // fetch models
+  useEffect(() => {
+    async function fetchModels() {
+      setLoading(true);
+      try {
+        const url =
+          title === "Local Models"
+            ? `${API_BASE}/main_window/llms/local`
+            : `${API_BASE}/main_window/llms/remote`;
+        const res = await fetch(url);
+        if (res.ok) {
+          setModels(await res.json());
+        }
+      } catch (err) {
+        console.error("Failed to fetch models:", err);
+        setErrorMessage("Failed to fetch available models. Please try again and contact the Erudi team for support.");
+      } finally {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Error downloading model:", error);
-      setErrorMessage("An error occurred while starting the download.");
-      setIsDownloading(false);
-    } finally {
-      setIsModalOpen(false);
-      setSelectedModel(null);
+    }
+    fetchModels();
+  }, [title]);
+  
+  const reloadLocalModels = async () => {
+    setLoading(true);
+    try {
+      const url = `${API_BASE}/main_window/llms/local`;
+      const res = await fetch(url);
+      if (res.ok) setModels(await res.json());
+      else setErrorMessage("Failed to fetch local models. Please try again and contact the Erudi team for support.");
+    } 
+    catch (err) {
+      console.error("Failed to fetch local models:", err);
+      setErrorMessage("Failed to fetch local models. Please try again and contact the Erudi team for support.");
+    } 
+    finally {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setLoading(false);
     }
   };
 
+  const loadLocalModelsAfterDownload = () => {
+    // Si on est dans la section Remote Models et qu'on a un callback pour recharger les locaux
+    if (title === "Remote Models" && onLocalModelRefresh) {
+      onLocalModelRefresh();
+    }
+  };
+
+  const handleModelClick = (model) => {
+    setErrorMessage("");
+    openDownload(model, {
+      onComplete: loadLocalModelsAfterDownload,
+      onError: (err) => setErrorMessage(err ?? "Download failed."),
+    });
+  };
+
+  const closeErrorModal = () => {
+    setErrorMessage("");
+  };
+
   return (
-    <div className="text-gray-200 w-full">
-      {errorMessage && (
-        <div className="text-red-500 text-sm mb-2">{errorMessage}</div>
-      )}
-
-      <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
-        onClick={() => setOpen(!open)}
-      >
-        <div className="flex items-center gap-2">
-          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}          
-          <span className="font-semibold text-xl sm:text-lg">{title}</span>
-        </div>
-
-        <div className="flex gap-3">
-          <Cog className="w-4 h-4 hover:opacity-70" />
-          <RefreshCcw className="w-4 h-4 hover:opacity-70" />
-          <Plus className="w-4 h-4 hover:opacity-70" />
-        </div>
-      </div>
-
-      {open && (
-        <div className="px-10 py-2 text-sm text-gray-500">
-          {loading ? (
-            <p className="italic">Loading...</p>
-          ) : title === "Local Models" && models.length > 0 ? (
-            models.map((model) => (
-              <p key={model.id} className="py-1">
-                {model.name}
-              </p>
-            ))
-          ) : title === "Available Models" && models.length > 0 ? (
-            models.map((model) => (
-              <p
-                key={model.id}
-                className="py-1 cursor-pointer hover:text-blue-500"
-                onClick={() => handleModelClick(model)}
-              >
-                {model.name}
-              </p>
-            ))
+    <>
+      {/* Global tooltip */}
+      {tooltipVisible && (
+        <div 
+          className="fixed bg-black text-white text-xs rounded-lg px-3 py-2 shadow-xl border border-gray-600 z-[99999]"
+          style={{
+            top: `${tooltipPosition.top}px`,
+            left: `${tooltipPosition.left}px`,
+            transform: 'translateY(-50%)', // Center vertically relative to the icon
+            width: '280px', // Fixed width for consistent sizing
+          }}
+        >
+          {title === "Local Models" 
+            ? "Models downloaded and ready to use on your computer. These are available for chat, and specialization!"
+            : "Models available for download. Click on any model to download it to your local storage."
+          }
+          {/* Arrow pointing left or right depending on position */}
+          {tooltipPosition.isLeftSide ? (
+            <div className="absolute left-full top-1/2 transform -translate-y-1/2 w-0 h-0 border-t-4 border-b-4 border-l-4 border-transparent border-l-black"></div>
           ) : (
-            <p className="italic">Nothing here…</p>
+            <div className="absolute right-full top-1/2 transform -translate-y-1/2 w-0 h-0 border-t-4 border-b-4 border-r-4 border-transparent border-r-black"></div>
           )}
         </div>
       )}
 
-      <ConfirmationModal
-        isOpen={isModalOpen}
-        onCancel={() => setIsModalOpen(false)}
-        onConfirm={handleConfirmDownload}
-        text = {selectedModel?.name}
-      />
+      <div className="text-gray-200 w-full">
+        {/* Section header */}
+        <div
+          className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
+          onClick={() => setOpenSection((prev) => !prev)}
+        >
+          <div className="flex items-center gap-2">
+            {openSection ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+            <span className="font-semibold text-xl sm:text-lg">{title}</span>
+            <TooltipIcon />
+          </div>
+          {
+            title === "Local Models" && (
+            <RefreshCcw 
+              className="w-4 h-4 hover:opacity-70 cursor-pointer" 
+              onClick={(e) => {
+                e.stopPropagation();
+                reloadLocalModels();
+              }} 
+            />
+          )}
+        </div>
 
-      <PreparingModal
-      isOpen={isPreparing}
-      onClose={() => setIsPreparing(false)}
-      />
+        {/* Section body */}
+        {openSection && (
+          <div className="px-10 py-2 text-sm text-gray-500 max-h-[35vh] max-w-full overflow-y-auto overflow-x-visible custom-scroll">
+            {loading ? (
+              <div className="flex items-center gap-2 py-1">
+                <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            ) : models.length > 0 ? (
+              models.map((m) => (
+                <p
+                  key={m.id}
+                  className={`py-1 max-w-full ${
+                    title !== "Local Models"
+                      ? "cursor-pointer hover:text-blue-500"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    title !== "Local Models" && handleModelClick(m)
+                  }
+                >
+                  {m.name}
+                </p>
+              ))
+            ) : (
+              <p className="italic">Nothing here…</p>
+            )}
+          </div>
+        )}
+      </div>
 
-      {/* Spinner at the bottom */}
+      {/* Error Modal */}
+      {errorMessage && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#2B2B2B] rounded-2xl border border-white/10 shadow-2xl max-w-md w-full">
+            {/* Header */}
+            <div className="p-4 border-b border-white/10">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                  Error
+                </h2>
+                <button
+                  onClick={closeErrorModal}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
 
-      {isDownloading && (
-        <div className="fixed bottom-0 left-0 w-full flex items-center gap-2 pb-4 pl-4 z-50">
-          <SpinnerDots size={30} dotSize={4} colorClass="bg-green-400" />
+            {/* Content */}
+            <div className="p-6">
+              <div className="text-red-400 bg-red-900/20 border border-red-600/30 rounded-lg p-4">
+                <p className="text-sm">{errorMessage}</p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-white/10">
+              <div className="flex justify-end">
+                <button
+                  onClick={closeErrorModal}
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
-}
+});
 
-
+export default CollapsibleSection;

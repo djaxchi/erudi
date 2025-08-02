@@ -17,6 +17,7 @@ export default function ChatCollapsibleSection({
   onSelect,
   onRename,
   onDelete,
+  onRefresh,
   disabled = false,
 }) {
   const [open, setOpen] = useState(true);
@@ -26,6 +27,8 @@ export default function ChatCollapsibleSection({
   const [loading, setLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
 
   const renameConversation = async (id, name) => {
     try {
@@ -37,7 +40,6 @@ export default function ChatCollapsibleSection({
 
       if (!res.ok) throw new Error("Rename failed");
 
-      // notify parent so it can refresh its list, if desired
       onRename?.(id, name);
     } catch (err) {
       console.error(err);
@@ -66,7 +68,11 @@ export default function ChatCollapsibleSection({
   };
 
   const renderItems = () => {
-    if (loading) return <p className="italic">Loading...</p>;
+    if (loading) return (
+      <div className="flex items-center justify-center py-4">
+        <div className="w-5 h-5 border-2 border-gray-400 border-t-emerald-400 rounded-full animate-spin"></div>
+      </div>
+    );
 
     if (title === "Previous Chats" && items.length > 0) {
       return items.map((conv) => {
@@ -82,10 +88,11 @@ export default function ChatCollapsibleSection({
                 navigate(`/main_window/conversations/${conv.id}`);
               }
             }}
-            className={`relative group py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${isSelected
+            className={`relative group py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${
+              isSelected
                 ? "bg-emerald-500/50 text-white"
                 : "hover:bg-gray-700 hover:text-white text-gray-300"
-              }`}
+            }`}
           >
             {isEditing ? (
               <input
@@ -94,7 +101,7 @@ export default function ChatCollapsibleSection({
                 onKeyDown={async (e) => {
                   if (e.key === "Enter" && tempName.trim()) {
                     await renameConversation(conv.id, tempName.trim());
-                    +                   e.stopPropagation();
+                    e.stopPropagation();
                   }
                   if (e.key === "Escape") {
                     setEditingId(null);
@@ -131,13 +138,12 @@ export default function ChatCollapsibleSection({
       });
     }
 
-
-    <p className="italic">Nothing here…</p>
+    return <p className="italic">Nothing here…</p>;
   };
 
   return (
     <div
-      className={`text-gray-200 ${disabled ? "pointer-events-none opacity-50 select-none" : ""}`}
+      className={`text-gray-200 h-full ${disabled ? "pointer-events-none opacity-50 select-none" : ""}`}
     >
       <div
         className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
@@ -153,19 +159,35 @@ export default function ChatCollapsibleSection({
         </div>
 
         <div className="flex gap-3">
-          <Cog className="w-4 h-4 hover:opacity-70" />
-          <RefreshCcw className="w-4 h-4 hover:opacity-70" />
-          <Plus className="w-4 h-4 hover:opacity-70" />
+          <RefreshCcw
+            className="w-6 h-6 hover:opacity-70 hover:bg-gray-600/30 rounded-full p-1 -m-1 cursor-pointer"
+            onClick={async (e) => {
+              e.stopPropagation();
+              setLoading(true);
+              await new Promise((resolve) => setTimeout(resolve, 300));
+              try {
+                await onRefresh?.();
+              } catch (err) {
+                console.error("Failed to refresh conversations:", err);
+                setErrorMessage(`Failed to refresh conversations: ${err.message || 'Network error'}`);
+                setShowErrorPopup(true);
+              } finally {
+                setLoading(false);
+              }
+            }}
+          />
+          <Plus
+            className="w-6 h-6 hover:opacity-70 hover:bg-gray-600/30 rounded-full p-1 -m-1 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate('/main_window/chat');
+            }}
+          />
         </div>
       </div>
 
       {open && (
-        <div className="px-4 py-2 max-h-[calc(100vh-220px)] overflow-y-auto">
-          <style>{`
-            ::-webkit-scrollbar {
-              display: none;
-            }
-          `}</style>
+        <div className="px-4 py-2 max-h-[88%] overflow-y-auto overflow-x-visible custom-scroll">
           {renderItems()}
         </div>
       )}
@@ -190,6 +212,31 @@ export default function ChatCollapsibleSection({
                 className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 rounded"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Popup */}
+      {showErrorPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl">
+            <div className="flex items-center mb-4">
+              <div className="bg-red-100 rounded-full p-2 mr-3">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Error</h3>
+            </div>
+            <p className="text-gray-700 mb-4">{errorMessage}</p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowErrorPopup(false)}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+              >
+                Close
               </button>
             </div>
           </div>
