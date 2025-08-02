@@ -1,10 +1,18 @@
 import React, { useState } from "react";
 
-export default function InfoRow({ label, children }) {
+export default function InfoRow({ label, children, bullet, icon, isHeader = false }) {
     return (
-      <div className="flex justify-between items-center py-1">
-        <span className="text-gray-200 font-medium lg:text-xl w-1/2">{label}</span>
-        <div className="w-1/2 flex justify-end text-right text-white">{children}</div>
+      <div className={`flex justify-between items-center gap-2 ${isHeader ? 'py-2 sm:py-3' : 'py-1 sm:py-1.5'}`}>
+        <span className={`text-gray-200 flex-shrink-0 min-w-0 truncate ${
+          isHeader 
+            ? 'font-bold text-sm sm:text-base lg:text-lg' 
+            : 'font-medium text-xs sm:text-sm lg:text-base'
+        }`}>{label}</span>
+        <div className="flex justify-end items-center text-right text-white text-xs sm:text-sm lg:text-base min-w-0 gap-2">
+          {icon && <div className="flex-shrink-0">{icon}</div>}
+          {!icon && bullet && <div className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${bullet} flex-shrink-0`}></div>}
+          <span className="truncate">{children}</span>
+        </div>
       </div>
     );
   }
