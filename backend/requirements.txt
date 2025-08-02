@@ -4,7 +4,7 @@ accelerate==1.7.0
 huggingface_hub==0.32.5
 psutil==7.0.0
 py-cpuinfo==9.0.0
-gputil==1.4.0
+wmi==1.5.1
 pydantic==2.11.5
 faiss-cpu==1.11.0
 sentence-transformers==4.1.0
@@ -13,6 +13,7 @@ python-dotenv==1.1.0
 pypdf==5.6.0
 datasets==3.6.0
 peft==0.15.2
+setuptools
 tqdm==4.67.1
 fastapi==0.115.12
 uvicorn==0.34.0
@@ -22,3 +23,4 @@ transformers==4.51.3
 bitsandbytes==0.46.0 --prefer-binary --extra-index-url https://jllllll.github.io/bitsandbytes-windows-webui
 torch==2.2.2+cu121
 --extra-index-url https://download.pytorch.org/whl/cu121
+pynvml==12.0.0

@@ -212,4 +212,20 @@ override.tf.json
 .terraformrc
 terraform.rc
 
+# App-specific files
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Model files and training data
+data/models/
+data/training_datasets/
+data/indexes/
+data/models_cache/
+
+# Logs and temporary files
+*.log
+logs/
+
 # End of https://www.toptal.com/developers/gitignore/api/python,terraform,ansible

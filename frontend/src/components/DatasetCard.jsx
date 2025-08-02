@@ -1,294 +1,267 @@
 import React, { useState, useRef, useEffect } from "react";
 import DragDropArea from "./DragDropArea";
-import Dropdown from "./Dropdown";
-import { Check, Folder, Loader } from "lucide-react";
+import { Loader, X } from "lucide-react";
 
 const API_BASE = "http://localhost:8000";
 
+/* ─────────────── Recap small table ─────────────── */
+function RecapTable({ recap }) {
+  const rows = [
+    ["Model", recap.model || "—"],
+    ["Device used", recap.device || "—"],
+    ["Available RAM", recap.ram || "—"],
+    ["Dataset size", recap.datasetSize || "—"],
+    ["Estimate", recap.estimate || "Coming soon"],
+    ["Recap", recap.notes || "Coming soon"],
+  ];
+  return (
+    <div className="rounded-lg border border-white/20 overflow-hidden">
+      <table className="w-full text-[10px] sm:text-xs lg:text-sm leading-3 sm:leading-4 lg:leading-5 bg-transparent">
+        <tbody>
+          {rows.map(([label, val], idx) => (
+          <tr
+            key={label}
+            className={`${idx % 2 === 0 ? "bg-[#3B3B3B]" : "bg-black/20"}`}
+          >
+            <th className="px-1.5 sm:px-2 lg:px-3 py-0.5 sm:py-1 lg:py-1.5 text-left font-semibold text-white w-[44%]">{label}</th>
+            <td className="px-1.5 sm:px-2 lg:px-3 py-0.5 sm:py-1 lg:py-1.5 text-center text-white/90 truncate">{val}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    </div>
+  );
+}
 
-export default function DatasetCard({ selectedModel, modelName }) {
-  const [type, setType] = useState("Textuel");
-  const types = ["Textuel", "Images", "Audio"];
-
-  const [dataPath, setDataPath] = useState("/AppData/DataStorage/");
+/* ─────────────── Main component ─────────────── */
+export default function DatasetCard({ selectedModel, modelName, onStartTraining, isTraining = false, onReset }) {
+  /* Paths - now handling objects with metadata */
   const [paths, setPaths] = useState([]);
+  /* Modal state */
+  const [showComingSoonModal, setShowComingSoonModal] = useState(false);
   
-  // Nouveaux états pour le suivi d'entraînement
-  const [isTraining, setIsTraining] = useState(false);
+  const addDroppedFiles = (newPathObjects) => {
+    console.log('DatasetCard received files:', newPathObjects);
+    
+    // Handle complete replacement of the file list (for when files are removed)
+    // or addition of new files (for when files are added)
+    setPaths(() => {
+      const newPaths = newPathObjects.map(pathObj => pathObj.path || pathObj);
+      console.log('Setting paths to:', newPaths);
+      return Array.from(new Set(newPaths)); // Remove duplicates but don't merge with previous
+    });
+  };
+
+  /* Training state */
   const [trainingStatus, setTrainingStatus] = useState(null);
   const [trainingError, setTrainingError] = useState("");
-  const [trainingId, setTrainingId] = useState(null);
+  const [progress, setProgress] = useState(0);
   const pollingRef = useRef(null);
 
-  const fileInputRef = useRef(null);
-  const [errorMsg, setErrorMsg] = useState("");
+  /* Hardware info state */
+  const [hardwareInfo, setHardwareInfo] = useState({
+    available_vram: "fetching...",
+    device_used: "fetching...",
+  });
 
-  // Effet pour nettoyer l'interval de polling lorsque le composant est démonté
+  /* Fetch hardware info on component mount */
   useEffect(() => {
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
+    const fetchHardwareInfo = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/hardware/training`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data = await response.json();
+        
+        // Determine device to use: GPU if available, otherwise CPU
+        let deviceUsed = "CPU";
+        if (data.gpu_model && data.gpu_model !== "No GPU detected" && !data.gpu_model.includes("fetching")) {
+          deviceUsed = `${data.gpu_model}`;
+        } else if (data.cpu_model && !data.cpu_model.includes("fetching")) {
+          deviceUsed = `${data.cpu_model}`;
+        }
+        
+        setHardwareInfo({
+          available_vram: data.gpu_vram_total_gb ? `${data.gpu_vram_total_gb} GB` : "Unknown",
+          device_used: deviceUsed,
+        });
+      } catch (error) {
+        console.error("Error fetching hardware info:", error);
+        setHardwareInfo({
+          available_vram: "Error fetching",
+          device_used: "Error fetching",
+        });
       }
     };
+
+    fetchHardwareInfo();
   }, []);
 
-  const openExplorer = async () => {
-    
-    if (window.electron) {
-      const selectedPath = await window.electron.openDirectory();
-      if (selectedPath) {
-        setDataPath(selectedPath);
-        paths.push(selectedPath);
-        console.log("Chemin du dossier sélectionné :", selectedPath);
-      }
-    } else {
-      console.error('window.electron est undefined');
-    }
-  };
-
-  const onFilesChosen = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-
-    const folderSet = new Set(paths);
-
-    files.forEach((file) => {
-      const rel = file.webkitRelativePath || file.name;
-      const rootDir = rel.split("/")[0];
-      folderSet.add(rootDir);
-    });
-
-    const updated = Array.from(folderSet);
-    setPaths(updated);
-    console.log("Selected folders:", updated);
-
-    setDataPath(
-      updated.length === 1 ? `…/${updated[0]}` : `…/${updated.length} folders`
-    );
-  };
-
-  const [progress, setProgress] = useState(0);
-  const [timeElapsed, setTimeElapsed] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(null);
-  const checkTrainingStatus = async (llmId) => {
-    try {
-      const response = await fetch(`${API_BASE}/training/${llmId}/status`);
-      
-      if (!response.ok) {
-        if (response.status === 404) {
-          // Le job de training n'existe plus (probablement supprimé après un échec)
-          setTrainingError("Le job d'entraînement n'existe plus ou a échoué.");
-          setIsTraining(false);
-          return true; // Arrêter le polling
-        }
-        throw new Error(`Erreur HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      setTrainingStatus(data.status);
-      setProgress(data.progress || 0);
-      setTimeElapsed(data.time_elapsed || 0);
-      setTimeLeft(data.time_left);
-
-      // Traitement selon le statut
-      if (data.status === "failed") {
-        setTrainingError(data.error_message || "L'entraînement a échoué.");
-        setIsTraining(false);
-        return true; // Arrêter le polling
-      } else if (data.status === "completed") {
-        setTrainingError("");
-        setIsTraining(false);
-        return true; // Arrêter le polling
-      }
-
-      // Continuer le polling pour "pending" ou "running"
-      return false;
-    } catch (error) {
-      console.error("Erreur lors de la vérification du statut:", error);
-      setTrainingError(`Erreur lors de la vérification du statut: ${error.message}`);
-      setIsTraining(false);
-      return true; // Arrêter le polling en cas d'erreur
-    }
-  };
-
-  // Fonction pour démarrer le polling
-  const startPolling = (llmId) => {
+  /* Handle reset from parent component */
+  const resetDatasetCardState = () => {
+    console.log('Resetting DatasetCard state');
+    setPaths([]);
+    setTrainingStatus(null);
+    setTrainingError("");
+    setProgress(0);
+    // Clear any polling intervals
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
-
-    // Vérifier toutes les 3 secondes
-    pollingRef.current = setInterval(async () => {
-      const shouldStop = await checkTrainingStatus(llmId);
-      
-      if (shouldStop && pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-    }, 30000);
+    // Reset the DragDropArea by calling addDroppedFiles with empty array
+    addDroppedFiles([]);
   };
 
-  const submitTrainForm = async () => {
-    setErrorMsg("");
-    setTrainingError("");
+  useEffect(() => {
+    if (onReset) {
+      // Store our reset function so parent can call it
+      onReset.current = resetDatasetCardState;
+    }
+  }, [onReset]);
 
-    if (!selectedModel) {
-      setErrorMsg("Please select a model to train.");
-      return;
-    }
-    if (!modelName || modelName.trim() === "") {
-      setErrorMsg("Please name your new model.");
-      return;
-    }
-    if (paths.length === 0) {
-      setErrorMsg("Please select at least one folder.");
-      return;
-    }
+  /* Recap info */
+  const recap = {
+    model: modelName || "—",
+    device: hardwareInfo.device_used,
+    ram: hardwareInfo.available_vram,
+    datasetSize: paths.length ? `${paths.length} files` : "—",
+    estimate: "Coming soon",
+    notes: "Coming soon",
+  };
 
+  /* Polling helpers */
+  const checkTrainingStatus = async (id) => {
     try {
-      // Activer l'état d'entraînement
-      setIsTraining(true);
-      setTrainingStatus("pending");
-      
-      const response = await fetch(`${API_BASE}/train`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          paths: paths,
-          selectedModel: selectedModel,
-          modelName: modelName,
-        }),
-      });
+      const res = await fetch(`${API_BASE}/training/${id}/status`);
+      if (!res.ok) throw new Error(res.status);
+      const d = await res.json();
+      setTrainingStatus(d.status);
+      setProgress(d.progress || 0);
+      return ["failed", "completed"].includes(d.status);
+    } catch (e) {
+      setTrainingError(String(e));
+      return true;
+    }
+  };
+  const startPolling = (id) => {
+    pollingRef.current && clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
+      (await checkTrainingStatus(id)) && (clearInterval(pollingRef.current), (pollingRef.current = null));
+    }, 30_000);
+  };
+  useEffect(() => () => pollingRef.current && clearInterval(pollingRef.current), []);
 
-      if (!response.ok) {
-        throw new Error("Erreur provenant du backend");
-      }
-
-      const data = await response.json();
-      console.log("Réponse du backend:", data);
-      
-      // Récupérer l'ID du modèle en entraînement et démarrer le polling
-      if (data.llm_in_training_id) {
-        setTrainingId(data.llm_in_training_id);
-        startPolling(data.llm_in_training_id);
-      } else {
-        throw new Error("ID du modèle en entraînement non reçu");
-      }
-      
-    } catch (error) {
-      console.error("Erreur lors de l'envoi des infos d'entrainement:", error);
-      setErrorMsg("Une erreur est survenue.");
-      setIsTraining(false);
+  /* Launch training */
+  const submitTrain = async () => {
+    if (!selectedModel || !modelName || !paths.length || modelName.trim() === "") return;
+    
+    if (onStartTraining) {
+      onStartTraining(paths);
     }
   };
 
+  /* ─────────────── Render ─────────────── */
   return (
-    <div className="flex-1 bg-[#2B2B2B] rounded-2xl p-8 text-white flex flex-row gap-6 shadow-lg justify-center items-center">
-      <div className="flex flex-col justify-center items-center gap-6 w-[50%]">
-        <div className="flex flex-row justify-center gap-8 lg:gap-24 w-full h-[80%]">
-          <div className="flex flex-col gap-2 w-30">
-            <div>
-              <h3 className="text-xl font-bold mb-4">Dataset Type</h3>
-              <Dropdown options={types} value={type} onChange={setType} />
-            </div>
-
-            <h3 className="text-xl font-bold mb-2">Data Path</h3>
-            <input
-              readOnly
-              value={dataPath}
-              onClick={openExplorer}
-              className="w-full bg-transparent border border-gray-400 rounded-full px-4 py-2 text-sm truncate max-w-[190px] cursor-pointer focus:border-emerald-400/50 focus:ring-0 focus:outline-none"
-              placeholder="Click to specify path"
-            />
-
-            <input
-              type="file"
-              multiple
-              ref={fileInputRef}
-              className="hidden"
-              webkitdirectory="true"
-              directory="true"
-              onChange={onFilesChosen}
-            />
+    <>
+      <div className="flex-1 bg-[#2B2B2B] rounded-2xl p-4 sm:p-6 shadow-lg text-white flex gap-4 sm:gap-6 w-full border border-white/20 border-[0.5px]">
+        {/* LEFT */}
+        <div className="w-2/5 flex flex-col gap-3 sm:gap-4">
+          {/* Recap table */}
+          <div>
+            <h3 className="text-xl md:text-2xl font-bold mb-1.5 sm:mb-2">Recap</h3>
+            <RecapTable recap={recap} />
           </div>
 
-          <div className="flex flex-col gap-1 w-[50%]">
-            <h3 className="text-xl font-bold mb-2">Dataset</h3>
-            <div
-              className="bg-gray-800/50 rounded-lg p-4 overflow-y-auto h-36 mt-2 shadow-lg"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+          {/* Action buttons */}
+          <div className="flex gap-3 sm:gap-4 mt-6">
+            <button
+              className="flex-1 py-2 sm:py-3 rounded-full border border-white/30 text-white font-semibold hover:bg-white/10 transition disabled:opacity-40 text-xs sm:text-sm"
+              disabled={!paths.length || isTraining}
+              onClick={() => setShowComingSoonModal(true)}
             >
-              <ul className="space-y-2 text-white/80 text-sm">
-                {paths.length === 0 ? (
-                  <li className="italic text-white/60">Add Folders...</li>
-                ) : (
-                  paths.map((p) => (
-                    <li key={p} className="flex items-center gap-2">
-                      <Folder className="w-5 h-5" />
-                      <span className="truncate flex-1">{p}</span>
-                      <Check className="w-5 h-5 text-emerald-400" />
-                    </li>
-                  ))
-                )}
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 flex lg:mt-12 items-end flex-col">
-          {isTraining ? (
-            <div className="w-full text-center">
-              <div className="w-full bg-gray-700 rounded-full h-4 mb-2">
-                <div
-                  className="bg-emerald-400 h-4 rounded-full transition-all"
-                  style={{ width: `${progress}%` }}
-                ></div>
-              </div>
-              <div className="text-emerald-400 text-sm">
-                {progress.toFixed(1)}% — 
-                {timeElapsed ? ` Écoulé: ${Math.round(timeElapsed)}s` : ""}
-                {timeLeft ? ` — Restant: ~${Math.round(timeLeft)}s` : ""}
-              </div>
-              <div className="inline-flex items-center gap-2 py-3">
-                <Loader className="w-5 h-5 text-emerald-400 animate-spin" />
-                <span className="text-emerald-400">
-                  {trainingStatus === "running"
-                    ? "Entraînement en cours..."
-                    : "Préparation de l'entraînement..."}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <button 
-              className="w-40 mx-auto py-3 rounded-full border border-emerald-400/20 text-emerald-400 font-semibold hover:bg-emerald-400/10 transition"
-              onClick={submitTrainForm}
-            >
-              Train
+              Evaluate dataset
             </button>
-          )}
-        </div>
-        
-        {errorMsg && (
-          <div className="text-red-400 text-sm mt-2 text-center w-full">{errorMsg}</div>
-        )}
-        
-        {trainingError && (
-          <div className="text-red-400 text-sm mt-2 text-center w-full">{trainingError}</div>
-        )}
-        
-        {trainingStatus === "completed" && (
-          <div className="text-emerald-400 text-sm mt-2 text-center w-full">
-            Entraînement terminé avec succès!
+
+            {isTraining ? (
+              <div className="flex-1 flex flex-col items-center gap-3 py-2">
+                
+                {/* Status text with enhanced styling */}
+                <div className="flex items-center gap-2 bg-emerald-950/30 px-3 py-2 rounded-full border border-emerald-500/20">
+                  <div className="relative">
+                    <Loader className="w-4 h-4 text-emerald-400 animate-spin" />
+                    <div className="absolute inset-0 w-4 h-4 bg-emerald-400/20 rounded-full animate-pulse"></div>
+                  </div>
+                  <span className="text-emerald-300 font-medium text-sm">
+                    {trainingStatus === "running" ? "Training in Progress" : "Initializing Training"}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <button
+                className="flex-1 py-2 sm:py-3 rounded-full bg-emerald-500 text-white font-semibold shadow-lg hover:bg-emerald-400 transition disabled:opacity-50 text-xs sm:text-sm"
+                disabled={!paths.length || !selectedModel || !modelName || modelName.trim() === ""}
+                onClick={submitTrain}
+              >
+                Train
+              </button>
+            )}
           </div>
-        )}
+
+          {trainingError && <p className="text-red-400 text-xs sm:text-sm mt-1.5 sm:mt-2">{trainingError}</p>}
+        </div>
+
+        {/* RIGHT */}
+        <div className="h-[100%] w-3/5">
+          <DragDropArea onFilesAdded={addDroppedFiles}/>
+        </div>
       </div>
 
-      <div className="w-[50%] h-[80%] rounded-2xl flex flex-col gap-6 shadow-lg">
-        <DragDropArea />
-      </div>
-    </div>
+      {/* Coming Soon Modal */}
+      {showComingSoonModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#2B2B2B] rounded-2xl border border-white/10 shadow-2xl max-w-md w-full">
+            {/* Header */}
+            <div className="p-4 border-b border-white/10">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                  🚧 Coming Soon
+                </h2>
+                <button
+                  onClick={() => setShowComingSoonModal(false)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <div className="text-gray-300 text-center">
+                <p className="text-sm mb-4">
+                  Dataset evaluation feature is currently under development and will be available in a future update.
+                </p>
+                <p className="text-xs text-gray-400">
+                  This feature will help you assess the quality and suitability of your training data.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-white/10">
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowComingSoonModal(false)}
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
