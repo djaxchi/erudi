@@ -1,5 +1,5 @@
 import React from "react";
-import { Brain, MessageSquare, Swords} from "lucide-react";
+import { Brain, MessageSquare, Swords, BookOpen} from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 /**
@@ -13,21 +13,22 @@ export default function Sidebar({ disabled = false }) {
   const isChatActive = location.pathname.startsWith("/main_window/chat") ||
     location.pathname.startsWith("/main_window/conversations");
   const isArenaActive = location.pathname === "/main_window/arena";
+  const isKnowledgeBaseActive = location.pathname === "/main_window/attach_knowledge_base";
 
   return (
     <div
-      className={`w-[6%] bg-[#121212] flex flex-col items-center transition-opacity duration-200 ${
+      className={`w-[4.8%] bg-[#121212] flex flex-col items-center transition-opacity duration-200 ${
         disabled ? "opacity-50 pointer-events-none select-none" : ""
       }`}
     >
       <Link
         to="/main_window/models"
-        className={`w-full flex justify-center items-center py-4 ${
-          isModelsActive ? "border-l-4 border-green-500" : ""
+        className={`w-full flex justify-center items-center py-4 border-l-4 ${
+          isModelsActive ? "border-green-500" : "border-transparent"
         }`}
       >
       <Brain
-  className={`w-[50%] sm:w-[40%] xl:w-[25%] h-auto aspect-square ${
+  className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
     isModelsActive ? "text-green-400" : "text-gray-400"
   }`}
 />
@@ -36,29 +37,41 @@ export default function Sidebar({ disabled = false }) {
 
       <Link
         to="/main_window/chat"
-        className={`w-full flex justify-center items-center py-4 ${
-          isChatActive ? "border-l-4 border-green-500" : ""
+        className={`w-full flex justify-center items-center py-4 border-l-4 ${
+          isChatActive ? "border-green-500" : "border-transparent"
         }`}
       >
         <MessageSquare
-          className={`w-[50%] sm:w-[40%] xl:w-[25%] h-auto aspect-square  ${
+          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square  ${
             isChatActive ? "text-green-400" : "text-gray-400"
           }`}
         />
       </Link>
       <Link
         to="/main_window/arena"
-        className={`w-full flex justify-center items-center py-4 ${
-          isArenaActive ? "border-l-4 border-green-500" : ""
+        className={`w-full flex justify-center items-center py-4 border-l-4 ${
+          isArenaActive ? "border-green-500" : "border-transparent"
         }`}
       >
         <Swords
-          className={`w-6 h-6 ${
+          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
             isArenaActive ? "text-green-400" : "text-gray-400"
           }`}
         />
       </Link>
-    </div>
-  );
+      <Link
+        to="/main_window/attach_knowledge_base"
+        className={`w-full flex justify-center items-center py-4 border-l-4 ${
+          isKnowledgeBaseActive ? "border-green-500" : "border-transparent"
+        }`}
+      >
+        <BookOpen
+          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
+            isKnowledgeBaseActive ? "text-green-400" : "text-gray-400"
+          }`}
+        />
+      </Link>
 
-}
+      
+    </div>
+  );}

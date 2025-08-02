@@ -12,6 +12,8 @@ export default function ChatPage() {
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [conversations, setConversations] = useState([]);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
 
   useEffect(() => {
     fetch("http://127.0.0.1:8000/main_window/llms/local")
@@ -22,7 +24,11 @@ export default function ChatPage() {
           setSelectedModel(data[0].name);
         }
       })
-      .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
+      .catch((err) => {
+        console.error("Erreur lors du fetch des modèles:", err);
+        setErrorMessage(`Failed to load models: ${err.message || 'Network error'}`);
+        setShowErrorPopup(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -36,6 +42,8 @@ export default function ChatPage() {
         setConversations(sorted);
       } catch (err) {
         console.error("Failed to fetch conversations:", err);
+        setErrorMessage(`Failed to load conversations: ${err.message || 'Network error'}`);
+        setShowErrorPopup(true);
       }
     };
 
@@ -66,6 +74,8 @@ export default function ChatPage() {
         navigate(`/main_window/conversations/${conversation.id}`, { state: { initialQuestion: question } });
       } catch (err) {
         console.error("Failed to start conversation:", err);
+        setErrorMessage(`Failed to start conversation: ${err.message || 'Network error'}`);
+        setShowErrorPopup(true);
       }
     },
     [models, selectedModel, navigate]
@@ -81,21 +91,39 @@ export default function ChatPage() {
     setConversations((prev) => prev.filter((conv) => conv.id !== id));
   };
 
+  const handleRefreshConversations = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/conversations");
+      const data = await res.json();
+      const sorted = data.sort(
+        (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
+      );
+      setConversations(sorted);
+    } catch (err) {
+      console.error("Failed to refresh conversations:", err);
+      setErrorMessage(`Failed to refresh conversations: ${err.message || 'Network error'}`);
+      setShowErrorPopup(true);
+    }
+  };
+
   return (
     <div className="flex h-screen">
       <Sidebar />
 
       {/* barre latérale */}
-      <aside className="w-80 bg-[#272727] text-white flex flex-col p-6 space-y-6">
+      <aside className="w-[30%] sm:w-[35%] xl:w-[25%] bg-[#272727] text-white flex flex-col p-6 space-y-6">
         <h1 className="text-3xl font-bold">History</h1>
 
-        <ChatCollapsibleSection title="Hot Chats" />
+        {/*<ChatCollapsibleSection title="Hot Chats"
+          disabled={loading}
+        />} coming in next version*/}
         <ChatCollapsibleSection
           title="Previous Chats"
           items={conversations}
           onItemClick={handleConversationClick}
           onRename={handleRename}
           onDelete={handleDelete}
+          onRefresh={handleRefreshConversations}
         />
       </aside>
 
@@ -142,6 +170,31 @@ export default function ChatPage() {
           </GradientBox>
         )}
       </main>
+
+      {/* Error Popup */}
+      {showErrorPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl">
+            <div className="flex items-center mb-4">
+              <div className="bg-red-100 rounded-full p-2 mr-3">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Error</h3>
+            </div>
+            <p className="text-gray-700 mb-4">{errorMessage}</p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowErrorPopup(false)}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 import React from "react";
 
 export default function SpinnerDots({
-  size = 40,
-  dotSize = 8,
+  size = 30,
+  dotSize = 6,
   colorClass = "bg-emerald-500",
 }) {
   const dotCount = 8;

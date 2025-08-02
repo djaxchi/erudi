@@ -251,7 +251,7 @@ export default function ArenaPage() {
             className={`rounded-xl px-4 py-2 my-1 max-w-[90%] whitespace-pre-line ${
               msg.role === "user"
                 ? "bg-emerald-900/40 text-white self-end"
-                : "bg-gray-800/80 text-white self-start"
+                : "text-white self-start"
             }`}
           >
             {msg.content}
