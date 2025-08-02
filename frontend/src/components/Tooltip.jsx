@@ -33,21 +33,39 @@ export default function Tooltip({ children, content, position = "top" }) {
         }
     };
 
+    const handleMouseEnter = () => {
+        console.log('Tooltip mouse enter - content:', content);
+        setIsVisible(true);
+    };
+
+    const handleMouseLeave = () => {
+        console.log('Tooltip mouse leave');
+        setIsVisible(false);
+    };
+
     return (
         <div 
             className="relative inline-block"
-            onMouseEnter={() => setIsVisible(true)}
-            onMouseLeave={() => setIsVisible(false)}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            style={{ zIndex: 9999 }}
         >
             {children}
             {isVisible && (
-                <div className={`absolute z-50 ${getPositionClasses()}`}>
-                    <div className="bg-gray-800 text-white text-sm rounded-lg px-4 py-3 w-80 shadow-lg border border-gray-600">
+                <div 
+                    className={`absolute ${getPositionClasses()}`}
+                    style={{ zIndex: 99999 }}
+                >
+                    <div className="bg-gray-900 text-white text-sm rounded-lg px-4 py-3 max-w-xs shadow-2xl border border-gray-600">
                         {content}
                     </div>
                     {/* Arrow */}
                     <div className={`absolute w-0 h-0 border-4 ${getArrowClasses()}`}></div>
                 </div>
+            )}
+            {/* Debug indicator */}
+            {isVisible && (
+                <div className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full" style={{ zIndex: 100000 }}></div>
             )}
         </div>
     );

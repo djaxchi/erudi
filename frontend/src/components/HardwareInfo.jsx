@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import InfoRow from "./InfoRow";
 import Tooltip from "./Tooltip";
 import { Check, X, HelpCircle, Folder } from "lucide-react";
@@ -6,6 +6,8 @@ import { Check, X, HelpCircle, Folder } from "lucide-react";
 
 export default function HardwareInfo({ hw }) {
     const [storagePath, setStoragePath] = useState(hw.storage_path || "");
+    const [tooltipVisible, setTooltipVisible] = useState(null);
+    const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
     
     // Handle directory selection for storage path
     const handleStoragePathSelection = async () => {
@@ -66,83 +68,169 @@ export default function HardwareInfo({ hw }) {
         }
     };
 
-    /* helper to determine bullet or icon for size-based fields */
-    const getBulletOrIcon = (gbString) => {
-        console.log("Data received:", gbString);
+    // Helper component for tooltips
+    const TooltipIcon = ({ id, text }) => {
+        const iconRef = useRef(null);
+        
+        const handleMouseEnter = () => {
+            if (iconRef.current) {
+                const rect = iconRef.current.getBoundingClientRect();
+                const tooltipWidth = 300; // Approximate tooltip width
+                const windowWidth = window.innerWidth;
+                
+                // Check if tooltip would go off-screen to the right
+                const wouldOverflow = rect.right + 8 + tooltipWidth > windowWidth;
+                
+                setTooltipPosition({
+                    top: rect.top + window.scrollY + (rect.height / 2), // Center vertically with the icon
+                    left: wouldOverflow 
+                        ? rect.left + window.scrollX - 8 - tooltipWidth // Position to the left if would overflow
+                        : rect.right + window.scrollX + 8, // 8px to the right of the icon
+                    isLeftSide: wouldOverflow
+                });
+            }
+            setTooltipVisible(id);
+        };
 
-        // If it's still "fetching..." show question mark icon
+        const handleMouseLeave = () => {
+            setTooltipVisible(null);
+        };
+
+        return (
+            <div 
+                ref={iconRef}
+                className="relative"
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+            >
+                <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 hover:text-emerald-400 transition-colors cursor-help" />
+            </div>
+        );
+    };
+
+    /* helper to determine bullet color for size-based fields */
+    const getSizeBulletInfo = (gbString) => {
+        // If it's still "fetching..." show gray bullet
         if (gbString && gbString.includes("fetching")) {
-            return { type: 'icon', value: <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" /> };
+            return { 
+                type: 'bullet', 
+                value: "bg-gray-500"
+            };
         }
 
         // Try to extract number from string for color coding
+        let bulletColor = "bg-gray-500"; // Default color
         if (typeof gbString === 'string') {
             const match = gbString.match(/(\d+\.?\d*)/);
             if (match) {
                 const n = parseFloat(match[1]);
                 if (!isNaN(n)) {
-                    if (n < 10) return { type: 'bullet', value: "bg-red-500" };
-                    if (n < 30) return { type: 'bullet', value: "bg-orange-400" };
-                    return { type: 'bullet', value: "bg-emerald-400" };
+                    if (n < 10) bulletColor = "bg-red-500";
+                    else if (n < 30) bulletColor = "bg-orange-400";
+                    else bulletColor = "bg-emerald-400";
                 }
             }
         }
 
-        // Default fallback - question mark for unknown data
-        return { type: 'icon', value: <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" /> };
+        return { 
+            type: 'bullet', 
+            value: bulletColor
+        };
     };
 
-    /* helper to determine bullet or icon for rating field */
-    const getRatingBulletOrIcon = (rating) => {
-        console.log("Rating received:", rating);
-
-        // If it's still "fetching..." show question mark icon
+    /* helper to determine bullet color for rating field */
+    const getRatingBulletInfo = (rating) => {
+        // If it's still "fetching..." show gray bullet
         if (rating && rating.includes("fetching")) {
-            return { type: 'icon', value: <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" /> };
+            return { 
+                type: 'bullet', 
+                value: "bg-gray-500"
+            };
         }
 
         // Color code based on rating
+        let bulletColor = "bg-red-500"; // Default for "Poor"
         if (rating === "Good") {
-            return { type: 'bullet', value: "bg-emerald-400" };
+            bulletColor = "bg-emerald-400";
         } else if (rating === "Average") {
-            return { type: 'bullet', value: "bg-orange-400" };
-        } else {
-            return { type: 'bullet', value: "bg-red-500" };
+            bulletColor = "bg-orange-400";
         }
+
+        return { 
+            type: 'bullet', 
+            value: bulletColor
+        };
     };
 
-    /* Tooltipped icons for different hardware components */
-    const getTooltippedIcon = (type) => {
-        const tooltips = {
-            storage: "Hard drive space for saving your work. More space = bigger models.",
-            ram: "Computer memory for faster processing. More memory = quicker results.",
-            cpu: "Main processor that prepares data and keeps training smooth.",
-            gpu: "Graphics card that does the AI training. Powerful card = faster training.",
-            vram: "Graphics memory that sets max model size. More memory = bigger models."
-        };
+    /* helper to get bullet color based on eval score */
+    const getEvalScoreBulletInfo = (scoreString) => {
+        // If it's still "fetching..." show gray bullet
+        if (scoreString && scoreString.includes("fetching")) {
+            return { 
+                type: 'bullet', 
+                value: "bg-gray-500"
+            };
+        }
 
-        return (
-            <Tooltip content={tooltips[type]} position="left">
-                <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 hover:text-emerald-400 transition-colors" />
-            </Tooltip>
-        );
+        // Extract score from string like "75/100"
+        let bulletColor = "bg-red-500"; // Default for poor performance
+        if (typeof scoreString === 'string') {
+            const match = scoreString.match(/(\d+)\/100/);
+            if (match) {
+                const score = parseInt(match[1]);
+                if (!isNaN(score)) {
+                    if (score >= 70) bulletColor = "bg-emerald-400"; // Good performance
+                    else if (score >= 40) bulletColor = "bg-orange-400"; // Average performance
+                    // else stays red for poor performance
+                }
+            }
+        }
+
+        return { 
+            type: 'bullet', 
+            value: bulletColor
+        };
     };
 
     return (
-        <div className="relative rounded-2xl overflow-hidden shadow-xl flex-1 min-w-[340px] border border-[#385B4F] border-[0.3px]">
-            <div className="absolute inset-0 opacity-[11%] pointer-events-none"
+        <div className="relative rounded-2xl shadow-xl flex-1 min-w-[340px] border border-[#385B4F] border-[0.3px]">
+            {/* Global tooltip */}
+            {tooltipVisible && (
+                <div 
+                    className="fixed bg-black text-white text-xs rounded-lg px-3 py-2 shadow-xl border border-gray-600 z-[99999]"
+                    style={{
+                        top: `${tooltipPosition.top}px`,
+                        left: `${tooltipPosition.left}px`,
+                        transform: 'translateY(-50%)', // Center vertically relative to the icon
+                        width: '280px', // Fixed width for consistent sizing
+                    }}
+                >
+                    {tooltipVisible === 'storage' && 'Hard drive space for saving your work. More space = bigger models.'}
+                    {tooltipVisible === 'ram' && 'Computer memory for faster processing. More memory = quicker results.'}
+                    {tooltipVisible === 'cpu' && 'Main processor that prepares data and keeps training smooth.'}
+                    {tooltipVisible === 'gpu' && 'Graphics card that does the AI training. Powerful card = faster training.'}
+                    {tooltipVisible === 'gpu-memory' && 'Graphics memory that sets max model size. More memory = bigger models.'}
+                    {tooltipVisible === 'rating' && 'Overall system capability for AI model fine-tuning based on your hardware specs.'}
+                    {/* Arrow pointing left or right depending on position */}
+                    {tooltipPosition.isLeftSide ? (
+                        <div className="absolute left-full top-1/2 transform -translate-y-1/2 w-0 h-0 border-t-4 border-b-4 border-l-4 border-transparent border-l-black"></div>
+                    ) : (
+                        <div className="absolute right-full top-1/2 transform -translate-y-1/2 w-0 h-0 border-t-4 border-b-4 border-r-4 border-transparent border-r-black"></div>
+                    )}
+                </div>
+            )}
+            
+            <div className="absolute inset-0 opacity-[11%] pointer-events-none rounded-2xl overflow-hidden"
                 style={{
                     background:
                         "linear-gradient(135deg,rgba(217,217,217,1) 0%,rgba(217,217,217,0.26) 26%,rgba(0,204,133,1) 100%)",
                 }}
             />
-            <div className="absolute inset-0 mix-blend-overlay pointer-events-none" />
-            <div className="relative z-10 px-3 py-1.5 sm:px-4 sm:py-2 md:px-6 md:py-2.5 lg:py-3 space-y-3 sm:space-y-4">
+            <div className="absolute inset-0 mix-blend-overlay pointer-events-none rounded-2xl overflow-hidden" />
+            <div className="relative z-10 px-3 py-1.5 sm:px-4 sm:py-2 md:px-6 md:py-2.5 lg:py-3 space-y-2 sm:space-y-2.5">
                 {/* storage path */}
-                <InfoRow label="Storage Path :" isHeader={true}>
-                    {/* Container to keep things from overflowing in the right column */}
+                {/* <InfoRow label="Storage Path :" isHeader={true}>
                     <div className="flex items-center gap-2 min-w-0">
-                        {/* Path pill with folder icon (clickable) */}
                         <button
                             type="button"
                             onClick={handleStoragePathSelection}
@@ -164,84 +252,79 @@ export default function HardwareInfo({ hw }) {
                             <Folder className="w-4 h-4 opacity-85 shrink-0" />
                         </button>
                     </div>
-                </InfoRow>
+                </InfoRow> */}
 
                 <InfoRow
-                    label="Available Storage :"
-                    {...(getBulletOrIcon(hw.disk_available).type === 'bullet'
-                        ? { bullet: getBulletOrIcon(hw.disk_available).value }
-                        : { icon: getTooltippedIcon('storage') })}
+                    label={
+                        <div className="flex items-center gap-1">
+                            <span>Available Storage</span>
+                            <TooltipIcon id="storage" />
+                        </div>
+                    }
+                    bullet={getSizeBulletInfo(hw.disk_available).value}
                 >
                     {hw.disk_available}
                 </InfoRow>
 
                 <InfoRow
-                    label="Total RAM :"
-                    {...(getBulletOrIcon(hw.total_ram_gb).type === 'bullet'
-                        ? { bullet: getBulletOrIcon(hw.total_ram_gb).value }
-                        : { icon: getTooltippedIcon('ram') })}
+                    label={
+                        <div className="flex items-center gap-1">
+                            <span>Total RAM</span>
+                            <TooltipIcon id="ram" />
+                        </div>
+                    }
+                    bullet={getSizeBulletInfo(hw.total_ram_gb).value}
                 >
                     {hw.total_ram_gb}
                 </InfoRow>
 
-                <InfoRow label="Available CPU :" icon={getTooltippedIcon('cpu')}>
+                <InfoRow 
+                    label={
+                        <div className="flex items-center gap-1">
+                            <span>Available CPU</span>
+                            <TooltipIcon id="cpu" />
+                        </div>
+                    }
+                    bullet={getEvalScoreBulletInfo(hw.cpu_eval_score).value}
+                >
                     {hw.cpu_model}
                 </InfoRow>
 
-                <InfoRow label="Available GPU :" icon={getTooltippedIcon('gpu')}>
+                <InfoRow 
+                    label={
+                        <div className="flex items-center gap-1">
+                            <span>Available GPU</span>
+                            <TooltipIcon id="gpu" />
+                        </div>
+                    }
+                    bullet={getEvalScoreBulletInfo(hw.gpu_eval_score).value}
+                >
                     {hw.gpu_model}
                 </InfoRow>
 
                 <InfoRow
-                    label="GPU Total Memory :"
-                    {...(getBulletOrIcon(hw.gpu_vram_total).type === 'bullet'
-                        ? { bullet: getBulletOrIcon(hw.gpu_vram_total).value }
-                        : { icon: getTooltippedIcon('vram') })}
+                    label={
+                        <div className="flex items-center gap-1">
+                            <span>GPU Total Memory</span>
+                            <TooltipIcon id="gpu-memory" />
+                        </div>
+                    }
+                    bullet={getSizeBulletInfo(hw.gpu_vram_total).value}
                 >
                     {hw.gpu_vram_total}
                 </InfoRow>
 
-                {/* CUDA row - commented out to reduce clutter */}
-                {/* 
-                <InfoRow label="Cuda Installed :">
-                    <div className="flex items-center gap-2 min-w-0">
-                        <button
-                            type="button"
-                            onClick={handleCudaPathSelection}
-                            className="
-         inline-flex items-center gap-2 rounded-full
-         bg-white/5 border border-white/10
-         px-3 py-1.5 text-[13px] leading-none text-white/90
-         shadow-sm backdrop-blur
-         hover:bg-white/[0.08] hover:border-white/15
-         focus:outline-none focus:ring-2 focus:ring-emerald-400/60
-         transition cursor-pointer
-         max-w-[220px] sm:max-w-[260px] lg:max-w-[300px]
-       "
-                            aria-label="Choose CUDA directory"
-                        >
-                            <span className="truncate" style={{ direction: 'rtl', textAlign: 'left' }}>
-                                {cudaPath || "Select CUDA path"}
-                            </span>
-                            <Folder className="w-4 h-4 opacity-85 shrink-0" />
-                        </button>
-                        {cudaPath ? (
-                            <Check className="w-3 h-3 sm:w-4 sm:h-4 text-emerald-400 flex-shrink-0" />
-                        ) : (
-                            <X className="w-3 h-3 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />
-                        )}
-                    </div>
-                </InfoRow>
-                */}
-
                 <InfoRow
-                    label="Overall Config Rating :"
+                    label={
+                        <div className="flex items-center gap-1">
+                            <span>Fine-Tuning Capability Rating</span>
+                            <TooltipIcon id="rating" />
+                        </div>
+                    }
                     isHeader={true}
-                    {...(getRatingBulletOrIcon(hw.rating).type === 'bullet'
-                        ? { bullet: getRatingBulletOrIcon(hw.rating).value }
-                        : { icon: getRatingBulletOrIcon(hw.rating).value })}
+                    bullet={getRatingBulletInfo(hw.global_finetuning_label).value}
                 >
-                    {hw.rating || "Poor"}
+                    {hw.global_finetuning_label || "Poor"}
                 </InfoRow>
             </div>
         </div>

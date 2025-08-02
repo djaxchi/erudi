@@ -1,4 +1,8 @@
 import gc
+
+from ..models.VectorStore import VectorStore
+
+from ..models.KnowledgeBase import KnowledgeBase
 from ..schemas.message_schemas import MessageCreate, MessageResponse
 from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
@@ -8,6 +12,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStream
 import logging
 from typing import List
 from ..database import get_db
+from ..utils.file_processor import chunk_by_tokens
 from ..models.Conversation import Conversation
 from ..models.Llm import Llm
 from ..models.Message import Message
@@ -15,6 +20,7 @@ from ..schemas.conversation_schemas import ConversationCreate, ConversationDelet
 import threading
 from fastapi.responses import StreamingResponse
 from faiss import IndexFlatL2
+import faiss
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from ..prompting.builder import build_conv_prompt
@@ -52,6 +58,91 @@ GEMMA_RE = re.compile(
     r"<end_of_turn>)"
 )
 
+def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
+    kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == llm.kb_id).first()
+
+    if not os.path.exists(kb.index_path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Knowledge Base index not found for LLM {llm.id}"
+        )
+    try:
+        faiss_index = faiss.read_index(kb.index_path)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read FAISS index for Knowledge Base {kb.id}: {str(e)}"
+        )
+    if not faiss_index:
+        raise HTTPException(
+            status_code=404,
+            detail=f"FAISS index not found for Knowledge Base {kb.id}"
+        )
+    
+    # Get the VectorStore for this KB
+    vector_store = db.query(VectorStore).filter(VectorStore.kb_id == kb.id).first()
+    if not vector_store:
+        raise HTTPException(
+            status_code=404,
+            detail=f"VectorStore not found for Knowledge Base {kb.id}"
+        )
+    
+    get_embedder()
+    chunks = chunk_by_tokens(text=query)
+    relevant_texts = []
+    if not chunks or len(chunks) < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid text chunks found in the query."
+        )
+    else:
+        for chunk in chunks:
+            if not chunk.strip():
+                continue
+            try:
+                query_emb = embedder.encode(chunk, convert_to_tensor=True)
+            except Exception as e:
+                logging.error(f"Error embedding chunk: {e}")
+                continue
+            if query_emb is None or query_emb.numel() == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Error embedding chunk."
+                )
+            try:
+                _, idxs = faiss_index.search(query_emb.cpu().numpy().reshape(1, -1), k=3)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error searching FAISS index: {str(e)}"
+                )
+            for idx in idxs[0]:  # idxs is 2D array, take first row
+                if idx < 0:
+                    continue
+                try:
+                    # Get text from vectors_data JSON using FAISS ID as key
+                    faiss_id_str = str(idx)
+                    if faiss_id_str in vector_store.vectors_data:
+                        relevant_texts.append(vector_store.vectors_data[faiss_id_str])
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Error fetching vector text: {e}"
+                    )
+    return relevant_texts
+    return relevant_texts
+
+def get_embedder():
+        global embedder
+        if embedder is None:
+            logging.info("Loading the Embedder")
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            embedder = SentenceTransformer(
+                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                cache_folder=CACHE_DIR
+            )
+            logging.info("Embedder loaded")
+        return embedder
 router = APIRouter()
 
 def clear_gpu_memory():
@@ -214,17 +305,6 @@ def retrieve_context(query: str, conversation_history, conversation_id: int, top
     Returns:
         str: Formatted context string.
     """
-    def get_embedder():
-        global embedder
-        if embedder is None:
-            logging.info("Loading the Embedder")
-            os.makedirs(CACHE_DIR, exist_ok=True)
-            embedder = SentenceTransformer(
-                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                cache_folder=CACHE_DIR
-            )
-            logging.info("Embedder loaded")
-        return embedder
 
     def get_cached_summary(conversation_id: int, current_message_count: int):
         """Get cached summary or determine if regeneration is needed."""
@@ -676,10 +756,10 @@ async def query_and_respond(
         logging.exception("Failed to load model or tokenizer")
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
+    context = None
     try :
         conversation_history = get_conversation_history(db, conversation_id)
         if not conversation_history:
-            context = ""
             logging.info("No previous messages in conversation, skipping context retrieval")
         else:
             logging.info(f"Retrieving context for conversation {conversation_id}")
@@ -697,7 +777,20 @@ async def query_and_respond(
         logging.exception("Failed to retrieve context")
         raise HTTPException(status_code=500, detail=f"Context retrieval error: {str(e)}")
     
-
+    if llm.is_attached_to_kb:
+        try:
+            kb_knowledge = get_relevant_texts_if_kb(query=payload.question, llm=llm, db=db)
+            if not kb_knowledge:
+                logging.info("No relevant texts found in Knowledge Base")
+            else:
+                if context:
+                    context += "\n\nAlso: You are attached to a Knowledge Base. Here is context you need to know for this query:\n" + "\n".join(kb_knowledge)
+                else:
+                    context = "You are attached to a Knowledge Base. Here is context you need to know for this query:\n" + "\n".join(kb_knowledge)
+        except Exception as e:
+            logging.exception("Failed to retrieve Knowledge Base context")
+            raise HTTPException(status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}")
+        
     lang = payload.language
     max_tokens_out = payload.max_new_tokens or 3074
     custom_sys_prompt = payload.custom_prompt if payload.custom_prompt else None
@@ -848,10 +941,12 @@ async def store_error_message(
         conversation.last_message_time = datetime.now()
         db.commit()
         logging.info(f"Stored error message for conversation {conversation_id}")
-        if loaded_model or current_tokenizer :
+        if loaded_model :
             loaded_model = None
-            current_tokenizer = None
             logging.info("Cleared model cache after error message storage")
+        if current_tokenizer :
+            current_tokenizer = None
+            logging.info("Cleared tokenizer cache after error message storage")
         return {"message": "Error message stored successfully", "error_message_id": error_message.id}
     except Exception as e:
         db.rollback()

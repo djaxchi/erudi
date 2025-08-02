@@ -330,7 +330,18 @@ def get_hardware_eval_for_NVIDIA_CUDA():
     score_cpu = P * 100
     print(f"CPU score: {score_cpu:.2f} ({label(score_cpu)})")
 
+
+    (total_ram_gb, cpu_model, gpu_model, gpu_vram_total,
+            disk_total_gb, cuda_available,
+            cuda_path) = get_static_hardware_info()
+    disk_avail_gb = disk_avail_gb = psutil.disk_usage(os.getcwd()).free / 2**30
+    avail_ram_gb = psutil.virtual_memory().available / 2**30
+
     return {
+        "disk_total_gb":    round(disk_total_gb, 1),
+        "disk_avail_gb":    round(disk_avail_gb, 1),
+        "available_ram_gb": round(avail_ram_gb, 1),
+        "cpu_model":        cpu_model,
         "gpu_name":          best["name"],
         "gpu_index":         device_id,
         "vram_total_gb":     round(best["vram_total_mb"] / 1024, 1),

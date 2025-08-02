@@ -1,5 +1,5 @@
 import React from "react";
-import { Brain, MessageSquare, Swords} from "lucide-react";
+import { Brain, MessageSquare, Swords, BookOpen} from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 /**
@@ -13,6 +13,7 @@ export default function Sidebar({ disabled = false }) {
   const isChatActive = location.pathname.startsWith("/main_window/chat") ||
     location.pathname.startsWith("/main_window/conversations");
   const isArenaActive = location.pathname === "/main_window/arena";
+  const isKnowledgeBaseActive = location.pathname === "/main_window/attach_knowledge_base";
 
   return (
     <div
@@ -58,7 +59,19 @@ export default function Sidebar({ disabled = false }) {
           }`}
         />
       </Link>
-    </div>
-  );
+      <Link
+        to="/main_window/attach_knowledge_base"
+        className={`w-full flex justify-center items-center py-4 border-l-4 ${
+          isKnowledgeBaseActive ? "border-green-500" : "border-transparent"
+        }`}
+      >
+        <BookOpen
+          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
+            isKnowledgeBaseActive ? "text-green-400" : "text-gray-400"
+          }`}
+        />
+      </Link>
 
-}
+      
+    </div>
+  );}

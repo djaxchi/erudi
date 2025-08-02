@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
 import TrainNewModelCard from "../components/TrainNewModelCard";
@@ -11,6 +11,7 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(true);
   const [cudaStatus, setCudaStatus] = useState(null);
   const [cudaLoading, setCudaLoading] = useState(true);
+  const localModelsRef = useRef(null);
 
   useEffect(() => {
     // Fetch hardware evaluation on component mount
@@ -55,7 +56,14 @@ export default function LandingPage() {
   }, []);
 
   const closeWelcome = () => {
+    // Mark that user has completed their first visit
     setShowWelcome(false);
+  };
+
+  const handleLocalModelRefresh = () => {
+    if (localModelsRef.current) {
+      localModelsRef.current.reloadLocalModels();
+    }
   };
 
   return (
@@ -66,10 +74,14 @@ export default function LandingPage() {
       {/* Main sidebar */}
       <aside className="w-[30%] sm:w-[35%] xl:w-[25%]  bg-[#272727] text-white flex flex-col p-6 space-y-6">
         <h1 className="text-3xl font-bold">Models</h1>
-        <ModelCollapsibleSection title="Local Models" />
+        <ModelCollapsibleSection 
+          title="Local Models" 
+          ref={localModelsRef}
+        />
         <ModelCollapsibleSection
-         title="Available Models"
+         title="Remote Models"
          onDownload={(model) => open(model)}
+         onLocalModelRefresh={handleLocalModelRefresh}
        />
       </aside>
 
@@ -105,7 +117,7 @@ export default function LandingPage() {
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">
                   <div className="text-6xl font-bold text-white mb-2">
-                    Erudi
+                    erudi
                   </div>
                   <div className="text-lg text-gray-400">
                     Personal AI Training Platform

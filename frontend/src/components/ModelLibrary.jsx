@@ -21,15 +21,19 @@ export default function ModelLibrary({
   onRefresh,
 }) {
   const [isLocked, setIsLocked] = useState(false);
+  const [localModelName, setLocalModelName] = useState("");
 
   const handleToggleLock = () => {
-    if (!isLocked && modelName.trim()) {
-      // Locking: validate the name
-      console.log("Model name locked and validated:", modelName);
+    if (!isLocked && localModelName.trim()) {
+      // Locking: validate the name and send it to parent
+      console.log("Model name locked and validated:", localModelName);
       setIsLocked(true);
+      onModelNameChange(localModelName.trim());
     } else {
-      // Unlocking: allow editing again
+      // Unlocking: allow editing again but keep the text in the input
       setIsLocked(false);
+      onModelNameChange("");
+      // Keep localModelName as is - don't clear it
     }
   };
 
@@ -104,14 +108,14 @@ export default function ModelLibrary({
                 : 'bg-[#3A3A3A] border-gray-600/50 text-white focus:border-emerald-400/50 focus:bg-[#404040]'
             }`}
             placeholder={selectedModel ? "Enter model name..." : "Select a model first"}
-            value={modelName}
-            onChange={(e) => onModelNameChange(e.target.value)}
+            value={isLocked ? modelName : localModelName}
+            onChange={(e) => setLocalModelName(e.target.value)}
             disabled={!selectedModel || isLocked}
             readOnly={isLocked}
           />
           <button
             onClick={handleToggleLock}
-            disabled={!selectedModel || (!isLocked && !modelName.trim())}
+            disabled={!selectedModel || (!isLocked && !localModelName.trim())}
             className={`p-2 rounded-lg transition-colors ${
               isLocked
                 ? 'bg-red-500 hover:bg-red-600 text-white'

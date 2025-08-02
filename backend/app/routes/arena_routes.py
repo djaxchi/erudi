@@ -16,6 +16,16 @@ import torch, re, threading
 from ..database import get_db
 from ..models.Llm import Llm
 from ..prompting.builder import build_conv_prompt
+import os
+from dotenv import load_dotenv
+load_dotenv()
+CACHE_DIR = os.getenv("CACHE_DIR")
+from sentence_transformers import SentenceTransformer
+import faiss
+from ..utils.file_processor import chunk_by_tokens
+from ..models.KnowledgeBase import KnowledgeBase
+from ..models.VectorStore import VectorStore
+from typing import List
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 
@@ -39,13 +49,93 @@ GEMMA_RE = re.compile(
     r"<end_of_turn>)"
 )
 
-class StopOnEndToken(StoppingCriteria):
-    def __init__(self, end_token_id: int):
-        self.end_token_id = end_token_id
-    def __call__(self, input_ids, scores, **kwargs):
-        return input_ids[0, -1].item() == self.end_token_id
+def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
+    kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == llm.kb_id).first()
+
+    if not os.path.exists(kb.index_path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Knowledge Base index not found for LLM {llm.id}"
+        )
+    try:
+        faiss_index = faiss.read_index(kb.index_path)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read FAISS index for Knowledge Base {kb.id}: {str(e)}"
+        )
+    if not faiss_index:
+        raise HTTPException(
+            status_code=404,
+            detail=f"FAISS index not found for Knowledge Base {kb.id}"
+        )
+    
+    # Get the VectorStore for this KB
+    vector_store = db.query(VectorStore).filter(VectorStore.kb_id == kb.id).first()
+    if not vector_store:
+        raise HTTPException(
+            status_code=404,
+            detail=f"VectorStore not found for Knowledge Base {kb.id}"
+        )
+    
+    get_embedder()
+    chunks = chunk_by_tokens(text=query)
+    relevant_texts = []
+    if not chunks or len(chunks) < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid text chunks found in the query."
+        )
+    else:
+        for chunk in chunks:
+            if not chunk.strip():
+                continue
+            try:
+                query_emb = embedder.encode(chunk, convert_to_tensor=True)
+            except Exception as e:
+                logging.error(f"Error embedding chunk: {e}")
+                continue
+            if query_emb is None or query_emb.numel() == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Error embedding chunk."
+                )
+            try:
+                _, idxs = faiss_index.search(query_emb.cpu().numpy().reshape(1, -1), k=3)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error searching FAISS index: {str(e)}"
+                )
+            for idx in idxs[0]:  # idxs is 2D array, take first row
+                if idx < 0:
+                    continue
+                try:
+                    # Get text from vectors_data JSON using FAISS ID as key
+                    faiss_id_str = str(idx)
+                    if faiss_id_str in vector_store.vectors_data:
+                        relevant_texts.append(vector_store.vectors_data[faiss_id_str])
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Error fetching vector text: {e}"
+                    )
+    return relevant_texts
+
+def get_embedder():
+        global embedder
+        if embedder is None:
+            logging.info("Loading the Embedder")
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            embedder = SentenceTransformer(
+                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+                cache_folder=CACHE_DIR
+            )
+            logging.info("Embedder loaded")
+        return embedder
 
 # Globals to cache model/tokenizer
+embedder = None
 _loaded_model = None
 _current_tokenizer = None
 _loaded_model_id = None
@@ -128,12 +218,26 @@ async def query_arena(
         logging.exception("Failed to load model or tokenizer")
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
+    context = None
+
+    if llm.is_attached_to_kb:
+        
+        try:
+            relevant_texts = get_relevant_texts_if_kb(question, llm, db)
+            if not relevant_texts:
+                raise HTTPException(status_code=404, detail="No relevant texts found")
+            context = "\n\nAlso: You are attached to a Knowledge Base. Here is context you need to know for this query:\n" + "\n".join(relevant_texts)
+        except Exception as e:
+            logging.exception("Failed to retrieve Knowledge Base context")
+            raise HTTPException(status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}")
+        
     prompt_text = build_conv_prompt(
         question=question,
         language=lang,
         max_tokens=max_new_tokens,
         model_type=llm.type,
-        custom_sys_prompt=custom_prompt
+        custom_sys_prompt=custom_prompt,
+        context=context if context else None,
     )
     logging.info("Final prompt to model:\n%s", prompt_text)
 
