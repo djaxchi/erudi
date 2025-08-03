@@ -822,6 +822,14 @@ async def query_and_respond(
             f"  top_k={payload.n_relevent_msgs_to_get!r}\n"
             f"  n_last_turns={payload.n_last_turns_to_get!r}"
             )
+            logging.info(
+            "Calling retrieve_context with:\n"
+            f"  question={payload.question!r}\n"
+            f"  conversation_history={conversation_history!r}\n"
+            f"  conversation_id={conversation_id!r}\n"
+            f"  top_k={payload.n_relevent_msgs_to_get!r}\n"
+            f"  n_last_turns={payload.n_last_turns_to_get!r}"
+            )
             context = retrieve_context(
                 payload.question, 
                 conversation_history, 
@@ -949,6 +957,14 @@ async def query_and_respond(
             
             logging.info("Generation thread finished")
         
+    return StreamingResponse(
+     assistant_response_token_stream(),
+     media_type="text/event-stream",
+     headers={
+         "Cache-Control": "no-cache",
+         "X-Accel-Buffering": "no"       
+     },
+ )
     return StreamingResponse(
      assistant_response_token_stream(),
      media_type="text/event-stream",
