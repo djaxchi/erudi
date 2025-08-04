@@ -24,7 +24,6 @@ TC_OPS = {       # précision : (ops_per_TC_per_clk, requires_CC_min)
 def cuda_runtime_available() -> bool:
     return torch.cuda.is_available()
 
-
 def _env_cuda_path() -> str | None:
     for key, val in os.environ.items():
         if key.startswith(("CUDA_PATH", "CUDA_HOME")):

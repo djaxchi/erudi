@@ -1,4 +1,5 @@
 import gc
+from pathlib import Path
 
 from app.models.VectorStore import VectorStore
 
@@ -13,6 +14,7 @@ import logging
 from typing import List
 from app.database import get_db
 from app.utils.file_processor import chunk_by_tokens
+from app.utils.global_variables_util import CACHE_DIR, BASE_PATH
 from app.models.Conversation import Conversation
 from app.models.Llm import Llm
 from app.models.Message import Message
@@ -26,35 +28,6 @@ import numpy as np
 from app.prompting.builder import build_conv_prompt
 import re
 import os
-import sys
-from dotenv import load_dotenv
-from app.database import data_dir
-
-# ─── 0) calcul de la racine selon dev vs PyInstaller ────────────────────────
-if getattr(sys, "frozen", False):
-    # en one-dir PyInstaller, _MEIPASS pointe vers dist/backend
-    base_path = sys._MEIPASS
-else:
-    # en dev, ce fichier est dans backend/app/
-    base_path = os.path.dirname(os.path.abspath(__file__))
-
-# ─── 1) charger .env si jamais (en dev) ───────────────────────────────────
-# on pointe vers la .env à la racine du projet si besoin :
-dotenv_path = os.path.join(base_path, "..", ".env")
-load_dotenv(dotenv_path)
-
-# ─── 2) récupérer CACHE_DIR ou fournir un fallback ────────────────────────
-env_cache = os.getenv("CACHE_DIR")
-if env_cache:
-    # si la valeur est relative, on la résout par rapport à base_path
-    CACHE_DIR = os.path.normpath(os.path.join(base_path, env_cache))
-else:
-    # sinon on crée un dossier cache local sous dist/backend/cache
-    CACHE_DIR = os.path.join(base_path, "/data/models_cache")
-os.makedirs(CACHE_DIR, exist_ok=True)
-
-logging.info(f"CACHE_DIR resolved to: {CACHE_DIR}")
-
 loaded_model = None
 current_tokenizer  = None
 loaded_model_id = None
@@ -88,9 +61,9 @@ def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
     
     # Nettoyage du lien (supprime un "./" éventuel)
     raw_link = kb.index_path.lstrip("./")
-    # Si c’est un chemin local, on le joint à base_path
+    # Si c’est un chemin local, on le joint à BASE_PATH
     if not raw_link.startswith(("http://", "https://")):
-        index_path = os.path.normpath(os.path.join(base_path, raw_link))
+        index_path = os.path.normpath(os.path.join(BASE_PATH, raw_link))
     else:
         index_path = raw_link
 
@@ -540,9 +513,9 @@ async def generate_title(
 
     # Nettoyage du lien (supprime un "./" éventuel)
     raw_link = llm.link.lstrip("./")
-    # Si c’est un chemin local, on le joint à base_path
+    # Si c’est un chemin local, on le joint à BASE_PATH
     if not raw_link.startswith(("http://", "https://")):
-        model_path = os.path.normpath(os.path.join(base_path, raw_link))
+        model_path = os.path.normpath(os.path.join(BASE_PATH, raw_link))
     else:
         model_path = raw_link
 
@@ -757,9 +730,9 @@ async def query_and_respond(
 
     # Nettoyage du lien (supprime un "./" éventuel)
     raw_link = llm.link.lstrip("./")
-    # Si c’est un chemin local, on le joint à base_path
+    # Si c’est un chemin local, on le joint à BASE_PATH
     if not raw_link.startswith(("http://", "https://")):
-        model_path = os.path.normpath(os.path.join(base_path, raw_link))
+        model_path = os.path.normpath(os.path.join(BASE_PATH, raw_link))
     else:
         model_path = raw_link
     

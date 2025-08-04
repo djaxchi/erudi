@@ -1,27 +1,19 @@
 from datetime import datetime
 import os
+from pathlib import Path
 import shutil
 
-from .utils.hardware_info import get_hardware_eval_for_NVIDIA_CUDA
+from app.utils.global_variables_util import BASE_PATH, HF_TOKEN
 
-from .models.StaticHardwareInfos import StaticHardwareInfo
-from .routes import knowledgeBase_routes
+from app.routes import knowledgeBase_routes
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import basic_routes, llm_routes, conversation_routes, bd_routes, hardware_routes, training_routes, arena_routes
 from app.database import Base, engine
 from app.models.Llm import Llm
-from app.routes import basic_routes, llm_routes, conversation_routes, bd_routes, hardware_routes, training_routes, arena_routes
-from app.database import Base, engine
-from app.models.Llm import Llm
 from sqlalchemy.orm import Session
 from app.database import SessionLocal
-from app.database import SessionLocal
-from pydantic import BaseModel
 import logging
-from app.models.Conversation import Conversation
-from app.models.Message import Message
-from app.models.TrainingJob import TrainingJob
 from app.models.Conversation import Conversation
 from app.models.Message import Message
 from app.models.TrainingJob import TrainingJob
@@ -29,12 +21,8 @@ from app.models.DownloadJob import DownloadJobModel
 from app.models.KnowledgeBase import KnowledgeBase
 from app.models.VectorStore import VectorStore
 from app.models.StaticHardwareInfos import StaticHardwareInfo
-
 from huggingface_hub import HfApi
-from dotenv import load_dotenv
 
-load_dotenv()
-HF_TOKEN = os.getenv("HF_TOKEN")
 
 async def createTables():
     # Create all tables in the database
@@ -45,12 +33,14 @@ async def delete_all_data():
     db: Session = SessionLocal()
     try:
         
-        if os.path.exists("data/models"):
-            shutil.rmtree("data/models")
-        os.makedirs("data/models", exist_ok=True)
-        if os.path.exists("data/indexes"):
-            shutil.rmtree("data/indexes")
-        os.makedirs("data/indexes", exist_ok=True)
+        models_path = os.path.join(BASE_PATH, "data", "models")
+        if os.path.exists(models_path):
+            shutil.rmtree(models_path)
+        os.makedirs(models_path, exist_ok=True)
+        indexes_path = os.path.join(BASE_PATH, "data", "indexes")
+        if os.path.exists(indexes_path):
+            shutil.rmtree(indexes_path)
+        os.makedirs(indexes_path, exist_ok=True)
         db.query(Llm).delete()
         db.query(Conversation).delete()
         db.query(Message).delete()
@@ -71,11 +61,10 @@ async def delete_all_data():
 app = FastAPI()
 
 async def startup_populate_database():
-    api = HfApi(token=HF_TOKEN)
-    db: Session = SessionLocal()
-
 
     try:
+        api = HfApi(token=HF_TOKEN)
+        db: Session = SessionLocal()
 
         # Populate the database with some base models
         base_mistral_instr = db.query(Llm).filter(Llm.name == "Mistral-7B-Instruct-v0.3").first()
@@ -190,7 +179,9 @@ async def startup_populate_database():
             job.status = "failed"
             llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
             if llm:
-                shutil.rmtree(llm.link, ignore_errors=True)
+                llm_path = os.path.join(BASE_PATH, llm.link.lstrip("./"))
+                if os.path.exists(llm_path):
+                    shutil.rmtree(llm_path, ignore_errors=True)
                 db.delete(llm)
             job.error_message = "Downloading was not completed due to application shutdown."
             job.local_model_id = -1
@@ -210,7 +201,9 @@ async def startup_populate_database():
             job.error_message = "Training was not completed due to application shutdown."
             llm = db.query(Llm).filter(Llm.id == job.llm_id).first()
             if llm:
-                shutil.rmtree(llm.link, ignore_errors=True)
+                llm_path = os.path.join(BASE_PATH, llm.link.lstrip("./"))
+                if os.path.exists(llm_path):
+                    shutil.rmtree(llm_path, ignore_errors=True)
                 db.delete(llm)
             job.llm_id = -1
             job.updated_at = datetime.now()
@@ -219,49 +212,13 @@ async def startup_populate_database():
             logging.warning(f"Marked unfinished TrainingJob {job.id} as failed.")
         db.commit()
 
-        persist_hw_infos = db.query(StaticHardwareInfo).first()
-        if not persist_hw_infos:
-            hw = get_hardware_eval_for_NVIDIA_CUDA()
-            persist_hw_infos = StaticHardwareInfo(
-                available_ram_gb=hw.get("available_ram_gb", None),
-                disk_total_gb=hw.get("disk_total_gb", None),
-                disk_avail_gb=hw.get("disk_avail_gb", None),
-                gpu_name=hw.get("gpu_name", "Unknown"),
-                cpu_model=hw.get("cpu_model", None),
-                vram_total_gb=hw.get("vram_total_gb", None),
-                sm_clock_ghz=hw.get("sm_clock_ghz", None),
-                mem_clock_mhz=hw.get("mem_clock_mhz", None),
-                bus_width_bits=hw.get("bus_width_bits", None),
-                mem_bandwidth_gbs=hw.get("mem_bandwidth_gbs", None),
-                compute_cap=hw.get("compute_cap", None),
-                sm_count=hw.get("sm_count", None),
-                cuda_cores_total=hw.get("cuda_cores_total", None),
-                fp32_tflops=hw.get("fp32_tflops", None),
-                tensor_tflops=hw.get("tensor_tflops", None),
-                system_ram_gb=hw.get("system_ram_gb", None),
-                cpu_perf_units=hw.get("cpu_perf_units", None),
-                pcie_perf_units=hw.get("pcie_perf_units", None),
-                cuda_runtime_available=hw.get("cuda_runtime_available", None),
-                cuda_toolkit_path=hw.get("cuda_toolkit_path", None),
-                global_inference_score=hw.get("global_inference_score", None),
-                global_inference_label=hw.get("global_inference_label", None),
-                global_finetuning_score=hw.get("global_finetuning_score", None),
-                global_finetuning_label=hw.get("global_finetuning_label", None),
-                cpu_score=hw.get("cpu_score", None),
-                gpu_score=hw.get("gpu_score", None),
-            )
-            db.add(persist_hw_infos)
-            db.commit()
-            logging.info("Hardware info persisted to database.")
-        else:
-            logging.info("Hardware info already exists in database, skipping creation.")
-
     except Exception as e:
         logging.error(f"Error during startup event: {e}")
         db.rollback()
         raise
     finally:
         db.close()
+        return
 
 @app.on_event("startup")
 async def startup_event():

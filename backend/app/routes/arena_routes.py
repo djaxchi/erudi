@@ -1,5 +1,6 @@
 from datetime import datetime
 import logging
+from pathlib import Path
 from app.schemas.arena_schemas import ArenaQueryPayload
 from app.schemas.arena_schemas import ArenaQueryPayload
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,8 +10,6 @@ from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     TextIteratorStreamer,
-    StoppingCriteria,
-    StoppingCriteriaList,
     BitsAndBytesConfig,
 )
 import torch, re, threading
@@ -18,31 +17,19 @@ from app.database import get_db
 from app.models.Llm import Llm
 from app.prompting.builder import build_conv_prompt
 import os
-from dotenv import load_dotenv
-load_dotenv()
-CACHE_DIR = os.getenv("CACHE_DIR")
+
 from sentence_transformers import SentenceTransformer
 import faiss
 from app.utils.file_processor import chunk_by_tokens
+from app.utils.global_variables_util import CACHE_DIR, BASE_PATH
 from app.models.KnowledgeBase import KnowledgeBase
 from app.models.VectorStore import VectorStore
 from typing import List
+import sys
+from dotenv import load_dotenv
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 
-# ── Détermine base_path selon dev vs prod PyInstaller ─────────────────────
-if getattr(sys, "frozen", False):
-    base_path = sys._MEIPASS           # dist/backend
-else:
-    base_path = os.path.dirname(os.path.abspath(__file__))
-logging.info(f"[INIT] arena base_path = {base_path}")
-
-# ── Détermine base_path selon dev vs prod PyInstaller ─────────────────────
-if getattr(sys, "frozen", False):
-    base_path = sys._MEIPASS           # dist/backend
-else:
-    base_path = os.path.dirname(os.path.abspath(__file__))
-logging.info(f"[INIT] arena base_path = {base_path}")
 
 # Optimized BitsAndBytesConfig for Gemma3
 """bnb_config = BitsAndBytesConfig(
@@ -69,9 +56,9 @@ def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
 
     # Nettoyage du lien (supprime un "./" éventuel)
     raw_link = kb.index_path.lstrip("./")
-    # Si c’est un chemin local, on le joint à base_path
+    # Si c’est un chemin local, on le joint à BASE_PATH
     if not raw_link.startswith(("http://", "https://")):
-        index_path = os.path.normpath(os.path.join(base_path, raw_link))
+        index_path = os.path.normpath(os.path.join(BASE_PATH, raw_link))
     else:
         index_path = raw_link
 
@@ -194,9 +181,9 @@ async def query_arena(
     is_gemma = llm.type == "gemma"
     # Nettoyage du lien (supprime un "./" éventuel)
     raw_link = llm.link.lstrip("./")
-    # Si c’est un chemin local, on le joint à base_path
+    # Si c’est un chemin local, on le joint à BASE_PATH
     if not raw_link.startswith(("http://", "https://")):
-        model_path = os.path.normpath(os.path.join(base_path, raw_link))
+        model_path = os.path.normpath(os.path.join(BASE_PATH, raw_link))
     else:
         model_path = raw_link
 

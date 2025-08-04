@@ -13,7 +13,6 @@ python-dotenv==1.1.0
 pypdf==5.6.0
 datasets==3.6.0
 peft==0.15.2
-setuptools
 tqdm==4.67.1
 fastapi==0.115.12
 uvicorn==0.34.0

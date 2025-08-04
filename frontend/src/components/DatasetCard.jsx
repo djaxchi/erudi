@@ -46,7 +46,12 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
     // Handle complete replacement of the file list (for when files are removed)
     // or addition of new files (for when files are added)
     setPaths(() => {
-      const newPaths = newPathObjects.map(pathObj => pathObj.path || pathObj);
+      const newPaths = newPathObjects.map(pathObj => {
+        const path = pathObj.path || pathObj;
+        // Normalize Windows paths: replace backslashes with forward slashes
+        // This ensures proper JSON serialization and cross-platform compatibility
+        return typeof path === 'string' ? path.replace(/\\/g, '/') : path;
+      });
       console.log('Setting paths to:', newPaths);
       return Array.from(new Set(newPaths)); // Remove duplicates but don't merge with previous
     });

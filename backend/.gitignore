@@ -229,3 +229,5 @@ data/models_cache/
 logs/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,terraform,ansible
+
+# Secret file generated at build time
