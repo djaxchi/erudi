@@ -176,7 +176,7 @@ def create_knowledge_base(
 
         if embedder:
             del embedder
-            torch.cuda.empty_cache()
+            torch.backends.mps.empty_cache()
             
         logging.info(f"Storing index to {INDEXES_DIR}/{kb.id}.index")        
         faiss.write_index(index, os.path.join(INDEXES_DIR, f"{kb.id}.index"))

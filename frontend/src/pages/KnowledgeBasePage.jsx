@@ -16,11 +16,19 @@ export default function KnowledgeBasePage() {
     disk_available: "fetching…",
     cpu_model: "fetching…",
     gpu_model: "fetching…",
-    gpu_vram_total: "fetching…",
-    gpu_vram_free: "fetching…",
+    chip_model: "fetching…",  // Apple Silicon chip
+    gpu_cores: "fetching…",
+    estimated_gpu_tflops: "fetching…",
+    memory_bandwidth_gbs: "fetching…",
+    neural_engine_tops: "fetching…",
+    architecture: "fetching…",
+    is_apple_silicon: false,
+    mps_available: false,
+    unified_memory: false,
+    gpu_vram_total: "N/A",  // Not applicable for unified memory
+    gpu_vram_free: "N/A",  // Not applicable for unified memory
     ram_available: "fetching…",
     total_ram_gb: "fetching…",
-    cuda_installed: false,
     global_inference_score: "fetching…",
     global_inference_label: "fetching…",
   });
@@ -159,17 +167,19 @@ export default function KnowledgeBasePage() {
         return res.json();
       })
       .then(data => {
-        setHw({
+        setHw(prevHw => ({
+          ...prevHw,
           global_inference_score: data.global_inference_score ? `${data.global_inference_score}/100` : "N/A",
           global_inference_label: data.global_inference_label ? data.global_inference_label : "N/A",
-        });
+        }));
       })
       .catch(err => {
         console.error("Erreur hardware:", err);
-        setHw({
-          global_inference_score: "N/A",
-          global_inference_label: "N/A",
-        });
+        setHw(prevHw => ({
+          ...prevHw,
+          global_inference_score: "Error fetching",
+          global_inference_label: "Error fetching",
+        }));
       });
     fetchModels();
   }, []);
@@ -220,7 +230,14 @@ export default function KnowledgeBasePage() {
                         ? { bullet: getRatingBulletOrIcon(hw.global_inference_label).value }
                         : { icon: getRatingBulletOrIcon(hw.global_inference_label).value })}
                 >
-                    {hw.global_inference_label || "Poor"}
+                    <div className="flex items-center gap-2">
+                        <span>{hw.global_inference_label || "Poor"}</span>
+                        {hw.global_inference_score && (
+                            <span className="text-xs text-gray-400 bg-gray-800/50 px-2 py-0.5 rounded-full border border-gray-600/30">
+                                {hw.global_inference_score}
+                            </span>
+                        )}
+                    </div>
                 </InfoRow>
             </div>
         </div>

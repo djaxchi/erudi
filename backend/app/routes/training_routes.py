@@ -11,7 +11,7 @@ from ..database import get_db
 from ..schemas.training_schemas import TrainingInfo
 from ..utils.file_processor import process_pdfs_to_causal_dataset
 import re
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling, BitsAndBytesConfig, Trainer
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling, Trainer
 from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 import torch
 from datasets import Dataset
@@ -20,13 +20,12 @@ from ..schemas.progress_callback import TrainingProgressCallback
 
 router = APIRouter()
 
-def clean_memory():
-    """
-    Clean up memory by deleting unused variables and running garbage collection.
-    """
+def clear_memory():
+    """Clear GPU memory and cache for macOS"""
+    if torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+        torch.mps.synchronize()
     gc.collect()
-    torch.cuda.empty_cache()
-    logging.info("Memory cleaned up")
 
 @router.get("/training/{llm_id}/status")
 def get_training_status(llm_id: int, db: Session = Depends(get_db)):
@@ -65,7 +64,7 @@ async def train_llm_route(payload: TrainingInfo, background_tasks: BackgroundTas
     Fine-tune an LLM and update the database after the training is complete.
     """
     
-    clean_memory()
+    clear_memory()
     
     # Process the PDF files into a dataset
     if not payload.paths:
@@ -138,7 +137,7 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
     """
     Trains the model and updates the database after the training is complete.
     """
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     model = None
     tokenizer = None
     
@@ -181,28 +180,14 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
         logging.info(f"Loading model and tokenizer from {base_model_db.link}")
         start = datetime.now()
         
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16 if base_model_db.type == "gemma" else torch.float16,
-        )
-        if base_model_db.type == "mistral":
-            attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
-        elif base_model_db.type == "gemma":
-            attn_impl = "eager"
-        else:
-            attn_impl = None
-        
         # Nettoyage de la mémoire avant le chargement du modèle
-        torch.cuda.empty_cache()
-        gc.collect()
-        
+        clear_memory()
+
         model = AutoModelForCausalLM.from_pretrained(
             base_model_db.link,
-            quantization_config=bnb_config if base_model_db.type == "mistral" else None,
+            quantization_config=None,
             torch_dtype=torch.float16,
-            attn_implementation=attn_impl,
+            attn_implementation=None,
             low_cpu_mem_usage=True,
             device_map="auto",
             max_memory={0: "5GB"}, 
@@ -325,12 +310,10 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
                 db.commit()
             logging.info(f"Training job status updated to failed for model {trained_model.id}")
                 
-            torch.cuda.empty_cache()
+            torch.backends.mps.empty_cache()
         except Exception as inner_e:
             logging.error(f"Failed to update training status: {inner_e}")
 
     finally:
         db.close()
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-        gc.collect()
+        clear_memory()

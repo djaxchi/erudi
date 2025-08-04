@@ -110,24 +110,24 @@ export default function HardwareInfo({ hw }) {
 
     /* helper to determine bullet color for size-based fields */
     const getSizeBulletInfo = (gbString) => {
-        // If it's still "fetching..." show gray bullet
+        // If it's still "fetching..." show red bullet
         if (gbString && gbString.includes("fetching")) {
             return { 
                 type: 'bullet', 
-                value: "bg-gray-500"
+                value: "bg-red-500"
             };
         }
 
         // Try to extract number from string for color coding
-        let bulletColor = "bg-gray-500"; // Default color
+        let bulletColor = "bg-red-500"; // Default color
         if (typeof gbString === 'string') {
             const match = gbString.match(/(\d+\.?\d*)/);
             if (match) {
                 const n = parseFloat(match[1]);
                 if (!isNaN(n)) {
-                    if (n < 10) bulletColor = "bg-red-500";
-                    else if (n < 30) bulletColor = "bg-orange-400";
-                    else bulletColor = "bg-emerald-400";
+                    if (n >= 50) bulletColor = "bg-green-500";      // Plenty of space/memory
+                    else if (n >= 20) bulletColor = "bg-orange-400"; // Moderate space/memory
+                    else bulletColor = "bg-red-500";                 // Low space/memory
                 }
             }
         }
@@ -136,60 +136,74 @@ export default function HardwareInfo({ hw }) {
             type: 'bullet', 
             value: bulletColor
         };
+    };
+
+    /* helper to determine bullet color for Apple Silicon chip */
+    const getChipBulletInfo = (chipModel) => {
+        if (!chipModel || chipModel.includes("fetching") || chipModel === "Unknown") {
+            return { type: 'bullet', value: "bg-red-500" };
+        }
+        
+        // Color code based on chip generation
+        if (chipModel.includes("M4")) return { type: 'bullet', value: "bg-green-500" };
+        if (chipModel.includes("M3")) return { type: 'bullet', value: "bg-green-500" };
+        if (chipModel.includes("M2")) return { type: 'bullet', value: "bg-orange-400" };
+        if (chipModel.includes("M1")) return { type: 'bullet', value: "bg-orange-400" };
+        
+        return { type: 'bullet', value: "bg-red-500" };
+    };
+
+    /* helper to determine bullet color for GPU cores */
+    const getGpuCoresBulletInfo = (coresString) => {
+        if (!coresString || coresString.includes("fetching") || coresString === "N/A") {
+            return { type: 'bullet', value: "bg-red-500" };
+        }
+        
+        // Extract core count from string like "10 cores"
+        const match = coresString.match(/(\d+)/);
+        if (match) {
+            const cores = parseInt(match[1]);
+            if (cores >= 20) return { type: 'bullet', value: "bg-green-500" };  // High-end
+            if (cores >= 10) return { type: 'bullet', value: "bg-orange-400" }; // Mid-range
+            if (cores >= 7) return { type: 'bullet', value: "bg-orange-400" };  // Entry level
+        }
+        
+        return { type: 'bullet', value: "bg-red-500" };
+    };
+
+    /* helper to determine bullet color for Neural Engine */
+    const getNeuralEngineBulletInfo = (topsString) => {
+        if (!topsString || topsString.includes("fetching") || topsString === "N/A") {
+            return { type: 'bullet', value: "bg-red-500" };
+        }
+        
+        // Extract TOPS value from string like "18.0 TOPS"
+        const match = topsString.match(/(\d+\.?\d*)/);
+        if (match) {
+            const tops = parseFloat(match[1]);
+            if (tops >= 30) return { type: 'bullet', value: "bg-green-500" };  // M4+ level
+            if (tops >= 15) return { type: 'bullet', value: "bg-orange-400" }; // M2/M3 level
+            if (tops >= 11) return { type: 'bullet', value: "bg-orange-400" }; // M1 level
+        }
+        
+        return { type: 'bullet', value: "bg-red-500" };
     };
 
     /* helper to determine bullet color for rating field */
     const getRatingBulletInfo = (rating) => {
-        // If it's still "fetching..." show gray bullet
+        // If it's still "fetching..." show red bullet
         if (rating && rating.includes("fetching")) {
-            return { 
-                type: 'bullet', 
-                value: "bg-gray-500"
-            };
+            return { type: 'bullet', value: "bg-red-500" };
         }
 
         // Color code based on rating
-        let bulletColor = "bg-red-500"; // Default for "Poor"
-        if (rating === "Good") {
-            bulletColor = "bg-emerald-400";
-        } else if (rating === "Average") {
-            bulletColor = "bg-orange-400";
+        if (rating === "Amazing" || rating === "Excellent" || rating === "Very High") {
+            return { type: 'bullet', value: "bg-green-500" };
+        } else if (rating === "High" || rating === "Good" || rating === "Medium") {
+            return { type: 'bullet', value: "bg-orange-400" };
+        } else {
+            return { type: 'bullet', value: "bg-red-500" };
         }
-
-        return { 
-            type: 'bullet', 
-            value: bulletColor
-        };
-    };
-
-    /* helper to get bullet color based on eval score */
-    const getEvalScoreBulletInfo = (scoreString) => {
-        // If it's still "fetching..." show gray bullet
-        if (scoreString && scoreString.includes("fetching")) {
-            return { 
-                type: 'bullet', 
-                value: "bg-gray-500"
-            };
-        }
-
-        // Extract score from string like "75/100"
-        let bulletColor = "bg-red-500"; // Default for poor performance
-        if (typeof scoreString === 'string') {
-            const match = scoreString.match(/(\d+)\/100/);
-            if (match) {
-                const score = parseInt(match[1]);
-                if (!isNaN(score)) {
-                    if (score >= 70) bulletColor = "bg-emerald-400"; // Good performance
-                    else if (score >= 40) bulletColor = "bg-orange-400"; // Average performance
-                    // else stays red for poor performance
-                }
-            }
-        }
-
-        return { 
-            type: 'bullet', 
-            value: bulletColor
-        };
     };
 
     return (
@@ -205,12 +219,12 @@ export default function HardwareInfo({ hw }) {
                         width: '280px', // Fixed width for consistent sizing
                     }}
                 >
+                    {tooltipVisible === 'chip' && 'Apple Silicon chip model (M1, M2, M3, M4) that determines overall system capabilities.'}
                     {tooltipVisible === 'storage' && 'Hard drive space for saving your work. More space = bigger models.'}
-                    {tooltipVisible === 'ram' && 'Computer memory for faster processing. More memory = quicker results.'}
-                    {tooltipVisible === 'cpu' && 'Main processor that prepares data and keeps training smooth.'}
-                    {tooltipVisible === 'gpu' && 'Graphics card that does the AI training. Powerful card = faster training.'}
-                    {tooltipVisible === 'gpu-memory' && 'Graphics memory that sets max model size. More memory = bigger models.'}
-                    {tooltipVisible === 'rating' && 'Overall system capability for AI model fine-tuning based on your hardware specs.'}
+                    {tooltipVisible === 'ram' && 'Unified memory shared between CPU and GPU. More memory = larger models and faster processing.'}
+                    {tooltipVisible === 'gpu-cores' && 'Number of GPU cores in your Apple Silicon chip. More cores = better parallel processing for AI training.'}
+                    {tooltipVisible === 'neural-engine' && 'Apple Neural Engine for accelerated machine learning operations (TOPS = Trillion Operations Per Second).'}
+                    {tooltipVisible === 'rating' && 'Overall system capability for AI model fine-tuning based on your Apple Silicon hardware specs.'}
                     {/* Arrow pointing left or right depending on position */}
                     {tooltipPosition.isLeftSide ? (
                         <div className="absolute left-full top-1/2 transform -translate-y-1/2 w-0 h-0 border-t-4 border-b-4 border-l-4 border-transparent border-l-black"></div>
@@ -257,6 +271,19 @@ export default function HardwareInfo({ hw }) {
                 <InfoRow
                     label={
                         <div className="flex items-center gap-1">
+                            <span>Apple Silicon Chip</span>
+                            <TooltipIcon id="chip" />
+                        </div>
+                    }
+                    bullet={getChipBulletInfo(hw.cpu_model).value}
+                    isHeader={true}
+                >
+                    {hw.cpu_model || "Unknown"}
+                </InfoRow>
+
+                <InfoRow
+                    label={
+                        <div className="flex items-center gap-1">
                             <span>Available Storage</span>
                             <TooltipIcon id="storage" />
                         </div>
@@ -269,7 +296,7 @@ export default function HardwareInfo({ hw }) {
                 <InfoRow
                     label={
                         <div className="flex items-center gap-1">
-                            <span>Total RAM</span>
+                            <span>Total RAM (Unified)</span>
                             <TooltipIcon id="ram" />
                         </div>
                     }
@@ -278,40 +305,28 @@ export default function HardwareInfo({ hw }) {
                     {hw.total_ram_gb}
                 </InfoRow>
 
-                <InfoRow 
+                <InfoRow
                     label={
                         <div className="flex items-center gap-1">
-                            <span>Available CPU</span>
-                            <TooltipIcon id="cpu" />
+                            <span>GPU Cores</span>
+                            <TooltipIcon id="gpu-cores" />
                         </div>
                     }
-                    bullet={getEvalScoreBulletInfo(hw.cpu_eval_score).value}
+                    bullet={getGpuCoresBulletInfo(hw.gpu_cores).value}
                 >
-                    {hw.cpu_model}
-                </InfoRow>
-
-                <InfoRow 
-                    label={
-                        <div className="flex items-center gap-1">
-                            <span>Available GPU</span>
-                            <TooltipIcon id="gpu" />
-                        </div>
-                    }
-                    bullet={getEvalScoreBulletInfo(hw.gpu_eval_score).value}
-                >
-                    {hw.gpu_model}
+                    {hw.gpu_cores}
                 </InfoRow>
 
                 <InfoRow
                     label={
                         <div className="flex items-center gap-1">
-                            <span>GPU Total Memory</span>
-                            <TooltipIcon id="gpu-memory" />
+                            <span>Neural Engine</span>
+                            <TooltipIcon id="neural-engine" />
                         </div>
                     }
-                    bullet={getSizeBulletInfo(hw.gpu_vram_total).value}
+                    bullet={getNeuralEngineBulletInfo(hw.neural_engine_tops).value}
                 >
-                    {hw.gpu_vram_total}
+                    {hw.neural_engine_tops}
                 </InfoRow>
 
                 <InfoRow
@@ -324,7 +339,14 @@ export default function HardwareInfo({ hw }) {
                     isHeader={true}
                     bullet={getRatingBulletInfo(hw.global_finetuning_label).value}
                 >
-                    {hw.global_finetuning_label || "Poor"}
+                    <div className="flex items-center gap-2">
+                        <span>{hw.global_finetuning_label || "Poor"}</span>
+                        {hw.global_finetuning_score && (
+                            <span className="text-xs text-gray-400 bg-gray-800/50 px-2 py-0.5 rounded-full border border-gray-600/30">
+                                {hw.global_finetuning_score}
+                            </span>
+                        )}
+                    </div>
                 </InfoRow>
             </div>
         </div>
