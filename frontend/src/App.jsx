@@ -8,6 +8,7 @@ import ArenaPage from "./pages/ArenaPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import { DownloadModalProvider } from "./contexts/DownloadModalContext";
 import LoadingScreen from "./components/LoadingScreen";
+import { API_BASE_URL } from "./config/api";
 
 export default function App() {
   const [isBackendReady, setIsBackendReady] = useState(false);
@@ -16,7 +17,7 @@ export default function App() {
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        const response = await fetch('http://127.0.0.1:8000/main_window/health', {
+        const response = await fetch(`${API_BASE_URL}/main_window/health`, {
           method: 'GET',
         });
         

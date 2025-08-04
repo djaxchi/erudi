@@ -5,8 +5,7 @@ import HardwareInfo from "../components/HardwareInfo";
 import ModelLibrary from "../components/ModelLibrary";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { X } from "lucide-react";
-
-const API_BASE = "http://localhost:8000";
+import { API_BASE_URL } from "../config/api";
 
 export default function TrainingPage() {
   const { open: openProgressModal, isTraining } = useDownloadModal();
@@ -33,7 +32,7 @@ export default function TrainingPage() {
   const [modelName, setModelName] = useState("");
 
   const fetchModels = () => {
-    fetch(`${API_BASE}/main_window/llms/local`)
+    fetch(`${API_BASE_URL}/main_window/llms/local`)
       .then(res => {
         if (!res.ok) setErrorMessage("Failed to fetch your local models. Please try again. If the issue persists, contact the Erudi team for support.");
         return res.json();
@@ -50,7 +49,7 @@ export default function TrainingPage() {
   };
 
   useEffect(() => {
-    fetch(`${API_BASE}/hardware/training`)
+    fetch(`${API_BASE_URL}/hardware/training`)
       .then(res => {
         if (!res.ok) setErrorMessage("Failed to fetch hardware information. Please try again. If the issue persists, contact the Erudi team for support.");
         return res.json();

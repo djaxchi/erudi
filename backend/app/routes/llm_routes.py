@@ -1,23 +1,19 @@
 import asyncio
-from datetime import datetime
-import os
 from collections import defaultdict
+import os
 import shutil
-import asyncio
 from datetime import datetime, timedelta
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from ..database import SessionLocal, get_db
-from ..models.Llm import Llm
-from ..schemas.llm_schemas import LLMCreate, LLMResponse
-from ..models.DownloadJob import DownloadJobModel
-from ..schemas.DownloadJobResponse import DownloadJobResponse
+from app.models.Llm import Llm
+from app.schemas.llm_schemas import LLMCreate, LLMResponse
+from app.database import SessionLocal, get_db
+from app.models.DownloadJob import DownloadJobModel
+from app.schemas.DownloadJobResponse import DownloadJobResponse
 
-from ..utils.llm_downloader import download_llm
+from app.utils.llm_downloader import download_llm
+from app.utils.global_variables_util import BASE_PATH
 import logging
-
 from typing import List
 
 logging.basicConfig(level=logging.INFO)
@@ -159,6 +155,9 @@ async def download_llm_route(
             dj = session.query(DownloadJobModel).get(job_id)
             dj.status = "failed"
             dj.error_message = str(e)
+            path_to_del = os.path.join(BASE_PATH, dj.local_model_link.lstrip("./"))
+            shutil.rmtree(path_to_del, ignore_errors=True)
+            dj.local_model_link = ""
             dj.updated_at = datetime.now()
             session.commit()
             session.close()
@@ -201,6 +200,7 @@ def cancel_download(
 
     # Clean up local model if it exists
     if job.local_model_link:
+        # Attention ici à bien supprimer le PATH ABSOLU
         shutil.rmtree(job.local_model_link, ignore_errors=True)
         job.local_model_link = ""
         job.local_model_id = -1
@@ -231,7 +231,9 @@ def get_download_status_by_jobId(
             raise HTTPException(status_code=404, detail="LLM not found")
         db.delete(llm)
         job.local_model_id = -1
-        shutil.rmtree(job.local_model_link, ignore_errors=True)
+        path_to_del = os.path.join(BASE_PATH, job.local_model_link.lstrip("./"))
+        if os.path.exists(path_to_del):
+            shutil.rmtree(path_to_del, ignore_errors=True)
         job.local_model_link = ""
         job.updated_at = datetime.now()
         db.commit()
@@ -272,7 +274,9 @@ def get_download_status_without_jobId(
             raise HTTPException(status_code=404, detail="LLM not found")
         db.delete(llm)
         job.local_model_id = -1
-        shutil.rmtree(job.local_model_link, ignore_errors=True)
+        path_to_del = os.path.join(BASE_PATH, job.local_model_link.lstrip("./"))
+        if os.path.exists(path_to_del):
+            shutil.rmtree(path_to_del, ignore_errors=True)
         job.local_model_link = ""
         job.updated_at = datetime.now()
         db.commit()

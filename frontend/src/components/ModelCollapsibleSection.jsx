@@ -11,8 +11,7 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
-
-const API_BASE = "http://127.0.0.1:8000";
+import { API_BASE_URL } from "../config/api";
 
 const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
   const [openSection, setOpenSection] = useState(true);
@@ -76,8 +75,8 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
       try {
         const url =
           title === "Local Models"
-            ? `${API_BASE}/main_window/llms/local`
-            : `${API_BASE}/main_window/llms/remote`;
+            ? `${API_BASE_URL}/main_window/llms/local`
+            : `${API_BASE_URL}/main_window/llms/remote`;
         const res = await fetch(url);
         if (res.ok) {
           setModels(await res.json());
@@ -96,7 +95,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
   const reloadLocalModels = async () => {
     setLoading(true);
     try {
-      const url = `${API_BASE}/main_window/llms/local`;
+      const url = `${API_BASE_URL}/main_window/llms/local`;
       const res = await fetch(url);
       if (res.ok) setModels(await res.json());
       else setErrorMessage("Failed to fetch local models. Please try again and contact the Erudi team for support.");

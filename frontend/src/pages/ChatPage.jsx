@@ -5,6 +5,7 @@ import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
 import { ask } from "../services/conversationService";
+import { API_BASE_URL } from "../config/api";
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ export default function ChatPage() {
   const [showErrorPopup, setShowErrorPopup] = useState(false);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/main_window/llms/local")
+    fetch(`${API_BASE_URL}/main_window/llms/local`)
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
@@ -34,7 +35,7 @@ export default function ChatPage() {
   useEffect(() => {
     const fetchConversations = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/conversations");
+        const res = await fetch(`${API_BASE_URL}/conversations`);
         const data = await res.json();
         const sorted = data.sort(
           (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
@@ -63,7 +64,7 @@ export default function ChatPage() {
       }
       try {
         // 1. Create a new conversation
-        const res = await fetch("http://127.0.0.1:8000/conversations", {
+        const res = await fetch(`${API_BASE_URL}/conversations`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ llm_id: llm.id }),
@@ -93,7 +94,7 @@ export default function ChatPage() {
 
   const handleRefreshConversations = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/conversations");
+      const res = await fetch(`${API_BASE_URL}/conversations`);
       const data = await res.json();
       const sorted = data.sort(
         (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)

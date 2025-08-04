@@ -10,32 +10,28 @@ import threading
 import shutil
 import logging
 import asyncio
-import gc
 from datetime import datetime
 from threading import Lock
-from typing import Callable, Optional, List, Tuple
+from typing import Optional, List, Tuple
 
 # Third-party imports
 import torch  # type: ignore
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig  # type: ignore
 from huggingface_hub import HfApi, HfFileSystem  # type: ignore
 from fsspec.callbacks import Callback  # type: ignore
 
 # Local application imports
-from ..database import SessionLocal
-from ..models.DownloadJob import DownloadJobModel
-from ..models.Llm import Llm
+from app.database import SessionLocal
+from app.models.DownloadJob import DownloadJobModel
+from app.models.Llm import Llm
+from app.utils.global_variables_util import BASE_PATH, HF_TOKEN, CACHE_DIR
 
 # Configure logger
 logger = logging.getLogger("uvicorn.error")
 logger.setLevel(logging.INFO)
 
-# Environment and device setup
-HF_TOKEN = os.getenv("HF_TOKEN", "")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 FILES_TO_EXCLUDE = ["consolidated.safetensors"]
 logger.info(f"Using device: {device}")
-
 
 class DownloadJob:
     """
@@ -162,10 +158,12 @@ def update_db_with_progress(job: DownloadJob, job_id: int, model_id: int) -> Non
     except Exception as e:
         dbj.status = "failed"
         dbj.error_message = str(e)
-        job.local_model_id = -1
-        shutil.rmtree(job.local_model_link, ignore_errors=True)
-        job.local_model_link = ""
-        job.updated_at = datetime.now()
+        dbj.local_model_id = -1
+        path_to_del = os.path.join(BASE_PATH, dbj.local_model_link.lstrip("./"))
+        if os.path.exists(path_to_del):
+            shutil.rmtree(path_to_del, ignore_errors=True)
+        dbj.local_model_link = ""
+        dbj.updated_at = datetime.now()
         session.delete(llm)
         session.commit()
         logger.error(f"Job {job_id} failed: {e}")
@@ -216,7 +214,9 @@ async def download_llm(
     Returns:
         str: Final local path containing downloaded files.
     """
-    # Prepare local path
+    
+
+    save_dir = os.path.join(BASE_PATH, save_dir.lstrip("./"))
     os.makedirs(save_dir, exist_ok=True)
     logger.info(f"Starting download for {model_link} → {save_dir}")
 
@@ -258,9 +258,9 @@ async def download_llm(
     shards = [f for f in all_files if f.endswith(".safetensors")]
 
     # Download misc sequentially
-    for path in misc:
-        await asyncio.to_thread(fs.get_file, f"{model_link}/{path}", os.path.join(save_dir, path), callback)
-        logger.info(f"Downloaded {path}")
+    for misc_name in misc:
+        await asyncio.to_thread(fs.get_file, f"{model_link}/{misc_name}", os.path.join(save_dir, misc_name), callback)
+        logger.info(f"Downloaded {misc_name}")
 
     # Download shards concurrently
     shard_tasks = [(model_link, path) for path in shards]
