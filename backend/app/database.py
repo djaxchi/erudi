@@ -1,23 +1,18 @@
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
-# SQLite database URL
-DATABASE_URL = os.getenv("DATABASE_URL")
+from app.utils.global_variables_util import DATABASE_URL
 
-# Create the SQLite engine
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-
-# Create a session factory
+logging.info(f"DATABASE_URL: {DATABASE_URL}")
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"check_same_thread": False}
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Base class for models
 Base = declarative_base()
 
-# Dependency to get the database session
 def get_db():
     db = SessionLocal()
     try:

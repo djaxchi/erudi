@@ -9,6 +9,7 @@ import {
   X
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE_URL } from "../config/api";
 
 export default function ChatCollapsibleSection({
   title,
@@ -32,7 +33,7 @@ export default function ChatCollapsibleSection({
 
   const renameConversation = async (id, name) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/conversations/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/conversations/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -51,7 +52,7 @@ export default function ChatCollapsibleSection({
 
   const deleteConversation = async (id) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/conversations/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/conversations/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });

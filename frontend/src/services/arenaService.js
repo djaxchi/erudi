@@ -1,4 +1,4 @@
-const API = "http://127.0.0.1:8000";
+import { API_BASE_URL } from "../config/api";
 
 export async function askArena({
   question,
@@ -11,7 +11,7 @@ export async function askArena({
 }) {
   if (!question.trim()) throw new Error("Question is empty");
 
-  const res = await fetch(`${API}/arena/${llmId}/query`, {
+  const res = await fetch(`${API_BASE_URL}/arena/${llmId}/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

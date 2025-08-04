@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import List, Optional
-from ..schemas.message_schemas import MessageResponse
+from app.schemas.message_schemas import MessageResponse
 
 class ConversationBase(BaseModel):
     llm_id: int

@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import DragDropArea from "./DragDropArea";
 import { Loader, X } from "lucide-react";
-
-const API_BASE = "http://localhost:8000";
+import { API_BASE_URL } from "../config/api";
 
 /* ─────────────── Recap small table ─────────────── */
 function RecapTable({ recap }) {
@@ -46,7 +45,12 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
     // Handle complete replacement of the file list (for when files are removed)
     // or addition of new files (for when files are added)
     setPaths(() => {
-      const newPaths = newPathObjects.map(pathObj => pathObj.path || pathObj);
+      const newPaths = newPathObjects.map(pathObj => {
+        const path = pathObj.path || pathObj;
+        // Normalize Windows paths: replace backslashes with forward slashes
+        // This ensures proper JSON serialization and cross-platform compatibility
+        return typeof path === 'string' ? path.replace(/\\/g, '/') : path;
+      });
       console.log('Setting paths to:', newPaths);
       return Array.from(new Set(newPaths)); // Remove duplicates but don't merge with previous
     });
@@ -68,7 +72,7 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
   useEffect(() => {
     const fetchHardwareInfo = async () => {
       try {
-        const response = await fetch(`${API_BASE}/hardware/training`);
+        const response = await fetch(`${API_BASE_URL}/hardware/training`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.json();
@@ -133,7 +137,7 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
   /* Polling helpers */
   const checkTrainingStatus = async (id) => {
     try {
-      const res = await fetch(`${API_BASE}/training/${id}/status`);
+      const res = await fetch(`${API_BASE_URL}/training/${id}/status`);
       if (!res.ok) throw new Error(res.status);
       const d = await res.json();
       setTrainingStatus(d.status);

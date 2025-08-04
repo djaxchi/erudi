@@ -1,24 +1,26 @@
 from datetime import datetime
 import gc
 import logging
+import os
+from pathlib import Path
 import shutil
-
-from ..models.TrainingJob import TrainingJob
-from ..models.Llm import Llm
+import sys
+from app.models.TrainingJob import TrainingJob
+from app.models.Llm import Llm
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends 
 from sqlalchemy.orm import Session
-from ..database import get_db
-from ..schemas.training_schemas import TrainingInfo
-from ..utils.file_processor import process_pdfs_to_causal_dataset
-import re
+from app.database import get_db, SessionLocal
+from app.schemas.training_schemas import TrainingInfo
+from app.utils.file_processor import process_pdfs_to_causal_dataset
+from app.utils.global_variables_util import BASE_PATH
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling, BitsAndBytesConfig, Trainer
 from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 import torch
 from datasets import Dataset
-from ..database import SessionLocal
-from ..schemas.progress_callback import TrainingProgressCallback
+from app.utils.progress_callback import TrainingProgressCallback
 
 router = APIRouter()
+
 
 def clean_memory():
     """
@@ -46,7 +48,9 @@ def get_training_status(llm_id: int, db: Session = Depends(get_db)):
         if llm:
             if not error_message:
                 llm.error_message = "An unknown error occurred during training."
-            shutil.rmtree(llm.link, ignore_errors=True)
+            trained_model_path = os.path.join(BASE_PATH, llm.link.lstrip("./"))
+            if os.path.exists(trained_model_path):
+                shutil.rmtree(trained_model_path, ignore_errors=True)
             db.delete(llm)
         db.commit()
 
@@ -98,7 +102,7 @@ async def train_llm_route(payload: TrainingInfo, background_tasks: BackgroundTas
                 completed_jobs = db.query(TrainingJob).filter(TrainingJob.status == "completed").count()
                 if completed_jobs >= 5:
                     raise HTTPException(status_code=400, detail="You can only train 5 models using Erudi's Community Edition.")
-"""
+        """
 
 
         logging.info(f"creating objects for {payload.modelName}")
@@ -198,17 +202,17 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
         torch.cuda.empty_cache()
         gc.collect()
         
+        base_model_path = os.path.join(BASE_PATH, base_model_db.link.lstrip("./"))
         model = AutoModelForCausalLM.from_pretrained(
-            base_model_db.link,
+            base_model_path,
             quantization_config=bnb_config if base_model_db.type == "mistral" else None,
             torch_dtype=torch.float16,
             attn_implementation=attn_impl,
             low_cpu_mem_usage=True,
-            device_map="auto",
             max_memory={0: "5GB"}, 
-        )
-        
-        tokenizer = AutoTokenizer.from_pretrained(base_model_db.link)
+        ).to(device)
+
+        tokenizer = AutoTokenizer.from_pretrained(base_model_path)
         tokenizer.pad_token = tokenizer.eos_token
         logging.info(f"Model and tokenizer loaded in {datetime.now() - start}")
 
@@ -253,8 +257,11 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
         model = get_peft_model(model, peft_cfg)
 
         logging.info(f"Prepare training args")
+        trained_model_path = os.path.join(BASE_PATH, trained_model.link.lstrip("./"))
+        if not os.path.exists(trained_model_path):
+            os.makedirs(trained_model_path)
         training_args = TrainingArguments(
-            output_dir=trained_model.link,
+            output_dir=trained_model_path,
             overwrite_output_dir=True,
             per_device_train_batch_size=1,
             gradient_accumulation_steps=1,
@@ -297,8 +304,12 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
         logging.info("Saving model…")
         model.config.use_cache = True
         merged = model.merge_and_unload()
-        merged.save_pretrained(trained_model.link, safe_serialization=True)
-        tokenizer.save_pretrained(trained_model.link)
+        if not os.path.exists(trained_model_path):
+            os.makedirs(trained_model_path)
+        shutil.rmtree(trained_model_path, ignore_errors=True)
+        os.makedirs(trained_model_path)
+        merged.save_pretrained(trained_model_path, safe_serialization=True)
+        tokenizer.save_pretrained(trained_model_path)
         logging.info("Model saved")
 
         training_job.status = "completed"
@@ -320,7 +331,9 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
                 training_job.updated_at = datetime.now()
                 training_job.error_message = str(e)
                 if trained_model:
-                    shutil.rmtree(trained_model.link, ignore_errors=True)
+                    trained_model_path = os.path.join(BASE_PATH, trained_model.link.lstrip("./"))
+                    if os.path.exists(trained_model_path):
+                        shutil.rmtree(trained_model_path, ignore_errors=True)
                     db.delete(trained_model)
                 db.commit()
             logging.info(f"Training job status updated to failed for model {trained_model.id}")

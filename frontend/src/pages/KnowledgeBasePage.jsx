@@ -7,8 +7,7 @@ import ModelLibrary from "../components/ModelLibrary";
 import InfoRow from "../components/InfoRow";
 import DragDropArea from "../components/DragDropArea";
 import Dropdown from "../components/Dropdown";
-
-const API_BASE = "http://localhost:8000";
+import { API_BASE_URL } from "../config/api";
 
 export default function KnowledgeBasePage() {
   const [hw, setHw] = useState({
@@ -41,7 +40,12 @@ export default function KnowledgeBasePage() {
     // Handle complete replacement of the file list (for when files are removed)
     // or addition of new files (for when files are added)
     setPaths(() => {
-      const newPaths = newPathObjects.map(pathObj => pathObj.path || pathObj);
+      const newPaths = newPathObjects.map(pathObj => {
+        const path = pathObj.path || pathObj;
+        // Normalize Windows paths: replace backslashes with forward slashes
+        // This ensures proper JSON serialization and cross-platform compatibility
+        return typeof path === 'string' ? path.replace(/\\/g, '/') : path;
+      });
       console.log('Setting paths to:', newPaths);
       return Array.from(new Set(newPaths)); // Remove duplicates but don't merge with previous
     });
@@ -96,7 +100,7 @@ export default function KnowledgeBasePage() {
       // Activer l'état
       setIsValidated(true);
 
-      const response = await fetch(`${API_BASE}/knowledge_base/create`, {
+      const response = await fetch(`${API_BASE_URL}/knowledge_base/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -137,7 +141,7 @@ export default function KnowledgeBasePage() {
   };
 
   const fetchModels = () => {
-    fetch(`${API_BASE}/main_window/llms/local`)
+    fetch(`${API_BASE_URL}/main_window/llms/local`)
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -153,7 +157,7 @@ export default function KnowledgeBasePage() {
   };
 
   useEffect(() => {
-    fetch(`${API_BASE}/hardware/app_startup`)
+    fetch(`${API_BASE_URL}/hardware/app_startup`)
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();

@@ -1,7 +1,7 @@
-const API = "http://127.0.0.1:8000";
+import { API_BASE_URL } from "../config/api";
 
 export async function createConversation(llmId) {
-  const res = await fetch(`${API}/conversations`, {
+  const res = await fetch(`${API_BASE_URL}/conversations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ llm_id: llmId }),
@@ -21,7 +21,7 @@ export async function query(conversationId, question, {temperature = 0.5, topP =
 
   console.log(body);
   
-  const res = await fetch(`${API}/conversations/${conversationId}/query`, {
+  const res = await fetch(`${API_BASE_URL}/conversations/${conversationId}/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -36,7 +36,7 @@ export async function query(conversationId, question, {temperature = 0.5, topP =
     
     // Store error message in database for conversation continuity
     try {
-      await fetch(`${API}/conversations/${conversationId}/store_error_message`, {
+      await fetch(`${API_BASE_URL}/conversations/${conversationId}/store_error_message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -76,7 +76,7 @@ export async function generateTitle(conversationId, question, {onStreamChunk} = 
 
   console.log("Generating title with body:", body);
   
-  const res = await fetch(`${API}/conversations/${conversationId}/generate_title`, {
+  const res = await fetch(`${API_BASE_URL}/conversations/${conversationId}/generate_title`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -126,7 +126,7 @@ export async function ask({ question, conversationId = null, llmId = null, tempe
 
   if (!isNewConversation && conversationId) {
     try {
-      const msgRes = await fetch(`${API}/conversations/${conversationId}/fetch_messages`);
+      const msgRes = await fetch(`${API_BASE_URL}/conversations/${conversationId}/fetch_messages`);
       const messages = await msgRes.json();
       if (messages.length === 0) {
         isNewConversation = true;
@@ -165,7 +165,7 @@ export async function ask({ question, conversationId = null, llmId = null, tempe
 export async function deleteConversations(conversationIds) {
   if (conversationIds.length === 0) return;
 
-  const res = await fetch(`${API}/conversations/delete_bulk`, {
+  const res = await fetch(`${API_BASE_URL}/conversations/delete_bulk`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ conversation_ids: conversationIds }),

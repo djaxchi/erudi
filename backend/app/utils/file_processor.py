@@ -1,34 +1,45 @@
 import os
 import re
-from typing import List
 import unicodedata
 import pypdf
 from pathlib import Path
 from tqdm import tqdm
 import logging
 from datetime import datetime
-
 from typing import List
 import regex as re
 from transformers import AutoTokenizer
 from sentence_transformers import SentenceTransformer
 
+from app.utils.global_variables_util import CACHE_DIR, BASE_PATH
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
-tok = AutoTokenizer.from_pretrained(MODEL_NAME)
-embedder = SentenceTransformer(MODEL_NAME)
+def get_embedder():
+    global embedder
+    if embedder is None:
+        logging.info("Loading the Embedder")
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        embedder = SentenceTransformer(
+            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            cache_folder=CACHE_DIR
+        )
+        logging.info("Embedder loaded")
+    return embedder
 
-# Discover safe max length for this specific model
-# (SBERT often sets model.max_seq_length to 128/256, while the base transformer supports up to 512)
-transformer_limit = getattr(tok, "model_max_length", 512)
-print(f"Transformer max length: {transformer_limit}")
-sbert_limit = getattr(embedder, "max_seq_length", transformer_limit)
-print(f"SBERT max length: {sbert_limit}")
-del embedder
-MAX_TOK = min(transformer_limit, sbert_limit)
+def get_tokenizer():
+    global tok
+    if tok is None:
+        logging.info("Loading the Tokenizer")
+        tok = AutoTokenizer.from_pretrained(
+            MODEL_NAME,
+            cache_dir=CACHE_DIR
+        )
+        logging.info("Tokenizer loaded")
+    return tok
 
-# Use a conservative target (room for [CLS]/[SEP], etc.)
-TARGET_TOK = min(384, MAX_TOK - 2)
+tok = None
+embedder = None
+
 OVERLAP_TOK = 64
 
 # Very light multilingual sentence splitter (works okay across Latin/Cyrillic; falls back on punctuation for CJK)
@@ -79,13 +90,28 @@ def count_tokens(text: str) -> int:
         logging.info(f"Token counting took {count_time:.3f}s for text of length {len(text)}")
     return result
 
-def chunk_by_tokens(text: str, target_tokens: int = TARGET_TOK, overlap_tokens: int = OVERLAP_TOK) -> List[str]:
+def chunk_by_tokens(text: str, overlap_tokens: int = OVERLAP_TOK) -> List[str]:
     logging.info(f"Starting fast chunking for text of length: {len(text)} chars")
     start_time = datetime.now()
+
+    global tok, embedder
+    if tok is None:
+        tok = get_tokenizer()
+    if embedder is None:
+        embedder = get_embedder()
+    
+    # Discover safe max length for this specific model
+    # (SBERT often sets model.max_seq_length to 128/256, while the base transformer supports up to 512)
+    transformer_limit = getattr(tok, "model_max_length", 512)
+    sbert_limit = getattr(embedder, "max_seq_length", transformer_limit)
+    MAX_TOK = min(transformer_limit, sbert_limit)
+
+    # Use a conservative target (room for [CLS]/[SEP], etc.)
+    TARGET_TOK = min(384, MAX_TOK - 2)
     
     # Simple character-based chunking with 15% overlap
     # Estimate: ~3 chars per token on average
-    chars_per_chunk = target_tokens * 3
+    chars_per_chunk = TARGET_TOK * 3
     overlap_chars = int(chars_per_chunk * 0.15)  # 15% overlap
     
     chunks = []
@@ -296,13 +322,13 @@ def process_pdfs_to_causal_dataset(input_paths, chunk_size = 800, overlap = 200,
         cleaned = clean_text(text)
         chunks = chunk_text(cleaned, chunk_size=chunk_size, overlap=overlap)
         all_chunks.extend(chunks)
-        
 
-    os.makedirs(output_path, exist_ok=True)
-    output_path+="data.txt"
-    with open(output_path, "w", encoding="utf-8") as f:
+    output_p = os.path.join(BASE_PATH, output_path.lstrip("./"))
+    os.makedirs(output_p, exist_ok=True)
+    output_file = os.path.join(output_p, "data.txt")
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write("\n".join(chunk.strip() for chunk in all_chunks))
 
-    logging.info(f"Dataset created with {len(all_chunks)} chunks in {output_path}. in {datetime.now() - start} seconds")
+    logging.info(f"Dataset created with {len(all_chunks)} chunks in {output_file}. in {datetime.now() - start} seconds")
 
-    return output_path
+    return output_file

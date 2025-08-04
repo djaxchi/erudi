@@ -6,6 +6,7 @@ import QuestionInput from "../components/QuestionInput";
 import { ask } from "../services/conversationService";
 import HeaderBar from "../components/HeaderBar";
 import { Copy, Check, Star } from "lucide-react";
+import { API_BASE_URL } from "../config/api";
 
 export default function ConversationPage() {
   const { id } = useParams();
@@ -40,7 +41,7 @@ export default function ConversationPage() {
   };
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/main_window/llms/local")
+    fetch(`${API_BASE_URL}/main_window/llms/local`)
       .then(res => res.json())
       .then(data => {
         setModels(data);
@@ -59,7 +60,7 @@ export default function ConversationPage() {
     const model = models.find(m => m.name === modelName);
     if (!model) return;
     // Call API to update conversation's llm_id
-    await fetch(`http://127.0.0.1:8000/conversations/${id}`, {
+    await fetch(`${API_BASE_URL}/conversations/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ llm_id: model.id }),
@@ -71,8 +72,8 @@ export default function ConversationPage() {
   const fetchMessagesAndConversations = useCallback(async () => {
     try {
       const [msgRes, convRes] = await Promise.all([
-        fetch(`http://127.0.0.1:8000/conversations/${id}/fetch_messages`),
-        fetch("http://127.0.0.1:8000/conversations"),
+        fetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`),
+        fetch(`${API_BASE_URL}/conversations`),
       ]);
       const msgs = await msgRes.json();
       // initialize starred state from backend
@@ -117,7 +118,7 @@ export default function ConversationPage() {
       try {
         if (isFirstMessage) {
           try {
-            const titleRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/generate_title`, {
+            const titleRes = await fetch(`${API_BASE_URL}/conversations/${id}/generate_title`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ question }),
@@ -153,7 +154,7 @@ export default function ConversationPage() {
           }
         }
 
-        const responseRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/query`, {
+        const responseRes = await fetch(`${API_BASE_URL}/conversations/${id}/query`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -197,7 +198,7 @@ export default function ConversationPage() {
             );
             
             try {
-              await fetch(`http://127.0.0.1:8000/conversations/${id}/store_error_message`, {
+              await fetch(`${API_BASE_URL}/conversations/${id}/store_error_message`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
               });
@@ -209,7 +210,7 @@ export default function ConversationPage() {
           console.error("Server error during response generation:", responseRes.status);
           
           try {
-            await fetch(`http://127.0.0.1:8000/conversations/${id}/store_error_message`, {
+            await fetch(`${API_BASE_URL}/conversations/${id}/store_error_message`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
             });
@@ -246,7 +247,7 @@ export default function ConversationPage() {
   useEffect(() => {
     const run = async () => {
       try {
-        const convRes = await fetch("http://127.0.0.1:8000/conversations");
+        const convRes = await fetch(`${API_BASE_URL}/conversations`);
         const convs = await convRes.json();
         convs.sort(
           (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
@@ -262,7 +263,7 @@ export default function ConversationPage() {
         navigate(location.pathname, { replace: true, state: {} });
       } else if (!location.state || !location.state.initialQuestion) {
         try {
-          const msgRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/fetch_messages`);
+          const msgRes = await fetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`);
           const msgs = await msgRes.json();
           // initialize starred state on initial load
           const starredMap = {};
@@ -297,7 +298,7 @@ export default function ConversationPage() {
 
   const handleDelete = async (cid) => {
     setConversations((prev) => prev.filter((conv) => conv.id !== cid));
-    await fetch(`http://127.0.0.1:8000/conversations/${cid}`, { method: "DELETE" });
+    await fetch(`${API_BASE_URL}/conversations/${cid}`, { method: "DELETE" });
     await fetchMessagesAndConversations();
     if (cid === Number(id)) {
       navigate("/main_window/chat");
@@ -307,7 +308,7 @@ export default function ConversationPage() {
   // Toggle star state and send appropriate POST
   const toggleStar = async (msgId, content) => {
     const isStarred = starredIds[msgId];
-    const url = `http://127.0.0.1:8000/conversations/${isStarred ? 'unstar_message' : 'star_message'}`;
+    const url = `${API_BASE_URL}/conversations/${isStarred ? 'unstar_message' : 'star_message'}`;
     try {
       await fetch(url, {
         method: 'POST',

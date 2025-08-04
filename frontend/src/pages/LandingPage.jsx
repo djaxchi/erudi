@@ -3,6 +3,7 @@ import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
 import TrainNewModelCard from "../components/TrainNewModelCard";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
+import { API_BASE_URL } from "../config/api";
 
 export default function LandingPage() {
   const { open } = useDownloadModal();
@@ -17,7 +18,7 @@ export default function LandingPage() {
     // Fetch hardware evaluation on component mount
     const fetchHardwareEvaluation = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:8000/hardware/app_startup");
+        const response = await fetch(`${API_BASE_URL}/hardware/app_startup`);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -36,7 +37,7 @@ export default function LandingPage() {
     // Fetch CUDA status
     const fetchCudaStatus = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:8000/hardware/has_cuda");
+        const response = await fetch(`${API_BASE_URL}/hardware/has_cuda`);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }

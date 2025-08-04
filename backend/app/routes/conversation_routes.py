@@ -1,9 +1,8 @@
 import gc
 
-from ..models.VectorStore import VectorStore
-
-from ..models.KnowledgeBase import KnowledgeBase
-from ..schemas.message_schemas import MessageCreate, MessageResponse
+from app.models.VectorStore import VectorStore
+from app.models.KnowledgeBase import KnowledgeBase
+from app.schemas.message_schemas import MessageResponse
 from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
 import torch
@@ -11,25 +10,22 @@ from datetime import datetime
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, BitsAndBytesConfig
 import logging
 from typing import List
-from ..database import get_db
-from ..utils.file_processor import chunk_by_tokens
-from ..models.Conversation import Conversation
-from ..models.Llm import Llm
-from ..models.Message import Message
-from ..schemas.conversation_schemas import ConversationCreate, ConversationDeleteBulk, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
+from app.database import get_db
+from app.utils.file_processor import chunk_by_tokens
+from app.utils.global_variables_util import CACHE_DIR, BASE_PATH
+from app.models.Conversation import Conversation
+from app.models.Llm import Llm
+from app.models.Message import Message
+from app.schemas.conversation_schemas import ConversationCreate, ConversationDeleteBulk, ConversationQuery, ConversationQueryResponse, ConversationResponse, ConversationUpdate, ConversationWithMessagesResponse
 import threading
 from fastapi.responses import StreamingResponse
 from faiss import IndexFlatL2
 import faiss
 from sentence_transformers import SentenceTransformer
 import numpy as np
-from ..prompting.builder import build_conv_prompt
+from app.prompting.builder import build_conv_prompt
 import re
 import os
-from dotenv import load_dotenv
-load_dotenv()
-CACHE_DIR = os.getenv("CACHE_DIR")
-
 loaded_model = None
 current_tokenizer  = None
 loaded_model_id = None
@@ -60,14 +56,22 @@ GEMMA_RE = re.compile(
 
 def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
     kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == llm.kb_id).first()
+    
+    # Nettoyage du lien (supprime un "./" éventuel)
+    raw_link = kb.index_path.lstrip("./")
+    # Si c’est un chemin local, on le joint à BASE_PATH
+    if not raw_link.startswith(("http://", "https://")):
+        index_path = os.path.normpath(os.path.join(BASE_PATH, raw_link))
+    else:
+        index_path = raw_link
 
-    if not os.path.exists(kb.index_path):
+    if not os.path.exists(index_path):
         raise HTTPException(
             status_code=404,
             detail=f"Knowledge Base index not found for LLM {llm.id}"
         )
     try:
-        faiss_index = faiss.read_index(kb.index_path)
+        faiss_index = faiss.read_index(index_path)
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -129,7 +133,6 @@ def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
                         status_code=500,
                         detail=f"Error fetching vector text: {e}"
                     )
-    return relevant_texts
     return relevant_texts
 
 def get_embedder():
@@ -389,7 +392,7 @@ Summary:<end_of_turn>
                     top_p=0.8,
                     num_beams=1,
                     pad_token_id=0 if model_type == "gemma" else None,
-                    end_token_id=end_ids,
+                    eos_token_id=end_ids,
                     do_sample=True,
                 )
             
@@ -505,6 +508,15 @@ async def generate_title(
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     model_type = llm.type
+
+    # Nettoyage du lien (supprime un "./" éventuel)
+    raw_link = llm.link.lstrip("./")
+    # Si c’est un chemin local, on le joint à BASE_PATH
+    if not raw_link.startswith(("http://", "https://")):
+        model_path = os.path.normpath(os.path.join(BASE_PATH, raw_link))
+    else:
+        model_path = raw_link
+
     global loaded_model, current_tokenizer, loaded_model_id
 
     try:
@@ -517,7 +529,7 @@ async def generate_title(
                 clear_gpu_memory()
 
             start = datetime.now()
-            logging.info(f"Loading model {llm.id} from {llm.link}")
+            logging.info(f"Loading model {llm.id} from {model_path}")
 
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -535,14 +547,14 @@ async def generate_title(
                 attn_impl = None
 
             loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link,
+                model_path,
                 local_files_only=True,
                 torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
                 quantization_config=bnb_config if model_type == "mistral" else None,
                 attn_implementation=attn_impl,
                 low_cpu_mem_usage=True if model_type == "mistral" else False,
             )
-            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True, use_fast=True)
+            current_tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True, use_fast=True)
             loaded_model_id = llm.id
             loaded_model.eval()
             loaded_model.to(device)
@@ -713,6 +725,15 @@ async def query_and_respond(
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     model_type = llm.type
+
+    # Nettoyage du lien (supprime un "./" éventuel)
+    raw_link = llm.link.lstrip("./")
+    # Si c’est un chemin local, on le joint à BASE_PATH
+    if not raw_link.startswith(("http://", "https://")):
+        model_path = os.path.normpath(os.path.join(BASE_PATH, raw_link))
+    else:
+        model_path = raw_link
+    
     global loaded_model, current_tokenizer, loaded_model_id
 
     try:
@@ -736,14 +757,14 @@ async def query_and_respond(
                 attn_impl = None
 
             loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link,
+                model_path,
                 local_files_only=True,
                 torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
                 quantization_config=bnb_config if model_type == "mistral" else None,
                 low_cpu_mem_usage=True if model_type == "mistral" else False,
                 attn_implementation=attn_impl,
             )
-            current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True, use_fast=True)
+            current_tokenizer = AutoTokenizer.from_pretrained(model_path, local_files_only=True, use_fast=True)
             loaded_model_id = llm.id
             loaded_model.eval()
             loaded_model.to(device)
@@ -764,6 +785,14 @@ async def query_and_respond(
         else:
             logging.info(f"Retrieving context for conversation {conversation_id}")
             start = datetime.now()
+            logging.info(
+            "Calling retrieve_context with:\n"
+            f"  question={payload.question!r}\n"
+            f"  conversation_history={conversation_history!r}\n"
+            f"  conversation_id={conversation_id!r}\n"
+            f"  top_k={payload.n_relevent_msgs_to_get!r}\n"
+            f"  n_last_turns={payload.n_last_turns_to_get!r}"
+            )
             context = retrieve_context(
                 payload.question, 
                 conversation_history, 
@@ -891,7 +920,14 @@ async def query_and_respond(
             
             logging.info("Generation thread finished")
         
-    return (StreamingResponse(assistant_response_token_stream(), media_type="text/plain"))
+    return StreamingResponse(
+     assistant_response_token_stream(),
+     media_type="text/event-stream",
+     headers={
+         "Cache-Control": "no-cache",
+         "X-Accel-Buffering": "no"       
+     },
+ )
 
 @router.post("/conversations/delete_bulk")
 async def delete_bulk(
