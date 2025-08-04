@@ -5,6 +5,7 @@ import QuestionInput from "../components/QuestionInput";
 import { askArena } from "../services/arenaService.js";
 import { Trash } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
+import { API_BASE_URL } from "../config/api";
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
@@ -44,7 +45,7 @@ export default function ArenaPage() {
   }, []);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/main_window/llms/local")
+    fetch(`${API_BASE_URL}/main_window/llms/local`)
       .then((res) => res.json())
       .then((data) => {
         setModels(data);

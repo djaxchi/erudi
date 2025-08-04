@@ -1,25 +1,18 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ..database import SessionLocal, get_db
-
-from ..schemas.knowledgeBase_schemas import KnowledgeBaseCreate, KnowledgeBaseResponse
-from ..models.KnowledgeBase import KnowledgeBase
-from ..models.VectorStore import VectorStore
-from ..models.Llm import Llm
-from ..utils.file_processor import prepare_for_knowledge_base, chunk_by_tokens
-
+from app.database import get_db
+from app.schemas.knowledgeBase_schemas import KnowledgeBaseCreate, KnowledgeBaseResponse
+from app.models.KnowledgeBase import KnowledgeBase
+from app.models.VectorStore import VectorStore
+from app.models.Llm import Llm
+from app.utils.file_processor import prepare_for_knowledge_base, chunk_by_tokens
+from app.utils.global_variables_util import CACHE_DIR, INDEXES_DIR
 import logging
-from typing import List
 import faiss
 import torch
-
 from sentence_transformers import SentenceTransformer
 import os
-from dotenv import load_dotenv
-load_dotenv()
-CACHE_DIR = os.getenv("CACHE_DIR")
-INDEXES_DIR = os.getenv("INDEXES_DIR")
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -178,9 +171,11 @@ def create_knowledge_base(
             del embedder
             torch.cuda.empty_cache()
             
-        logging.info(f"Storing index to {INDEXES_DIR}/{kb.id}.index")        
+        logging.info(f"Storing index to {INDEXES_DIR}/{kb.id}.index")
+        # Ecriture sur disk en chemin absolu        
         faiss.write_index(index, os.path.join(INDEXES_DIR, f"{kb.id}.index"))
-        kb.index_path = os.path.join(INDEXES_DIR, f"{kb.id}.index")
+        # Par contre sauvegarde en bd en relatif !
+        kb.index_path = os.path.join("data", "indexes", f"{kb.id}.index")
         db.commit()
         logging.info(f"Storing Knowledge Base index at {kb.index_path}")
         

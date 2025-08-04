@@ -1,11 +1,8 @@
-from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, Template
 from typing import List, Dict, Optional
-import logging
+from app.utils.global_variables_util import JINJA_TEMPLATES_PATH
 
-BASE_DIR = Path(__file__).parent
-# Template loader for default chat flow
-env = Environment(loader=FileSystemLoader(str(BASE_DIR)))
+env = Environment(loader=FileSystemLoader(str(JINJA_TEMPLATES_PATH)))
 tmpl_mistral_chat = env.get_template("mistral_conv.j2")
 tmpl_gemma_chat = env.get_template("gemma_conv.j2")
 

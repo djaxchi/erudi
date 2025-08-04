@@ -1,6 +1,6 @@
 from datetime import datetime
 import logging
-from ..schemas.arena_schemas import ArenaQueryPayload
+from app.schemas.arena_schemas import ArenaQueryPayload
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -8,26 +8,24 @@ from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     TextIteratorStreamer,
-    StoppingCriteria,
-    StoppingCriteriaList,
     BitsAndBytesConfig,
 )
 import torch, re, threading
-from ..database import get_db
-from ..models.Llm import Llm
-from ..prompting.builder import build_conv_prompt
+from app.database import get_db
+from app.models.Llm import Llm
+from app.prompting.builder import build_conv_prompt
 import os
-from dotenv import load_dotenv
-load_dotenv()
-CACHE_DIR = os.getenv("CACHE_DIR")
+
 from sentence_transformers import SentenceTransformer
 import faiss
-from ..utils.file_processor import chunk_by_tokens
-from ..models.KnowledgeBase import KnowledgeBase
-from ..models.VectorStore import VectorStore
+from app.utils.file_processor import chunk_by_tokens
+from app.utils.global_variables_util import CACHE_DIR, BASE_PATH
+from app.models.KnowledgeBase import KnowledgeBase
+from app.models.VectorStore import VectorStore
 from typing import List
 
 router = APIRouter(prefix="/arena", tags=["arena"])
+
 
 # Optimized BitsAndBytesConfig for Gemma3
 """bnb_config = BitsAndBytesConfig(
@@ -52,13 +50,21 @@ GEMMA_RE = re.compile(
 def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
     kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == llm.kb_id).first()
 
-    if not os.path.exists(kb.index_path):
+    # Nettoyage du lien (supprime un "./" éventuel)
+    raw_link = kb.index_path.lstrip("./")
+    # Si c’est un chemin local, on le joint à BASE_PATH
+    if not raw_link.startswith(("http://", "https://")):
+        index_path = os.path.normpath(os.path.join(BASE_PATH, raw_link))
+    else:
+        index_path = raw_link
+
+    if not os.path.exists(index_path):
         raise HTTPException(
             status_code=404,
             detail=f"Knowledge Base index not found for LLM {llm.id}"
         )
     try:
-        faiss_index = faiss.read_index(kb.index_path)
+        faiss_index = faiss.read_index(index_path)
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -169,6 +175,15 @@ async def query_arena(
         raise HTTPException(status_code=404, detail="LLM not found")
 
     is_gemma = llm.type == "gemma"
+    # Nettoyage du lien (supprime un "./" éventuel)
+    raw_link = llm.link.lstrip("./")
+    # Si c’est un chemin local, on le joint à BASE_PATH
+    if not raw_link.startswith(("http://", "https://")):
+        model_path = os.path.normpath(os.path.join(BASE_PATH, raw_link))
+    else:
+        model_path = raw_link
+
+    logging.info(f"[ARENA] Loading model {llm_id} from {model_path}")
 
     global _loaded_model, _current_tokenizer, _loaded_model_id
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -176,7 +191,7 @@ async def query_arena(
     try:
         if _loaded_model_id != llm.id or _loaded_model is None:
             start = datetime.now()
-            logging.info(f"Loading model {llm.id} from {llm.link}")
+            logging.info(f"Loading model {llm.id} from {model_path}")
             
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -194,7 +209,7 @@ async def query_arena(
                 attn_impl = None
 
             _loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link,
+                model_path,
                 local_files_only=True,
                 torch_dtype=torch.float16 if not is_gemma else torch.bfloat16,
                 quantization_config=bnb_config if not is_gemma else None,
@@ -203,7 +218,7 @@ async def query_arena(
             )
             
             _current_tokenizer = AutoTokenizer.from_pretrained(
-                llm.link, 
+                model_path,
                 local_files_only=True,
                 use_fast=True
             )

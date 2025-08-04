@@ -1,12 +1,5 @@
 
-
-
-
-
-
-# Secrets : il faut le mettre dans le gitignore une fois mis en prod
-.env
-.env.example
+.vscode/
 
 # Build
 backend.spec
