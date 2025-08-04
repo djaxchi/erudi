@@ -62,6 +62,10 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
   const [hardwareInfo, setHardwareInfo] = useState({
     available_vram: "fetching...",
     device_used: "fetching...",
+    is_apple_silicon: false,
+    mps_available: false,
+    unified_memory: false,
+    chip_model: null,
   });
 
   /* Fetch hardware info on component mount */
@@ -73,23 +77,45 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
         
         const data = await response.json();
         
-        // Determine device to use: GPU if available, otherwise CPU
+        // Determine device to use: Apple Silicon GPU with MPS if available, otherwise CPU
         let deviceUsed = "CPU";
-        if (data.gpu_model && data.gpu_model !== "No GPU detected" && !data.gpu_model.includes("fetching")) {
+        let memoryInfo = "Unknown";
+        
+        if (data.is_apple_silicon && data.mps_available) {
+          // Apple Silicon with MPS support
+          deviceUsed = data.gpu_model || "Apple Silicon GPU";
+          if (data.unified_memory) {
+            memoryInfo = `${data.total_ram_gb} GB Unified Memory`;
+          } else {
+            memoryInfo = `${data.available_ram_gb} GB`;
+          }
+        } else if (data.gpu_model && data.gpu_model !== "No GPU detected" && !data.gpu_model.includes("fetching")) {
+          // Traditional GPU
           deviceUsed = `${data.gpu_model}`;
+          memoryInfo = data.gpu_vram_total_gb ? `${data.gpu_vram_total_gb} GB VRAM` : "Unknown";
         } else if (data.cpu_model && !data.cpu_model.includes("fetching")) {
+          // CPU fallback
           deviceUsed = `${data.cpu_model}`;
+          memoryInfo = data.available_ram_gb ? `${data.available_ram_gb} GB RAM` : "Unknown";
         }
         
         setHardwareInfo({
-          available_vram: data.gpu_vram_total_gb ? `${data.gpu_vram_total_gb} GB` : "Unknown",
+          available_vram: memoryInfo,
           device_used: deviceUsed,
+          is_apple_silicon: data.is_apple_silicon || false,
+          mps_available: data.mps_available || false,
+          unified_memory: data.unified_memory || false,
+          chip_model: data.chip_model || null,
         });
       } catch (error) {
         console.error("Error fetching hardware info:", error);
         setHardwareInfo({
           available_vram: "Error fetching",
           device_used: "Error fetching",
+          is_apple_silicon: false,
+          mps_available: false,
+          unified_memory: false,
+          chip_model: null,
         });
       }
     };

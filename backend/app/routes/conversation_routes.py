@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
 import torch
 from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
 import logging
 from typing import List
 from ..database import get_db
@@ -34,19 +34,9 @@ loaded_model = None
 current_tokenizer  = None
 loaded_model_id = None
 embedder = None
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 conversation_summary_cache = {}
-
-# The quantization configuration for the model
-# It is here for the moment, but it will soon be dynamically adapted based on the model and hardware
-"""bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
-    bnb_4bit_use_double_quant=True,
-)"""
-flash_attn_impl = False
 
 MISTRAL_RE = re.compile(
     r"(?:<s>|</s>|\[/?INST\]|\<\|/?(?:assistant|user|system|end)\|\>)"
@@ -145,11 +135,11 @@ def get_embedder():
         return embedder
 router = APIRouter()
 
-def clear_gpu_memory():
-    """Clear GPU memory and cache"""
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
+def clear_memory():
+    """Clear GPU memory and cache for macOS"""
+    if torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+        torch.mps.synchronize()
     gc.collect()
 
 @router.get("/conversations/{conversation_id}/fetch_messages", response_model=List[MessageResponse])
@@ -511,36 +501,21 @@ async def generate_title(
         if loaded_model_id != llm.id:
             if loaded_model is not None:
                 del loaded_model
-                clear_gpu_memory()
+                clear_memory()
             if current_tokenizer is not None:
                 del current_tokenizer
-                clear_gpu_memory()
+                clear_memory()
 
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
 
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_storage=torch.uint8
-            )
-            
-            if model_type == "mistral":
-                attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
-            elif model_type == "gemma":
-                attn_impl = "eager"
-            else:
-                attn_impl = None
-
             loaded_model = AutoModelForCausalLM.from_pretrained(
                 llm.link,
                 local_files_only=True,
-                torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
-                quantization_config=bnb_config if model_type == "mistral" else None,
-                attn_implementation=attn_impl,
-                low_cpu_mem_usage=True if model_type == "mistral" else False,
+                torch_dtype=torch.float16,
+                quantization_config=None,
+                attn_implementation=None,
+                low_cpu_mem_usage=True,
             )
             current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True, use_fast=True)
             loaded_model_id = llm.id
@@ -720,28 +695,14 @@ async def query_and_respond(
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
 
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_storage=torch.uint8
-            )
-
-            if model_type == "mistral":
-                attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
-            elif model_type == "gemma":
-                attn_impl = "eager"
-            else:
-                attn_impl = None
 
             loaded_model = AutoModelForCausalLM.from_pretrained(
                 llm.link,
                 local_files_only=True,
-                torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
-                quantization_config=bnb_config if model_type == "mistral" else None,
-                low_cpu_mem_usage=True if model_type == "mistral" else False,
-                attn_implementation=attn_impl,
+                torch_dtype=torch.float16,
+                quantization_config=None,
+                low_cpu_mem_usage=True,
+                attn_implementation=None,
             )
             current_tokenizer = AutoTokenizer.from_pretrained(llm.link, local_files_only=True, use_fast=True)
             loaded_model_id = llm.id

@@ -18,12 +18,21 @@ export default function TrainingPage() {
     disk_available: "fetching…",
     cpu_model: "fetching…",
     gpu_model: "fetching…",
-    gpu_vram_total: "fetching…",  
+    chip_model: "fetching…",  // Apple Silicon chip (M1, M2, M3, etc.)
+    gpu_cores: "fetching…",  // Number of GPU cores
+    estimated_gpu_tflops: "fetching…",  // Estimated GPU performance
+    memory_bandwidth_gbs: "fetching…",  // Unified memory bandwidth
+    neural_engine_tops: "fetching…",  // Neural Engine performance
+    architecture: "fetching…",  // 3nm, 5nm, etc.
+    is_apple_silicon: false,
+    mps_available: false,  // Metal Performance Shaders
+    unified_memory: false,  // Unified memory architecture
+    gpu_vram_total: "N/A",  // Not applicable for unified memory
     ram_available: "fetching…",
     total_ram_gb: "fetching…",
-    cuda_installed: false,
     cpu_eval_score: "fetching…",
     gpu_eval_score: "fetching…",
+    memory_score: "fetching…",
     global_finetuning_score: "fetching…",
     global_finetuning_label: "fetching…",
   });
@@ -63,12 +72,27 @@ export default function TrainingPage() {
           disk_available: `${data.disk_available_gb} GB`,
           cpu_model: data.cpu_model,
           gpu_model: data.gpu_model ?? "No GPU detected",
-          gpu_vram_total: data.gpu_vram_total_gb ? `${data.gpu_vram_total_gb} GB` : "No GPU detected",
-          cuda_installed: data.cuda_installed ? "✅" : "❌",
+          
+          // Apple Silicon specific fields
+          chip_model: data.chip_model ?? "Unknown",
+          gpu_cores: data.gpu_cores ? `${data.gpu_cores} cores` : "N/A",
+          estimated_gpu_tflops: data.estimated_gpu_tflops ? `${data.estimated_gpu_tflops} TFLOPS` : "N/A",
+          memory_bandwidth_gbs: data.memory_bandwidth_gbs ? `${data.memory_bandwidth_gbs} GB/s` : "N/A",
+          neural_engine_tops: data.neural_engine_tops ? `${data.neural_engine_tops} TOPS` : "N/A",
+          architecture: data.architecture ?? "Unknown",
+          is_apple_silicon: data.is_apple_silicon ?? false,
+          mps_available: data.mps_available ?? false,
+          unified_memory: data.unified_memory ?? false,
+          
+          // Legacy field (null for Apple Silicon unified memory)
+          gpu_vram_total: data.unified_memory ? "Unified Memory" : (data.gpu_vram_total_gb ? `${data.gpu_vram_total_gb} GB` : "No GPU detected"),
+          
+          // Performance scores
           global_finetuning_score: data.global_finetuning_score ? `${data.global_finetuning_score}/100` : "N/A",
           global_finetuning_label: data.global_finetuning_label ? data.global_finetuning_label : "N/A",
           cpu_eval_score: data.cpu_eval_score ? `${data.cpu_eval_score}/100` : "N/A",
           gpu_eval_score: data.gpu_eval_score ? `${data.gpu_eval_score}/100` : "N/A",
+          memory_score: data.memory_score ? `${data.memory_score}/100` : "N/A",
         });
       })
       .catch(err => {
@@ -81,12 +105,21 @@ export default function TrainingPage() {
           disk_available: "Error fetching",
           cpu_model: "Error fetching",
           gpu_model: "Error fetching",
+          chip_model: "Error fetching",
+          gpu_cores: "Error fetching",
+          estimated_gpu_tflops: "Error fetching",
+          memory_bandwidth_gbs: "Error fetching",
+          neural_engine_tops: "Error fetching",
+          architecture: "Error fetching",
+          is_apple_silicon: false,
+          mps_available: false,
+          unified_memory: false,
           gpu_vram_total: "Error fetching",
-          cuda_installed: "Error fetching",
           global_finetuning_score: "Error fetching",
           global_finetuning_label: "Error fetching",
           cpu_eval_score: "Error fetching",
           gpu_eval_score: "Error fetching",
+          memory_score: "Error fetching",
         });
       });
     fetchModels();

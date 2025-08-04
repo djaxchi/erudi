@@ -8,9 +8,6 @@ from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     TextIteratorStreamer,
-    StoppingCriteria,
-    StoppingCriteriaList,
-    BitsAndBytesConfig,
 )
 import torch, re, threading
 from ..database import get_db
@@ -29,15 +26,6 @@ from typing import List
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 
-# Optimized BitsAndBytesConfig for Gemma3
-"""bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.bfloat16,
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_quant_storage=torch.uint8
-)"""
-flash_attn_impl = False
 
 MISTRAL_RE = re.compile(
     r"(?:<s>|</s>|\[/?INST\]|\<\|/?(?:assistant|user|system|end)\|\>)"
@@ -171,35 +159,20 @@ async def query_arena(
     is_gemma = llm.type == "gemma"
 
     global _loaded_model, _current_tokenizer, _loaded_model_id
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     
     try:
         if _loaded_model_id != llm.id or _loaded_model is None:
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
-            
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16 if is_gemma else torch.float16,
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_storage=torch.uint8
-            )
-
-            if llm.type == "mistral":
-                attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
-            elif llm.type == "gemma":
-                attn_impl = "eager"
-            else:
-                attn_impl = None
 
             _loaded_model = AutoModelForCausalLM.from_pretrained(
                 llm.link,
                 local_files_only=True,
-                torch_dtype=torch.float16 if not is_gemma else torch.bfloat16,
-                quantization_config=bnb_config if not is_gemma else None,
-                low_cpu_mem_usage=True if not is_gemma else False,
-                attn_implementation=attn_impl,
+                torch_dtype=torch.float16,
+                quantization_config=None,
+                low_cpu_mem_usage=True,
+                attn_implementation=None,
             )
             
             _current_tokenizer = AutoTokenizer.from_pretrained(

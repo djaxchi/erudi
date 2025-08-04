@@ -2,7 +2,7 @@ from datetime import datetime
 import os
 import shutil
 
-from .utils.hardware_info import get_hardware_eval_for_NVIDIA_CUDA
+from .utils.hardware_info import get_hardware_eval_for_apple_silicon
 
 from .models.StaticHardwareInfos import StaticHardwareInfo
 from .routes import knowledgeBase_routes
@@ -214,34 +214,74 @@ async def startup_populate_database():
 
         persist_hw_infos = db.query(StaticHardwareInfo).first()
         if not persist_hw_infos:
-            hw = get_hardware_eval_for_NVIDIA_CUDA()
+            try:
+                # Get Apple Silicon hardware evaluation
+                logging.info("Evaluating Apple Silicon hardware...")
+                hw = get_hardware_eval_for_apple_silicon()
+                logging.info("Hardware evaluation completed successfully.")
+            except Exception as e:
+                logging.warning(f"Hardware evaluation failed: {e}. Using fallback values.")
+                hw = {
+                    "chip_model": "Unknown",
+                    "cpu_model": "Unknown CPU",
+                    "gpu_name": "Unknown GPU",
+                    "total_memory_gb": 8.0,
+                    "available_memory_gb": 4.0,
+                    "disk_total_gb": 100.0,
+                    "disk_available_gb": 50.0,
+                    "global_inference_score": 20.0,
+                    "global_inference_label": "Poor",
+                    "global_finetuning_score": 15.0,
+                    "global_finetuning_label": "Very Poor",
+                    "cpu_score": 30.0,
+                    "gpu_score": 20.0,
+                    "memory_score": 25.0,
+                    "mps_available": False,
+                    "is_apple_silicon": False
+                }
+            
             persist_hw_infos = StaticHardwareInfo(
-                available_ram_gb=hw.get("available_ram_gb", None),
-                disk_total_gb=hw.get("disk_total_gb", None),
-                disk_avail_gb=hw.get("disk_avail_gb", None),
-                gpu_name=hw.get("gpu_name", "Unknown"),
-                cpu_model=hw.get("cpu_model", None),
-                vram_total_gb=hw.get("vram_total_gb", None),
-                sm_clock_ghz=hw.get("sm_clock_ghz", None),
-                mem_clock_mhz=hw.get("mem_clock_mhz", None),
-                bus_width_bits=hw.get("bus_width_bits", None),
-                mem_bandwidth_gbs=hw.get("mem_bandwidth_gbs", None),
-                compute_cap=hw.get("compute_cap", None),
-                sm_count=hw.get("sm_count", None),
-                cuda_cores_total=hw.get("cuda_cores_total", None),
-                fp32_tflops=hw.get("fp32_tflops", None),
-                tensor_tflops=hw.get("tensor_tflops", None),
-                system_ram_gb=hw.get("system_ram_gb", None),
-                cpu_perf_units=hw.get("cpu_perf_units", None),
-                pcie_perf_units=hw.get("pcie_perf_units", None),
-                cuda_runtime_available=hw.get("cuda_runtime_available", None),
-                cuda_toolkit_path=hw.get("cuda_toolkit_path", None),
-                global_inference_score=hw.get("global_inference_score", None),
-                global_inference_label=hw.get("global_inference_label", None),
-                global_finetuning_score=hw.get("global_finetuning_score", None),
-                global_finetuning_label=hw.get("global_finetuning_label", None),
-                cpu_score=hw.get("cpu_score", None),
-                gpu_score=hw.get("gpu_score", None),
+                # Basic hardware identification
+                chip_model=hw.get("chip_model"),
+                cpu_model=hw.get("cpu_model"),
+                gpu_name=hw.get("gpu_name"),
+                
+                # Memory information (unified memory for Apple Silicon)
+                system_ram_gb=hw.get("total_memory_gb"),
+                available_ram_gb=hw.get("available_memory_gb"),
+                
+                # Storage information
+                disk_total_gb=hw.get("disk_total_gb"),
+                disk_avail_gb=hw.get("disk_available_gb"),
+                
+                # Apple Silicon specific GPU specs
+                gpu_cores=hw.get("gpu_cores"),
+                estimated_gpu_tflops=hw.get("estimated_gpu_tflops"),
+                
+                # Apple Silicon specific performance metrics
+                memory_bandwidth_gbs=hw.get("memory_bandwidth_gbs"),
+                neural_engine_tops=hw.get("neural_engine_tops"),
+                cpu_performance_units=hw.get("cpu_performance_units"),
+                
+                # Architecture details
+                architecture=hw.get("architecture"),
+                is_apple_silicon=hw.get("is_apple_silicon", False),
+                mps_available=hw.get("mps_available", False),
+                unified_memory=hw.get("unified_memory", False),
+                system_platform=hw.get("system_platform"),
+                
+                # Performance scores
+                global_inference_score=hw.get("global_inference_score"),
+                global_inference_label=hw.get("global_inference_label"),
+                global_finetuning_score=hw.get("global_finetuning_score"),
+                global_finetuning_label=hw.get("global_finetuning_label"),
+                cpu_score=hw.get("cpu_score"),
+                gpu_score=hw.get("gpu_score"),
+                memory_score=hw.get("memory_score"),
+                
+                # Performance breakdown
+                performance_breakdown=hw.get("performance_breakdown"),
+                
             )
             db.add(persist_hw_infos)
             db.commit()

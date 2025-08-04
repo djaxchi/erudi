@@ -17,7 +17,6 @@ from typing import Callable, Optional, List, Tuple
 
 # Third-party imports
 import torch  # type: ignore
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig  # type: ignore
 from huggingface_hub import HfApi, HfFileSystem  # type: ignore
 from fsspec.callbacks import Callback  # type: ignore
 
@@ -30,11 +29,9 @@ from ..models.Llm import Llm
 logger = logging.getLogger("uvicorn.error")
 logger.setLevel(logging.INFO)
 
-# Environment and device setup
+# Environment setup
 HF_TOKEN = os.getenv("HF_TOKEN", "")
-device = "cuda" if torch.cuda.is_available() else "cpu"
 FILES_TO_EXCLUDE = ["consolidated.safetensors"]
-logger.info(f"Using device: {device}")
 
 
 class DownloadJob:
