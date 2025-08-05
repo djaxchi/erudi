@@ -9,6 +9,7 @@ import {
   Plus,
   X,
   HelpCircle,
+  Trash2,
 } from "lucide-react";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { API_BASE_URL } from "../config/api";
@@ -20,6 +21,8 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
   const [errorMessage, setErrorMessage] = useState("");
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
+  const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
+  const [successMessage, setSuccessMessage] = useState("");
 
   const { open: openDownload } = useDownloadModal();
 
@@ -125,8 +128,44 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
     });
   };
 
+  const handleDeleteClick = (e, model) => {
+    e.stopPropagation();
+    setDeleteConfirmation({ show: true, model });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirmation.model) return;
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/main_window/llms/${deleteConfirmation.model.id}`, {
+        method: 'DELETE',
+      });
+      
+      if (response.ok) {
+        setSuccessMessage(`Model ${deleteConfirmation.model.name} has been successfully deleted.`);
+        // Recharger la liste des modèles
+        await reloadLocalModels();
+      } else {
+        throw new Error(`Failed to delete model: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("Failed to delete model:", error);
+      setErrorMessage("Failed to delete the model. Please try again and contact the Erudi team for support.");
+    } finally {
+      setDeleteConfirmation({ show: false, model: null });
+    }
+  };
+
+  const cancelDelete = () => {
+    setDeleteConfirmation({ show: false, model: null });
+  };
+
   const closeErrorModal = () => {
     setErrorMessage("");
+  };
+
+  const closeSuccessModal = () => {
+    setSuccessMessage("");
   };
 
   return (
@@ -191,19 +230,29 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
               </div>
             ) : models.length > 0 ? (
               models.map((m) => (
-                <p
-                  key={m.id}
-                  className={`py-1 max-w-full ${
-                    title !== "Local Models"
-                      ? "cursor-pointer hover:text-blue-500"
-                      : ""
-                  }`}
-                  onClick={() =>
-                    title !== "Local Models" && handleModelClick(m)
-                  }
-                >
-                  {m.name}
-                </p>
+                title === "Local Models" ? (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between py-1 max-w-full group"
+                  >
+                    <span className="flex-1">{m.name}</span>
+                    <button
+                      onClick={(e) => handleDeleteClick(e, m)}
+                      className="text-gray-400 hover:text-red-400 transition-colors p-1"
+                      title="Delete model"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <p
+                    key={m.id}
+                    className="py-1 max-w-full cursor-pointer hover:text-blue-500"
+                    onClick={() => handleModelClick(m)}
+                  >
+                    {m.name}
+                  </p>
+                )
               ))
             ) : (
               <p className="italic">Nothing here…</p>
@@ -246,6 +295,96 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
                   className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
                 >
                   Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Modal */}
+      {successMessage && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#2B2B2B] rounded-2xl border border-white/10 shadow-2xl max-w-md w-full">
+            {/* Header */}
+            <div className="p-4 border-b border-white/10">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                  Success
+                </h2>
+                <button
+                  onClick={closeSuccessModal}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <div className="text-green-400 rounded-lg p-4">
+                <p className="text-sm">{successMessage}</p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-white/10">
+              <div className="flex justify-end">
+                <button
+                  onClick={closeSuccessModal}
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmation.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#2B2B2B] rounded-2xl border border-white/10 shadow-2xl max-w-md w-full">
+            {/* Header */}
+            <div className="p-4 border-b border-white/10">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-white flex items-center gap-3">
+                  Delete Model
+                </h2>
+                <button
+                  onClick={cancelDelete}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <div className="text-white-400 rounded-lg p-4">
+                <p className="text-sm">
+                  Do you want to delete the model {deleteConfirmation.model?.name} ?
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-white/10">
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={cancelDelete}
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+                >
+                  No
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
+                >
+                  Yes
                 </button>
               </div>
             </div>
