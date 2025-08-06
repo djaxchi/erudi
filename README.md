@@ -56,7 +56,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 
 
-pyinstaller --name backend --clean --onedir --console --paths=backend --add-data "backend/data;data" --add-data "backend/app/prompting/jinja_templates;jinja" --hidden-import jinja2 --hidden-import sqlalchemy --hidden-import erudi_secrets --add-data "backend/erudi_secrets.py;." run.py
+pyinstaller --name backend --clean --onedir --console --paths=backend --add-data "backend/data;data" --add-data "backend/app/prompting/jinja_templates;jinja" --hidden-import jinja2 --hidden-import sqlalchemy run.py
 
 
 dans frontend : 
