@@ -2,32 +2,28 @@ from datetime import datetime
 import os
 import shutil
 
-from .utils.hardware_info import get_hardware_eval_for_NVIDIA_CUDA
+from app.utils.hardware_info import get_hardware_eval_for_NVIDIA_CUDA
+from app.utils.global_variables_util import HF_TOKEN
 
-from .models.StaticHardwareInfos import StaticHardwareInfo
-from .routes import knowledgeBase_routes
+from app.models.StaticHardwareInfos import StaticHardwareInfo
+from app.routes import knowledgeBase_routes
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import basic_routes, llm_routes, conversation_routes, bd_routes, hardware_routes, training_routes, arena_routes
-from .database import Base, engine
-from .models.Llm import Llm
+from app.routes import basic_routes, llm_routes, conversation_routes, bd_routes, hardware_routes, training_routes, arena_routes
+from app.database import Base, engine
+from app.models.Llm import Llm
 from sqlalchemy.orm import Session
-from .database import SessionLocal
-from pydantic import BaseModel
+from app.database import SessionLocal
 import logging
-from .models.Conversation import Conversation
-from .models.Message import Message
-from .models.TrainingJob import TrainingJob
-from .models.DownloadJob import DownloadJobModel
-from .models.KnowledgeBase import KnowledgeBase
-from .models.VectorStore import VectorStore
-from .models.StaticHardwareInfos import StaticHardwareInfo
+from app.models.Conversation import Conversation
+from app.models.Message import Message
+from app.models.TrainingJob import TrainingJob
+from app.models.DownloadJob import DownloadJobModel
+from app.models.KnowledgeBase import KnowledgeBase
+from app.models.VectorStore import VectorStore
+from app.models.StaticHardwareInfos import StaticHardwareInfo
 
 from huggingface_hub import HfApi
-from dotenv import load_dotenv
-
-load_dotenv()
-HF_TOKEN = os.getenv("HF_TOKEN")
 
 async def createTables():
     # Create all tables in the database
