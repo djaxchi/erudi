@@ -73,10 +73,17 @@ async def update_llm(llm_id: int, llm: LLMCreate, db: Session = Depends(get_db))
 
 @router.delete("/llms/{llm_id}")
 async def delete_llm(llm_id: int, db: Session = Depends(get_db)):
-    db_llm = db.query(Llm).filter(Llm.id == llm_id).first()
-    if not db_llm:
+    llm = db.query(Llm).filter(Llm.id == llm_id).first()
+    if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
-    db.delete(db_llm)
+    llm.local = 0  # Mark as not local
+    model_path = os.path.join(BASE_PATH, llm.link.lstrip("./"))
+    if os.path.exists(model_path):
+        shutil.rmtree(model_path, ignore_errors=True)
+    llm.link = ""
+    db.commit()
+    db.refresh(llm)
+    db.delete(llm)
     db.commit()
     return {"message": "LLM deleted successfully"}
 
@@ -84,7 +91,6 @@ async def delete_llm(llm_id: int, db: Session = Depends(get_db)):
 async def search_llms(name: str, db: Session = Depends(get_db)):
     llms = db.query(Llm).filter(Llm.name.ilike(f"%{name}%")).all()
     return llms
-
 
 @router.post(
     "/llms/{llm_id}/download",
