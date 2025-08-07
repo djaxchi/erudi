@@ -20,6 +20,6 @@ sqlalchemy==2.0.40
 numpy==1.26.4
 transformers==4.51.3
 bitsandbytes==0.46.0 --prefer-binary --extra-index-url https://jllllll.github.io/bitsandbytes-windows-webui
-torch==2.2.2+cu121
---extra-index-url https://download.pytorch.org/whl/cu121
+# bitsandbytes==0.46.0
+torch==2.2.2+cu121 --extra-index-url https://download.pytorch.org/whl/cu121
 pynvml==12.0.0
