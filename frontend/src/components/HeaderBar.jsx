@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, HelpCircle } from "lucide-react";
 import GradientBox from "./GradientBox";
+import Tooltip from "./Tooltip";
 
 
 export default function HeaderBar({
@@ -24,6 +25,46 @@ export default function HeaderBar({
   const handleApply = () => {
     onApply({ temperature, topP, maxTokens });
     setIsOpen(false);
+  };
+
+  // Helper component for tooltips
+  const TooltipIcon = ({ id }) => {
+    const getTooltipText = (id) => {
+      switch (id) {
+        case 'temperature':
+          return 'Controls creativity. Lower values = more focused, higher values = more creative.';
+        case 'top-p':
+          return 'Controls word variety. Lower values = predictable words, higher values = diverse vocabulary.';
+        case 'max-tokens':
+          return 'Maximum response length. Higher values allow longer answers.';
+        case 'prompt':
+          return 'Customize system instructions that guide LLM behavior.';
+        default:
+          return '';
+      }
+    };
+    return (
+      <Tooltip content={getTooltipText(id)} side="right" width="w-64">
+        <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 hover:text-emerald-400 transition-colors cursor-help" />
+      </Tooltip>
+    );
+  };
+
+  // Helper component for left-positioned tooltips
+  const TooltipIconLeft = ({ id }) => {
+    const getTooltipText = (id) => {
+      switch (id) {
+        case 'prompt':
+          return 'Customize system instructions that guide AI behavior.';
+        default:
+          return '';
+      }
+    };
+    return (
+      <Tooltip content={getTooltipText(id)} side="left" width="w-64">
+        <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 hover:text-emerald-400 transition-colors cursor-help" />
+      </Tooltip>
+    );
   };
 
   return (
@@ -74,9 +115,12 @@ export default function HeaderBar({
             <GradientBox className="p-3 mb-4">
               <div className="flex flex-col md:flex-row justify-between items-center items-end space-y-4 md:space-y-0 w-full">
                 <div className="flex flex-col gap-1 min-w-0">
-                  <label className="block text-white text-sm">
-                    Créativité (Température)
-                  </label>
+                  <div className="flex items-center gap-1">
+                    <label className="block text-white text-sm">
+                      Creativity (Temperature)
+                    </label>
+                    <TooltipIcon id="temperature" />
+                  </div>
                   <input
                     type="range"
                     step="0.01"
@@ -93,9 +137,12 @@ export default function HeaderBar({
                               hover:accent-emerald-500
                               focus:outline-none"
                   />
-                  <label className="block text-white text-sm">
-                    Diversité (Top-P)
-                  </label>
+                  <div className="flex items-center gap-1">
+                    <label className="block text-white text-sm">
+                      Diversity (Top-P)
+                    </label>
+                    <TooltipIcon id="top-p" />
+                  </div>
                   <input
                     type="range"
                     step="0.1"
@@ -112,9 +159,12 @@ export default function HeaderBar({
                   />
                 </div>
                 <div className="flex flex-col gap-1 min-w-0">
-                  <label className="text-white text-sm font-medium">
-                    Max Tokens
-                  </label>
+                  <div className="flex items-center gap-1">
+                    <label className="text-white text-sm font-medium">
+                      Max Tokens
+                    </label>
+                    <TooltipIcon id="max-tokens" />
+                  </div>
                   <input
                     type="number"
                     min="1"
@@ -134,12 +184,15 @@ export default function HeaderBar({
                   />
                 </div>
 
-                <button
-                  onClick={onCustomizePrompt}
-                  className="bg-emerald-600/60 hover:bg-emerald-700/50 transition-colors text-white py-2 px-4 rounded-xl text-sm whitespace-nowrap"
-                >
-                  Personnaliser le prompt
-                </button>
+                <div className="flex items-center gap-1">
+                  <TooltipIconLeft id="prompt" />
+                  <button
+                    onClick={onCustomizePrompt}
+                    className="bg-emerald-600/60 hover:bg-emerald-700/50 transition-colors text-white py-2 px-4 rounded-xl text-sm whitespace-nowrap"
+                  >
+                    Customize Prompt
+                  </button>
+                </div>
               </div>
 
             </GradientBox>
