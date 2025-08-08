@@ -14,6 +14,12 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState("");
   const [conversations, setConversations] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
+  const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const toggleSidebar = () => {
+    setCollapsed((prev) => !prev);
+  };
 
   useEffect(() => {
     fetch("http://127.0.0.1:8000/main_window/llms/local")
@@ -104,27 +110,38 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-screen">
-      <Sidebar />
+      <Sidebar 
+        showCollapsible={true}
+        onToggleSidebar={toggleSidebar}
+        collapsed={collapsed}
+      />
 
       {/* barre latérale */}
-      <aside className="w-[30%] sm:w-[35%] xl:w-[25%] bg-[#272727] text-white flex flex-col p-6 space-y-6">
-        <h1 className="text-3xl font-bold">History</h1>
+      <aside className={`relative bg-[#272727] text-white transition-all duration-300 ease-in-out ${
+        collapsed ? "w-0 p-0" : "w-80 p-6 space-y-6"
+      }`}>
+        {/* Content only when expanded */}
+        {!collapsed && (
+          <>
+            <h1 className="text-3xl font-bold">History</h1>
 
-        {/*<ChatCollapsibleSection title="Hot Chats"
-          disabled={loading}
-        />} coming in next version*/}
-        <ChatCollapsibleSection
-          title="Previous Chats"
-          items={conversations}
-          onItemClick={handleConversationClick}
-          onRename={handleRename}
-          onDelete={handleDelete}
-          onRefresh={handleRefreshConversations}
-        />
+            {/*<ChatCollapsibleSection title="Hot Chats"
+              disabled={loading}
+            />} coming in next version*/}
+            <ChatCollapsibleSection
+              title="Previous Chats"
+              items={conversations}
+              onItemClick={handleConversationClick}
+              onRename={handleRename}
+              onDelete={handleDelete}
+              onRefresh={handleRefreshConversations}
+            />
+          </>
+        )}
       </aside>
 
       {/* zone centrale */}
-      <main className="flex-1 bg-[#071b18] flex items-center justify-center relative overflow-auto">
+      <main className="flex-1 bg-[#071b18] flex items-center justify-center relative overflow-auto py-12 px-8">
         {/* Si aucun modèle local */}
         {models.length === 0 ? (
           <GradientBox className="w-[700px] max-w-full">
@@ -134,16 +151,22 @@ export default function ChatPage() {
           </GradientBox>
         ) : (
           /* Interface de création de chat */
-          <GradientBox className="w-[700px] mx-[60px] max-w-full">
-            <div className="space-y-6 ">
+          <GradientBox className="w-[700px] max-w-full">
+            <div className="space-y-6">
               {/* header row */}
-              <div className="flex items-center mx-[10px] gap-2 flex-wrap">
+              <div className="flex items-center gap-4 flex-wrap mt-2">
                 <h2 className="text-white text-3xl font-bold whitespace-nowrap">
                   Chat with
                 </h2>
                 <div className="relative">
                   <select
-                    className="appearance-none pr-8 pl-4 py-1 rounded-full border border-emerald-400 bg-transparent text-white focus:outline-none text-sm"
+                    className="appearance-none pr-8 pl-4 py-2 rounded-full border border-emerald-400 bg-transparent text-white focus:outline-none text-sm min-w-[200px]"
+                    style={{
+                      backgroundImage: 'none',
+                      WebkitAppearance: 'none',
+                      MozAppearance: 'none',
+                      msAppearance: 'none'
+                    }}
                     onChange={(e) => setSelectedModel(e.target.value)}
                     value={selectedModel}
                   >
@@ -157,6 +180,17 @@ export default function ChatPage() {
                       </option>
                     ))}
                   </select>
+                  {/* Custom chevron */}
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                    <svg 
+                      className="w-4 h-4 text-emerald-400" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
                 </div>
               </div>
 

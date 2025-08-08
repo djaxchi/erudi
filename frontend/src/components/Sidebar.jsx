@@ -1,11 +1,12 @@
-import React from "react";
-import { Brain, MessageSquare, Swords, BookOpen} from "lucide-react";
+import React, { useState } from "react";
+import { Brain, MessageSquare, Swords, BookOpen, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 /**
  * Sidebar with icons that highlight based on the current route.
  */
-export default function Sidebar({ disabled = false }) {
+export default function Sidebar({ disabled = false, onToggleSidebar, showCollapsible = false, collapsed = false }) {
+  const [isHovering, setIsHovering] = useState(false);
   const location = useLocation();
   const isModelsActive =
     location.pathname === "/main_window/models" ||
@@ -28,25 +29,58 @@ export default function Sidebar({ disabled = false }) {
         }`}
       >
       <Brain
-  className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
-    isModelsActive ? "text-green-400" : "text-gray-400"
+  className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 ${
+    isModelsActive ? "text-green-400" : "text-gray-400 hover:text-green-400"
   }`}
 />
 
       </Link>
 
-      <Link
-        to="/main_window/chat"
-        className={`w-full flex justify-center items-center py-4 border-l-4 ${
-          isChatActive ? "border-green-500" : "border-transparent"
-        }`}
-      >
-        <MessageSquare
-          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square  ${
-            isChatActive ? "text-green-400" : "text-gray-400"
+      {showCollapsible ? (
+        <button
+          onClick={onToggleSidebar}
+          onMouseEnter={() => setIsHovering(true)}
+          onMouseLeave={() => setIsHovering(false)}
+          className={`w-full flex justify-center items-center py-4 border-l-4 ${
+            isChatActive ? "border-green-500" : "border-transparent"
           }`}
-        />
-      </Link>
+        >
+          {isHovering ? (
+            collapsed ? (
+              <PanelLeftOpen
+                className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
+                  isChatActive ? "text-green-400" : "text-gray-400"
+                }`}
+              />
+            ) : (
+              <PanelLeftClose
+                className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
+                  isChatActive ? "text-green-400" : "text-gray-400"
+                }`}
+              />
+            )
+          ) : (
+            <MessageSquare
+              className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
+                isChatActive ? "text-green-400" : "text-gray-400"
+              }`}
+            />
+          )}
+        </button>
+      ) : (
+        <Link
+          to="/main_window/chat"
+          className={`w-full flex justify-center items-center py-4 border-l-4 ${
+            isChatActive ? "border-green-500" : "border-transparent"
+          }`}
+        >
+          <MessageSquare
+            className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 ${
+              isChatActive ? "text-green-400" : "text-gray-400 hover:text-green-400"
+            }`}
+          />
+        </Link>
+      )}
       <Link
         to="/main_window/arena"
         className={`w-full flex justify-center items-center py-4 border-l-4 ${
@@ -54,8 +88,8 @@ export default function Sidebar({ disabled = false }) {
         }`}
       >
         <Swords
-          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
-            isArenaActive ? "text-green-400" : "text-gray-400"
+          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 ${
+            isArenaActive ? "text-green-400" : "text-gray-400 hover:text-green-400"
           }`}
         />
       </Link>
@@ -66,8 +100,8 @@ export default function Sidebar({ disabled = false }) {
         }`}
       >
         <BookOpen
-          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
-            isKnowledgeBaseActive ? "text-green-400" : "text-gray-400"
+          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 ${
+            isKnowledgeBaseActive ? "text-green-400" : "text-gray-400 hover:text-green-400"
           }`}
         />
       </Link>

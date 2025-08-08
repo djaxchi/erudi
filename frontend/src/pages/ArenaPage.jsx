@@ -52,9 +52,7 @@ export default function ArenaPage() {
           [0, 1].map((i) => makePanel(i, data[i % data.length]?.name, data))
         );
       })
-      .catch((err) =>
-        console.error("Erreur lors du fetch des modèles:", err)
-      );
+      .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
   }, []);
 
   const handleModelChange = (panelId, newModel) =>
@@ -143,10 +141,10 @@ export default function ArenaPage() {
       }
 
       askArena({
-        question:     inputValue,
-        llmId:        llm.id,
-        temperature:  panel.temperature,
-        topP:         panel.topP,
+        question: inputValue,
+        llmId: llm.id,
+        temperature: panel.temperature,
+        topP: panel.topP,
         maxNewTokens: panel.maxTokens,
         customPrompt: panel.customPrompt,
         onStreamChunk: (chunk) => {
@@ -169,9 +167,7 @@ export default function ArenaPage() {
 
   const handleAddPanel = () => {
     if (panels.length >= MAX_PANELS) return;
-    const nextId = panels.length
-      ? Math.max(...panels.map((p) => p.id)) + 1
-      : 0;
+    const nextId = panels.length ? Math.max(...panels.map((p) => p.id)) + 1 : 0;
     const defaultModel = models[panels.length % models.length]?.name || "";
     setPanels((prev) => [...prev, makePanel(nextId, defaultModel, models)]);
   };
@@ -180,31 +176,113 @@ export default function ArenaPage() {
     setPanels((prev) => prev.filter((p) => p.id !== panelId));
 
   let gridClass = "";
-  if (panels.length === 1) gridClass = "grid-cols-1";
-  else if (panels.length === 2) gridClass = "grid-cols-2";
-  else if (panels.length === 3) gridClass = "grid-cols-3";
-  else if (panels.length === 4) gridClass = "grid-cols-2 grid-rows-2";
+  if (panels.length === 1) {
+    gridClass = "grid grid-cols-1 gap-4 w-full h-full";
+  } else if (panels.length === 2) {
+    gridClass = "grid grid-cols-2 gap-4 w-full";
+  } else if (panels.length === 3) {
+    gridClass = "grid grid-cols-3 gap-4 w-full";
+  } else if (panels.length === 4) {
+    gridClass = "grid grid-cols-2 grid-rows-2 gap-4 w-full";
+  }
 
   const renderChatPanel = (panel) => (
     <GradientBox
       key={panel.id}
-      className="flex flex-col mx-2 min-w-[320px] h-full"
+      className="flex flex-col mx-2 min-w-[320px] h-[80vh]"
     >
-      <div className="flex items-center justify-between pb-2">
-        <HeaderBar
-          initialTemperature={panel.temperature}
-          initialTopP={panel.topP}
-          initialMaxTokens={panel.maxTokens}
-          onApply={(s) => handleSettingsChange(panel.id, s)}
-          onCustomizePrompt={() => handleCustomizePrompt(panel.id, true)}
-          disabled={loading}
-          models={models}
-          currentModel={panel.selectedModel}
-          onModelChange={(m) => handleModelChange(panel.id, m)}
-        />
-        {panel.showPromptModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6">
+      <div className="flex items-start justify-between pb-2 gap-2">
+        <div className="flex-1 min-w-0">
+          <HeaderBar
+            initialTemperature={panel.temperature}
+            initialTopP={panel.topP}
+            initialMaxTokens={panel.maxTokens}
+            onApply={(s) => handleSettingsChange(panel.id, s)}
+            onCustomizePrompt={() => handleCustomizePrompt(panel.id, true)}
+            disabled={loading}
+            models={models}
+            currentModel={panel.selectedModel}
+            onModelChange={(m) => handleModelChange(panel.id, m)}
+          />
+        </div>
+        <div className="flex items-center pt-3 flex-shrink-0">
+          <button
+            className="p-1 text-gray-400 hover:text-gray-200"
+            onClick={() => handleDeletePanel(panel.id)}
+            title="Delete this panel"
+          >
+            <Trash className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+      <div
+        className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 pb-6 custom-scroll"
+        style={{
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+        }}
+      >
+        <style>
+          {`
+            .custom-scroll::-webkit-scrollbar {
+              display: none;
+            }
+          `}
+        </style>
+        {panel.messages.map((msg, idx) => (
+          <div
+            key={idx}
+            className={`rounded-xl px-4 py-2 my-1 max-w-[90%] whitespace-pre-line ${
+              msg.role === "user"
+                ? "bg-emerald-900/40 text-white self-end"
+                : "text-white self-start"
+            }`}
+          >
+            {msg.content}
+          </div>
+        ))}
+      </div>
+    </GradientBox>
+  );
+
+  return (
+    <div className="flex h-screen">
+      <Sidebar disabled={loading} />
+      <main
+        className="flex-1 flex flex-col bg-[#071b18] relative overflow-auto custom-scroll"
+        style={{ paddingBottom: "4rem" }}
+      >
+        <div className={`flex-1 p-8 ${gridClass}`}>
+          {panels.map(renderChatPanel)}
+        </div>
+        <button
+          className={`fixed bottom-8 right-8 z-50 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full w-14 h-14 flex items-center justify-center text-4xl shadow-lg transition-all duration-200 ${
+            panels.length >= MAX_PANELS ? "opacity-50 cursor-not-allowed" : ""
+          }`}
+          onClick={handleAddPanel}
+          disabled={panels.length >= MAX_PANELS}
+          title={
+            panels.length >= MAX_PANELS ? "Maximum 4 panels" : "Add chat panel"
+          }
+        >
+          +
+        </button>
+      </main>
+      <div className="fixed bottom-0 left-0 right-0 flex justify-center z-30">
+        <div className="max-w-lg w-full px-4 py-2">
+          <QuestionInput
+            onSend={handleAsk}
+            backgroundClass="bg-emerald-900"
+            disabled={loading}
+          />
+        </div>
+      </div>
+      
+      {/* Render all modals at top level to ensure proper z-index stacking */}
+      {panels.map((panel) => 
+        panel.showPromptModal && (
+          <div key={`modal-${panel.id}`} className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+            <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6 relative z-[10000]">
               <h2 className="text-xl font-semibold mb-4">
                 Personalize the prompt
               </h2>
@@ -233,70 +311,8 @@ export default function ArenaPage() {
               </div>
             </div>
           </div>
-        )}
-        <button
-          className="p-1 text-gray-400 hover:text-gray-200"
-          onClick={() => handleDeletePanel(panel.id)}
-          title="Delete this panel"
-        >
-          <Trash className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* scrollable messages area */}
-      <div className="flex-1 overflow-y-auto flex flex-col gap-2 pb-6">
-        {panel.messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`rounded-xl px-4 py-2 my-1 max-w-[90%] whitespace-pre-line ${
-              msg.role === "user"
-                ? "bg-emerald-900/40 text-white self-end"
-                : "text-white self-start"
-            }`}
-          >
-            {msg.content}
-          </div>
-        ))}
-      </div>
-    </GradientBox>
-  );
-
-  return (
-    <div className="flex h-screen">
-      <Sidebar disabled={loading} />
-      <main className="flex-1 flex flex-col bg-[#071b18] relative">
-        {/* grid with panels, full height */}
-        <div className={`flex-1 p-8 grid gap-4 ${gridClass} h-full`}>
-          {panels.map(renderChatPanel)}
-        </div>
-
-        {/* input bar */}
-        <div className="w-full flex justify-center items-center pb-8">
-          <div className="w-[700px] max-w-full">
-            <QuestionInput
-              onSend={handleAsk}
-              backgroundClass="bg-emerald-900"
-              disabled={loading}
-            />
-          </div>
-        </div>
-
-        {/* add-panel button */}
-        <button
-          className={`fixed bottom-8 right-8 z-50 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full w-14 h-14 flex items-center justify-center text-4xl shadow-lg transition-all duration-200 ${
-            panels.length >= MAX_PANELS ? "opacity-50 cursor-not-allowed" : ""
-          }`}
-          onClick={handleAddPanel}
-          disabled={panels.length >= MAX_PANELS}
-          title={
-            panels.length >= MAX_PANELS
-              ? "Maximum 4 panels"
-              : "Add chat panel"
-          }
-        >
-          +
-        </button>
-      </main>
+        )
+      )}
     </div>
   );
 }
