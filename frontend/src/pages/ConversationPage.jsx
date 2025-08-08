@@ -30,6 +30,11 @@ export default function ConversationPage() {
     topP: 0.5,
     maxTokens: 3074
   })
+  const [collapsed, setCollapsed] = useState(false);
+
+  const toggleSidebar = () => {
+    setCollapsed((prev) => !prev);
+  };
 
   // Utility function to clean error messages for display
   const getDisplayContent = (content) => {
@@ -322,24 +327,37 @@ export default function ConversationPage() {
 
   return (
     <div className="flex h-screen">
-      <Sidebar disabled = {loading} />
+      <Sidebar 
+        disabled={loading} 
+        showCollapsible={true}
+        onToggleSidebar={toggleSidebar}
+        collapsed={collapsed}
+      />
 
-      <aside className="w-80 bg-[#272727] text-white flex flex-col p-6 space-y-6">
-        <h1 className="text-3xl font-bold">History</h1>
-        {/*<ChatCollapsibleSection title="Hot Chats"
-          disabled={loading}
-        />} coming in next version*/}
-        <ChatCollapsibleSection
-          title="Previous Chats"
-          items={conversations}
-          selectedId={Number(id)}
-          onSelect={handleConversationClick}
-          onRename={handleRename}
-          onDelete={handleDelete}
-          disabled={loading}
-        />
+      <aside className={`relative bg-[#272727] text-white transition-all duration-300 ease-in-out ${
+        collapsed ? "w-0 p-0" : "w-80 p-6 space-y-6"
+      }`}>
+        {/* Content only when expanded */}
+        {!collapsed && (
+          <>
+            <h1 className="text-3xl font-bold">History</h1>
+            {/*<ChatCollapsibleSection title="Hot Chats"
+              disabled={loading}
+            />} coming in next version*/}
+            <ChatCollapsibleSection
+              title="Previous Chats"
+              items={conversations}
+              selectedId={Number(id)}
+              onSelect={handleConversationClick}
+              onRename={handleRename}
+              onDelete={handleDelete}
+              disabled={loading}
+            />
+          </>
+        )}
       </aside>
-      <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">        <div className="relative flex justify-center w-full">
+      <main className="flex-1 flex flex-col bg-gradient-to-br from-[#041915] to-[#0f2d27] overflow-hidden">
+        <div className="relative flex justify-center w-full px-8 pt-6">
           <HeaderBar
             initialTemperature={settings.temperature}
             initialTopP={settings.topP}
@@ -354,8 +372,8 @@ export default function ConversationPage() {
         </div>
         
         {showPromptModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+            <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6 relative z-[10000]">
               <h2 className="text-xl font-semibold mb-4">Personnaliser le prompt</h2>
               <textarea
                 className="w-full h-40 border rounded p-2 mb-4"
