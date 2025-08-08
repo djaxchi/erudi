@@ -28,26 +28,34 @@ export default function HeaderBar({
 
   return (
     <div
-      className={`bg-[#143529] text-white rounded-2xl px-6 py-3 w-full max-w-4xl mx-6 mt-6 shadow-lg ${
+      className={`bg-[#143529] text-white rounded-2xl px-6 py-3 w-full shadow-lg ${
         disabled ? "opacity-50 pointer-events-none select-none" : ""
       }`}
     >
       <div className="flex items-center justify-between">
         <div className="font-semibold text-lg">Chat with</div>
         <div className="flex items-center space-x-2">
-          <select
-            className="bg-transparent text-white border-none focus:outline-none"
-            value={currentModel}
-            onChange={e => onModelChange && onModelChange(e.target.value)}
-            disabled={disabled}
-          >
-            {models.map((model) => (
-              <option key={model.id} value={model.name} className="text-black">
-                {model.name}
-              </option>
-            ))}
-          </select>
-          <button onClick={() => setIsOpen((v) => !v)}>
+          <div className="relative">
+            <select
+              className="appearance-none bg-transparent text-white border-none focus:outline-none pr-4 cursor-pointer"
+              style={{
+                backgroundImage: 'none',
+                WebkitAppearance: 'none',
+                MozAppearance: 'none',
+                msAppearance: 'none'
+              }}
+              value={currentModel}
+              onChange={e => onModelChange && onModelChange(e.target.value)}
+              disabled={disabled}
+            >
+              {models.map((model) => (
+                <option key={model.id} value={model.name} className="text-black">
+                  {model.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button onClick={() => setIsOpen((v) => !v)} className="flex items-center">
             {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
           </button>
         </div>
@@ -63,9 +71,9 @@ export default function HeaderBar({
             transition={{ type: "tween", duration: 0.2 }}
             className="overflow-hidden mt-4 rounded-xl"
           >
-            <GradientBox className="flex flex-row justify-center items-center p-4 mb-4">
-              <div className="flex flex-row justify-center items-center items-end space-x-4">
-                <div className="flex flex-col gap-1">
+            <GradientBox className="p-3 mb-4">
+              <div className="flex flex-col md:flex-row justify-between items-center items-end space-y-4 md:space-y-0 w-full">
+                <div className="flex flex-col gap-1 min-w-0">
                   <label className="block text-white text-sm">
                     Créativité (Température)
                   </label>
@@ -78,7 +86,7 @@ export default function HeaderBar({
                     onChange={(e) =>
                       setTemperature(parseFloat(e.target.value))
                     }
-                    className="my-1 w-40 h-1
+                    className="my-1 w-full md:w-48 h-1
                               bg-gray-700/50 rounded-full
                               appearance-none
                               accent-emerald-400
@@ -95,7 +103,7 @@ export default function HeaderBar({
                     max="1"
                     value={topP}
                     onChange={(e) => setTopP(parseFloat(e.target.value))}
-                    className="my-1 w-40 h-1
+                    className="my-1 w-full md:w-48 h-1
                               bg-gray-700/50 rounded-full
                               appearance-none
                               accent-emerald-400
@@ -103,7 +111,7 @@ export default function HeaderBar({
                               focus:outline-none"
                   />
                 </div>
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1 min-w-0">
                   <label className="text-white text-sm font-medium">
                     Max Tokens
                   </label>
@@ -114,11 +122,11 @@ export default function HeaderBar({
                     value={maxTokens}
                     onChange={(e) => setMaxTokens(parseInt(e.target.value, 10))}
                     className="
-                      w-24
+                      w-full md:w-28
                       bg-transparent
                       border border-emerald-400/40
                       rounded-full
-                      px-4 py-2
+                      px-3 py-2
                       text-sm text-white
                       focus:outline-none focus:border-emerald-400 focus:ring-0
                       transition
@@ -128,9 +136,9 @@ export default function HeaderBar({
 
                 <button
                   onClick={onCustomizePrompt}
-                  className="bg-emerald-600/60 hover:bg-emerald-700/50 transition-colors text-white py-2 px-4 rounded-xl"
+                  className="bg-emerald-600/60 hover:bg-emerald-700/50 transition-colors text-white py-2 px-4 rounded-xl text-sm whitespace-nowrap"
                 >
-                  Personnalise prompt
+                  Personnaliser le prompt
                 </button>
               </div>
 
