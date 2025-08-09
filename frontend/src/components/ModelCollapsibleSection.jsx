@@ -1,5 +1,11 @@
 // src/components/CollapsibleSection.jsx
-import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+} from "react";
 import Tooltip from "./Tooltip";
 import {
   ChevronDown,
@@ -12,28 +18,33 @@ import {
   Trash2,
 } from "lucide-react";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
-import { API_BASE_URL } from "../config/api";
+
+const API_BASE_URL = "http://127.0.0.1:8000";
 
 const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
   const [openSection, setOpenSection] = useState(true);
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
+  const [deleteConfirmation, setDeleteConfirmation] = useState({
+    show: false,
+    model: null,
+  });
   const [successMessage, setSuccessMessage] = useState("");
 
   const { open: openDownload } = useDownloadModal();
 
   // Expose reloadLocalModels to parent via ref
   useImperativeHandle(ref, () => ({
-    reloadLocalModels
+    reloadLocalModels,
   }));
 
   // TooltipIcon component - Simple CSS-based tooltip
   const TooltipIcon = () => {
-    const tooltipText = title === "Local Models" 
-      ? "Models downloaded and ready to use on your computer. These are available for chat, and specialization!"
-      : "Models available for download. Click on any model to download it to your local storage.";
+    const tooltipText =
+      title === "Local Models"
+        ? "Models downloaded and ready to use on your computer. These are available for chat, and specialization!"
+        : "Models available for download. Click on any model to download it to your local storage.";
 
     return (
       <Tooltip content={tooltipText} side="right" width="w-80">
@@ -57,7 +68,9 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
         }
       } catch (err) {
         console.error("Failed to fetch models:", err);
-        setErrorMessage("Failed to fetch available models. Please try again and contact the Erudi team for support.");
+        setErrorMessage(
+          "Failed to fetch available models. Please try again and contact the Erudi team for support."
+        );
       } finally {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         setLoading(false);
@@ -65,20 +78,23 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
     }
     fetchModels();
   }, [title]);
-  
+
   const reloadLocalModels = async () => {
     setLoading(true);
     try {
       const url = `${API_BASE_URL}/main_window/llms/local`;
       const res = await fetch(url);
       if (res.ok) setModels(await res.json());
-      else setErrorMessage("Failed to fetch local models. Please try again and contact the Erudi team for support.");
-    } 
-    catch (err) {
+      else
+        setErrorMessage(
+          "Failed to fetch local models. Please try again and contact the Erudi team for support."
+        );
+    } catch (err) {
       console.error("Failed to fetch local models:", err);
-      setErrorMessage("Failed to fetch local models. Please try again and contact the Erudi team for support.");
-    } 
-    finally {
+      setErrorMessage(
+        "Failed to fetch local models. Please try again and contact the Erudi team for support."
+      );
+    } finally {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setLoading(false);
     }
@@ -156,26 +172,31 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
             <span className="font-semibold text-xl sm:text-lg">{title}</span>
             <TooltipIcon />
           </div>
-          {
-            title === "Local Models" && (
-            <RefreshCcw 
-              className="w-4 h-4 hover:opacity-70 cursor-pointer" 
+          {title === "Local Models" && (
+            <RefreshCcw
+              className="w-4 h-4 hover:opacity-70 cursor-pointer"
               onClick={(e) => {
                 e.stopPropagation();
                 reloadLocalModels();
-              }} 
+              }}
             />
           )}
         </div>
 
-        <div className={`grid transition-all duration-300 ease-in-out ${openSection ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-          <div className="px-10 py-2 text-sm text-gray-500 max-h-[35vh] max-w-full overflow-y-auto overflow-x-hidden break-words custom-scroll">
+        <div
+          className={`grid transition-all duration-300 ease-in-out ${
+            openSection
+              ? "grid-rows-[1fr] opacity-100"
+              : "grid-rows-[0fr] opacity-0"
+          }`}
+        >
+          <div className="px-10 py-2 text-sm text-gray-500 max-h-[35vh] max-w-full overflow-y-auto overflow-x-visible custom-scroll">
             {loading ? (
               <div className="flex items-center gap-2 py-1">
                 <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
               </div>
             ) : models.length > 0 ? (
-              models.map((m) => (
+              models.map((m) =>
                 title === "Local Models" ? (
                   <div
                     key={m.id}
@@ -193,13 +214,13 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
                 ) : (
                   <p
                     key={m.id}
-                    className="py-1 max-w-full cursor-pointer hover:text-blue-500 truncate"
+                    className="py-1 max-w-full cursor-pointer hover:text-blue-500"
                     onClick={() => handleModelClick(m)}
                   >
                     {m.name}
                   </p>
                 )
-              ))
+              )
             ) : (
               <p className="italic">Nothing here…</p>
             )}

@@ -4,11 +4,10 @@
 
 html, body, #root {
   height: 100%;
-  overflow: hidden; 
+  overflow: hidden; /* prevent page scroll */
   overscroll-behavior: contain;
 }
 
-/* Discreet, professional custom scrollbar */
 .custom-scroll::-webkit-scrollbar {
   width: 8px; 
 }
