@@ -109,7 +109,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen overflow-hidden">
       <Sidebar 
         showCollapsible={true}
         onToggleSidebar={toggleSidebar}
@@ -141,7 +141,7 @@ export default function ChatPage() {
       </aside>
 
       {/* zone centrale */}
-      <main className="flex-1 bg-[#071b18] flex items-center justify-center relative overflow-auto py-12 px-8">
+      <main className="flex-1 bg-[#071b18] flex items-center justify-center relative overflow-hidden py-12 px-8">
         {/* Si aucun modèle local */}
         {models.length === 0 ? (
           <GradientBox className="w-[700px] max-w-full">

@@ -188,11 +188,11 @@ export default function ChatCollapsibleSection({
         </div>
       </div>
 
-      {open && (
+      <div className={`grid transition-all duration-300 ease-in-out ${open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'} `}>
         <div className="px-4 py-2 max-h-[88%] overflow-y-auto overflow-x-visible custom-scroll">
           {renderItems()}
         </div>
-      )}
+      </div>
 
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

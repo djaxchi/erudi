@@ -214,13 +214,15 @@ export default function KnowledgeBasePage() {
                 {/* Title */}
                 <h2 className="text-white text-xl md:text-2xl font-bold">Knowledge Base</h2>
                 
-                {/* Lorem ipsum description */}
+                {/* Knowledge Base description */}
                 <p className="text-gray-300 text-xs md:text-sm leading-relaxed">
-                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+                    A Knowledge Base lets you teach your AI about your specific documents, files, and information without changing the AI model itself.
                     <br/><br/> 
-                    Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.<br/><br/>
-                    Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.<br/><br/>
-                    Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.
+                    Think of it like giving your AI a personal library to reference when answering questions. Upload your PDFs, documents, notes, or any text files, and your AI will use them to give more accurate and relevant answers about your specific topics.
+                    <br/><br/>
+                    This is perfect when you want your AI to know about your business, research, or personal documents, but don't need to permanently change how the AI thinks. It's faster and easier than training a new model, and you can update your knowledge anytime by adding or removing documents.
+                    <br/><br/>
+                    Use Knowledge Bases for: company documents, research papers, manuals, personal notes, or any information you want your AI to reference when chatting with you.
                 </p>
 
                 <InfoRow

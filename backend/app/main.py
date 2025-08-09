@@ -32,6 +32,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN")
+api = HfApi(token=HF_TOKEN)
 
 # Global size map for model size estimates
 SIZE_MAP = {

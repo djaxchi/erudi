@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState } from "react";
 import InfoRow from "./InfoRow";
 import Tooltip from "./Tooltip";
 import { Check, X, HelpCircle, Folder } from "lucide-react";
@@ -6,8 +6,6 @@ import { Check, X, HelpCircle, Folder } from "lucide-react";
 
 export default function HardwareInfo({ hw }) {
     const [storagePath, setStoragePath] = useState(hw.storage_path || "");
-    const [tooltipVisible, setTooltipVisible] = useState(null);
-    const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
     
     // Handle directory selection for storage path
     const handleStoragePathSelection = async () => {
@@ -69,42 +67,29 @@ export default function HardwareInfo({ hw }) {
     };
 
     // Helper component for tooltips
-    const TooltipIcon = ({ id, text }) => {
-        const iconRef = useRef(null);
-        
-        const handleMouseEnter = () => {
-            if (iconRef.current) {
-                const rect = iconRef.current.getBoundingClientRect();
-                const tooltipWidth = 300; // Approximate tooltip width
-                const windowWidth = window.innerWidth;
-                
-                // Check if tooltip would go off-screen to the right
-                const wouldOverflow = rect.right + 8 + tooltipWidth > windowWidth;
-                
-                setTooltipPosition({
-                    top: rect.top + window.scrollY + (rect.height / 2), // Center vertically with the icon
-                    left: wouldOverflow 
-                        ? rect.left + window.scrollX - 8 - tooltipWidth // Position to the left if would overflow
-                        : rect.right + window.scrollX + 8, // 8px to the right of the icon
-                    isLeftSide: wouldOverflow
-                });
+    const TooltipIcon = ({ id }) => {
+        const getTooltipText = (id) => {
+            switch (id) {
+                case 'storage':
+                    return 'Hard drive space for saving your work. More space = bigger models.';
+                case 'ram':
+                    return 'Computer memory for faster processing. More memory = quicker results.';
+                case 'cpu':
+                    return 'Main processor that prepares data and keeps training smooth.';
+                case 'gpu':
+                    return 'Graphics card that does the AI training. Powerful card = faster training.';
+                case 'gpu-memory':
+                    return 'Graphics memory that sets max model size. More memory = bigger models.';
+                case 'rating':
+                    return 'Overall system capability for AI model fine-tuning based on your hardware specs.';
+                default:
+                    return '';
             }
-            setTooltipVisible(id);
         };
-
-        const handleMouseLeave = () => {
-            setTooltipVisible(null);
-        };
-
         return (
-            <div 
-                ref={iconRef}
-                className="relative"
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-            >
+            <Tooltip content={getTooltipText(id)} side="right" width="w-80">
                 <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 hover:text-emerald-400 transition-colors cursor-help" />
-            </div>
+            </Tooltip>
         );
     };
 
@@ -207,33 +192,7 @@ export default function HardwareInfo({ hw }) {
     };
 
     return (
-        <div className="relative rounded-2xl shadow-xl flex-1 min-w-[340px] border border-[#385B4F] border-[0.3px]">
-            {/* Global tooltip */}
-            {tooltipVisible && (
-                <div 
-                    className="fixed bg-black text-white text-xs rounded-lg px-3 py-2 shadow-xl border border-gray-600 z-[99999]"
-                    style={{
-                        top: `${tooltipPosition.top}px`,
-                        left: `${tooltipPosition.left}px`,
-                        transform: 'translateY(-50%)', // Center vertically relative to the icon
-                        width: '280px', // Fixed width for consistent sizing
-                    }}
-                >
-                    {tooltipVisible === 'chip' && 'Apple Silicon chip model (M1, M2, M3, M4) that determines overall system capabilities.'}
-                    {tooltipVisible === 'storage' && 'Hard drive space for saving your work. More space = bigger models.'}
-                    {tooltipVisible === 'ram' && 'Unified memory shared between CPU and GPU. More memory = larger models and faster processing.'}
-                    {tooltipVisible === 'gpu-cores' && 'Number of GPU cores in your Apple Silicon chip. More cores = better parallel processing for AI training.'}
-                    {tooltipVisible === 'neural-engine' && 'Apple Neural Engine for accelerated machine learning operations (TOPS = Trillion Operations Per Second).'}
-                    {tooltipVisible === 'rating' && 'Overall system capability for AI model fine-tuning based on your Apple Silicon hardware specs.'}
-                    {/* Arrow pointing left or right depending on position */}
-                    {tooltipPosition.isLeftSide ? (
-                        <div className="absolute left-full top-1/2 transform -translate-y-1/2 w-0 h-0 border-t-4 border-b-4 border-l-4 border-transparent border-l-black"></div>
-                    ) : (
-                        <div className="absolute right-full top-1/2 transform -translate-y-1/2 w-0 h-0 border-t-4 border-b-4 border-r-4 border-transparent border-r-black"></div>
-                    )}
-                </div>
-            )}
-            
+        <div className="relative rounded-2xl shadow-xl flex-1 min-w-[340px] border border-[#385B4F] border-[0.3px] overflow-visible">
             <div className="absolute inset-0 opacity-[11%] pointer-events-none rounded-2xl overflow-hidden"
                 style={{
                     background:
@@ -241,7 +200,7 @@ export default function HardwareInfo({ hw }) {
                 }}
             />
             <div className="absolute inset-0 mix-blend-overlay pointer-events-none rounded-2xl overflow-hidden" />
-            <div className="relative z-10 px-3 py-1.5 sm:px-4 sm:py-2 md:px-6 md:py-2.5 lg:py-3 space-y-2 sm:space-y-2.5">
+            <div className="relative z-10 px-3 py-1.5 sm:px-4 sm:py-2 md:px-6 md:py-2.5 lg:py-3 space-y-2 sm:space-y-2.5 overflow-visible">
                 {/* storage path */}
                 {/* <InfoRow label="Storage Path :" isHeader={true}>
                     <div className="flex items-center gap-2 min-w-0">
@@ -270,20 +229,7 @@ export default function HardwareInfo({ hw }) {
 
                 <InfoRow
                     label={
-                        <div className="flex items-center gap-1">
-                            <span>Apple Silicon Chip</span>
-                            <TooltipIcon id="chip" />
-                        </div>
-                    }
-                    bullet={getChipBulletInfo(hw.cpu_model).value}
-                    isHeader={true}
-                >
-                    {hw.cpu_model || "Unknown"}
-                </InfoRow>
-
-                <InfoRow
-                    label={
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 overflow-visible">
                             <span>Available Storage</span>
                             <TooltipIcon id="storage" />
                         </div>
@@ -295,8 +241,8 @@ export default function HardwareInfo({ hw }) {
 
                 <InfoRow
                     label={
-                        <div className="flex items-center gap-1">
-                            <span>Total RAM (Unified)</span>
+                        <div className="flex items-center gap-1 overflow-visible">
+                            <span>Total RAM</span>
                             <TooltipIcon id="ram" />
                         </div>
                     }
@@ -307,21 +253,33 @@ export default function HardwareInfo({ hw }) {
 
                 <InfoRow
                     label={
-                        <div className="flex items-center gap-1">
-                            <span>GPU Cores</span>
-                            <TooltipIcon id="gpu-cores" />
+                        <div className="flex items-center gap-1 overflow-visible">
+                            <span>Available CPU</span>
+                            <TooltipIcon id="cpu" />
                         </div>
                     }
                     bullet={getGpuCoresBulletInfo(hw.gpu_cores).value}
                 >
-                    {hw.gpu_cores}
+                    {hw.cpu_model}
+                </InfoRow>
+
+                <InfoRow 
+                    label={
+                        <div className="flex items-center gap-1 overflow-visible">
+                            <span>Available GPU</span>
+                            <TooltipIcon id="gpu" />
+                        </div>
+                    }
+                    bullet={getEvalScoreBulletInfo(hw.gpu_eval_score).value}
+                >
+                    {hw.gpu_model}
                 </InfoRow>
 
                 <InfoRow
                     label={
-                        <div className="flex items-center gap-1">
-                            <span>Neural Engine</span>
-                            <TooltipIcon id="neural-engine" />
+                        <div className="flex items-center gap-1 overflow-visible">
+                            <span>GPU Total Memory</span>
+                            <TooltipIcon id="gpu-memory" />
                         </div>
                     }
                     bullet={getNeuralEngineBulletInfo(hw.neural_engine_tops).value}
@@ -331,7 +289,7 @@ export default function HardwareInfo({ hw }) {
 
                 <InfoRow
                     label={
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 overflow-visible">
                             <span>Fine-Tuning Capability Rating</span>
                             <TooltipIcon id="rating" />
                         </div>
