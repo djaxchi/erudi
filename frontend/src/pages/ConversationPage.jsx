@@ -327,7 +327,7 @@ export default function ConversationPage() {
   };
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen overflow-hidden">
       <Sidebar 
         disabled={loading} 
         showCollapsible={true}
@@ -338,7 +338,6 @@ export default function ConversationPage() {
       <aside className={`relative bg-[#272727] text-white transition-all duration-300 ease-in-out ${
         collapsed ? "w-0 p-0" : "w-80 p-6 space-y-6"
       }`}>
-        {/* Content only when expanded */}
         {!collapsed && (
           <>
             <h1 className="text-3xl font-bold">History</h1>

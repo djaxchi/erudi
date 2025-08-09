@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+html, body, #root {
+  height: 100%;
+  overflow: hidden; /* prevent page scroll */
+  overscroll-behavior: contain;
+}
+
 .custom-scroll::-webkit-scrollbar {
   width: 6px;
 }
@@ -12,7 +18,6 @@
   height: 10%; /* Only works in some browsers */
   margin: 20px 0; /* Adds space on top and bottom */
 }
-
 
 .custom-scroll {
   scrollbar-width: thin;

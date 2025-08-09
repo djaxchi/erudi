@@ -1,6 +1,6 @@
-
 // src/components/CollapsibleSection.jsx
 import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from "react";
+import Tooltip from "./Tooltip";
 import {
   ChevronDown,
   ChevronRight,
@@ -19,8 +19,6 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [tooltipVisible, setTooltipVisible] = useState(false);
-  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
   const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -31,43 +29,16 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
     reloadLocalModels
   }));
 
-  // TooltipIcon component
+  // TooltipIcon component - Simple CSS-based tooltip
   const TooltipIcon = () => {
-    const iconRef = useRef(null);
-    
-    const handleMouseEnter = () => {
-      if (iconRef.current) {
-        const rect = iconRef.current.getBoundingClientRect();
-        const tooltipWidth = 300; // Approximate tooltip width
-        const windowWidth = window.innerWidth;
-        
-        // Check if tooltip would go off-screen to the right
-        const wouldOverflow = rect.right + 8 + tooltipWidth > windowWidth;
-        
-        setTooltipPosition({
-          top: rect.top + window.scrollY + (rect.height / 2), // Center vertically with the icon
-          left: wouldOverflow 
-            ? rect.left + window.scrollX - 8 - tooltipWidth // Position to the left if would overflow
-            : rect.right + window.scrollX + 8, // 8px to the right of the icon
-          isLeftSide: wouldOverflow
-        });
-      }
-      setTooltipVisible(true);
-    };
-
-    const handleMouseLeave = () => {
-      setTooltipVisible(false);
-    };
+    const tooltipText = title === "Local Models" 
+      ? "Models downloaded and ready to use on your computer. These are available for chat, and specialization!"
+      : "Models available for download. Click on any model to download it to your local storage.";
 
     return (
-      <div 
-        ref={iconRef}
-        className="relative"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
+      <Tooltip content={tooltipText} side="right" width="w-80">
         <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 hover:text-emerald-400 transition-colors cursor-help" />
-      </div>
+      </Tooltip>
     );
   };
 
@@ -170,30 +141,6 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
 
   return (
     <>
-      {/* Global tooltip */}
-      {tooltipVisible && (
-        <div 
-          className="fixed bg-black text-white text-xs rounded-lg px-3 py-2 shadow-xl border border-gray-600 z-[99999]"
-          style={{
-            top: `${tooltipPosition.top}px`,
-            left: `${tooltipPosition.left}px`,
-            transform: 'translateY(-50%)', // Center vertically relative to the icon
-            width: '280px', // Fixed width for consistent sizing
-          }}
-        >
-          {title === "Local Models" 
-            ? "Models downloaded and ready to use on your computer. These are available for chat, and specialization!"
-            : "Models available for download. Click on any model to download it to your local storage."
-          }
-          {/* Arrow pointing left or right depending on position */}
-          {tooltipPosition.isLeftSide ? (
-            <div className="absolute left-full top-1/2 transform -translate-y-1/2 w-0 h-0 border-t-4 border-b-4 border-l-4 border-transparent border-l-black"></div>
-          ) : (
-            <div className="absolute right-full top-1/2 transform -translate-y-1/2 w-0 h-0 border-t-4 border-b-4 border-r-4 border-transparent border-r-black"></div>
-          )}
-        </div>
-      )}
-
       <div className="text-gray-200 w-full">
         {/* Section header */}
         <div
@@ -221,8 +168,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
           )}
         </div>
 
-        {/* Section body */}
-        {openSection && (
+        <div className={`grid transition-all duration-300 ease-in-out ${openSection ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
           <div className="px-10 py-2 text-sm text-gray-500 max-h-[35vh] max-w-full overflow-y-auto overflow-x-visible custom-scroll">
             {loading ? (
               <div className="flex items-center gap-2 py-1">
@@ -235,10 +181,10 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
                     key={m.id}
                     className="flex items-center justify-between py-1 max-w-full group"
                   >
-                    <span className="flex-1">{m.name}</span>
+                    <span className="flex-1 pr-2 truncate">{m.name}</span>
                     <button
                       onClick={(e) => handleDeleteClick(e, m)}
-                      className="text-gray-400 hover:text-red-400 transition-colors p-1"
+                      className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:text-red-400 p-1"
                       title="Delete model"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -258,7 +204,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
               <p className="italic">Nothing here…</p>
             )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Error Modal */}
