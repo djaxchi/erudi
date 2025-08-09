@@ -1,72 +1,34 @@
-import React, { useState } from "react";
+import React from "react";
 
-export default function Tooltip({ children, content, position = "top" }) {
-    const [isVisible, setIsVisible] = useState(false);
+// Reusable Tooltip component
+export default function Tooltip({ children, content, side = "right", width = "w-64" }) {
+  const positionClasses = {
+    top: "bottom-full left-1/2 -translate-x-1/2 mb-2",
+    bottom: "top-full left-1/2 -translate-x-1/2 mt-2",
+    left: "right-full top-1/2 -translate-y-1/2 mr-2",
+    right: "left-full top-1/2 -translate-y-1/2 ml-2",
+  }[side] || "left-full top-1/2 -translate-y-1/2 ml-2";
 
-    const getPositionClasses = () => {
-        switch (position) {
-            case "top":
-                return "bottom-full left-1/2 transform -translate-x-1/2 mb-2";
-            case "bottom":
-                return "top-full left-1/2 transform -translate-x-1/2 mt-2";
-            case "left":
-                return "right-full top-1/2 transform -translate-y-1/2 mr-2";
-            case "right":
-                return "left-full top-1/2 transform -translate-y-1/2 ml-2";
-            default:
-                return "bottom-full left-1/2 transform -translate-x-1/2 mb-2";
-        }
-    };
+  const arrowPosition = {
+    right: "left-0 -translate-x-1/2 top-1/2 -translate-y-1/2",
+    left: "right-0 translate-x-1/2 top-1/2 -translate-y-1/2",
+    top: "left-1/2 -translate-x-1/2 bottom-0 translate-y-1/2",
+    bottom: "left-1/2 -translate-x-1/2 top-0 -translate-y-1/2",
+  }[side] || "left-0 -translate-x-1/2 top-1/2 -translate-y-1/2";
 
-    const getArrowClasses = () => {
-        switch (position) {
-            case "top":
-                return "top-full left-1/2 transform -translate-x-1/2 border-l-transparent border-r-transparent border-b-transparent border-t-gray-800";
-            case "bottom":
-                return "bottom-full left-1/2 transform -translate-x-1/2 border-l-transparent border-r-transparent border-t-transparent border-b-gray-800";
-            case "left":
-                return "left-full top-1/2 transform -translate-y-1/2 border-t-transparent border-b-transparent border-r-transparent border-l-gray-800";
-            case "right":
-                return "right-full top-1/2 transform -translate-y-1/2 border-t-transparent border-b-transparent border-l-transparent border-r-gray-800";
-            default:
-                return "top-full left-1/2 transform -translate-x-1/2 border-l-transparent border-r-transparent border-b-transparent border-t-gray-800";
-        }
-    };
-
-    const handleMouseEnter = () => {
-        console.log('Tooltip mouse enter - content:', content);
-        setIsVisible(true);
-    };
-
-    const handleMouseLeave = () => {
-        console.log('Tooltip mouse leave');
-        setIsVisible(false);
-    };
-
-    return (
-        <div 
-            className="relative inline-block"
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            style={{ zIndex: 9999 }}
-        >
-            {children}
-            {isVisible && (
-                <div 
-                    className={`absolute ${getPositionClasses()}`}
-                    style={{ zIndex: 99999 }}
-                >
-                    <div className="bg-gray-900 text-white text-sm rounded-lg px-4 py-3 max-w-xs shadow-2xl border border-gray-600">
-                        {content}
-                    </div>
-                    {/* Arrow */}
-                    <div className={`absolute w-0 h-0 border-4 ${getArrowClasses()}`}></div>
-                </div>
-            )}
-            {/* Debug indicator */}
-            {isVisible && (
-                <div className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full" style={{ zIndex: 100000 }}></div>
-            )}
-        </div>
-    );
+  return (
+    <span className="relative group inline-block align-middle">
+      {children}
+      <span
+        className={`pointer-events-none absolute ${positionClasses} ${width} opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100 transition-all duration-300 ease-out z-[99999]`}
+      >
+        <span className="relative block px-4 py-3 text-sm text-gray-200 bg-gradient-to-br from-[#1a1a1a] via-[#2a2a2a] to-[#1a1a1a] rounded-xl shadow-2xl border border-emerald-500/20 backdrop-blur-sm font-normal">
+          {content}
+          <span className={`absolute w-3 h-3 ${arrowPosition} z-[-1]`}>
+            <span className="block w-full h-full rotate-45 bg-[#1a1a1a] border border-emerald-500/20" />
+          </span>
+        </span>
+      </span>
+    </span>
+  );
 }
