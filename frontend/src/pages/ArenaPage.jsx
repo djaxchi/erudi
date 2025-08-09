@@ -24,6 +24,8 @@ function makePanel(id, modelName = "", models = []) {
     customPrompt: DEFAULT_SETTINGS.customPrompt,
     messages: [],
     showPromptModal: false,
+    isAnimating: false,
+    isRemoving: false,
   };
 }
 
@@ -32,6 +34,7 @@ export default function ArenaPage() {
   const [panels, setPanels] = useState([]);
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
+  const [addButtonAnimating, setAddButtonAnimating] = useState(false);
 
   const streamingPanels = useRef(new Set());
   const buffersRef = useRef({});
@@ -167,13 +170,37 @@ export default function ArenaPage() {
 
   const handleAddPanel = () => {
     if (panels.length >= MAX_PANELS) return;
+
+    // Animate the button
+    setAddButtonAnimating(true);
+    setTimeout(() => setAddButtonAnimating(false), 200);
+
     const nextId = panels.length ? Math.max(...panels.map((p) => p.id)) + 1 : 0;
     const defaultModel = models[panels.length % models.length]?.name || "";
-    setPanels((prev) => [...prev, makePanel(nextId, defaultModel, models)]);
+    const newPanel = {
+      ...makePanel(nextId, defaultModel, models),
+      isAnimating: true,
+    };
+
+    setPanels((prev) => [...prev, newPanel]);
+
+    // Trigger animation
+    setTimeout(() => {
+      setPanels((prev) =>
+        prev.map((p) => (p.id === nextId ? { ...p, isAnimating: false } : p))
+      );
+    }, 50);
   };
 
-  const handleDeletePanel = (panelId) =>
-    setPanels((prev) => prev.filter((p) => p.id !== panelId));
+  const handleDeletePanel = (panelId) => {
+    setPanels((prev) =>
+      prev.map((p) => (p.id === panelId ? { ...p, isRemoving: true } : p))
+    );
+
+    setTimeout(() => {
+      setPanels((prev) => prev.filter((p) => p.id !== panelId));
+    }, 300);
+  };
 
   let gridClass = "";
   if (panels.length === 1) {
@@ -189,7 +216,13 @@ export default function ArenaPage() {
   const renderChatPanel = (panel) => (
     <GradientBox
       key={panel.id}
-      className="flex flex-col mx-2 min-w-[320px] h-[80vh]"
+      className={`flex flex-col mx-2 min-w-[320px] h-[80vh] transition-all duration-300 ease-in-out ${
+        panel.isAnimating
+          ? "opacity-0 transform scale-95 translate-y-4"
+          : panel.isRemoving
+          ? "opacity-0 transform scale-95 translate-y-4"
+          : "opacity-100 transform scale-100 translate-y-0"
+      }`}
     >
       <div className="flex items-start justify-between pb-2 gap-2">
         <div className="flex-1 min-w-0">
@@ -256,8 +289,10 @@ export default function ArenaPage() {
           {panels.map(renderChatPanel)}
         </div>
         <button
-          className={`fixed bottom-8 right-8 z-50 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full w-14 h-14 flex items-center justify-center text-4xl shadow-lg transition-all duration-200 ${
+          className={`fixed bottom-8 right-8 z-50 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full w-14 h-14 flex items-center justify-center text-4xl leading-none shadow-lg transition-all duration-200 ${
             panels.length >= MAX_PANELS ? "opacity-50 cursor-not-allowed" : ""
+          } ${
+            addButtonAnimating ? "transform scale-110" : "transform scale-100"
           }`}
           onClick={handleAddPanel}
           disabled={panels.length >= MAX_PANELS}
@@ -277,41 +312,45 @@ export default function ArenaPage() {
           />
         </div>
       </div>
-      
+
       {/* Render all modals at top level to ensure proper z-index stacking */}
-      {panels.map((panel) => 
-        panel.showPromptModal && (
-          <div key={`modal-${panel.id}`} className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
-            <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6 relative z-[10000]">
-              <h2 className="text-xl font-semibold mb-4">
-                Personalize the prompt
-              </h2>
-              <textarea
-                className="w-full h-40 border rounded p-2 mb-4"
-                value={panel.customPrompt}
-                onChange={(e) =>
-                  handleSettingsChange(panel.id, {
-                    customPrompt: e.target.value,
-                  })
-                }
-              />
-              <div className="flex justify-end space-x-2">
-                <button
-                  onClick={() => handleCustomizePrompt(panel.id, false)}
-                  className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleCustomizePrompt(panel.id, false)}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
-                >
-                  Save
-                </button>
+      {panels.map(
+        (panel) =>
+          panel.showPromptModal && (
+            <div
+              key={`modal-${panel.id}`}
+              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]"
+            >
+              <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6 relative z-[10000]">
+                <h2 className="text-xl font-semibold mb-4">
+                  Personalize the prompt
+                </h2>
+                <textarea
+                  className="w-full h-40 border rounded p-2 mb-4"
+                  value={panel.customPrompt}
+                  onChange={(e) =>
+                    handleSettingsChange(panel.id, {
+                      customPrompt: e.target.value,
+                    })
+                  }
+                />
+                <div className="flex justify-end space-x-2">
+                  <button
+                    onClick={() => handleCustomizePrompt(panel.id, false)}
+                    className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleCustomizePrompt(panel.id, false)}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )
+          )
       )}
     </div>
   );
