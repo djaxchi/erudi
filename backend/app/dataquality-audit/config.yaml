@@ -1,0 +1,40 @@
+thresholds:
+  min_file_size: 100
+  min_tokens: 50
+  max_tokens: 8000
+  spam_threshold: 0.5
+  noise_threshold: 0.1
+  caps_threshold: 0.15
+  incomplete_threshold: 0.2
+  min_quality_score: 0.6
+  min_readability: 30
+  min_language_confidence: 0.7
+  similarity_threshold: 0.85
+  quality_thresholds:
+    excellent: 0.8
+    good: 0.6
+    average: 0.4
+    poor: 0.0
+scoring:
+  weights:
+    quality: 0.4
+    diversity: 0.2
+    consistency: 0.2
+    relevance: 0.2
+similarity:
+  model_name: paraphrase-MiniLM-L6-v2
+  batch_size: 32
+  sample_size: 100
+  device: cpu
+target_languages:
+  - en
+  - fr
+preferred_content_types:
+  - instructions
+  - qa_pair
+ignored_dirs:
+  - .git
+  - __pycache__
+allowed_extensions:
+  - .txt
+logging_level: INFO
