@@ -1,59 +1,61 @@
-END-USER LICENSE AGREEMENT (EULA) FOR ERUDI
+﻿END-USER LICENSE AGREEMENT (EULA) FOR ERUDI
+Version: 1.0 - 2025-08-10
 
-IMPORTANT – READ CAREFULLY: This End-User License Agreement (“Agreement”) is a legal contract between you (either an individual or a single entity, “You” or “Licensee”) and Erudi. By downloading, installing, or using Erudi (the “Software”), You agree to be bound by the terms of this Agreement.
+IMPORTANT - READ CAREFULLY: This End-User License Agreement ("Agreement") is a legal contract between you (an individual consumer or a single legal entity, "You" or "Licensee") and Erudi ("Erudi"). By downloading, installing, or using the Erudi software (the "Software"), You agree to be bound by this Agreement.
 
-DEFINITIONS
-1.1 “Software” means the Erudi application and any associated media, printed materials, and online or electronic documentation provided by Erudi.
-1.2 “License Key” means any code or credential provided to You to activate or unlock certain features of the Software.
-1.3 “Third-Party Components” means any open source or proprietary software included within or bundled with the Software.
+1. DEFINITIONS
+1.1 "Software" means the Erudi application in object code and related documentation made available by Erudi.
+1.2 "License Key" means any code, token, or credential enabling activation, feature unlocking, or usage metering.
+1.3 "Authorized Devices" means the number of devices permitted in Your purchase (default: one (1) device).
+1.4 "Third-Party Components" means open-source or proprietary components included with the Software.
 
-LICENSE GRANT
-2.1 Subject to the terms and conditions of this Agreement, Erudi grants You a limited, non-exclusive, non-transferable, revocable license to install and use one copy of the Software solely for Your personal or internal business purposes.
-2.2 You may install the Software on a single Windows-compatible device. Additional installations or copies require separate licenses.
+2. LICENSE GRANT (PER-DEVICE)
+2.1 Subject to this Agreement and payment of applicable fees, Erudi grants You a limited, non-exclusive, non-transferable, revocable license to install and run the Software on the Authorized Devices for Your personal use.
+2.2 One license permits installation and use on a single Windows-compatible device unless You purchase additional device licenses.
+2.3 You may transfer an installation to a replacement device provided You first uninstall or remove the Software from the prior device. Erudi may enforce reasonable technical limits to prevent simultaneous use beyond the number of Authorized Devices.
 
-LICENSE RESTRICTIONS
-3.1 You shall not (nor permit others to):
-a) Reverse engineer, decompile, disassemble, or otherwise attempt to derive the source code of the Software, except to the extent such restriction is prohibited by applicable law;
-b) Modify, translate, or create derivative works based on the Software;
-c) Rent, lease, sublicense, or distribute the Software to third parties;
-d) Remove, alter, or obscure any proprietary notices, labels, or marks in the Software;
-e) Use the Software in any manner that violates applicable export control laws or regulations.
+3. LICENSE RESTRICTIONS
+You shall not (and shall not permit others to): (a) copy, distribute, publish, sell, rent, lease, lend, sublicense, host, or provide the Software to third parties; (b) modify, translate, adapt, or create derivative works; (c) reverse engineer, decompile, or disassemble, or otherwise attempt to derive source code or underlying ideas, except to the extent such restriction is prohibited by law; (d) circumvent or remove any License Key, security, or usage controls; (e) use the Software as part of a service bureau, outsourcing, or software-as-a-service (SaaS) offering; (f) use the Software for competitive analysis, to build a competing product, or for public benchmarking without Erudi's prior written consent; (g) remove, alter, or obscure proprietary notices.
 
-PROPRIETARY RIGHTS
-4.1 The Software and all intellectual property rights therein, including copyrights, patents, trade secrets, and trademarks, are and shall remain the sole property of Erudi or its licensors. The Software is licensed, not sold.
-4.2 Third-Party Components are licensed under their respective licenses; You agree to abide by those license terms as applicable.
+4. LICENSE KEY AND VALIDATION
+You acknowledge the Software may require a License Key and may periodically validate the key and usage limits. Validation is limited to license metadata and does not access Your content. Erudi may suspend or terminate access if a key is invalid, expired, or used outside licensed limits.
 
-OPEN SOURCE COMPONENTS
-5.1 A list of open source components and their licenses is provided in the “NOTICE” file accompanying the Software. Your use of Third-Party Components is subject to those licenses.
+5. PROPRIETARY RIGHTS
+The Software is licensed, not sold. Erudi and its licensors retain all rights, title, and interest, including intellectual property rights. No rights are granted by implication.
 
-UPDATES AND UPGRADES
-6.1 Erudi may, from time to time, provide updates, patches, or new releases of the Software. Such updates may be provided automatically or manually.
-6.2 This Agreement applies to all updates or upgrades unless a separate license accompanies such update, in which case the separate license governs.
+6. USER CONTENT AND PRIVACY
+6.1 As between the parties, You retain all rights to inputs and outputs processed by the Software ("User Content"). Erudi does not claim ownership of User Content and processes it solely to provide the Software's functionality.
+6.2 The Software is designed for local use. If any optional diagnostics or telemetry are available, they are off by default, limited to technical or usage data, and handled per Erudi's Privacy Policy (https://erudi.app/privacy). Where provided, You may enable or disable optional telemetry in settings.
 
-TERM AND TERMINATION
-7.1 This Agreement is effective until terminated. Your rights under this Agreement will terminate automatically without notice if You fail to comply with any term(s) hereof.
-7.2 Upon termination, You must cease all use of the Software and destroy all copies, including backup copies.
+7. THIRD-PARTY COMPONENTS
+A list of components and licenses is provided in THIRD-PARTY-NOTICES.txt. Those licenses govern their components to the extent of any conflict with this Agreement.
 
-WARRANTY DISCLAIMER
-8.1 THE SOFTWARE IS PROVIDED “AS IS” AND “AS AVAILABLE” WITHOUT WARRANTY OF ANY KIND. ERUDI AND ITS LICENSORS DISCLAIM ALL WARRANTIES, WHETHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTY OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
-8.2 ERUDI DOES NOT WARRANT THAT THE SOFTWARE WILL OPERATE UNINTERRUPTED OR ERROR-FREE.
+8. UPDATES
+Erudi may provide or automatically install updates, patches, or new releases. Unless accompanied by new terms, updates are governed by this Agreement.
 
-LIMITATION OF LIABILITY
-9.1 TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, ERUDI AND ITS LICENSORS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES WHATSOEVER, INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, DATA, OR BUSINESS INTERRUPTION, ARISING OUT OF OR IN CONNECTION WITH THIS AGREEMENT OR THE USE OF OR INABILITY TO USE THE SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
-9.2 ERUDI’S AGGREGATE LIABILITY FOR DAMAGES HEREUNDER SHALL NOT EXCEED THE AMOUNT PAID BY YOU FOR THE SOFTWARE, OR ONE HUNDRED DOLLARS (US $100), WHICHEVER IS LESS.
+9. HIGH-RISK USE
+The Software is not designed for use in hazardous environments requiring fail-safe performance (for example, medical devices, aviation, or nuclear facilities). Do not use the Software where failure could result in death, personal injury, or severe environmental damage.
 
-EXPORT CONTROLS
-10.1 You agree to comply with all applicable export and import laws and regulations. You shall not export or re-export the Software in violation of any such laws.
+10. TERM AND TERMINATION
+This Agreement remains effective until terminated. Erudi may terminate upon notice for Your material breach or use outside the scope of license. Upon termination, You must cease use and destroy all copies. Sections 3 through 5, 6.1, 7 through 13 survive termination.
 
-GOVERNING LAW AND DISPUTE RESOLUTION
-11.1 This Agreement shall be governed by and construed in accordance with the laws of France, excluding its conflict of law provisions.
-11.2 Any legal action or proceeding arising under this Agreement shall be brought exclusively in the competent courts of Paris, France.
+11. WARRANTY DISCLAIMER
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE." ERUDI DISCLAIMS ALL WARRANTIES, EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. ERUDI DOES NOT WARRANT UNINTERRUPTED OR ERROR-FREE OPERATION. NOTHING IN THIS AGREEMENT AFFECTS YOUR NON-WAIVABLE STATUTORY RIGHTS AS A CONSUMER.
 
-SEVERABILITY
-12.1 If any provision of this Agreement is held to be invalid or unenforceable, such provision shall be struck and the remaining provisions shall remain in full force and effect.
+12. LIMITATION OF LIABILITY
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, ERUDI WILL NOT BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR LOST PROFITS, REVENUE, GOODWILL, OR DATA. ERUDI'S TOTAL LIABILITY FOR ALL CLAIMS WILL NOT EXCEED THE FEES YOU PAID FOR THE SOFTWARE IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM (OR EUR 100, WHICHEVER IS GREATER). NOTHING IN THIS AGREEMENT LIMITS LIABILITY THAT CANNOT BE LIMITED BY LAW.
 
-ENTIRE AGREEMENT
-13.1 This Agreement constitutes the entire agreement between You and Erudi relating to the Software and supersedes all prior or contemporaneous oral or written agreements.
+13. EXPORT AND SANCTIONS
+You will comply with applicable export, import, and sanctions laws (including EU and U.S.). Do not export or re-export the Software in violation of such laws.
 
-CONTACT INFORMATION
-If you have any questions regarding this Agreement, or wish to contact Erudi for any reason, you may email erudipro@gmail.com.
+14. GOVERNING LAW AND VENUE; CONSUMER RIGHTS
+This Agreement is governed by French law, excluding its conflict-of-law rules. The courts of Paris, France have jurisdiction. If You are a consumer, mandatory consumer protections (including any rights under the French Consumer Code and applicable EU consumer law) and the jurisdiction of Your local courts may apply and prevail where required.
+
+15. ASSIGNMENT
+You may not assign or transfer this Agreement (by law or otherwise) without Erudi's prior written consent. Any unauthorized assignment is void.
+
+16. SEVERABILITY; ENTIRE AGREEMENT; ORDER OF PRECEDENCE
+If any provision is held invalid, the remainder will continue in effect. This Agreement (together with Your purchase terms and THIRD-PARTY-NOTICES.txt) is the entire agreement and supersedes prior terms. In case of conflict between this Agreement and third-party licenses in THIRD-PARTY-NOTICES.txt, those third-party licenses govern their components.
+
+CONTACT: erudipro@gmail.com - (c) 2025 Erudi. All rights reserved.
+SPDX-License-Identifier: LicenseRef-Erudi-Commercial

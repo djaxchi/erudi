@@ -1,19 +1,21 @@
 {
   "name": "erudi",
   "productName": "erudi",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Erudi is a modern, windows desktop application designed to query and fine-tune models locally, on a no-code friendly-user interface and with your own data.",
   "main": ".webpack/main",
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
-    "make": "electron-forge make",
+    "backend": "node scripts/build-backend.js",
+    "frontend": "electron-forge make",
+    "build-full": "node scripts/build-full.js",
     "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\""
   },
   "keywords": [],
-  "author": "Nabil Dakkoune <nabil.dakkoune.86@hotmail.com>",
-  "license": "MIT",
+  "author": "Erudi AI",
+  "license": "EULA",
   "devDependencies": {
     "@babel/core": "^7.27.1",
     "@babel/preset-react": "^7.27.1",

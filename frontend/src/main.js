@@ -15,7 +15,8 @@ async function createWindow() {
 
   backendProc = spawn(backendExe, [], {
     cwd: backendDir,
-    windowsHide: false,           // Show native console window
+    // Hide backend console window in packaged mode, show in dev for debugging
+    windowsHide: app.isPackaged,
     stdio: ["ignore", "pipe", "pipe"]
   });
 
@@ -59,8 +60,9 @@ async function createWindow() {
     console.error("Window is unresponsive");
   });
 
-  // 4) Open DevTools and pipe backend logs
-  mainWindow.webContents.openDevTools({ mode: "detach" });
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools({ mode: "detach" });
+  }
   backendProc.stdout.on("data", chunk => {
     const msg = chunk.toString();
     console.log("[BACKEND]", msg);
