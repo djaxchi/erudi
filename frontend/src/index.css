@@ -4,22 +4,53 @@
 
 html, body, #root {
   height: 100%;
-  overflow: hidden; /* prevent page scroll */
+  overflow: hidden; 
   overscroll-behavior: contain;
 }
 
+/* Discreet, professional custom scrollbar */
 .custom-scroll::-webkit-scrollbar {
-  width: 6px;
+  width: 8px; 
+}
+
+.custom-scroll::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .custom-scroll::-webkit-scrollbar-thumb {
-  background-color: #10b98170;
+  background-color: rgba(148, 163, 184, 0.35);
   border-radius: 9999px;
-  height: 10%; /* Only works in some browsers */
-  margin: 20px 0; /* Adds space on top and bottom */
+  border: 2px solid transparent; 
+  background-clip: padding-box;
 }
 
+.custom-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.55);
+}
+
+/* Aggressively hide scrollbar arrows/buttons (Chromium/Electron) */
+.custom-scroll::-webkit-scrollbar-button,
+.custom-scroll::-webkit-scrollbar-button:single-button,
+.custom-scroll::-webkit-scrollbar-button:horizontal:decrement,
+.custom-scroll::-webkit-scrollbar-button:horizontal:increment,
+.custom-scroll::-webkit-scrollbar-button:vertical:decrement,
+.custom-scroll::-webkit-scrollbar-button:vertical:increment,
+.custom-scroll::-webkit-scrollbar-button:start:decrement,
+.custom-scroll::-webkit-scrollbar-button:end:increment {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+/* Ensure no decorative caps at ends */
+.custom-scroll::-webkit-scrollbar-track-piece:start,
+.custom-scroll::-webkit-scrollbar-track-piece:end {
+  background: transparent;
+}
+
+/* Firefox */
 .custom-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #10b98141 #1f29372a;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
 }

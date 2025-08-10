@@ -169,7 +169,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
         </div>
 
         <div className={`grid transition-all duration-300 ease-in-out ${openSection ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-          <div className="px-10 py-2 text-sm text-gray-500 max-h-[35vh] max-w-full overflow-y-auto overflow-x-visible custom-scroll">
+          <div className="px-10 py-2 text-sm text-gray-500 max-h-[35vh] max-w-full overflow-y-auto overflow-x-hidden break-words custom-scroll">
             {loading ? (
               <div className="flex items-center gap-2 py-1">
                 <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
@@ -193,7 +193,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
                 ) : (
                   <p
                     key={m.id}
-                    className="py-1 max-w-full cursor-pointer hover:text-blue-500"
+                    className="py-1 max-w-full cursor-pointer hover:text-blue-500 truncate"
                     onClick={() => handleModelClick(m)}
                   >
                     {m.name}

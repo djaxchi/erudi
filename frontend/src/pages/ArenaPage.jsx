@@ -6,6 +6,7 @@ import { askArena } from "../services/arenaService.js";
 import { Trash } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
 import { API_BASE_URL } from "../config/api";
+import TypingIndicator from "../components/TypingIndicator";
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
@@ -25,6 +26,9 @@ function makePanel(id, modelName = "", models = []) {
     customPrompt: DEFAULT_SETTINGS.customPrompt,
     messages: [],
     showPromptModal: false,
+    // new per-panel runtime flags
+    isStreaming: false,
+    firstReplyPending: false,
   };
 }
 
@@ -77,6 +81,7 @@ export default function ArenaPage() {
     if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
     setLoading(true);
 
+    // Initialize placeholders and set per-panel flags
     const withPlaceholders = panels.map((panel) => ({
       ...panel,
       messages: [
@@ -84,6 +89,8 @@ export default function ArenaPage() {
         { role: "user", content: inputValue },
         { role: "llm", content: "" },
       ],
+      isStreaming: true,
+      firstReplyPending: panel.messages.length === 0,
     }));
     setPanels(withPlaceholders);
 
@@ -137,6 +144,7 @@ export default function ArenaPage() {
       if (!llm) {
         buffersRef.current[panel.id].push("[Model not found]");
         streamingPanels.current.delete(panel.id);
+        setPanels((prev) => prev.map((p) => (p.id === panel.id ? { ...p, isStreaming: false, firstReplyPending: false } : p)));
         if (streamingPanels.current.size === 0) setLoading(false);
         return;
       }
@@ -149,16 +157,23 @@ export default function ArenaPage() {
         maxNewTokens: panel.maxTokens,
         customPrompt: panel.customPrompt,
         onStreamChunk: (chunk) => {
+          // First chunk received: clear the first-reply note for this panel
+          if (panel.firstReplyPending) {
+            setPanels((prev) => prev.map((p) => (p.id === panel.id ? { ...p, firstReplyPending: false } : p)));
+            panel.firstReplyPending = false; // update local copy to avoid multiple sets
+          }
           buffersRef.current[panel.id].push(chunk);
         },
       })
         .then(() => {
           streamingPanels.current.delete(panel.id);
+          setPanels((prev) => prev.map((p) => (p.id === panel.id ? { ...p, isStreaming: false } : p)));
           if (streamingPanels.current.size === 0) setLoading(false);
         })
         .catch(() => {
           buffersRef.current[panel.id].push("[Erreur]");
           streamingPanels.current.delete(panel.id);
+          setPanels((prev) => prev.map((p) => (p.id === panel.id ? { ...p, isStreaming: false, firstReplyPending: false } : p)));
           if (streamingPanels.current.size === 0) setLoading(false);
         });
     });
@@ -242,12 +257,23 @@ export default function ArenaPage() {
             {msg.content}
           </div>
         ))}
+        {/* Per-panel typing indicator and first-message hint */}
+        {panel.isStreaming && (
+          <div className="self-start w-fit max-w-[90%] p-2 text-white">
+            <TypingIndicator />
+            {panel.firstReplyPending && (
+              <p className="mt-2 text-xs text-gray-400">
+                First response may take a bit longer while the model loads…
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </GradientBox>
   );
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen overflow-hidden">
       <Sidebar disabled={loading} />
       <main
         className="flex-1 flex flex-col bg-[#071b18] relative overflow-auto custom-scroll"
