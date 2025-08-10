@@ -7,6 +7,7 @@ import { ask } from "../services/conversationService";
 import HeaderBar from "../components/HeaderBar";
 import { Copy, Check, Star } from "lucide-react";
 import { API_BASE_URL } from "../config/api";
+import TypingIndicator from "../components/TypingIndicator";
 
 export default function ConversationPage() {
   const { id } = useParams();
@@ -32,6 +33,7 @@ export default function ConversationPage() {
     maxTokens: 200
   })
   const [collapsed, setCollapsed] = useState(false);
+  const [firstReplyPending, setFirstReplyPending] = useState(false);
 
   const toggleSidebar = () => {
     setCollapsed((prev) => !prev);
@@ -104,6 +106,7 @@ export default function ConversationPage() {
       
       if (isFirstMessage) {
         setCurrentTitle("");
+        setFirstReplyPending(true);
       }
 
       const userMessage = {
@@ -174,6 +177,7 @@ export default function ConversationPage() {
         if (responseRes.ok) {
           const reader = responseRes.body.getReader();
           const decoder = new TextDecoder("utf-8");
+          let gotFirstChunk = false;
 
           try {
             while (true) {
@@ -181,6 +185,13 @@ export default function ConversationPage() {
               if (done) break;
 
               const chunk = decoder.decode(value, { stream: true });
+
+              if (!gotFirstChunk) {
+                gotFirstChunk = true;
+                setLoading(false);
+                setFirstReplyPending(false);
+              }
+
               assistantMessage.content += chunk;
               setMessages((prev) =>
                 prev.map((msg) =>
@@ -242,6 +253,7 @@ export default function ConversationPage() {
       
       if (isFirstMessage) {
         setTimeout(() => setCurrentTitle(""), 3000);
+        setFirstReplyPending(false);
       }
       
       setLoading(false);
@@ -407,7 +419,8 @@ export default function ConversationPage() {
             msOverflowStyle: "none",
           }}
         >
-          <style>{`::-webkit-scrollbar { display: none; }`}</style>          <div className="flex flex-col gap-6">
+          <style>{`::-webkit-scrollbar { display: none; }`}</style>
+          <div className="flex flex-col gap-6">
             {messages.map((msg) => {
               const isUser = msg.sender === 'user';
               const alignmentClass = isUser ? 'items-end' : 'items-start';
@@ -457,6 +470,20 @@ export default function ConversationPage() {
                  </div>
                );
              })}
+
+            {/* Typing indicator while awaiting backend response */}
+            {loading && (
+              <div className="group flex flex-col mb-2 items-start">
+                <div className="w-fit max-w-[75%] p-4 mr-auto text-white">
+                  <TypingIndicator />
+                  {firstReplyPending && (
+                    <p className="mt-2 text-xs text-gray-400">
+                      First response may take a bit longer while the model loads…
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div className="sticky bottom-0 left-0 right-0 px-10 py-10 backdrop-blur-md flex justify-center w-full">
