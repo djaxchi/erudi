@@ -7,7 +7,8 @@ import { API_BASE_URL } from "../config/api";
 
 export default function LandingPage() {
   const { open } = useDownloadModal();
-  const [showWelcome, setShowWelcome] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [showLoadingPopup, setShowLoadingPopup] = useState(false);
   const [hardwareInfo, setHardwareInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cudaStatus, setCudaStatus] = useState(null);
@@ -15,6 +16,20 @@ export default function LandingPage() {
   const localModelsRef = useRef(null);
 
   useEffect(() => {
+    // To know if it should spawn the welcome popup
+    const fetchWelcomePopupStatus = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/main_window/welcome-popup`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        setShowWelcome(!data.has_already_displayed);
+      } catch (error) {
+        console.error("Failed to fetch welcome popup status:", error);
+      }
+    };
+
     // Fetch hardware evaluation on component mount
     const fetchHardwareEvaluation = async () => {
       try {
@@ -50,16 +65,33 @@ export default function LandingPage() {
         setCudaLoading(false);
       }
     };
-
-    // Always fetch hardware info, regardless of welcome popup state
+    fetchWelcomePopupStatus();
     fetchHardwareEvaluation();
     fetchCudaStatus();
   }, []);
 
   const closeWelcome = () => {
-    // Mark that user has completed their first visit
+    // If hardware info is still loading, show intermediate popup
+    if (loading || cudaLoading) {
+      setShowLoadingPopup(true);
+      return;
+    }
+    // Otherwise, close normally
     setShowWelcome(false);
   };
+
+  const closeLoadingOnly = () => {
+    // Close only the loading popup, keep welcome popup open
+    setShowLoadingPopup(false);
+  };
+
+  // Auto-close loading popup when hardware info is ready
+  useEffect(() => {
+    if (!loading && !cudaLoading && showLoadingPopup) {
+      setShowLoadingPopup(false);
+      setShowWelcome(false);
+    }
+  }, [loading, cudaLoading, showLoadingPopup]);
 
   const handleLocalModelRefresh = () => {
     if (localModelsRef.current) {
@@ -92,6 +124,7 @@ export default function LandingPage() {
       </main>
 
       {/* Welcome Popup */}
+      {console.log("Welcome popup state:", showWelcome, hardwareInfo)}
       {showWelcome && (
         <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#2B2B2B] rounded-2xl border border-white/10 shadow-2xl max-w-4xl w-full h-[85vh] flex flex-col">
@@ -269,6 +302,76 @@ export default function LandingPage() {
                 >
                   Get Started
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Popup (appears on top of welcome popup when hardware is still loading) */}
+      {showLoadingPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-[#1B1B1B] rounded-2xl border border-white/20 shadow-2xl max-w-md w-full">
+            {/* Header */}
+            <div className="p-6 border-b border-white/10">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                  ⏳ Please Wait
+                </h3>
+                <button
+                  onClick={closeLoadingOnly}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <div className="text-center">
+                <div className="w-12 h-12 border-3 border-emerald-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-white font-medium mb-2">
+                  Evaluating Hardware
+                </p>
+                <p className="text-gray-400 text-sm mb-4">
+                  We're still checking your system capabilities. This will only take a moment.
+                </p>
+                <div className="space-y-2 text-xs text-gray-500">
+                  <div className="flex items-center justify-between">
+                    <span>Hardware Evaluation</span>
+                    {loading ? (
+                      <span className="text-yellow-400">⏳ Loading...</span>
+                    ) : (
+                      <span className="text-green-400">✅ Complete</span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>CUDA Detection</span>
+                    {cudaLoading ? (
+                      <span className="text-yellow-400">⏳ Loading...</span>
+                    ) : (
+                      <span className="text-green-400">✅ Complete</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-white/10">
+              <div className="flex justify-between">
+                <button
+                  onClick={closeLoadingOnly}
+                  className="text-gray-400 hover:text-white transition-colors text-sm"
+                >
+                  Close
+                </button>
+                <p className="text-xs text-gray-500">
+                  Auto-closing when ready...
+                </p>
               </div>
             </div>
           </div>
