@@ -8,3 +8,6 @@ build/
 
 .DS_Store
 Thumbs.db
+
+# To never push the exe built files
+releases/*.exe
