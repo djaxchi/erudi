@@ -39,9 +39,9 @@ export default function App() {
       <DownloadModalProvider>
         <Router>
           <Routes>
-            <Route path="/" element={<Navigate to="/main_window/models" replace />} />
-            <Route path="/main_window" element={<Navigate to="/main_window/models" replace />} />
-            <Route path="*" element={<Navigate to="/main_window/models" replace />} />
+            <Route path="/" element={<Navigate to="/main_window/chat" replace />} />
+            <Route path="/main_window" element={<Navigate to="/main_window/chat" replace />} />
+            <Route path="*" element={<Navigate to="/main_window/chat" replace />} />
             <Route path="/main_window/chat" element={<ChatPage />} />
             <Route path="/main_window/models" element={<LandingPage />} />
             <Route path="/main_window/conversations/:id" element={<ConversationPage />} />
