@@ -8,7 +8,7 @@ npm run build-full
 cd ./frontend
 npm run frontend
 
-## BUILD FRONT-END ONLY
+## BUILD BACK-END ONLY
 cd ./frontend
 npm run backend
 

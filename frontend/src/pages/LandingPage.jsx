@@ -26,7 +26,7 @@ export default function LandingPage() {
       } catch (error) {
         console.error("Failed to fetch hardware evaluation:", error);
         setHardwareInfo({
-          error: "Failed to evaluate hardware capabilities. Please contact the Erudi team for support."
+          error: "Failed to evaluate hardware capabilities. Please contact the erudi team for support."
         });
       } finally {
         setLoading(false);
@@ -98,7 +98,7 @@ export default function LandingPage() {
             <div className="p-4 border-b border-white/10 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                  🎉 Welcome to Erudi!
+                  🎉 Welcome to erudi!
                 </h2>
                 <button
                   onClick={closeWelcome}
@@ -140,7 +140,7 @@ export default function LandingPage() {
                         <div>
                           <p className="text-amber-200 font-medium mb-2">Important Notice</p>
                           <p className="text-amber-100 text-sm mb-3">
-                            Erudi is in early alpha stage and highly dependent on your PC's hardware capabilities. 
+                            erudi is in early alpha stage and highly dependent on your PC's hardware capabilities. 
                             Features may change, and you might encounter bugs.
                           </p>
                           
@@ -169,7 +169,7 @@ export default function LandingPage() {
                             </div>
                             {cudaStatus && !cudaStatus.has_cuda && (
                               <div className="mt-2 p-2 bg-red-900/30 border border-red-600/30 rounded text-xs text-red-300">
-                                <strong>CUDA not detected!</strong> Install NVIDIA CUDA Toolkit to use Erudi's AI capabilities.
+                                <strong>CUDA not detected!</strong> Install NVIDIA CUDA Toolkit to use erudi's AI capabilities.
                               </div>
                             )}
                           </div>

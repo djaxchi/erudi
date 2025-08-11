@@ -2,7 +2,7 @@
   "name": "erudi",
   "productName": "erudi",
   "version": "0.1.0",
-  "description": "Erudi is a modern, windows desktop application designed to query and fine-tune models locally, on a no-code friendly-user interface and with your own data.",
+  "description": "erudi is a modern, windows desktop application designed to query and fine-tune models locally, on a no-code friendly-user interface and with your own data.",
   "main": ".webpack/main",
   "scripts": {
     "start": "electron-forge start",
@@ -14,7 +14,7 @@
     "lint": "echo \"No linting configured\""
   },
   "keywords": [],
-  "author": "Erudi AI",
+  "author": "erudi AI",
   "license": "EULA",
   "devDependencies": {
     "@babel/core": "^7.27.1",

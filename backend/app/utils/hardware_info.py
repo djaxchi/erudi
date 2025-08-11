@@ -243,7 +243,7 @@ def get_hardware_eval_for_NVIDIA_CUDA():
     """Calcule les métriques de perf théoriques pour le meilleur GPU NVIDIA."""
     cuda_info = get_cuda_info()
     if not cuda_info["cuda_runtime_available"]:
-        raise RuntimeError("CUDA runtime not available. Ensure you have CUDA 12.x installed for your NVIDIA GPU. Contact Erudi team for support.")
+        raise RuntimeError("CUDA runtime not available. Ensure you have CUDA 12.x installed for your NVIDIA GPU. Contact erudi team for support.")
 
     gpus = _nvml_gpus()
     if not gpus:

@@ -2,6 +2,7 @@ const HtmlWebpackPlugin = require("html-webpack-plugin");
 const rules = require("./webpack.rules");
 const path = require("path");
 
+
 rules.push({
   test: /\.css$/,
   use: [
@@ -16,6 +17,12 @@ rules.push({
       },
     },
   ],
+});
+
+// Image loader for PNG, JPG, JPEG, GIF, SVG
+rules.push({
+  test: /\.(png|jpe?g|gif|svg)$/i,
+  type: 'asset/resource',
 });
 
 module.exports = {
@@ -35,12 +42,12 @@ module.exports = {
       scriptLoading: "blocking",
       meta: {
         "Content-Security-Policy": `
-          default-src 'self';
-          connect-src *;
-          script-src 'self' 'unsafe-inline';
-          style-src 'self' 'unsafe-inline';
-          img-src 'self' data:;
-          font-src 'self';
+          default-src 'self' 'unsafe-inline' data: http://localhost:8000 http://127.0.0.1:8000;
+          connect-src 'self' http://localhost:8000 http://127.0.0.1:8000 ws: wss: https://script.google.com;
+          script-src 'self' 'unsafe-inline' https://script.google.com;
+          style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+          font-src 'self' https://fonts.gstatic.com;
+          img-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com;
         `,
       },
     }),

@@ -23,11 +23,11 @@ module.exports = {
       path.resolve(__dirname, "../dist/backend")
     ],
     win32metadata: {
-      CompanyName: "Erudi AI",
-      FileDescription: "Erudi AI Desktop App",
-      OriginalFilename: "ErudiSetup.exe",
-      ProductName: "Erudi",
-      InternalName: "Erudi"
+      CompanyName: "erudi AI",
+      FileDescription: "erudi AI Desktop App",
+      OriginalFilename: "erudiSetup.exe",
+      ProductName: "erudi",
+      InternalName: "erudi"
     }
   },
 
@@ -45,7 +45,7 @@ module.exports = {
         //   certificateFile: process.env.WIN_CERT_FILE,
         //   certificatePassword: process.env.WIN_CERT_PASS,
         //   timestampServer: 'http://timestamp.digicert.com',
-        //   description: 'Erudi',
+        //   description: 'erudi',
         //   website: 'https://erudi.ai'
         // },
 
@@ -54,7 +54,7 @@ module.exports = {
         //   url: 'https://downloads.erudi.ai/desktop',
         //   updaterCacheDirName: 'erudi-updater',
         //   channel: 'latest',
-        //   publisherName: 'Erudi AI'
+        //   publisherName: 'erudi AI'
         // },
 
         // IMPORTANT: The maker expects getAppBuilderConfig (not getAdditionalConfig)
@@ -64,11 +64,11 @@ module.exports = {
           win: { icon: path.resolve(__dirname,'assets','icon.ico') },
           nsis: {
             oneClick: false,
-            perMachine: true,
+            perMachine: false,
             allowToChangeInstallationDirectory: true,
             createDesktopShortcut: true,
             createStartMenuShortcut: true,
-            shortcutName: 'Erudi',
+            shortcutName: 'erudi',
             runAfterFinish: true,
             license: path.resolve(__dirname, 'LICENSE.txt'),
             installerIcon: path.resolve(__dirname, 'assets', 'icon.ico'),

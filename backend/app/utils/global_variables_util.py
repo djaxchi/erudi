@@ -42,7 +42,7 @@ logging.info(f"DATABASE_URL resolved to: {DATABASE_URL}")
 
 ###### VARIABLES SECRETES ######
 
-#HF_TOKEN : Token Hugging Face de Erudi pour accéder aux modèles
+#HF_TOKEN : Token Hugging Face de erudi pour accéder aux modèles
 try: # Mode build (secrets.py est automatiquement généré par CI)
     from app.secrets import HF_TOKEN
     HF_TOKEN = HF_TOKEN
