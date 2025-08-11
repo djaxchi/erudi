@@ -5,13 +5,13 @@ import GradientBox from "./GradientBox";
 
 export default function TrainNewModelCard() {
   const navigate = useNavigate();
-  const handleTrainNewModel = () => navigate("/main_window/new-training");
+  const handleAttachKnowledgeBase = () => navigate("/main_window/attach_knowledge_base");
 
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center">
       {/* wrapper div receives the click */}
       <div
-        onClick={handleTrainNewModel}
+        onClick={handleAttachKnowledgeBase}
         className="cursor-pointer w-56 h-56 flex items-center justify-center"
       >
         <GradientBox className="w-full h-full flex items-center justify-center">
@@ -19,7 +19,7 @@ export default function TrainNewModelCard() {
         </GradientBox>
       </div>
 
-      <p className="mt-4 text-white text-lg">Train new model</p>
+      <p className="mt-4 text-white text-lg">Attach Knowledge Base</p>
     </div>
   );
 }
