@@ -6,7 +6,11 @@ import { useDownloadModal } from "../contexts/DownloadModalContext";
 
 export default function LandingPage() {
   const { open } = useDownloadModal();
-  const [showWelcome, setShowWelcome] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(() => {
+    // Check if user has seen the welcome popup before
+    const hasSeenWelcome = localStorage.getItem('erudi_welcome_seen');
+    return !hasSeenWelcome;
+  });
   const [hardwareInfo, setHardwareInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const localModelsRef = useRef(null);
@@ -36,7 +40,8 @@ export default function LandingPage() {
   }, []);
 
   const closeWelcome = () => {
-    // Mark that user has completed their first visit
+    // Mark that user has seen the welcome popup
+    localStorage.setItem('erudi_welcome_seen', 'true');
     setShowWelcome(false);
   };
 

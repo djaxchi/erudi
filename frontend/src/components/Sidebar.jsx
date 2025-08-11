@@ -21,8 +21,6 @@ export default function Sidebar({ disabled = false }) {
         disabled ? "opacity-50 pointer-events-none select-none" : ""
       }`}
     >
-      {/* Brain button (Models/Training) - commented out */}
-      {/* 
       <Link
         to="/main_window/models"
         className={`w-full flex justify-center items-center py-4 border-l-4 ${
@@ -36,7 +34,6 @@ export default function Sidebar({ disabled = false }) {
 />
 
       </Link>
-      */}
 
       <Link
         to="/main_window/chat"
