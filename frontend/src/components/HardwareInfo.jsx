@@ -249,30 +249,6 @@ export default function HardwareInfo({ hw }) {
                     {hw.cpu_model}
                 </InfoRow>
 
-                <InfoRow 
-                    label={
-                        <div className="flex items-center gap-1 overflow-visible">
-                            <span>Available GPU</span>
-                            <TooltipIcon id="gpu" />
-                        </div>
-                    }
-                    bullet={getEvalScoreBulletInfo(hw.gpu_eval_score).value}
-                >
-                    {hw.gpu_model}
-                </InfoRow>
-
-                <InfoRow
-                    label={
-                        <div className="flex items-center gap-1 overflow-visible">
-                            <span>GPU Total Memory</span>
-                            <TooltipIcon id="gpu-memory" />
-                        </div>
-                    }
-                    bullet={getSizeBulletInfo(hw.gpu_vram_total).value}
-                >
-                    {hw.gpu_vram_total}
-                </InfoRow>
-
                 <InfoRow
                     label={
                         <div className="flex items-center gap-1 overflow-visible">

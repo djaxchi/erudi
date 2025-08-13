@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
 import torch
 from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
 import logging
 from typing import List
 from app.database import get_db
@@ -30,18 +30,13 @@ loaded_model = None
 current_tokenizer  = None
 loaded_model_id = None
 embedder = None
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cpu"
 
 conversation_summary_cache = {}
 
 # The quantization configuration for the model
 # It is here for the moment, but it will soon be dynamically adapted based on the model and hardware
-"""bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
-    bnb_4bit_use_double_quant=True,
-)"""
+quantiz_config = None
 flash_attn_impl = False
 
 MISTRAL_RE = re.compile(
@@ -530,15 +525,7 @@ async def generate_title(
 
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {model_path}")
-
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_storage=torch.uint8
-            )
-            
+           
             if model_type == "mistral":
                 attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
             elif model_type == "gemma":
@@ -550,7 +537,7 @@ async def generate_title(
                 model_path,
                 local_files_only=True,
                 torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
-                quantization_config=bnb_config if model_type == "mistral" else None,
+                quantization_config=quantiz_config if model_type == "mistral" else None,
                 attn_implementation=attn_impl,
                 low_cpu_mem_usage=True if model_type == "mistral" else False,
             )
@@ -741,14 +728,6 @@ async def query_and_respond(
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
 
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_storage=torch.uint8
-            )
-
             if model_type == "mistral":
                 attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
             elif model_type == "gemma":
@@ -760,7 +739,7 @@ async def query_and_respond(
                 model_path,
                 local_files_only=True,
                 torch_dtype=torch.float16 if model_type == "mistral" else torch.bfloat16,
-                quantization_config=bnb_config if model_type == "mistral" else None,
+                quantization_config=quantiz_config if model_type == "mistral" else None,
                 low_cpu_mem_usage=True if model_type == "mistral" else False,
                 attn_implementation=attn_impl,
             )

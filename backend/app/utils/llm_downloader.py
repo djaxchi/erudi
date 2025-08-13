@@ -29,9 +29,7 @@ from app.utils.global_variables_util import BASE_PATH, HF_TOKEN, CACHE_DIR
 logger = logging.getLogger("uvicorn.error")
 logger.setLevel(logging.INFO)
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
 FILES_TO_EXCLUDE = ["consolidated.safetensors"]
-logger.info(f"Using device: {device}")
 
 class DownloadJob:
     """

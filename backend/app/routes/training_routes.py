@@ -13,7 +13,7 @@ from app.database import get_db, SessionLocal
 from app.schemas.training_schemas import TrainingInfo
 from app.utils.file_processor import process_pdfs_to_causal_dataset
 from app.utils.global_variables_util import BASE_PATH
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling, BitsAndBytesConfig, Trainer
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, DataCollatorForLanguageModeling, Trainer
 from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 import torch
 from datasets import Dataset
@@ -142,7 +142,7 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
     """
     Trains the model and updates the database after the training is complete.
     """
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cpu"
     model = None
     tokenizer = None
     
@@ -184,13 +184,8 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
         
         logging.info(f"Loading model and tokenizer from {base_model_db.link}")
         start = datetime.now()
-        
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16 if base_model_db.type == "gemma" else torch.float16,
-        )
+
+        quantiz_config = None
         if base_model_db.type == "mistral":
             attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
         elif base_model_db.type == "gemma":
@@ -205,7 +200,7 @@ def train_and_update(base_model_db_id: int, dataset_path: str, training_job_id: 
         base_model_path = os.path.join(BASE_PATH, base_model_db.link.lstrip("./"))
         model = AutoModelForCausalLM.from_pretrained(
             base_model_path,
-            quantization_config=bnb_config if base_model_db.type == "mistral" else None,
+            quantization_config=quantiz_config if base_model_db.type == "mistral" else None,
             torch_dtype=torch.float16,
             attn_implementation=attn_impl,
             low_cpu_mem_usage=True,

@@ -11,8 +11,6 @@ export default function LandingPage() {
   const [showLoadingPopup, setShowLoadingPopup] = useState(false);
   const [hardwareInfo, setHardwareInfo] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [cudaStatus, setCudaStatus] = useState(null);
-  const [cudaLoading, setCudaLoading] = useState(true);
   const localModelsRef = useRef(null);
 
   useEffect(() => {
@@ -49,30 +47,13 @@ export default function LandingPage() {
       }
     };
 
-    // Fetch CUDA status
-    const fetchCudaStatus = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/hardware/has_cuda`);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const data = await response.json();
-        setCudaStatus(data);
-      } catch (error) {
-        console.error("Failed to fetch CUDA status:", error);
-        setCudaStatus({ has_cuda: false, error: "Failed to check CUDA status" });
-      } finally {
-        setCudaLoading(false);
-      }
-    };
     fetchWelcomePopupStatus();
     fetchHardwareEvaluation();
-    fetchCudaStatus();
   }, []);
 
   const closeWelcome = () => {
     // If hardware info is still loading, show intermediate popup
-    if (loading || cudaLoading) {
+    if (loading) {
       setShowLoadingPopup(true);
       return;
     }
@@ -87,11 +68,11 @@ export default function LandingPage() {
 
   // Auto-close loading popup when hardware info is ready
   useEffect(() => {
-    if (!loading && !cudaLoading && showLoadingPopup) {
+    if (!loading && showLoadingPopup) {
       setShowLoadingPopup(false);
       setShowWelcome(false);
     }
-  }, [loading, cudaLoading, showLoadingPopup]);
+  }, [loading, showLoadingPopup]);
 
   const handleLocalModelRefresh = () => {
     if (localModelsRef.current) {
@@ -183,29 +164,18 @@ export default function LandingPage() {
                             <p className="text-amber-200 font-medium mb-2">System Requirements:</p>
                             <div className="space-y-1.5 text-sm">
                               <div className="flex items-center justify-between">
-                                <span className="text-amber-100">NVIDIA GPU Required</span>
-                                <span className="text-lg">🎮</span>
+                                <span className="text-amber-100">Good CPU Specs Recommended</span>
+                                <span className="text-lg">💿</span>
                               </div>
                               <div className="flex items-center justify-between">
-                                <span className="text-amber-100">CUDA 12.x Installed</span>
-                                {cudaLoading ? (
-                                  <span className="text-xs text-amber-300">Checking...</span>
-                                ) : (
-                                  <span className="text-lg">
-                                    {cudaStatus?.has_cuda ? '✅' : '❌'}
-                                  </span>
-                                )}
+                                <span className="text-amber-100">At least 4GB RAM Required</span>
+                                <span className="text-lg">👾</span>
                               </div>
                               <div className="flex items-center justify-between">
                                 <span className="text-amber-100">10+ GB Disk Space</span>
                                 <span className="text-lg">💾</span>
                               </div>
                             </div>
-                            {cudaStatus && !cudaStatus.has_cuda && (
-                              <div className="mt-2 p-2 bg-red-900/30 border border-red-600/30 rounded text-xs text-red-300">
-                                <strong>CUDA not detected!</strong> Install NVIDIA CUDA Toolkit to use Erudi's AI capabilities.
-                              </div>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -343,14 +313,6 @@ export default function LandingPage() {
                   <div className="flex items-center justify-between">
                     <span>Hardware Evaluation</span>
                     {loading ? (
-                      <span className="text-yellow-400">⏳ Loading...</span>
-                    ) : (
-                      <span className="text-green-400">✅ Complete</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>CUDA Detection</span>
-                    {cudaLoading ? (
                       <span className="text-yellow-400">⏳ Loading...</span>
                     ) : (
                       <span className="text-green-400">✅ Complete</span>

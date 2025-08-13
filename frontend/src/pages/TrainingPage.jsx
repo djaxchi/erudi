@@ -61,14 +61,10 @@ export default function TrainingPage() {
           total_ram_gb: `${data.total_ram_gb} GB`,
           disk_available: `${data.disk_available_gb} GB`,
           cpu_model: data.cpu_model,
-          gpu_model: data.gpu_model ?? "No GPU detected",
-          gpu_vram_total: data.gpu_vram_total_gb ? `${data.gpu_vram_total_gb} GB` : "No GPU detected",
-          cuda_installed: data.cuda_installed ? "✅" : "❌",
           global_finetuning_score: data.global_finetuning_score ? `${data.global_finetuning_score}/100` : "N/A",
           global_finetuning_label: data.global_finetuning_label ? data.global_finetuning_label : "N/A",
           cpu_eval_score: data.cpu_eval_score ? `${data.cpu_eval_score}/100` : "N/A",
-          gpu_eval_score: data.gpu_eval_score ? `${data.gpu_eval_score}/100` : "N/A",
-        });
+          });
       })
       .catch(err => {
         console.error("Erreur hardware:", err);
@@ -79,13 +75,9 @@ export default function TrainingPage() {
           ram_available: "Error fetching",
           disk_available: "Error fetching",
           cpu_model: "Error fetching",
-          gpu_model: "Error fetching",
-          gpu_vram_total: "Error fetching",
-          cuda_installed: "Error fetching",
           global_finetuning_score: "Error fetching",
           global_finetuning_label: "Error fetching",
           cpu_eval_score: "Error fetching",
-          gpu_eval_score: "Error fetching",
         });
       });
     fetchModels();

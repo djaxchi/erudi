@@ -8,7 +8,6 @@ from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     TextIteratorStreamer,
-    BitsAndBytesConfig,
 )
 import torch, re, threading
 from app.database import get_db
@@ -26,15 +25,7 @@ from typing import List
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 
-
-# Optimized BitsAndBytesConfig for Gemma3
-"""bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.bfloat16,
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_quant_storage=torch.uint8
-)"""
+quantiz_config = None
 flash_attn_impl = False
 
 MISTRAL_RE = re.compile(
@@ -186,21 +177,13 @@ async def query_arena(
     logging.info(f"[ARENA] Loading model {llm_id} from {model_path}")
 
     global _loaded_model, _current_tokenizer, _loaded_model_id
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cpu"
     
     try:
         if _loaded_model_id != llm.id or _loaded_model is None:
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {model_path}")
             
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16 if is_gemma else torch.float16,
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_storage=torch.uint8
-            )
-
             if llm.type == "mistral":
                 attn_impl = "flash_attention_2" if float(torch.version.cuda) >= 11.8 and flash_attn_impl else "sdpa"
             elif llm.type == "gemma":
@@ -212,7 +195,7 @@ async def query_arena(
                 model_path,
                 local_files_only=True,
                 torch_dtype=torch.float16 if not is_gemma else torch.bfloat16,
-                quantization_config=bnb_config if not is_gemma else None,
+                quantization_config=quantiz_config if not is_gemma else None, # Currently always None, see above
                 low_cpu_mem_usage=True if not is_gemma else False,
                 attn_implementation=attn_impl,
             )

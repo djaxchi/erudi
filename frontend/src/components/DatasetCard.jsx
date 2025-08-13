@@ -77,22 +77,14 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
         
         const data = await response.json();
         
-        // Determine device to use: GPU if available, otherwise CPU
-        let deviceUsed = "CPU";
-        if (data.gpu_model && data.gpu_model !== "No GPU detected" && !data.gpu_model.includes("fetching")) {
-          deviceUsed = `${data.gpu_model}`;
-        } else if (data.cpu_model && !data.cpu_model.includes("fetching")) {
-          deviceUsed = `${data.cpu_model}`;
-        }
-        
         setHardwareInfo({
-          available_vram: data.gpu_vram_total_gb ? `${data.gpu_vram_total_gb} GB` : "Unknown",
-          device_used: deviceUsed,
+          total_ram: data.total_ram_gb ? `${data.total_ram_gb} GB` : "Unknown",
+          device_used: data.cpu_model ? `${data.cpu_model}` : "CPU",
         });
       } catch (error) {
         console.error("Error fetching hardware info:", error);
         setHardwareInfo({
-          available_vram: "Error fetching",
+          total_ram: "Error fetching",
           device_used: "Error fetching",
         });
       }
