@@ -9,7 +9,8 @@ export default function LandingPage() {
   const [showWelcome, setShowWelcome] = useState(() => {
     // Check if user has seen the welcome popup before
     const hasSeenWelcome = localStorage.getItem('erudi_welcome_seen');
-    return !hasSeenWelcome;
+    // return !hasSeenWelcome; uncomment for prod
+    return true;
   });
   const [hardwareInfo, setHardwareInfo] = useState(null);
   const [loading, setLoading] = useState(true);
