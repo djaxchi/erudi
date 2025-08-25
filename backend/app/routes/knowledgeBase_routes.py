@@ -174,19 +174,56 @@ def create_knowledge_base(
         db.refresh(vector_store)
         logging.info(f"VectorStore created with ID: {vector_store.id}, containing {len(vectors_data)} vectors")
 
-        if embedder:
-            del embedder
-            torch.backends.mps.empty_cache()
-            
         logging.info(f"Storing index to {INDEXES_DIR}/{kb.id}.index")        
         faiss.write_index(index, os.path.join(INDEXES_DIR, f"{kb.id}.index"))
         kb.index_path = os.path.join(INDEXES_DIR, f"{kb.id}.index")
         db.commit()
         logging.info(f"Storing Knowledge Base index at {kb.index_path}")
         
-        logger.info(f"Knowledge Base {kb.id} created with {len(texts)} texts and vectors stored.")
+        # AJOUTER CES VÉRIFICATIONS
+        # 1. Vérifier que le fichier FAISS existe et est lisible
+        if os.path.exists(kb.index_path):
+            try:
+                test_index = faiss.read_index(kb.index_path)
+                logging.info(f"✅ FAISS index verification: {test_index.ntotal} vectors, dimension {test_index.d}")
+            except Exception as e:
+                logging.error(f"❌ FAISS index verification failed: {e}")
+        else:
+            logging.error(f"❌ FAISS index file not found at {kb.index_path}")
+        
+        # 2. Vérifier la base de données
         db.refresh(kb)
         db.refresh(new_llm)
+        logging.info(f"✅ Database verification:")
+        logging.info(f"   - KB ID: {kb.id}")
+        logging.info(f"   - LLM ID: {new_llm.id}, kb_id: {new_llm.kb_id}")
+        logging.info(f"   - VectorStore ID: {vector_store.id}, vectors count: {len(vector_store.vectors_data)}")
+        
+        # 3. Test rapide de recherche (AVANT de supprimer l'embedder)
+        try:
+            test_query = "test"
+            test_emb = embedder.encode(test_query, convert_to_tensor=True)
+            test_index = faiss.read_index(kb.index_path)
+            D, I = test_index.search(test_emb.cpu().numpy().reshape(1, -1), k=min(3, test_index.ntotal))
+            logging.info(f"✅ Search test successful: found {len(I[0])} results")
+        except Exception as e:
+            logging.error(f"❌ Search test failed: {e}")
+
+        # MAINTENANT supprimer l'embedder et vider le cache
+        if embedder:
+            del embedder
+            embedder = None  # Reset to None for safety
+            # Vider le cache selon le device disponible
+            try:
+                if torch.backends.mps.is_available():
+                    torch.mps.empty_cache()
+                elif torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except AttributeError:
+                # Fallback si les méthodes n'existent pas
+                pass
+        
+        logger.info(f"🎉 Knowledge Base {kb.id} created successfully with {faiss_id_counter} vectors!")
         
         return KnowledgeBaseResponse(
             model_id=new_llm.id,
