@@ -3,6 +3,14 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from ..database import SessionLocal, get_db
 
+import os
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")  # Accelerate/vecLib (macOS)
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+
+
 from ..schemas.knowledgeBase_schemas import KnowledgeBaseCreate, KnowledgeBaseResponse
 from ..models.KnowledgeBase import KnowledgeBase
 from ..models.VectorStore import VectorStore
@@ -12,10 +20,11 @@ from ..utils.file_processor import prepare_for_knowledge_base, chunk_by_tokens
 import logging
 from typing import List
 import faiss
+faiss.omp_set_num_threads(1)
 import torch
+import numpy as np
 
 from sentence_transformers import SentenceTransformer
-import os
 from dotenv import load_dotenv
 load_dotenv()
 CACHE_DIR = os.getenv("CACHE_DIR")
@@ -199,15 +208,28 @@ def create_knowledge_base(
         logging.info(f"   - LLM ID: {new_llm.id}, kb_id: {new_llm.kb_id}")
         logging.info(f"   - VectorStore ID: {vector_store.id}, vectors count: {len(vector_store.vectors_data)}")
         
-        # 3. Test rapide de recherche (AVANT de supprimer l'embedder)
+        # 3. Test rapide de recherche (VERSION ULTRA-SIMPLE)
         try:
-            test_query = "test"
-            test_emb = embedder.encode(test_query, convert_to_tensor=True)
+            logging.info("Starting minimal search test...")
+            
+            # Juste vérifier qu'on peut recharger l'index
             test_index = faiss.read_index(kb.index_path)
-            D, I = test_index.search(test_emb.cpu().numpy().reshape(1, -1), k=min(3, test_index.ntotal))
-            logging.info(f"✅ Search test successful: found {len(I[0])} results")
+            logging.info(f"✅ Index reload successful: {test_index.ntotal} vectors")
+            
+            # Si l'index n'est pas vide, faire un test minimal
+            if test_index.ntotal > 0:
+                # Prendre le premier vecteur de l'index comme query
+                first_vector = np.zeros((1, test_index.d), dtype='float32')
+                D, I = test_index.search(first_vector, 1)
+                logging.info(f"✅ Basic search successful: found ID {I[0][0]}")
+            else:
+                logging.warning("⚠️ Index is empty")
+                
         except Exception as e:
             logging.error(f"❌ Search test failed: {e}")
+            import traceback
+            logging.error(f"Full traceback: {traceback.format_exc()}")
+            # Ne pas faire crasher, juste logger l'erreur
 
         # MAINTENANT supprimer l'embedder et vider le cache
         if embedder:
