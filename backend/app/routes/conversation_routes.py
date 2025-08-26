@@ -25,16 +25,23 @@ from ..schemas.conversation_schemas import (
     ConversationUpdate,
     ConversationWithMessagesResponse,
 )
+import os
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS","1")
+os.environ.setdefault("OMP_NUM_THREADS","1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS","1")
+os.environ.setdefault("MKL_NUM_THREADS","1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS","1")
+
+
 import threading
 from fastapi.responses import StreamingResponse
 from faiss import IndexFlatL2
 import faiss
-faiss.omp_set_num_threads(8)
+faiss.omp_set_num_threads(1)
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from ..prompting.builder import build_conv_prompt
 import re
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
