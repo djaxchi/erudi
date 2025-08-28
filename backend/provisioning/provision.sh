@@ -6,7 +6,7 @@ cd terraform
 
 echo "Importation des tokens AWS."
 set -a
-source terraform/.env
+source .env
 set +a
 
 echo "Importation des variables Terraform."
@@ -14,8 +14,8 @@ echo "Importation des variables Terraform."
 # terraform import aws_key_pair.generated_key provisioning-key
 # terraform import aws_security_group.vm_sg sg-076c01faceef696f8
 
-echo "Destruction de l'instance"
-terraform destroy
+# echo "Destruction de l'instance"
+# terraform destroy
 
 echo "🚀 Lancement du provisioning..."
 

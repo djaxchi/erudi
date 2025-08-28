@@ -7,33 +7,46 @@ data "aws_vpc" "default" {
 }
 
 resource "aws_security_group" "vm_sg" {
-  name        = "ssh-http-sg"
-  description = "Allow SSH and HTTP access"
+  name        = "openvpn-access-server-sg"
+  description = "Security group for OpenVPN Access Server"
   vpc_id      = data.aws_vpc.default.id
 
+  # SSH
   ingress {
-    description = "SSH"
+    description = "SSH administration"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["80.214.222.47/32"] # <-- Admin IP
   }
 
+  # Admin Web UI 
   ingress {
-    description = "HTTP"
-    from_port   = 80
-    to_port     = 80
+    description = "Admin Web UI"
+    from_port   = 943
+    to_port     = 943
+    protocol    = "tcp"
+    cidr_blocks = ["80.214.222.47/32"] # <-- Admin IP
+  }
+
+  # HTTPS / Client Web UI / OpenVPN TCP en multi-daemon (TCP 443)
+  ingress {
+    description = "HTTPS / Client Web UI / OpenVPN TCP"
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # OpenVPN UDP (UDP 1194)
   ingress {
-    description = "API (8000)"
-    from_port   = 8000
-    to_port     = 8000
-    protocol    = "tcp"
+    description = "OpenVPN UDP"
+    from_port   = 1194
+    to_port     = 1194
+    protocol    = "udp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
 
   egress {
     from_port   = 0

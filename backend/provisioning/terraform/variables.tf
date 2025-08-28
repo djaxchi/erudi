@@ -1,6 +1,6 @@
 variable "aws_region" {
   description = "The AWS region to create resources in."
-  default     = "eu-west-3"
+  default     = "eu-west-3" # Paris
 }
 
 variable "instance_type" {
@@ -10,7 +10,8 @@ variable "instance_type" {
 
 variable "ami_id" {
   description = "The AMI to use for the EC2 instance."
-  default     = "ami-04ec97dc75ac850b1" # Ubuntu 24.04 LTS
+  # default     = "ami-04ec97dc75ac850b1" # Ubuntu 24.04 LTS
+  default     = "ami-0f0ed9c60250723a7" # OpenVPN Access Server
 }
 
 variable "key_name" {
