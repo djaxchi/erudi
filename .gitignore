@@ -11,3 +11,5 @@ Thumbs.db
 
 # To never push the exe built files
 releases/*.exe
+
+node_modules/
