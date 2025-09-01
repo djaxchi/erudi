@@ -1064,10 +1064,11 @@ async def store_error_message(
         conversation.last_message_time = datetime.now()
         db.commit()
         logging.info(f"Stored error message for conversation {conversation_id}")
-        if loaded_model:
+        global loaded_model, current_tokenizer
+        if loaded_model is not None:
             loaded_model = None
             logging.info("Cleared model cache after error message storage")
-        if current_tokenizer:
+        if current_tokenizer is not None:
             current_tokenizer = None
             logging.info("Cleared tokenizer cache after error message storage")
         return {

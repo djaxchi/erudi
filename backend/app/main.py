@@ -2,6 +2,8 @@ from datetime import datetime
 import os
 import shutil
 
+
+
 from .utils.hardware_info import get_hardware_eval_for_apple_silicon
 
 from .models.StaticHardwareInfos import StaticHardwareInfo
@@ -21,6 +23,7 @@ from .models.TrainingJob import TrainingJob
 from .models.DownloadJob import DownloadJobModel
 from .models.KnowledgeBase import KnowledgeBase
 from .models.VectorStore import VectorStore
+from .models.KBJob import KBJobModel
 from .models.StaticHardwareInfos import StaticHardwareInfo
 
 from huggingface_hub import HfApi
@@ -52,6 +55,7 @@ async def delete_all_data():
         db.query(StaticHardwareInfo).delete()
         db.query(VectorStore).delete()
         db.query(KnowledgeBase).delete()
+        db.query(KBJobModel).delete()
 
         db.commit()
         logging.info("All data deleted successfully.")
@@ -64,7 +68,7 @@ async def delete_all_data():
 app = FastAPI()
 
 async def startup_populate_database():
-    api = HfApi(token=HF_TOKEN)
+    
     db: Session = SessionLocal()
 
 
@@ -130,50 +134,52 @@ async def startup_populate_database():
             "peft", "test"
         ]
         # Populate with some Mistral-7B variant community models
-        for m in api.list_models(search="Mistral-7B v0.3", sort="downloads", direction=-1):
-            # Skip models that are not relevant (e.g. quantized versions of the same base model, as we already natively quantize) or already exist
-            mid = m.modelId.lower()
-            mname = mid.split("/")[-1].lower()
-            # skip exact matches or any unwanted substring
-            if mname in SKIP_IDS or any(term in mid for term in SKIP_TERMS):
-                continue
+        llm_list = db.query(Llm).all()
+        if len(llm_list) < 5:
+            api = HfApi(token=HF_TOKEN)
+            for m in api.list_models(search="Mistral-7B v0.3", sort="downloads", direction=-1):
+                # Skip models that are not relevant (e.g. quantized versions of the same base model, as we already natively quantize) or already exist
+                mid = m.modelId.lower()
+                mname = mid.split("/")[-1].lower()
+                # skip exact matches or any unwanted substring
+                if mname in SKIP_IDS or any(term in mid for term in SKIP_TERMS):
+                    continue
 
-            exists = db.query(Llm).filter_by(link=m.modelId).first()
-            if exists:
-                continue
+                exists = db.query(Llm).filter_by(link=m.modelId).first()
+                if exists:
+                    continue
 
-            llm_entry = Llm(
-                name=m.modelId.split("/")[-1],  
-                local=0,
-                link=m.modelId,
-                type="mistral" if "mistral" in m.modelId.lower() else "gemma"
-            )
-            db.add(llm_entry)
+                llm_entry = Llm(
+                    name=m.modelId.split("/")[-1],  
+                    local=0,
+                    link=m.modelId,
+                    type="mistral" if "mistral" in m.modelId.lower() else "gemma"
+                )
+                db.add(llm_entry)
 
-        for i, m in enumerate(api.list_models(search="Gemma 1B", sort="downloads", direction=-1)):
-            if i >= 30:
-                break
-            # Skip models that are not relevant (e.g. quantized versions of the same base model, as we already natively quantize) or already exist
-            mid = m.modelId.lower()
-            mname = mid.split("/")[-1].lower()
-            # skip exact matches or any unwanted substring
-            if mname in SKIP_IDS or any(term in mid for term in SKIP_TERMS):
-                continue
+            for i, m in enumerate(api.list_models(search="Gemma 1B", sort="downloads", direction=-1)):
+                if i >= 30:
+                    break
+                # Skip models that are not relevant (e.g. quantized versions of the same base model, as we already natively quantize) or already exist
+                mid = m.modelId.lower()
+                mname = mid.split("/")[-1].lower()
+                # skip exact matches or any unwanted substring
+                if mname in SKIP_IDS or any(term in mid for term in SKIP_TERMS):
+                    continue
 
-            exists = db.query(Llm).filter_by(link=m.modelId).first()
-            if exists:
-                continue
+                exists = db.query(Llm).filter_by(link=m.modelId).first()
+                if exists:
+                    continue
 
-            llm_entry = Llm(
-                name=m.modelId.split("/")[-1],  
-                local=0,
-                link=m.modelId,
-                type="mistral" if "mistral" in m.modelId.lower() else "gemma"
-            )
-            db.add(llm_entry)
-        
-        db.commit()
-
+                llm_entry = Llm(
+                    name=m.modelId.split("/")[-1],  
+                    local=0,
+                    link=m.modelId,
+                    type="mistral" if "mistral" in m.modelId.lower() else "gemma"
+                )
+                db.add(llm_entry)
+            
+            db.commit()
 
         # Check the DownloadJobs to delete running-but-unfinished jobs (in case of server crash)
         unfinished_jobs = db.query(DownloadJobModel).filter(
@@ -210,6 +216,32 @@ async def startup_populate_database():
             
             db.commit()
             logging.warning(f"Marked unfinished TrainingJob {job.id} as failed.")
+        db.commit()
+
+        # Check the unfinished KBJobs
+        unfinished_kb_jobs = db.query(KBJobModel).filter(
+            KBJobModel.status.in_(["running", "pending"])
+        ).all()
+        for job in unfinished_kb_jobs:
+            job.status = "failed"
+            job.error_message = "Knowledge Base creation was not completed due to application shutdown."
+            new_llm = db.query(Llm).filter(Llm.id == job.new_model_id).first()
+            if new_llm:
+                db.delete(new_llm)
+            vector_store = db.query(VectorStore).filter(VectorStore.kb_id == job.kb_id).first()
+            if vector_store:
+                db.delete(vector_store)
+            kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == job.kb_id).first()
+            if kb:
+                if kb.index_path:
+                    if os.path.exists(kb.index_path):
+                        shutil.rmtree(kb.index_path, ignore_errors=True)
+                db.delete(kb)
+            job.new_model_id = -1
+            job.updated_at = datetime.now()
+            
+            db.commit()
+            logging.warning(f"Marked unfinished KBJob {job.id} as failed.")
         db.commit()
 
         persist_hw_infos = db.query(StaticHardwareInfo).first()
