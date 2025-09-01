@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { HelpCircle } from "lucide-react";
+import React, { useEffect, useState, useRef } from "react";
+import { HelpCircle, X } from "lucide-react";
 import Sidebar from "../components/Sidebar";
 import DatasetCard from "../components/DatasetCard";
 import HardwareInfo from "../components/HardwareInfo";
@@ -7,10 +7,15 @@ import ModelLibrary from "../components/ModelLibrary";
 import InfoRow from "../components/InfoRow";
 import DragDropArea from "../components/DragDropArea";
 import Dropdown from "../components/Dropdown";
+import { useKnowledgeBase } from "../contexts/KnowledgeBaseContext";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "http://127.0.0.1:8000";
 
 export default function KnowledgeBasePage() {
+  const { open: openKnowledgeBase, isCreating, isStarting } = useKnowledgeBase();
+  const [errorMsg, setErrorMsg] = useState('');
+  const [isValidated, setIsValidated] = useState(false);
+  
   const [hw, setHw] = useState({
     storage_path: "soon...",
     disk_available: "fetching…",
@@ -33,14 +38,11 @@ export default function KnowledgeBasePage() {
     global_inference_label: "fetching…",
   });
 
-  const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState(null);
   const [modelName, setModelName] = useState("");
   const [description, setDescription] = useState("");
   const [paths, setPaths] = useState([]);
-  const [isValidated, setIsValidated] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
-  const [modelId, setModelId] = useState(null);
+  const [models, setModels] = useState([]);
 
   // Handle files dropped from DragDropArea
   const addDroppedFiles = (newPathObjects) => {
@@ -53,12 +55,6 @@ export default function KnowledgeBasePage() {
       console.log('Setting paths to:', newPaths);
       return Array.from(new Set(newPaths)); // Remove duplicates but don't merge with previous
     });
-  };
-
-  // Fonction startPolling manquante
-  const startPolling = (modelId) => {
-    console.log("Started polling for model:", modelId);
-    // TODO: Implement polling logic
   };
 
     /* helper to determine bullet or icon for rating field */
@@ -81,67 +77,66 @@ export default function KnowledgeBasePage() {
     };
 
     const submitTrainForm = async () => {
+    console.log('submitTrainForm called');
+    console.log('selectedModel:', selectedModel);
+    console.log('modelName:', modelName);
+    console.log('paths:', paths);
+    console.log('paths.length:', paths.length);
+    
+    if (!selectedModel || !modelName.trim() || paths.length === 0) {
+      console.log('Validation failed:');
+      console.log('  !selectedModel:', !selectedModel);
+      console.log('  !modelName.trim():', !modelName.trim());
+      console.log('  paths.length === 0:', paths.length === 0);
+      setErrorMsg('Please fill in all required fields');
+      return;
+    }
+
+    console.log('Validation passed, proceeding with creation');
+    setErrorMsg('');
+    
+    const task = {
+      paths,
+      selectedModel,
+      modelName: modelName.trim(),
+      description: description.trim(),
+    };
+
+    openKnowledgeBase(task, {
+      onComplete: () => {
+        console.log('Assistant created successfully');
+        setIsValidated(true);
+        // Reset form after a delay
+        setTimeout(() => {
+          setIsValidated(false);
+          setPaths([]);
+          setModelName('');
+          setDescription('');
+        }, 3000);
+      },
+      onError: (error) => {
+        console.error('Assistant creation failed:', error);
+        setErrorMsg(error);
+      }
+    });
+  };
+
+  const handleKnowledgeBaseComplete = () => {
+    console.log('Knowledge base creation completed!');
+    setSelectedModel(null);
+    setModelName("");
+    setDescription("");
+    setPaths([]);
     setErrorMsg("");
+    // Force page refresh with a small delay to ensure state reset completes
+    setTimeout(() => {
+      window.location.href = window.location.href;
+    }, 100);
+  };
 
-    if (!selectedModel) {
-      setErrorMsg("Please select a model to train.");
-      return;
-    }
-    if (!modelName || modelName.trim() === "") {
-      setErrorMsg("Please name your new model.");
-      return;
-    }
-    if (paths.length === 0) {
-      setErrorMsg("Please select at least one folder.");
-      return;
-    }
-    if (!description || description.trim() === "") {
-      setErrorMsg("Please provide a description for your assistant.");
-      return;
-    }
-
-    try {
-      // Activer l'état
-      setIsValidated(true);
-
-      const response = await fetch(`${API_BASE}/knowledge_base/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          paths: paths,
-          selectedModel: selectedModel,
-          modelName: modelName,
-          description: description,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("❌ Erreur HTTP:", response.status, errorData);
-        setIsValidated(false);
-        throw new Error(`HTTP ${response.status}: ${errorData.detail || 'Unknown error'}`);
-      }
-
-      const data = await response.json();
-      console.log("Réponse du backend:", data);
-      
-      // Récupérer l'ID du nouveau modèle
-      if (data.model_id) {
-        setModelId(data.model_id);
-        startPolling(data.model_id);
-      } else {
-        setErrorMsg("ID du nouveau modèle non reçu");
-        console.error("ID du nouveau modèle non reçu");
-        throw new Error("ID du nouveau modèle non reçu");
-      }
-      
-    } catch (error) {
-      console.error("❌ Erreur complète:", error);
-      setIsValidated(false);
-      setErrorMsg(error.message || "Une erreur est survenue.");
-    }
+  const handleKnowledgeBaseError = (error) => {
+    console.error('Knowledge base creation error:', error);
+    setErrorMessage("Assistant creation failed. Please try again. If the issue persists, contact the Erudi team for support.");
   };
 
   const fetchModels = () => {
@@ -275,16 +270,37 @@ export default function KnowledgeBasePage() {
                 {isValidated ? (
                   <div className="w-full text-center"> 
                     <div className="text-emerald-400 text-sm">
-                      Assistant created!
+                      Assistant created successfully!
                     </div>
                     <div className="inline-flex items-center gap-2 py-3">
                       
                     </div>
                   </div>
+                ) : isCreating ? (
+                  <div className="w-full text-center"> 
+                    <div className="text-emerald-400 text-sm">
+                      We are creating your assistant
+                    </div>
+                    <div className="inline-flex items-center gap-2 py-3">
+                      
+                    </div>
+                  </div>
+                ) : isStarting ? (
+                  <button 
+                    className="py-2 sm:py-3 px-6 sm:px-8 rounded-full bg-emerald-500 text-white font-semibold shadow-lg flex items-center justify-center gap-2 text-xs sm:text-sm"
+                    disabled={true}
+                  >
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Creating...
+                  </button>
                 ) : (
                   <button 
                     className="py-2 sm:py-3 px-6 sm:px-8 rounded-full bg-emerald-500 text-white font-semibold shadow-lg hover:bg-emerald-400 transition disabled:opacity-50 text-xs sm:text-sm"
-                    onClick={submitTrainForm}
+                    onClick={() => {
+                      console.log('Button clicked!');
+                      submitTrainForm();
+                    }}
+                    disabled={isCreating || isStarting}
                   >
                     Create Assistant
                   </button>
