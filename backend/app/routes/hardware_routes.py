@@ -1,5 +1,7 @@
+import logging
 from app.database import get_db
 from app.models.StaticHardwareInfos import StaticHardwareInfo
+from app.utils.hardware_info import get_hardware_eval_for_apple_silicon
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.schemas.hardware_schemas import HardwareTrainingInfo, HardwareAppStartupInfo, DetailedHardwareInfo
@@ -127,35 +129,100 @@ def get_app_startup_info(
     """
     try:
         hw_infos = db.query(StaticHardwareInfo).first()
-        if hw_infos:
-            # Extract performance scores from database
-            finetuning_score = hw_infos.global_finetuning_score
-            finetuning_label = hw_infos.global_finetuning_label
-            inference_score = hw_infos.global_inference_score
-            inference_label = hw_infos.global_inference_label
-            
-            # Ensure we have valid values
-            if finetuning_score is None:
-                finetuning_score = 0.0
-            if finetuning_label is None:
-                finetuning_label = "Terrible"
-            if inference_score is None:
-                inference_score = 0.0
-            if inference_label is None:
-                inference_label = "Terrible"
+        if not hw_infos:
+
+            try:
+                # Get Apple Silicon hardware evaluation
+                logging.info("Evaluating Apple Silicon hardware...")
+                hw = get_hardware_eval_for_apple_silicon()
+                logging.info("Hardware evaluation completed successfully.")
+            except Exception as e:
+                logging.warning(f"Hardware evaluation failed: {e}. Using fallback values.")
+                hw = {
+                    "chip_model": "Unknown",
+                    "cpu_model": "Unknown CPU",
+                    "gpu_name": "Unknown GPU",
+                    "total_memory_gb": 0,
+                    "available_memory_gb": 0,
+                    "disk_total_gb": 0,
+                    "disk_available_gb": 0,
+                    "global_inference_score": 0,
+                    "global_inference_label": "Terrible",
+                    "global_finetuning_score": 0,
+                    "global_finetuning_label": "Terrible",
+                    "cpu_score": 0,
+                    "gpu_score": 0,
+                    "memory_score": 0,
+                    "mps_available": False,
+                    "is_apple_silicon": False
+                }
+
+            persist_hw_infos = StaticHardwareInfo(
+                # Basic hardware identification
+                chip_model=hw.get("chip_model"),
+                cpu_model=hw.get("cpu_model"),
+                gpu_name=hw.get("gpu_name"),
+                
+                # Memory information (unified memory for Apple Silicon)
+                system_ram_gb=hw.get("total_memory_gb"),
+                available_ram_gb=hw.get("available_memory_gb"),
+                
+                # Storage information
+                disk_total_gb=hw.get("disk_total_gb"),
+                disk_avail_gb=hw.get("disk_available_gb"),
+                
+                # Apple Silicon specific GPU specs
+                gpu_cores=hw.get("gpu_cores"),
+                estimated_gpu_tflops=hw.get("estimated_gpu_tflops"),
+                
+                # Apple Silicon specific performance metrics
+                memory_bandwidth_gbs=hw.get("memory_bandwidth_gbs"),
+                neural_engine_tops=hw.get("neural_engine_tops"),
+                cpu_performance_units=hw.get("cpu_performance_units"),
+                
+                # Architecture details
+                architecture=hw.get("architecture"),
+                is_apple_silicon=hw.get("is_apple_silicon", False),
+                mps_available=hw.get("mps_available", False),
+                unified_memory=hw.get("unified_memory", False),
+                system_platform=hw.get("system_platform"),
+                
+                # Performance scores
+                global_inference_score=hw.get("global_inference_score"),
+                global_inference_label=hw.get("global_inference_label"),
+                global_finetuning_score=hw.get("global_finetuning_score"),
+                global_finetuning_label=hw.get("global_finetuning_label"),
+                cpu_score=hw.get("cpu_score"),
+                gpu_score=hw.get("gpu_score"),
+                memory_score=hw.get("memory_score"),
+                
+                # Performance breakdown
+                performance_breakdown=hw.get("performance_breakdown"),
+                
+            )
+            db.add(persist_hw_infos)
+            db.commit()
+            logging.info("Hardware info persisted to database.")
+        
         else:
-            # No hardware info found in database
-            finetuning_score = 0.0
-            finetuning_label = "No hardware info found in database"
-            inference_score = 0.0
-            inference_label = "No hardware info found in database"
-            
+            logging.info("Hardware info already exists in database, skipping creation.")
+
+        db.refresh(hw_infos)
+        finetuning_score = hw_infos.global_finetuning_score if hw_infos.global_finetuning_score else 0.0
+        finetuning_label = hw_infos.global_finetuning_label if hw_infos.global_finetuning_label else "Terrible"
+        inference_score = hw_infos.global_inference_score if hw_infos.global_inference_score else 0.0
+        inference_label = hw_infos.global_inference_label if hw_infos.global_inference_label else "Terrible"
+
     except Exception as e:
         # Error occurred during database query
+        logging.error(f"Error retrieving hardware info: {e}")
         finetuning_score = 0.0
-        finetuning_label = f"Database error: {str(e)}"
+        finetuning_label = f"Terrible"
         inference_score = 0.0
-        inference_label = f"Database error: {str(e)}"
+        inference_label = f"Terrible"
+
+    finally:
+        db.close()
 
     return HardwareAppStartupInfo(
         global_finetuning_score=finetuning_score,
