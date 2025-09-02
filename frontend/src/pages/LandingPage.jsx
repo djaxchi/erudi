@@ -3,7 +3,6 @@ import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
 import ModelCard from "../components/ModelCard";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
-import { Download, Info, Plus, BookOpen, MessageSquare } from "lucide-react";
 
 export default function LandingPage() {
   const { open } = useDownloadModal();
@@ -16,7 +15,12 @@ export default function LandingPage() {
   const [hardwareInfo, setHardwareInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [localModels, setLocalModels] = useState([]);
+  const [remoteModels, setRemoteModels] = useState([]);
+  const [modelsLoading, setModelsLoading] = useState(true);
   const localModelsRef = useRef(null);
+
+  const API_BASE = "http://127.0.0.1:8000";
 
   useEffect(() => {
     // Fetch hardware evaluation on component mount
@@ -38,8 +42,51 @@ export default function LandingPage() {
       }
     };
 
-    // Always fetch hardware info, regardless of welcome popup state
+    // Fetch models from backend
+    const fetchModels = async () => {
+      setModelsLoading(true);
+      try {
+        // Fetch local models
+        const localResponse = await fetch(`${API_BASE}/main_window/llms/local`);
+        if (localResponse.ok) {
+          const localData = await localResponse.json();
+          // Transform API data to match our UI format
+          const transformedLocalModels = localData.map(model => ({
+            id: model.id,
+            name: model.name,
+            size: "Unknown", // API doesn't provide size yet
+            parameters: "Unknown", // API doesn't provide parameters yet
+            lastUpdate: "Unknown", // API doesn't provide last update yet
+            isOnline: false // Default to offline
+          }));
+          setLocalModels(transformedLocalModels);
+        }
+
+        // Fetch remote models
+        const remoteResponse = await fetch(`${API_BASE}/main_window/llms/remote`);
+        if (remoteResponse.ok) {
+          const remoteData = await remoteResponse.json();
+          // Transform API data to match our UI format
+          const transformedRemoteModels = remoteData.map(model => ({
+            id: model.id,
+            name: model.name,
+            size: "Unknown", // API doesn't provide size yet
+            parameters: "Unknown", // API doesn't provide parameters yet
+            downloads: "Unknown", // API doesn't provide downloads yet
+            link: model.link
+          }));
+          setRemoteModels(transformedRemoteModels);
+        }
+      } catch (error) {
+        console.error("Failed to fetch models:", error);
+      } finally {
+        setModelsLoading(false);
+      }
+    };
+
+    // Always fetch hardware info and models
     fetchHardwareEvaluation();
+    fetchModels();
   }, []);
 
   const closeWelcome = () => {
@@ -61,80 +108,24 @@ export default function LandingPage() {
     }
   };
 
-  // Mock data - replace with real data later
-  const localModels = [
-    {
-      id: 1,
-      name: "Mistral Medic",
-      size: "1GO",
-      parameters: "7B",
-      lastUpdate: "12/03/2025",
-      isOnline: false
-    },
-    {
-      id: 2,
-      name: "Expert in Tender Analysis",
-      size: "1GO", 
-      parameters: "7B",
-      lastUpdate: "12/03/2025",
-      isOnline: false
-    }
+  // Derived data from fetched models
+  const baseModelNames = [
+    "Mistral-7B-Instruct-v0.3",
+    "Mistral-7B-v0.3", 
+    "Gemma-3-1B-it",
+    "Gemma-2-2B-it",
+    "Gemma-3-4B-it"
   ];
-
-  const baseModels = [
-    {
-      id: 1,
-      name: "Mistral 7B",
-      size: "1GO",
-      parameters: "7B",
-      downloads: "3M+"
-    },
-    {
-      id: 2,
-      name: "Gemma 1B",
-      size: "300MO",
-      parameters: "1B",
-      downloads: "2M+"
-    },
-    {
-      id: 3,
-      name: "Gemma 4B",
-      size: "1GO",
-      parameters: "7B", 
-      downloads: "1M+"
-    },
-    {
-      id: 4,
-      name: "Mistral 7B",
-      size: "1GO",
-      parameters: "7B",
-      downloads: "3M+"
-    },
-    {
-      id: 2,
-      name: "Gemma 1B",
-      size: "300MO",
-      parameters: "1B",
-      downloads: "2M+"
-    },
-    {
-      id: 3,
-      name: "Gemma 4B",
-      size: "1GO",
-      parameters: "7B", 
-      downloads: "1M+"
-    },
-    {
-      id: 4,
-      name: "Mistral 7B",
-      size: "1GO",
-      parameters: "7B",
-      downloads: "3M+"
-    }
-  ];
-
-  const modelsForYou = [...baseModels.slice(0, 3)];
-  const communityModels = [...baseModels.slice(0, 3)];
+  
+  const baseModels = remoteModels.filter(model => 
+    baseModelNames.includes(model.name)
+  );
+  
+  const communityModels = remoteModels.filter(model => 
+    !baseModelNames.includes(model.name)
+  );
+  
+  const modelsForYou = baseModels.slice(0, 6); // First 6 base models
 
   // Search functionality
   const filterModels = (models, query) => {
@@ -142,8 +133,8 @@ export default function LandingPage() {
     
     return models.filter(model => 
       model.name.toLowerCase().includes(query.toLowerCase()) ||
-      model.parameters.toLowerCase().includes(query.toLowerCase()) ||
-      model.size.toLowerCase().includes(query.toLowerCase())
+      (model.parameters && model.parameters.toLowerCase().includes(query.toLowerCase())) ||
+      (model.size && model.size.toLowerCase().includes(query.toLowerCase()))
     );
   };
 
@@ -208,30 +199,37 @@ export default function LandingPage() {
           {/* Local Models Section */}
           <section>
             <h2 className="text-3xl font-bold text-white mb-6">Local Models</h2>
-                          <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
-                {filteredLocalModels.length > 0 ? (
-                  <>
-                    {filteredLocalModels.map((model) => (
-                      <ModelCard
-                        key={model.id}
-                        model={model}
-                        type="local"
-                        onChat={handleChat}
-                        onInfo={handleInfo}
-                      />
-                    ))}
-                    {!searchQuery && (
-                      <ModelCard type="add" onDownload={scrollToExplore} />
-                    )}
-                  </>
-                ) : searchQuery ? (
-                  <div className="col-span-3 text-center py-8">
-                    <p className="text-gray-400">No local models found for "{searchQuery}"</p>
+            <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
+              {modelsLoading ? (
+                <div className="col-span-3 text-center py-8">
+                  <div className="flex items-center justify-center">
+                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
+                    <p className="text-gray-400">Loading local models...</p>
                   </div>
-                ) : (
-                  <ModelCard type="add" onDownload={scrollToExplore} />
-                )}
-              </div>
+                </div>
+              ) : filteredLocalModels.length > 0 ? (
+                <>
+                  {filteredLocalModels.map((model) => (
+                    <ModelCard
+                      key={model.id}
+                      model={model}
+                      type="local"
+                      onChat={handleChat}
+                      onInfo={handleInfo}
+                    />
+                  ))}
+                  {!searchQuery && (
+                    <ModelCard type="add" onDownload={scrollToExplore} />
+                  )}
+                </>
+              ) : searchQuery ? (
+                <div className="col-span-3 text-center py-8">
+                  <p className="text-gray-400">No local models found for "{searchQuery}"</p>
+                </div>
+              ) : (
+                <ModelCard type="add" onDownload={scrollToExplore} />
+              )}
+            </div>
           </section>
 
           {/* Explore Models Section */}
@@ -277,7 +275,14 @@ export default function LandingPage() {
                 )}
               </h3>
               <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
-                {filteredBaseModels.length > 0 ? (
+                {modelsLoading ? (
+                  <div className="col-span-3 text-center py-8">
+                    <div className="flex items-center justify-center">
+                      <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
+                      <p className="text-gray-400">Loading base models...</p>
+                    </div>
+                  </div>
+                ) : filteredBaseModels.length > 0 ? (
                   filteredBaseModels.map((model) => (
                     <ModelCard
                       key={model.id}
@@ -291,7 +296,11 @@ export default function LandingPage() {
                   <div className="col-span-3 text-center py-8">
                     <p className="text-gray-400">No base models found for "{searchQuery}"</p>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="col-span-3 text-center py-8">
+                    <p className="text-gray-400">No base models available</p>
+                  </div>
+                )}
               </div>
             </div>
           </section>
@@ -307,7 +316,14 @@ export default function LandingPage() {
               )}
             </h3>
             <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
-              {filteredModelsForYou.length > 0 ? (
+              {modelsLoading ? (
+                <div className="col-span-3 text-center py-8">
+                  <div className="flex items-center justify-center">
+                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
+                    <p className="text-gray-400">Loading recommended models...</p>
+                  </div>
+                </div>
+              ) : filteredModelsForYou.length > 0 ? (
                 filteredModelsForYou.map((model) => (
                   <ModelCard
                     key={`foryou-${model.id}`}
@@ -321,7 +337,11 @@ export default function LandingPage() {
                 <div className="col-span-3 text-center py-8">
                   <p className="text-gray-400">No recommended models found for "{searchQuery}"</p>
                 </div>
-              ) : null}
+              ) : (
+                <div className="col-span-3 text-center py-8">
+                  <p className="text-gray-400">No recommended models available</p>
+                </div>
+              )}
             </div>
           </section>
 
@@ -336,7 +356,14 @@ export default function LandingPage() {
               )}
             </h3>
             <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
-              {filteredCommunityModels.length > 0 ? (
+              {modelsLoading ? (
+                <div className="col-span-3 text-center py-8">
+                  <div className="flex items-center justify-center">
+                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
+                    <p className="text-gray-400">Loading community models...</p>
+                  </div>
+                </div>
+              ) : filteredCommunityModels.length > 0 ? (
                 filteredCommunityModels.map((model) => (
                   <ModelCard
                     key={`community-${model.id}`}
@@ -347,10 +374,14 @@ export default function LandingPage() {
                   />
                 ))
               ) : searchQuery ? (
-                <div className="col-span-full text-center py-8">
+                <div className="col-span-3 text-center py-8">
                   <p className="text-gray-400">No community models found for "{searchQuery}"</p>
                 </div>
-              ) : null}
+              ) : (
+                <div className="col-span-3 text-center py-8">
+                  <p className="text-gray-400">No community models available</p>
+                </div>
+              )}
             </div>
           </section>
 
