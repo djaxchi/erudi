@@ -9,6 +9,7 @@ import {
   X
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import ErrorModal from "./modals/ErrorModal";
 
 export default function ChatCollapsibleSection({
   title,
@@ -28,7 +29,6 @@ export default function ChatCollapsibleSection({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [showErrorPopup, setShowErrorPopup] = useState(false);
 
   const renameConversation = async (id, name) => {
     try {
@@ -38,12 +38,11 @@ export default function ChatCollapsibleSection({
         body: JSON.stringify({ name }),
       });
 
-      if (!res.ok) throw new Error("Rename failed");
-
+      if (!res.ok) throw new Error(res.status);
       onRename?.(id, name);
     } catch (err) {
       console.error(err);
-      alert("Impossible de renommer la conversation - réessayez.");
+      alert("Could not rename conversation, try again: " + err.message);
     } finally {
       setEditingId(null);
     }
@@ -61,7 +60,7 @@ export default function ChatCollapsibleSection({
       onDelete?.(id);
     } catch (err) {
       console.error(err);
-      alert("Deleting conversation failed.");
+      alert("Deleting conversation failed: " + err.message);
     } finally {
       setEditingId(null);
     }
@@ -141,6 +140,10 @@ export default function ChatCollapsibleSection({
     return <p className="italic">Nothing here…</p>;
   };
 
+  const closeErrorModal = () => {
+    setErrorMessage("");
+  };
+
   return (
     <div
       className={`text-gray-200 h-full ${disabled ? "pointer-events-none opacity-50 select-none" : ""}`}
@@ -170,7 +173,6 @@ export default function ChatCollapsibleSection({
               } catch (err) {
                 console.error("Failed to refresh conversations:", err);
                 setErrorMessage(`Failed to refresh conversations: ${err.message || 'Network error'}`);
-                setShowErrorPopup(true);
               } finally {
                 setLoading(false);
               }
@@ -219,29 +221,7 @@ export default function ChatCollapsibleSection({
       )}
 
       {/* Error Popup */}
-      {showErrorPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl">
-            <div className="flex items-center mb-4">
-              <div className="bg-red-100 rounded-full p-2 mr-3">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900">Error</h3>
-            </div>
-            <p className="text-gray-700 mb-4">{errorMessage}</p>
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowErrorPopup(false)}
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ErrorModal errorMessage={errorMessage} onClose={closeErrorModal}/>
     </div>
   );
 }

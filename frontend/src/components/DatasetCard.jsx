@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import DragDropArea from "./DragDropArea";
 import { Loader, X } from "lucide-react";
+import ErrorModal from "./modals/ErrorModal";
+import ComingSoonModal from "./modals/ComingSoonModal";
 
 const API_BASE = "http://localhost:8000";
 
@@ -164,9 +166,12 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
       const d = await res.json();
       setTrainingStatus(d.status);
       setProgress(d.progress || 0);
+      if (d.status === "failed") {
+        setTrainingError("Training failed: " + (d.error_message || "Unknown error"));
+      }
       return ["failed", "completed"].includes(d.status);
     } catch (e) {
-      setTrainingError(String(e));
+      setTrainingError("Error fetching training status: " + String(e));
       return true;
     }
   };
@@ -234,7 +239,7 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
             )}
           </div>
 
-          {trainingError && <p className="text-red-400 text-xs sm:text-sm mt-1.5 sm:mt-2">{trainingError}</p>}
+          <ErrorModal errorMessage={trainingError} onClose={() => setTrainingError("")} />
         </div>
 
         {/* RIGHT */}
@@ -244,50 +249,12 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
       </div>
 
       {/* Coming Soon Modal */}
-      {showComingSoonModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#2B2B2B] rounded-2xl border border-white/10 shadow-2xl max-w-md w-full">
-            {/* Header */}
-            <div className="p-4 border-b border-white/10">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white flex items-center gap-3">
-                  🚧 Coming Soon
-                </h2>
-                <button
-                  onClick={() => setShowComingSoonModal(false)}
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="p-6">
-              <div className="text-gray-300 text-center">
-                <p className="text-sm mb-4">
-                  Dataset evaluation feature is currently under development and will be available in a future update.
-                </p>
-                <p className="text-xs text-gray-400">
-                  This feature will help you assess the quality and suitability of your training data.
-                </p>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-white/10">
-              <div className="flex justify-end">
-                <button
-                  onClick={() => setShowComingSoonModal(false)}
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-                >
-                  Got it
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ComingSoonModal
+        showComingSoonModal={showComingSoonModal}
+        onClose={() => setShowComingSoonModal(false)}
+        featureName="Dataset evaluation"
+        featureDescription="This feature will help you assess the quality and suitability of your training data."
+      />
     </>
   );
 }

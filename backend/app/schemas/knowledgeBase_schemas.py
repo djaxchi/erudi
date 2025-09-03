@@ -8,5 +8,5 @@ class KnowledgeBaseCreate(BaseModel):
     description: str = None
 
 class KnowledgeBaseResponse(BaseModel):
+    msg: str
     model_id: int
-    kb_id: int
