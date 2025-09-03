@@ -10,7 +10,7 @@ export async function createConversation(llmId) {
   return res.json();
 }
 
-export async function query(conversationId, question, {temperature = 0.5, topP = 0.9, maxTokens = 3074, customPrompt = "", onStreamChunk} = {}) {
+export async function query(conversationId, question, {temperature = 0.2, topP = 0.9, maxTokens = 3074, customPrompt = "", onStreamChunk} = {}) {
   const body = {
     question,
     temperature : temperature,
