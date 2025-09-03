@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
-import TrainNewModelCard from "../components/TrainNewModelCard";
+import ModelCard from "../components/ModelCard";
+import ModelInfoModal from "../components/modals/ModelInfoModal";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import HardwareLoadingPopup from "../components/LoadingPopup";
 
@@ -13,6 +14,11 @@ export default function LandingPage() {
   const [showLoadingPopup, setShowLoadingPopup] = useState(false);
   const [hardwareInfo, setHardwareInfo] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [localModels, setLocalModels] = useState([]);
+  const [remoteModels, setRemoteModels] = useState([]);
+  const [modelsLoading, setModelsLoading] = useState(true);
+  const [selectedModelInfo, setSelectedModelInfo] = useState(null);
   const localModelsRef = useRef(null);
 
   useEffect(() => {
@@ -48,9 +54,94 @@ export default function LandingPage() {
         setLoading(false);
       }
     };
+fetchWelcomePopupStatus();
+  // Helper function to parse model metadata
+  const parseMetadata = (metadataString) => {
+    if (!metadataString) return {};
+    
+    try {
+      const lines = metadataString.split('\n');
+      const metadata = {};
+      
+      lines.forEach(line => {
+        const trimmedLine = line.trim();
+        if (trimmedLine.includes(':')) {
+          const [key, ...valueParts] = trimmedLine.split(':');
+          const value = valueParts.join(':').trim();
+          
+          // Clean up the key
+          const cleanKey = key.trim().toLowerCase().replace(/\s+/g, '_');
+          metadata[cleanKey] = value;
+        }
+      });
+      
+      return metadata;
+    } catch (error) {
+      console.error('Error parsing metadata:', error);
+      return {};
+    }
+  };
 
-    fetchWelcomePopupStatus();
+  // Fetch models from backend
+  const fetchModels = async () => {
+      setModelsLoading(true);
+      try {
+        // Fetch local models
+        const localResponse = await fetch(`${API_BASE_URL}/main_window/llms/local`);
+        if (localResponse.ok) {
+          const localData = await localResponse.json();
+          // Transform API data to match our UI format
+          const transformedLocalModels = localData.map(model => {
+            const metadata = parseMetadata(model.model_metadata);
+            return {
+              id: model.id,
+              name: model.name,
+              size: metadata.size || "Unknown",
+              parameters: metadata.parameters || "Unknown", 
+              lastUpdate: metadata.last_modified || "Unknown",
+              isOnline: false, // Default to offline
+              description: model.description,
+              metadata: metadata,
+              rawMetadata: model.model_metadata
+            };
+          });
+          setLocalModels(transformedLocalModels);
+        }
+
+        // Fetch remote models
+        const remoteResponse = await fetch(`${API_BASE_URL}/main_window/llms/remote`);
+        if (remoteResponse.ok) {
+          const remoteData = await remoteResponse.json();
+          // Transform API data to match our UI format
+          const transformedRemoteModels = remoteData.map(model => {
+            const metadata = parseMetadata(model.model_metadata);
+            return {
+              id: model.id,
+              name: model.name,
+              size: metadata.size || "Unknown",
+              parameters: metadata.parameters || "Unknown", 
+              downloads: metadata.downloads || model.description || "Unknown",
+              lastUpdate: metadata.last_modified || "Unknown",
+              author: metadata.author || "Unknown",
+              library: metadata.library || "Unknown",
+              pipeline: metadata.pipeline || "Unknown",
+              likes: metadata.likes || "Unknown",
+              description: model.description,
+              metadata: metadata,
+              rawMetadata: model.model_metadata
+            };
+          });
+          setRemoteModels(transformedRemoteModels);
+        }
+      } catch (error) {
+        console.error("Failed to fetch models:", error);
+      } finally {
+        setModelsLoading(false);
+      }
+    };
+
     fetchHardwareEvaluation();
+    fetchModels();
   }, []);
 
   const closeWelcome = () => {
@@ -74,6 +165,79 @@ export default function LandingPage() {
     }
   };
 
+  const scrollToExplore = () => {
+    const exploreSection = document.getElementById('explore-models');
+    if (exploreSection) {
+      exploreSection.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  // Derived data from fetched models
+  const baseModelNames = [
+    "Mistral-7B-Instruct-v0.3",
+    "Mistral-7B-v0.3", 
+    "Gemma-3-1B-it",
+    "Gemma-2-2B-it",
+    "Gemma-3-4B-it"
+  ];
+  
+  const baseModels = remoteModels.filter(model => 
+    baseModelNames.includes(model.name)
+  );
+  
+  const communityModels = remoteModels.filter(model => 
+    !baseModelNames.includes(model.name)
+  );
+  
+  const modelsForYou = baseModels.slice(0, 6); // First 6 base models
+
+  // Search functionality
+  const filterModels = (models, query) => {
+    if (!query.trim()) return models;
+    
+    return models.filter(model => 
+      model.name.toLowerCase().includes(query.toLowerCase()) ||
+      (model.parameters && model.parameters.toLowerCase().includes(query.toLowerCase())) ||
+      (model.size && model.size.toLowerCase().includes(query.toLowerCase()))
+    );
+  };
+
+  // Filtered models based on search query
+  const filteredLocalModels = filterModels(localModels, searchQuery);
+  const filteredBaseModels = filterModels(baseModels, searchQuery);
+  const filteredModelsForYou = filterModels(modelsForYou, searchQuery);
+  const filteredCommunityModels = filterModels(communityModels, searchQuery);
+
+  // Check if any models match the search
+  const hasSearchResults = filteredLocalModels.length > 0 ||
+                          filteredBaseModels.length > 0 || 
+                          filteredModelsForYou.length > 0 || 
+                          filteredCommunityModels.length > 0;
+
+  // Event handlers
+  const handleDownload = (model) => {
+    console.log("Download model:", model);
+    // Implement download logic or use existing download modal
+    if (open) {
+      open(model);
+    }
+  };
+
+  const handleInfo = (model) => {
+    console.log("Show info for model:", model);
+    setSelectedModelInfo(model);
+  };
+
+  const handleChat = (model) => {
+    console.log("Start chat with model:", model);
+    // Implement navigation to chat page
+  };
+
+  const handleKnowledgeBase = (model) => {
+    console.log("Open knowledge base for model:", model);
+    // Implement navigation to knowledge base page
+  };
+
   return (
     <div className="flex h-screen">
       {/* Left mini sidebar */}
@@ -95,7 +259,212 @@ export default function LandingPage() {
 
       {/* Main content */}
       <main className="flex-1 bg-[#071b18] relative overflow-auto">
-        <TrainNewModelCard />
+        <div className="p-8 space-y-8">
+          {/* Local Models Section */}
+          <section>
+            <h2 className="text-2xl font-bold text-white mb-5">Local Models</h2>
+            <div className="grid grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-2">
+              {modelsLoading ? (
+                <div className="col-span-3 text-center py-8">
+                  <div className="flex items-center justify-center">
+                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
+                    <p className="text-gray-400">Loading local models...</p>
+                  </div>
+                </div>
+              ) : filteredLocalModels.length > 0 ? (
+                <>
+                  {filteredLocalModels.map((model) => (
+                    <ModelCard
+                      key={model.id}
+                      model={model}
+                      type="local"
+                      onChat={handleChat}
+                      onInfo={handleInfo}
+                    />
+                  ))}
+                  {!searchQuery && (
+                    <ModelCard type="add" onDownload={scrollToExplore} />
+                  )}
+                </>
+              ) : searchQuery ? (
+                <div className="col-span-3 text-center py-8">
+                  <p className="text-gray-400">No local models found for "{searchQuery}"</p>
+                </div>
+              ) : (
+                <ModelCard type="add" onDownload={scrollToExplore} />
+              )}
+            </div>
+          </section>
+
+          {/* Explore Models Section */}
+          <section id="explore-models">
+            <div className="sticky top-0 bg-[#071b18]/95 backdrop-blur-md z-10 py-6 border-b border-white/10">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-2xl font-bold text-white">Explore Models</h2>
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    placeholder="Looking for a model?"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="bg-[#1a1a1a]/60 border border-white/10 rounded-lg px-3 py-2 pl-8 pr-8 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-white/30"
+                  />
+                  <div className="absolute left-2 top-1/2 transform -translate-y-1/2">
+                    <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                  </div>
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Base Models Subsection */}
+            <div className="mb-6 pt-3">
+              <h3 className="text-lg font-semibold text-white mb-3">
+                Base Models
+                {searchQuery && (
+                  <span className="text-xs text-gray-400 ml-2">
+                    ({filteredBaseModels.length} results)
+                  </span>
+                )}
+              </h3>
+              <div className="grid grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-2">
+                {modelsLoading ? (
+                  <div className="col-span-3 text-center py-8">
+                    <div className="flex items-center justify-center">
+                      <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
+                      <p className="text-gray-400">Loading base models...</p>
+                    </div>
+                  </div>
+                ) : filteredBaseModels.length > 0 ? (
+                  filteredBaseModels.map((model) => (
+                    <ModelCard
+                      key={model.id}
+                      model={model}
+                      type="base"
+                      onDownload={handleDownload}
+                      onInfo={handleInfo}
+                    />
+                  ))
+                ) : searchQuery ? (
+                  <div className="col-span-3 text-center py-8">
+                    <p className="text-gray-400">No base models found for "{searchQuery}"</p>
+                  </div>
+                ) : (
+                  <div className="col-span-3 text-center py-8">
+                    <p className="text-gray-400">No base models available</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          {/* Models For You Section */}
+          <section>
+            <h3 className="text-xl font-semibold text-white mb-4">
+              Models For You
+              {searchQuery && (
+                <span className="text-sm text-gray-400 ml-2">
+                  ({filteredModelsForYou.length} results)
+                </span>
+              )}
+            </h3>
+            <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
+              {modelsLoading ? (
+                <div className="col-span-3 text-center py-8">
+                  <div className="flex items-center justify-center">
+                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
+                    <p className="text-gray-400">Loading recommended models...</p>
+                  </div>
+                </div>
+              ) : filteredModelsForYou.length > 0 ? (
+                filteredModelsForYou.map((model) => (
+                  <ModelCard
+                    key={`foryou-${model.id}`}
+                    model={model}
+                    type="base"
+                    onDownload={handleDownload}
+                    onInfo={handleInfo}
+                  />
+                ))
+              ) : searchQuery ? (
+                <div className="col-span-3 text-center py-8">
+                  <p className="text-gray-400">No recommended models found for "{searchQuery}"</p>
+                </div>
+              ) : (
+                <div className="col-span-3 text-center py-8">
+                  <p className="text-gray-400">No recommended models available</p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Community Models Section */}
+          <section>
+            <h3 className="text-lg font-semibold text-white mb-3">
+              Community Models
+              {searchQuery && (
+                <span className="text-xs text-gray-400 ml-2">
+                  ({filteredCommunityModels.length} results)
+                </span>
+              )}
+            </h3>
+            <div className="grid grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-2">
+              {modelsLoading ? (
+                <div className="col-span-3 text-center py-8">
+                  <div className="flex items-center justify-center">
+                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
+                    <p className="text-gray-400">Loading community models...</p>
+                  </div>
+                </div>
+              ) : filteredCommunityModels.length > 0 ? (
+                filteredCommunityModels.map((model) => (
+                  <ModelCard
+                    key={`community-${model.id}`}
+                    model={model}
+                    type="base"
+                    onDownload={handleDownload}
+                    onInfo={handleInfo}
+                  />
+                ))
+              ) : searchQuery ? (
+                <div className="col-span-3 text-center py-8">
+                  <p className="text-gray-400">No community models found for "{searchQuery}"</p>
+                </div>
+              ) : (
+                <div className="col-span-3 text-center py-8">
+                  <p className="text-gray-400">No community models available</p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* No Results Message */}
+          {searchQuery && !hasSearchResults && (
+            <div className="text-center py-12">
+              <div className="text-gray-400 text-lg mb-2">No models found</div>
+              <p className="text-gray-500">
+                No models match your search for "{searchQuery}". Try a different search term.
+              </p>
+              <button
+                onClick={() => setSearchQuery("")}
+                className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
+              >
+                Clear Search
+              </button>
+            </div>
+          )}
+        </div>
       </main>
 
       {/* Welcome Popup */}
@@ -271,7 +640,13 @@ export default function LandingPage() {
         </div>
       )}
 
-
+      {/* Model Info Modal */}
+      <ModelInfoModal
+        modelInfo={selectedModelInfo}
+        isOpen={!!selectedModelInfo}
+        onClose={() => setSelectedModelInfo(null)}
+        onDownload={handleDownload}
+      />
       {/* Loading Popup (appears on top of welcome popup when hardware is still loading) */}
       <HardwareLoadingPopup show={showLoadingPopup} loading={loading} onClose={closeLoadingOnly} />
 
