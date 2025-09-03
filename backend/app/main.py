@@ -25,6 +25,7 @@ from .models.KnowledgeBase import KnowledgeBase
 from .models.VectorStore import VectorStore
 from .models.KBJob import KBJobModel
 from .models.StaticHardwareInfos import StaticHardwareInfo
+from .models.StartupVariables import StartupVariables
 
 from huggingface_hub import HfApi
 from dotenv import load_dotenv
@@ -143,6 +144,7 @@ async def delete_all_data():
         db.query(VectorStore).delete()
         db.query(KnowledgeBase).delete()
         db.query(KBJobModel).delete()
+        db.query(StartupVariables).delete()
 
         db.commit()
         logging.info("All data deleted successfully.")
@@ -409,12 +411,16 @@ async def startup_populate_database():
                 # Performance breakdown
                 performance_breakdown=hw.get("performance_breakdown"),
                 
+        # Initialize startup variables
+        variables = db.query(StartupVariables).first()
+        if not variables:
+            variables = StartupVariables(
+                welcome_popup_has_already_displayed=False
             )
-            db.add(persist_hw_infos)
+            db.add(variables)
             db.commit()
-            logging.info("Hardware info persisted to database.")
         else:
-            logging.info("Hardware info already exists in database, skipping creation.")
+            db.refresh(variables)
 
 
 

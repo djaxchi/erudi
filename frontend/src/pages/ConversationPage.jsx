@@ -26,9 +26,9 @@ export default function ConversationPage() {
   const [models, setModels] = useState([]);
   const [currentModel, setCurrentModel] = useState("");
   const [settings, setSettings] = useState({
-    temperature: 0.9,
-    topP: 0.9,
-    maxTokens: 200
+    temperature: 0.2,
+    topP: 0.5,
+    maxTokens: 3074
   })
 
   // Utility function to clean error messages for display
