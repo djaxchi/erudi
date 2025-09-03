@@ -8,7 +8,7 @@ class VectorStore(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     kb_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="CASCADE"), nullable=False, unique=True)  # Un seul VectorStore par KB
-    vectors_data = Column(JSON, nullable=False)  # JSON: {"faiss_id": "text_content", ...}
+    vectors_data = Column(JSON, nullable=True)  # JSON: {"faiss_id": "text_content", ...}
     created_at = Column(DateTime, default=datetime.now(), nullable=False)
 
     # relations

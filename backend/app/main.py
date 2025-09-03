@@ -2,6 +2,8 @@ from datetime import datetime
 import os
 import shutil
 
+
+
 from .utils.hardware_info import get_hardware_eval_for_apple_silicon
 
 from .models.StaticHardwareInfos import StaticHardwareInfo
@@ -21,6 +23,7 @@ from .models.TrainingJob import TrainingJob
 from .models.DownloadJob import DownloadJobModel
 from .models.KnowledgeBase import KnowledgeBase
 from .models.VectorStore import VectorStore
+from .models.KBJob import KBJobModel
 from .models.StaticHardwareInfos import StaticHardwareInfo
 from .models.StartupVariables import StartupVariables
 
@@ -140,6 +143,7 @@ async def delete_all_data():
         db.query(StaticHardwareInfo).delete()
         db.query(VectorStore).delete()
         db.query(KnowledgeBase).delete()
+        db.query(KBJobModel).delete()
         db.query(StartupVariables).delete()
 
         db.commit()
@@ -153,7 +157,7 @@ async def delete_all_data():
 app = FastAPI()
 
 async def startup_populate_database():
-    api = HfApi(token=HF_TOKEN)
+    
     db: Session = SessionLocal()
 
 
@@ -311,6 +315,102 @@ async def startup_populate_database():
             logging.warning(f"Marked unfinished TrainingJob {job.id} as failed.")
         db.commit()
 
+        # Check the unfinished KBJobs
+        unfinished_kb_jobs = db.query(KBJobModel).filter(
+            KBJobModel.status.in_(["running", "pending"])
+        ).all()
+        for job in unfinished_kb_jobs:
+            job.status = "failed"
+            job.error_message = "Knowledge Base creation was not completed due to application shutdown."
+            new_llm = db.query(Llm).filter(Llm.id == job.new_model_id).first()
+            if new_llm:
+                db.delete(new_llm)
+            vector_store = db.query(VectorStore).filter(VectorStore.kb_id == job.kb_id).first()
+            if vector_store:
+                db.delete(vector_store)
+            kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == job.kb_id).first()
+            if kb:
+                if kb.index_path:
+                    if os.path.exists(kb.index_path):
+                        shutil.rmtree(kb.index_path, ignore_errors=True)
+                db.delete(kb)
+            job.new_model_id = -1
+            job.updated_at = datetime.now()
+            
+            db.commit()
+            logging.warning(f"Marked unfinished KBJob {job.id} as failed.")
+        db.commit()
+
+        persist_hw_infos = db.query(StaticHardwareInfo).first()
+        if not persist_hw_infos:
+            try:
+                # Get Apple Silicon hardware evaluation
+                logging.info("Evaluating Apple Silicon hardware...")
+                hw = get_hardware_eval_for_apple_silicon()
+                logging.info("Hardware evaluation completed successfully.")
+            except Exception as e:
+                logging.warning(f"Hardware evaluation failed: {e}. Using fallback values.")
+                hw = {
+                    "chip_model": "Unknown",
+                    "cpu_model": "Unknown CPU",
+                    "gpu_name": "Unknown GPU",
+                    "total_memory_gb": 8.0,
+                    "available_memory_gb": 4.0,
+                    "disk_total_gb": 100.0,
+                    "disk_available_gb": 50.0,
+                    "global_inference_score": 20.0,
+                    "global_inference_label": "Poor",
+                    "global_finetuning_score": 15.0,
+                    "global_finetuning_label": "Very Poor",
+                    "cpu_score": 30.0,
+                    "gpu_score": 20.0,
+                    "memory_score": 25.0,
+                    "mps_available": False,
+                    "is_apple_silicon": False
+                }
+            
+            persist_hw_infos = StaticHardwareInfo(
+                # Basic hardware identification
+                chip_model=hw.get("chip_model"),
+                cpu_model=hw.get("cpu_model"),
+                gpu_name=hw.get("gpu_name"),
+                
+                # Memory information (unified memory for Apple Silicon)
+                system_ram_gb=hw.get("total_memory_gb"),
+                available_ram_gb=hw.get("available_memory_gb"),
+                
+                # Storage information
+                disk_total_gb=hw.get("disk_total_gb"),
+                disk_avail_gb=hw.get("disk_available_gb"),
+                
+                # Apple Silicon specific GPU specs
+                gpu_cores=hw.get("gpu_cores"),
+                estimated_gpu_tflops=hw.get("estimated_gpu_tflops"),
+                
+                # Apple Silicon specific performance metrics
+                memory_bandwidth_gbs=hw.get("memory_bandwidth_gbs"),
+                neural_engine_tops=hw.get("neural_engine_tops"),
+                cpu_performance_units=hw.get("cpu_performance_units"),
+                
+                # Architecture details
+                architecture=hw.get("architecture"),
+                is_apple_silicon=hw.get("is_apple_silicon", False),
+                mps_available=hw.get("mps_available", False),
+                unified_memory=hw.get("unified_memory", False),
+                system_platform=hw.get("system_platform"),
+                
+                # Performance scores
+                global_inference_score=hw.get("global_inference_score"),
+                global_inference_label=hw.get("global_inference_label"),
+                global_finetuning_score=hw.get("global_finetuning_score"),
+                global_finetuning_label=hw.get("global_finetuning_label"),
+                cpu_score=hw.get("cpu_score"),
+                gpu_score=hw.get("gpu_score"),
+                memory_score=hw.get("memory_score"),
+                
+                # Performance breakdown
+                performance_breakdown=hw.get("performance_breakdown"),
+                
         # Initialize startup variables
         variables = db.query(StartupVariables).first()
         if not variables:
@@ -321,6 +421,8 @@ async def startup_populate_database():
             db.commit()
         else:
             db.refresh(variables)
+
+
 
     except Exception as e:
         logging.error(f"Error during startup event: {e}")

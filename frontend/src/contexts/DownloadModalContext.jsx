@@ -180,6 +180,10 @@ export function DownloadModalProvider({ children }) {
     callbacksRef.current.onError?.('cancelled')
   }, [])
 
+  const closeErrorModal = () => {
+    setErrorMessage("");
+  };
+
   return (
     <DownloadModalContext.Provider value={{ 
       open,
@@ -230,9 +234,7 @@ export function DownloadModalProvider({ children }) {
                         </div>
                         
                         {errorMessage ? (
-                          <div className="mt-2 text-red-400 text-sm">
-                            {errorMessage}
-                          </div>
+                          <ErrorModal errorMessage={errorMessage} onClose={closeErrorModal} />
                         ) : (
                           <div className="flex gap-4 text-sm text-gray-300 mt-2">
                             <span>
