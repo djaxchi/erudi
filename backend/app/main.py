@@ -22,6 +22,7 @@ from .models.DownloadJob import DownloadJobModel
 from .models.KnowledgeBase import KnowledgeBase
 from .models.VectorStore import VectorStore
 from .models.StaticHardwareInfos import StaticHardwareInfo
+from .models.StartupVariables import StartupVariables
 
 from huggingface_hub import HfApi
 from dotenv import load_dotenv
@@ -139,6 +140,7 @@ async def delete_all_data():
         db.query(StaticHardwareInfo).delete()
         db.query(VectorStore).delete()
         db.query(KnowledgeBase).delete()
+        db.query(StartupVariables).delete()
 
         db.commit()
         logging.info("All data deleted successfully.")
@@ -278,7 +280,8 @@ async def startup_populate_database():
             job.status = "failed"
             llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
             if llm:
-                shutil.rmtree(llm.link, ignore_errors=True)
+                if os.path.exists(llm.link):
+                    shutil.rmtree(llm.link, ignore_errors=True)
                 db.delete(llm)
             job.error_message = "Downloading was not completed due to application shutdown."
             job.local_model_id = -1
@@ -298,7 +301,8 @@ async def startup_populate_database():
             job.error_message = "Training was not completed due to application shutdown."
             llm = db.query(Llm).filter(Llm.id == job.llm_id).first()
             if llm:
-                shutil.rmtree(llm.link, ignore_errors=True)
+                if os.path.exists(llm.link):
+                    shutil.rmtree(llm.link, ignore_errors=True)
                 db.delete(llm)
             job.llm_id = -1
             job.updated_at = datetime.now()
@@ -307,82 +311,16 @@ async def startup_populate_database():
             logging.warning(f"Marked unfinished TrainingJob {job.id} as failed.")
         db.commit()
 
-        persist_hw_infos = db.query(StaticHardwareInfo).first()
-        if not persist_hw_infos:
-            try:
-                # Get Apple Silicon hardware evaluation
-                logging.info("Evaluating Apple Silicon hardware...")
-                hw = get_hardware_eval_for_apple_silicon()
-                logging.info("Hardware evaluation completed successfully.")
-            except Exception as e:
-                logging.warning(f"Hardware evaluation failed: {e}. Using fallback values.")
-                hw = {
-                    "chip_model": "Unknown",
-                    "cpu_model": "Unknown CPU",
-                    "gpu_name": "Unknown GPU",
-                    "total_memory_gb": 8.0,
-                    "available_memory_gb": 4.0,
-                    "disk_total_gb": 100.0,
-                    "disk_available_gb": 50.0,
-                    "global_inference_score": 20.0,
-                    "global_inference_label": "Poor",
-                    "global_finetuning_score": 15.0,
-                    "global_finetuning_label": "Very Poor",
-                    "cpu_score": 30.0,
-                    "gpu_score": 20.0,
-                    "memory_score": 25.0,
-                    "mps_available": False,
-                    "is_apple_silicon": False
-                }
-            
-            persist_hw_infos = StaticHardwareInfo(
-                # Basic hardware identification
-                chip_model=hw.get("chip_model"),
-                cpu_model=hw.get("cpu_model"),
-                gpu_name=hw.get("gpu_name"),
-                
-                # Memory information (unified memory for Apple Silicon)
-                system_ram_gb=hw.get("total_memory_gb"),
-                available_ram_gb=hw.get("available_memory_gb"),
-                
-                # Storage information
-                disk_total_gb=hw.get("disk_total_gb"),
-                disk_avail_gb=hw.get("disk_available_gb"),
-                
-                # Apple Silicon specific GPU specs
-                gpu_cores=hw.get("gpu_cores"),
-                estimated_gpu_tflops=hw.get("estimated_gpu_tflops"),
-                
-                # Apple Silicon specific performance metrics
-                memory_bandwidth_gbs=hw.get("memory_bandwidth_gbs"),
-                neural_engine_tops=hw.get("neural_engine_tops"),
-                cpu_performance_units=hw.get("cpu_performance_units"),
-                
-                # Architecture details
-                architecture=hw.get("architecture"),
-                is_apple_silicon=hw.get("is_apple_silicon", False),
-                mps_available=hw.get("mps_available", False),
-                unified_memory=hw.get("unified_memory", False),
-                system_platform=hw.get("system_platform"),
-                
-                # Performance scores
-                global_inference_score=hw.get("global_inference_score"),
-                global_inference_label=hw.get("global_inference_label"),
-                global_finetuning_score=hw.get("global_finetuning_score"),
-                global_finetuning_label=hw.get("global_finetuning_label"),
-                cpu_score=hw.get("cpu_score"),
-                gpu_score=hw.get("gpu_score"),
-                memory_score=hw.get("memory_score"),
-                
-                # Performance breakdown
-                performance_breakdown=hw.get("performance_breakdown"),
-                
+        # Initialize startup variables
+        variables = db.query(StartupVariables).first()
+        if not variables:
+            variables = StartupVariables(
+                welcome_popup_has_already_displayed=False
             )
-            db.add(persist_hw_infos)
+            db.add(variables)
             db.commit()
-            logging.info("Hardware info persisted to database.")
         else:
-            logging.info("Hardware info already exists in database, skipping creation.")
+            db.refresh(variables)
 
     except Exception as e:
         logging.error(f"Error during startup event: {e}")
@@ -390,6 +328,7 @@ async def startup_populate_database():
         raise
     finally:
         db.close()
+        return
 
 @app.on_event("startup")
 async def startup_event():

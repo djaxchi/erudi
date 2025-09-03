@@ -4,15 +4,14 @@ import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
 import ModelCard from "../components/ModelCard";
 import ModelInfoModal from "../components/modals/ModelInfoModal";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
+import HardwareLoadingPopup from "../components/LoadingPopup";
+
+const API_BASE_URL = "http://127.0.0.1:8000";
 
 export default function LandingPage() {
   const { open } = useDownloadModal();
-  const [showWelcome, setShowWelcome] = useState(() => {
-    // Check if user has seen the welcome popup before
-    const hasSeenWelcome = localStorage.getItem('erudi_welcome_seen');
-    // return !hasSeenWelcome; uncomment for prod
-    return true;
-  });
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [showLoadingPopup, setShowLoadingPopup] = useState(false);
   const [hardwareInfo, setHardwareInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -22,13 +21,25 @@ export default function LandingPage() {
   const [selectedModelInfo, setSelectedModelInfo] = useState(null);
   const localModelsRef = useRef(null);
 
-  const API_BASE = "http://127.0.0.1:8000";
-
   useEffect(() => {
+    // To know if it should spawn the welcome popup
+    const fetchWelcomePopupStatus = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/main_window/welcome-popup`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        setShowWelcome(!data.has_already_displayed);
+      } catch (error) {
+        console.error("Failed to fetch welcome popup status:", error);
+      }
+    };
+
     // Fetch hardware evaluation on component mount
     const fetchHardwareEvaluation = async () => {
       try {
-        const response = await fetch(`${API_BASE}/hardware/app_startup`);
+        const response = await fetch(`${API_BASE_URL}/hardware/app_startup`);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -43,7 +54,7 @@ export default function LandingPage() {
         setLoading(false);
       }
     };
-
+fetchWelcomePopupStatus();
   // Helper function to parse model metadata
   const parseMetadata = (metadataString) => {
     if (!metadataString) return {};
@@ -130,15 +141,23 @@ export default function LandingPage() {
       }
     };
 
-    // Always fetch hardware info and models
     fetchHardwareEvaluation();
     fetchModels();
   }, []);
 
   const closeWelcome = () => {
-    // Mark that user has seen the welcome popup
-    localStorage.setItem('erudi_welcome_seen', 'true');
+    // If hardware info is still loading, show intermediate popup
+    if (loading) {
+      setShowLoadingPopup(true);
+      return;
+    }
+    // Otherwise, close normally
     setShowWelcome(false);
+  };
+
+  const closeLoadingOnly = () => {
+    // Close only the loading popup, keep welcome popup open
+    setShowLoadingPopup(false);
   };
 
   const handleLocalModelRefresh = () => {
@@ -629,6 +648,9 @@ export default function LandingPage() {
         onClose={() => setSelectedModelInfo(null)}
         onDownload={handleDownload}
       />
+      {/* Loading Popup (appears on top of welcome popup when hardware is still loading) */}
+      <HardwareLoadingPopup show={showLoadingPopup} loading={loading} onClose={closeLoadingOnly} />
+
     </div>
   );
 }
