@@ -206,7 +206,7 @@ export default function ArenaPage() {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6">
               <h2 className="text-xl font-semibold mb-4">
-                Personnaliser le prompt
+                Personalize the prompt
               </h2>
               <textarea
                 className="w-full h-40 border rounded p-2 mb-4"
@@ -222,13 +222,13 @@ export default function ArenaPage() {
                   onClick={() => handleCustomizePrompt(panel.id, false)}
                   className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
                 >
-                  Annuler
+                  Cancel
                 </button>
                 <button
                   onClick={() => handleCustomizePrompt(panel.id, false)}
                   className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
                 >
-                  Enregistrer
+                  Save
                 </button>
               </div>
             </div>

@@ -5,6 +5,7 @@ import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
 import { ask } from "../services/conversationService";
+import ErrorModal from "../components/modals/ErrorModal";
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -13,7 +14,6 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState("");
   const [conversations, setConversations] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
-  const [showErrorPopup, setShowErrorPopup] = useState(false);
 
   useEffect(() => {
     fetch("http://127.0.0.1:8000/main_window/llms/local")
@@ -27,7 +27,6 @@ export default function ChatPage() {
       .catch((err) => {
         console.error("Erreur lors du fetch des modèles:", err);
         setErrorMessage(`Failed to load models: ${err.message || 'Network error'}`);
-        setShowErrorPopup(true);
       });
   }, []);
 
@@ -43,7 +42,6 @@ export default function ChatPage() {
       } catch (err) {
         console.error("Failed to fetch conversations:", err);
         setErrorMessage(`Failed to load conversations: ${err.message || 'Network error'}`);
-        setShowErrorPopup(true);
       }
     };
 
@@ -75,7 +73,6 @@ export default function ChatPage() {
       } catch (err) {
         console.error("Failed to start conversation:", err);
         setErrorMessage(`Failed to start conversation: ${err.message || 'Network error'}`);
-        setShowErrorPopup(true);
       }
     },
     [models, selectedModel, navigate]
@@ -102,7 +99,6 @@ export default function ChatPage() {
     } catch (err) {
       console.error("Failed to refresh conversations:", err);
       setErrorMessage(`Failed to refresh conversations: ${err.message || 'Network error'}`);
-      setShowErrorPopup(true);
     }
   };
 
@@ -172,29 +168,7 @@ export default function ChatPage() {
       </main>
 
       {/* Error Popup */}
-      {showErrorPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl">
-            <div className="flex items-center mb-4">
-              <div className="bg-red-100 rounded-full p-2 mr-3">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900">Error</h3>
-            </div>
-            <p className="text-gray-700 mb-4">{errorMessage}</p>
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowErrorPopup(false)}
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ErrorModal errorMessage={errorMessage} onClose={() => setErrorMessage("")} />
     </div>
   );
 }
