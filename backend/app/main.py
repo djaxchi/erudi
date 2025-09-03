@@ -409,7 +409,9 @@ async def startup_populate_database():
                 memory_score=hw.get("memory_score"),
                 
                 # Performance breakdown
-                performance_breakdown=hw.get("performance_breakdown"),
+                performance_breakdown=hw.get("performance_breakdown")
+            )
+            db.add(persist_hw_infos)
                 
         # Initialize startup variables
         variables = db.query(StartupVariables).first()
