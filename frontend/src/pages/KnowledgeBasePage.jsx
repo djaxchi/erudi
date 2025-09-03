@@ -8,12 +8,13 @@ import InfoRow from "../components/InfoRow";
 import DragDropArea from "../components/DragDropArea";
 import Dropdown from "../components/Dropdown";
 import { useKnowledgeBase } from "../contexts/KnowledgeBaseContext";
+import ErrorModal from "./modals/ErrorModal";
 
 const API_BASE = "http://127.0.0.1:8000";
 
 export default function KnowledgeBasePage() {
   const { open: openKnowledgeBase, isCreating, isStarting } = useKnowledgeBase();
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const [isValidated, setIsValidated] = useState(false);
   
   const [hw, setHw] = useState({
@@ -57,6 +58,10 @@ export default function KnowledgeBasePage() {
     });
   };
 
+  const closeErrorModal = () => {
+    setErrorMessage("");
+  };
+
     /* helper to determine bullet or icon for rating field */
     const getRatingBulletOrIcon = (rating) => {
         console.log("Rating received:", rating);
@@ -88,12 +93,12 @@ export default function KnowledgeBasePage() {
       console.log('  !selectedModel:', !selectedModel);
       console.log('  !modelName.trim():', !modelName.trim());
       console.log('  paths.length === 0:', paths.length === 0);
-      setErrorMsg('Please fill in all required fields');
+      setErrorMessage('Please fill in all required fields');
       return;
     }
 
     console.log('Validation passed, proceeding with creation');
-    setErrorMsg('');
+    setErrorMessage('');
     
     const task = {
       paths,
@@ -116,7 +121,7 @@ export default function KnowledgeBasePage() {
       },
       onError: (error) => {
         console.error('Assistant creation failed:', error);
-        setErrorMsg(error);
+        setErrorMessage(error);
       }
     });
   };
@@ -127,7 +132,7 @@ export default function KnowledgeBasePage() {
     setModelName("");
     setDescription("");
     setPaths([]);
-    setErrorMsg("");
+    setErrorMessage("");
     // Force page refresh with a small delay to ensure state reset completes
     setTimeout(() => {
       window.location.href = window.location.href;
@@ -270,29 +275,12 @@ export default function KnowledgeBasePage() {
                 {isValidated ? (
                   <div className="w-full text-center"> 
                     <div className="text-emerald-400 text-sm">
-                      Assistant created successfully!
+                      Data attached to your Assistant successfully!
                     </div>
                     <div className="inline-flex items-center gap-2 py-3">
                       
                     </div>
                   </div>
-                ) : isCreating ? (
-                  <div className="w-full text-center"> 
-                    <div className="text-emerald-400 text-sm">
-                      We are creating your assistant
-                    </div>
-                    <div className="inline-flex items-center gap-2 py-3">
-                      
-                    </div>
-                  </div>
-                ) : isStarting ? (
-                  <button 
-                    className="py-2 sm:py-3 px-6 sm:px-8 rounded-full bg-emerald-500 text-white font-semibold shadow-lg flex items-center justify-center gap-2 text-xs sm:text-sm"
-                    disabled={true}
-                  >
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Creating...
-                  </button>
                 ) : (
                   <button 
                     className="py-2 sm:py-3 px-6 sm:px-8 rounded-full bg-emerald-500 text-white font-semibold shadow-lg hover:bg-emerald-400 transition disabled:opacity-50 text-xs sm:text-sm"
@@ -302,13 +290,12 @@ export default function KnowledgeBasePage() {
                     }}
                     disabled={isCreating || isStarting}
                   >
-                    Create Assistant
+                    {isCreating ? "Creating Assistant..." : "Create Assistant"}
                   </button>
                 )}
                 
-                {errorMsg && (
-                  <div className="text-red-400 text-sm text-center w-full">{errorMsg}</div>
-                )}
+                {/* Error Modal */}
+                <ErrorModal errorMessage={errorMessage} onClose={closeErrorModal} />
               </div>
             </div>
 
