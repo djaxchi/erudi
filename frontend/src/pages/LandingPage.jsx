@@ -87,7 +87,7 @@ fetchWelcomePopupStatus();
       setModelsLoading(true);
       try {
         // Fetch local models
-        const localResponse = await fetch(`${API_BASE}/main_window/llms/local`);
+        const localResponse = await fetch(`${API_BASE_URL}/main_window/llms/local`);
         if (localResponse.ok) {
           const localData = await localResponse.json();
           // Transform API data to match our UI format
@@ -109,11 +109,10 @@ fetchWelcomePopupStatus();
         }
 
         // Fetch remote models
-        const remoteResponse = await fetch(`${API_BASE}/main_window/llms/remote`);
+        const remoteResponse = await fetch(`${API_BASE_URL}/main_window/llms/remote`);
         if (remoteResponse.ok) {
           const remoteData = await remoteResponse.json();
           // Transform API data to match our UI format
-          console.log("Remote models data:", remoteData);
           const transformedRemoteModels = remoteData.map(model => {
             const metadata = parseMetadata(model.model_metadata);
             return {
