@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
 import ModelCard from "../components/ModelCard";
+import ModelInfoModal from "../components/modals/ModelInfoModal";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 
 export default function LandingPage() {
@@ -18,6 +19,7 @@ export default function LandingPage() {
   const [localModels, setLocalModels] = useState([]);
   const [remoteModels, setRemoteModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
+  const [selectedModelInfo, setSelectedModelInfo] = useState(null);
   const localModelsRef = useRef(null);
 
   const API_BASE = "http://127.0.0.1:8000";
@@ -26,7 +28,7 @@ export default function LandingPage() {
     // Fetch hardware evaluation on component mount
     const fetchHardwareEvaluation = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:8000/hardware/app_startup");
+        const response = await fetch(`${API_BASE}/hardware/app_startup`);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -42,8 +44,35 @@ export default function LandingPage() {
       }
     };
 
-    // Fetch models from backend
-    const fetchModels = async () => {
+  // Helper function to parse model metadata
+  const parseMetadata = (metadataString) => {
+    if (!metadataString) return {};
+    
+    try {
+      const lines = metadataString.split('\n');
+      const metadata = {};
+      
+      lines.forEach(line => {
+        const trimmedLine = line.trim();
+        if (trimmedLine.includes(':')) {
+          const [key, ...valueParts] = trimmedLine.split(':');
+          const value = valueParts.join(':').trim();
+          
+          // Clean up the key
+          const cleanKey = key.trim().toLowerCase().replace(/\s+/g, '_');
+          metadata[cleanKey] = value;
+        }
+      });
+      
+      return metadata;
+    } catch (error) {
+      console.error('Error parsing metadata:', error);
+      return {};
+    }
+  };
+
+  // Fetch models from backend
+  const fetchModels = async () => {
       setModelsLoading(true);
       try {
         // Fetch local models
@@ -51,14 +80,20 @@ export default function LandingPage() {
         if (localResponse.ok) {
           const localData = await localResponse.json();
           // Transform API data to match our UI format
-          const transformedLocalModels = localData.map(model => ({
-            id: model.id,
-            name: model.name,
-            size: "Unknown", // API doesn't provide size yet
-            parameters: "Unknown", // API doesn't provide parameters yet
-            lastUpdate: "Unknown", // API doesn't provide last update yet
-            isOnline: false // Default to offline
-          }));
+          const transformedLocalModels = localData.map(model => {
+            const metadata = parseMetadata(model.model_metadata);
+            return {
+              id: model.id,
+              name: model.name,
+              size: metadata.size || "Unknown",
+              parameters: metadata.parameters || "Unknown", 
+              lastUpdate: metadata.last_modified || "Unknown",
+              isOnline: false, // Default to offline
+              description: model.description,
+              metadata: metadata,
+              rawMetadata: model.model_metadata
+            };
+          });
           setLocalModels(transformedLocalModels);
         }
 
@@ -67,14 +102,25 @@ export default function LandingPage() {
         if (remoteResponse.ok) {
           const remoteData = await remoteResponse.json();
           // Transform API data to match our UI format
-          const transformedRemoteModels = remoteData.map(model => ({
-            id: model.id,
-            name: model.name,
-            size: "Unknown", // API doesn't provide size yet
-            parameters: "Unknown", // API doesn't provide parameters yet
-            downloads: "Unknown", // API doesn't provide downloads yet
-            link: model.link
-          }));
+          console.log("Remote models data:", remoteData);
+          const transformedRemoteModels = remoteData.map(model => {
+            const metadata = parseMetadata(model.model_metadata);
+            return {
+              id: model.id,
+              name: model.name,
+              size: metadata.size || "Unknown",
+              parameters: metadata.parameters || "Unknown", 
+              downloads: metadata.downloads || model.description || "Unknown",
+              lastUpdate: metadata.last_modified || "Unknown",
+              author: metadata.author || "Unknown",
+              library: metadata.library || "Unknown",
+              pipeline: metadata.pipeline || "Unknown",
+              likes: metadata.likes || "Unknown",
+              description: model.description,
+              metadata: metadata,
+              rawMetadata: model.model_metadata
+            };
+          });
           setRemoteModels(transformedRemoteModels);
         }
       } catch (error) {
@@ -161,7 +207,7 @@ export default function LandingPage() {
 
   const handleInfo = (model) => {
     console.log("Show info for model:", model);
-    // Implement info modal or navigation
+    setSelectedModelInfo(model);
   };
 
   const handleChat = (model) => {
@@ -575,6 +621,14 @@ export default function LandingPage() {
           </div>
         </div>
       )}
+
+      {/* Model Info Modal */}
+      <ModelInfoModal
+        modelInfo={selectedModelInfo}
+        isOpen={!!selectedModelInfo}
+        onClose={() => setSelectedModelInfo(null)}
+        onDownload={handleDownload}
+      />
     </div>
   );
 }
