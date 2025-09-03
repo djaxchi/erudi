@@ -13,8 +13,17 @@
   margin: 20px 0; /* Adds space on top and bottom */
 }
 
-
 .custom-scroll {
   scrollbar-width: thin;
   scrollbar-color: #10b98141 #1f29372a;
+}
+
+/* Hide scrollbar for horizontal scrolling sections */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* Internet Explorer 10+ */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Safari and Chrome */
 }
