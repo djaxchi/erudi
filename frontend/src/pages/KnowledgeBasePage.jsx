@@ -8,7 +8,7 @@ import InfoRow from "../components/InfoRow";
 import DragDropArea from "../components/DragDropArea";
 import Dropdown from "../components/Dropdown";
 import { useKnowledgeBase } from "../contexts/KnowledgeBaseContext";
-import ErrorModal from "./modals/ErrorModal";
+import ErrorModal from "../components/modals/ErrorModal";
 
 const API_BASE = "http://127.0.0.1:8000";
 

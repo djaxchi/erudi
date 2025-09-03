@@ -32,6 +32,93 @@ from dotenv import load_dotenv
 load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN")
 
+# Global size map for model size estimates
+SIZE_MAP = {
+    # Mistral models (full precision)
+    "mistralai/Mistral-7B-Instruct-v0.3": "~13.5 GB",
+    "mistralai/Mistral-7B-v0.3": "~13.5 GB",
+    # Gemma models (full precision)
+    "google/gemma-3-1b-it": "~2.5 GB",
+    "google/gemma-2-2b-it": "~5.5 GB", 
+    "google/gemma-3-4b-it": "~9.0 GB",
+}
+
+def get_model_size_estimate(model_name, link):
+    """Get approximate model size for known base models and their derivatives"""
+    # First check for exact match
+    if link in SIZE_MAP:
+        return SIZE_MAP[link]
+    
+    # Check for derived models based on model name patterns
+    model_name_lower = model_name.lower()
+    link_lower = link.lower()
+    
+    # Mistral 7B derivatives
+    if ("mistral" in model_name_lower and ("7b" in model_name_lower or "7b" in link_lower)):
+        return "~13.5 GB"
+    
+    # Gemma derivatives based on parameter count
+    if "gemma" in model_name_lower or "gemma" in link_lower:
+        if "1b" in model_name_lower or "1b" in link_lower:
+            return "~2.5 GB"
+        elif "2b" in model_name_lower or "2b" in link_lower:
+            return "~5.5 GB"
+        elif "4b" in model_name_lower or "4b" in link_lower:
+            return "~9.0 GB"
+        elif "7b" in model_name_lower or "7b" in link_lower:
+            return "~13.5 GB"
+    
+    return "Unknown"
+
+def get_parameter_count_from_name(model_name, link):
+    """Extract parameter count from model name or link"""
+    import re
+    
+    # Combine name and link for searching
+    search_text = f"{model_name} {link}".lower()
+    
+    # Look for common parameter patterns
+    # Match patterns like: 7b, 7B, 70b, 13b, 1.5b, etc.
+    param_patterns = [
+        r'(\d+\.?\d*)b(?:illion)?',  # 7b, 7.5b, 70b
+        r'(\d+\.?\d*)m(?:illion)?',  # 350m, 125m
+    ]
+    
+    for pattern in param_patterns:
+        matches = re.findall(pattern, search_text)
+        if matches:
+            param_value = float(matches[0])
+            if 'b' in pattern:
+                return f"{param_value}B"
+            else:  # million
+                return f"{int(param_value)}M"
+    
+    return "Unknown"
+
+def format_model_info_metadata(model_info, size_estimate=None):
+    """Format ModelInfo object into a structured string for storage"""
+    try:
+        # Extract parameter count from model name
+        param_count = get_parameter_count_from_name(model_info.id, model_info.id)
+        
+        metadata_str = f"""Model ID: {model_info.id}
+                            Author: {model_info.author}
+                            Created: {model_info.created_at}
+                            Downloads: {model_info.downloads} 
+                            Likes: {model_info.likes}
+                            Library: {model_info.library_name}
+                            Pipeline: {model_info.pipeline_tag}
+                            Size: {size_estimate or 'Unknown'}
+                            Parameters: {param_count}
+                            Private: {model_info.private}
+                            Gated: {model_info.gated}
+                            Tags: {', '.join(model_info.tags[:10]) if model_info.tags else 'None'}{'...' if model_info.tags and len(model_info.tags) > 10 else ''}
+                            SHA: {model_info.sha}
+                            Last Modified: {model_info.last_modified}"""
+        return metadata_str
+    except Exception as e:
+        return f"Error formatting metadata: {str(e)}"
+
 async def createTables():
     # Create all tables in the database
     Base.metadata.create_all(bind=engine)
@@ -74,57 +161,56 @@ async def startup_populate_database():
 
     try:
 
-        # Populate the database with some base models
-        base_mistral_instr = db.query(Llm).filter(Llm.name == "Mistral-7B-Instruct-v0.3").first()
-        if not base_mistral_instr:
-            base_mistral_instr = Llm(
-                    name="Mistral-7B-Instruct-v0.3",  
-                    local=0,
-                    link="mistralai/Mistral-7B-Instruct-v0.3",
-                    type="mistral"
-                )
-            db.add(base_mistral_instr)
-        base_mistral = db.query(Llm).filter(Llm.name == "Mistral-7B-v0.3").first()
-        if not base_mistral:
-            base_mistral = Llm(
-                    name="Mistral-7B-v0.3",  
-                    local=0,
-                    link="mistralai/Mistral-7B-v0.3",
-                    type="mistral"
-                )
-            db.add(base_mistral)
-        base_gemma1B = db.query(Llm).filter(Llm.name == "Gemma-3-1B-it").first()
-        if not base_gemma1B:
-            base_gemma1B = Llm(
-                    name="Gemma-3-1B-it",  
-                    local=0,
-                    link="google/gemma-3-1b-it",
-                    type="gemma"
-                )
-            db.add(base_gemma1B)
-        base_gemma2B = db.query(Llm).filter(Llm.name == "Gemma-2-2B-it").first()
-        if not base_gemma2B:
-            base_gemma2B = Llm(
-                    name="Gemma-2-2B-it",  
-                    local=0,
-                    link="google/gemma-2-2b-it",
-                    type="gemma"
-                )
-            db.add(base_gemma2B)
-        base_gemma4B = db.query(Llm).filter(Llm.name == "Gemma-3-4B-it").first()
-        if not base_gemma4B:
-            base_gemma4B = Llm(
-                    name="Gemma-3-4B-it",  
-                    local=0,
-                    link="google/gemma-3-4b-it",
-                    type="gemma"
-                )
-            db.add(base_gemma4B)
+        # Populate the database with some base models with metadata
+        base_models = [
+            ("Mistral-7B-Instruct-v0.3", "mistralai/Mistral-7B-Instruct-v0.3", "mistral"),
+            ("Mistral-7B-v0.3", "mistralai/Mistral-7B-v0.3", "mistral"),
+            ("Gemma-3-1B-it", "google/gemma-3-1b-it", "gemma"),
+            ("Gemma-2-2B-it", "google/gemma-2-2b-it", "gemma"),
+            ("Gemma-3-4B-it", "google/gemma-3-4b-it", "gemma"),
+        ]
+        
+        for name, link, model_type in base_models:
+            existing_model = db.query(Llm).filter(Llm.name == name).first()
+            if not existing_model:
+                try:
+                    # Get size estimate for this model
+                    size_estimate = get_model_size_estimate(name, link)
+                    
+                    # Fetch metadata from Hugging Face
+                    model_info = api.model_info(link)
+                    base_model = Llm(
+                        name=name,
+                        local=0,
+                        link=link,
+                        type=model_type,
+                        model_metadata=format_model_info_metadata(model_info, size_estimate)
+                    )
+                    db.add(base_model)
+                    print(f"Added base model {name} with metadata and size estimate: {size_estimate}")
+                except Exception as e:
+                    print(f"Error fetching metadata for {name}: {e}")
+                    # Fallback: create with just size estimate
+                    size_estimate = get_model_size_estimate(name, link)
+                    fallback_metadata = f"Size: {size_estimate}\nModel ID: {link}\nAuthor: Unknown\nLibrary: Unknown"
+                    base_model = Llm(
+                        name=name,
+                        local=0,
+                        link=link,
+                        type=model_type,
+                        model_metadata=fallback_metadata
+                    )
+                    db.add(base_model)
+                    print(f"Added base model {name} with size estimate: {size_estimate}")
 
+        LIMIT_MODELS = 20  # Limit the number of models to fetch and add
         
         SKIP_IDS = [
             "mistral-7b-instruct-v0.3",
             "mistral-7b-v0.3",
+            "gemma-3-1b-it",
+            "gemma-2-2b-it",
+            "gemma-3-4b-it"
         ]
         SKIP_TERMS = [
             "gguf","gptq","bnb","4bit","8bit","f16","awq",
@@ -134,52 +220,59 @@ async def startup_populate_database():
             "peft", "test"
         ]
         # Populate with some Mistral-7B variant community models
-        llm_list = db.query(Llm).all()
-        if len(llm_list) < 5:
-            api = HfApi(token=HF_TOKEN)
-            for m in api.list_models(search="Mistral-7B v0.3", sort="downloads", direction=-1):
-                # Skip models that are not relevant (e.g. quantized versions of the same base model, as we already natively quantize) or already exist
-                mid = m.modelId.lower()
-                mname = mid.split("/")[-1].lower()
-                # skip exact matches or any unwanted substring
-                if mname in SKIP_IDS or any(term in mid for term in SKIP_TERMS):
-                    continue
+        for i,m in enumerate(api.list_models(search="Mistral-7B v0.3", sort="downloads", direction=-1)):
+            if i >= LIMIT_MODELS:
+                break
+            # Skip models that are not relevant (e.g. quantized versions of the same base model, as we already natively quantize) or already exist
+            mid = m.modelId.lower()
+            mname = mid.split("/")[-1].lower()
+            # skip exact matches or any unwanted substring
+            if mname in SKIP_IDS or any(term in mid for term in SKIP_TERMS):
+                continue
 
-                exists = db.query(Llm).filter_by(link=m.modelId).first()
-                if exists:
-                    continue
+            exists = db.query(Llm).filter_by(link=m.modelId).first()
+            if exists:
+                continue
 
-                llm_entry = Llm(
-                    name=m.modelId.split("/")[-1],  
-                    local=0,
-                    link=m.modelId,
-                    type="mistral" if "mistral" in m.modelId.lower() else "gemma"
-                )
-                db.add(llm_entry)
+            # Get size estimate for community model
+            size_estimate = get_model_size_estimate(m.modelId.split("/")[-1], m.modelId)
 
-            for i, m in enumerate(api.list_models(search="Gemma 1B", sort="downloads", direction=-1)):
-                if i >= 30:
-                    break
-                # Skip models that are not relevant (e.g. quantized versions of the same base model, as we already natively quantize) or already exist
-                mid = m.modelId.lower()
-                mname = mid.split("/")[-1].lower()
-                # skip exact matches or any unwanted substring
-                if mname in SKIP_IDS or any(term in mid for term in SKIP_TERMS):
-                    continue
+            llm_entry = Llm(
+                name=m.modelId.split("/")[-1],  
+                local=0,
+                link=m.modelId,
+                type="mistral" if "mistral" in m.modelId.lower() else "gemma",
+                model_metadata=format_model_info_metadata(m, size_estimate)
+            )
+            db.add(llm_entry)
 
-                exists = db.query(Llm).filter_by(link=m.modelId).first()
-                if exists:
-                    continue
+        for i, m in enumerate(api.list_models(search="Gemma 1B", sort="downloads", direction=-1)):
+            if i >= LIMIT_MODELS:
+                break
+            mid = m.modelId.lower()
+            mname = mid.split("/")[-1].lower()
+            # skip exact matches or any unwanted substring
+            if mname in SKIP_IDS or any(term in mid for term in SKIP_TERMS):
+                continue
 
-                llm_entry = Llm(
-                    name=m.modelId.split("/")[-1],  
-                    local=0,
-                    link=m.modelId,
-                    type="mistral" if "mistral" in m.modelId.lower() else "gemma"
-                )
-                db.add(llm_entry)
-            
-            db.commit()
+            exists = db.query(Llm).filter_by(link=m.modelId).first()
+            if exists:
+                continue
+
+            # Get size estimate for community model
+            size_estimate = get_model_size_estimate(m.modelId.split("/")[-1], m.modelId)
+
+            llm_entry = Llm(
+                name=m.modelId.split("/")[-1],  
+                local=0,
+                link=m.modelId,
+                type="mistral" if "mistral" in m.modelId.lower() else "gemma",
+                model_metadata=format_model_info_metadata(m, size_estimate)
+            )
+            db.add(llm_entry)
+        
+        db.commit()
+
 
         # Check the DownloadJobs to delete running-but-unfinished jobs (in case of server crash)
         unfinished_jobs = db.query(DownloadJobModel).filter(
@@ -189,7 +282,8 @@ async def startup_populate_database():
             job.status = "failed"
             llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
             if llm:
-                shutil.rmtree(llm.link, ignore_errors=True)
+                if os.path.exists(llm.link):
+                    shutil.rmtree(llm.link, ignore_errors=True)
                 db.delete(llm)
             job.error_message = "Downloading was not completed due to application shutdown."
             job.local_model_id = -1
@@ -209,7 +303,8 @@ async def startup_populate_database():
             job.error_message = "Training was not completed due to application shutdown."
             llm = db.query(Llm).filter(Llm.id == job.llm_id).first()
             if llm:
-                shutil.rmtree(llm.link, ignore_errors=True)
+                if os.path.exists(llm.link):
+                    shutil.rmtree(llm.link, ignore_errors=True)
                 db.delete(llm)
             job.llm_id = -1
             job.updated_at = datetime.now()
@@ -321,12 +416,15 @@ async def startup_populate_database():
         else:
             logging.info("Hardware info already exists in database, skipping creation.")
 
+
+
     except Exception as e:
         logging.error(f"Error during startup event: {e}")
         db.rollback()
         raise
     finally:
         db.close()
+        return
 
 @app.on_event("startup")
 async def startup_event():
