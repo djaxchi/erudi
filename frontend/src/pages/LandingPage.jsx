@@ -244,8 +244,8 @@ export default function LandingPage() {
         <div className="p-8 space-y-8">
           {/* Local Models Section */}
           <section>
-            <h2 className="text-3xl font-bold text-white mb-6">Local Models</h2>
-            <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
+            <h2 className="text-2xl font-bold text-white mb-5">Local Models</h2>
+            <div className="grid grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-2">
               {modelsLoading ? (
                 <div className="col-span-3 text-center py-8">
                   <div className="flex items-center justify-center">
@@ -281,27 +281,27 @@ export default function LandingPage() {
           {/* Explore Models Section */}
           <section id="explore-models">
             <div className="sticky top-0 bg-[#071b18]/95 backdrop-blur-md z-10 py-6 border-b border-white/10">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-3xl font-bold text-white">Explore Models</h2>
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-2xl font-bold text-white">Explore Models</h2>
                 <div className="relative">
                   <input 
                     type="text" 
                     placeholder="Looking for a model?"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="bg-[#1a1a1a]/60 border border-white/10 rounded-lg px-4 py-2 pl-10 pr-10 text-white placeholder-gray-400 focus:outline-none focus:border-white/30"
+                    className="bg-[#1a1a1a]/60 border border-white/10 rounded-lg px-3 py-2 pl-8 pr-8 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-white/30"
                   />
-                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="absolute left-2 top-1/2 transform -translate-y-1/2">
+                    <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                     </svg>
                   </div>
                   {searchQuery && (
                     <button
                       onClick={() => setSearchQuery("")}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
                       </svg>
                     </button>
@@ -311,16 +311,16 @@ export default function LandingPage() {
             </div>
 
             {/* Base Models Subsection */}
-            <div className="mb-8 pt-4">
-              <h3 className="text-xl font-semibold text-white mb-4">
+            <div className="mb-6 pt-3">
+              <h3 className="text-lg font-semibold text-white mb-3">
                 Base Models
                 {searchQuery && (
-                  <span className="text-sm text-gray-400 ml-2">
+                  <span className="text-xs text-gray-400 ml-2">
                     ({filteredBaseModels.length} results)
                   </span>
                 )}
               </h3>
-              <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
+              <div className="grid grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-2">
                 {modelsLoading ? (
                   <div className="col-span-3 text-center py-8">
                     <div className="flex items-center justify-center">
@@ -393,15 +393,15 @@ export default function LandingPage() {
 
           {/* Community Models Section */}
           <section>
-            <h3 className="text-xl font-semibold text-white mb-4">
+            <h3 className="text-lg font-semibold text-white mb-3">
               Community Models
               {searchQuery && (
-                <span className="text-sm text-gray-400 ml-2">
+                <span className="text-xs text-gray-400 ml-2">
                   ({filteredCommunityModels.length} results)
                 </span>
               )}
             </h3>
-            <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
+            <div className="grid grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-2">
               {modelsLoading ? (
                 <div className="col-span-3 text-center py-8">
                   <div className="flex items-center justify-center">
