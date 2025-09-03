@@ -37,10 +37,36 @@ export default function ModelCard({
         </div>
         
         <div className="space-y-2 text-sm text-gray-300 mb-6">
-          <p>Size : {model.size}</p>
-          <p>Parameters : {model.parameters}</p>
-          {model.lastUpdate && <p>Last update : {model.lastUpdate}</p>}
-          {model.downloads && <p>Number of downloads : {model.downloads}</p>}
+          {/* Show description if available */}
+          {model.description && (
+            <p className="text-blue-300 font-medium mb-3">{model.description}</p>
+          )}
+          
+          {/* Core metadata */}
+          <p>Size: {model.size}</p>
+          
+          {/* Additional metadata for remote models */}
+          {type !== "local" && (
+            <>
+              {model.downloads && model.downloads !== "Unknown" && (
+                <p>Downloads: {model.downloads}</p>
+              )}
+              {model.likes && model.likes !== "Unknown" && (
+                <p>Likes: {model.likes}</p>
+              )}
+              {model.author && model.author !== "Unknown" && (
+                <p>Author: {model.author}</p>
+              )}
+              {model.library && model.library !== "Unknown" && (
+                <p>Library: {model.library}</p>
+              )}
+            </>
+          )}
+          
+          {/* Local model specific info */}
+          {type === "local" && model.lastUpdate && model.lastUpdate !== "Unknown" && (
+            <p>Last update: {model.lastUpdate}</p>
+          )}
         </div>
         
         <div className="flex items-center gap-3 mt-auto">

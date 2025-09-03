@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Optional
 
 class LLMBase(BaseModel):
     name: str
@@ -10,6 +11,9 @@ class LLMCreate(LLMBase):
 
 class LLMResponse(LLMBase):
     id: int
+    type: Optional[str] = None
+    description: Optional[str] = None
+    model_metadata: Optional[str] = None
 
     class Config:
         from_attributes = True
