@@ -1,14 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, HelpCircle } from "lucide-react";
-import GradientBox from "./GradientBox";
+import { ChevronDown, HelpCircle, SlidersHorizontal } from "lucide-react";
 import Tooltip from "./Tooltip";
 
-
 export default function HeaderBar({
-  initialTemperature,
-  initialTopP,
-  initialMaxTokens,
+  initialTemperature = 0.2,
+  initialTopP = 0.2,
+  initialMaxTokens = 1024,
   onApply,
   onCustomizePrompt,
   disabled = false,
@@ -17,203 +15,397 @@ export default function HeaderBar({
   onModelChange,
 }) {
   const [isOpen, setIsOpen] = useState(false);
-
   const [temperature, setTemperature] = useState(initialTemperature);
-  const [topP, setTopP]           = useState(initialTopP);
+  const [topP, setTopP] = useState(initialTopP);
   const [maxTokens, setMaxTokens] = useState(initialMaxTokens);
 
+  const rootRef = useRef(null);
+  const [tier, setTier] = useState("lg");
+
+  useEffect(() => {
+    if (!rootRef.current) return;
+    const el = rootRef.current;
+
+    const computeTier = (w) => {
+      if (w < 360) return "xs";
+      if (w < 520) return "sm";
+      if (w < 720) return "md";
+      return "lg";
+    };
+
+    const ro = new ResizeObserver(([entry]) => {
+      const w = entry?.contentRect?.width ?? el.offsetWidth ?? 9999;
+      setTier((prev) => {
+        const next = computeTier(w);
+        return prev === next ? prev : next;
+      });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const isXs = tier === "xs";
+  const isSm = tier === "sm" || tier === "xs";
+  const isMd = tier === "md";
+  const isNarrow = isSm || isXs;
+
   const handleApply = () => {
-    onApply({ temperature, topP, maxTokens });
+    onApply?.({ temperature, topP, maxTokens });
     setIsOpen(false);
   };
 
-  // Helper component for tooltips
-  const TooltipIcon = ({ id }) => {
-    const getTooltipText = (id) => {
-      switch (id) {
-        case 'temperature':
-          return 'Controls creativity. Lower values = more focused, higher values = more creative.';
-        case 'top-p':
-          return 'Controls word variety. Lower values = predictable words, higher values = diverse vocabulary.';
-        case 'max-tokens':
-          return 'Maximum response length. Higher values allow longer answers.';
-        case 'prompt':
-          return 'Customize system instructions that guide LLM behavior.';
-        default:
-          return '';
-      }
-    };
+  const TooltipIcon = ({ id, side = "right" }) => {
+    const text =
+      id === "temperature"
+        ? "Controls creativity. Lower = focused, higher = creative."
+        : id === "top-p"
+        ? "Controls word variety. Lower = predictable, higher = diverse."
+        : id === "prompt"
+        ? "Customize system instructions that guide AI behavior."
+        : "";
+    const widthClass = isXs ? "w-40" : isSm ? "w-52" : "w-64";
+    const iconSize = isXs ? "w-3 h-3" : isSm ? "w-3.5 h-3.5" : "w-4 h-4";
     return (
-      <Tooltip content={getTooltipText(id)} side="right" width="w-64">
-        <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 hover:text-emerald-400 transition-colors cursor-help" />
+      <Tooltip content={text} side={side} width={widthClass}>
+        <HelpCircle
+          className={`${iconSize} text-gray-400 hover:text-emerald-400 transition-colors cursor-help`}
+        />
       </Tooltip>
     );
   };
 
-  // Helper component for left-positioned tooltips
-  const TooltipIconLeft = ({ id }) => {
-    const getTooltipText = (id) => {
-      switch (id) {
-        case 'prompt':
-          return 'Customize system instructions that guide AI behavior.';
-        default:
-          return '';
-      }
+  const sliderBg = (value) => {
+    const pct = Math.round(value * 100);
+    return {
+      background: `linear-gradient(to right, #25C08A 0%, #1EAB78 ${pct}%, rgba(255,255,255,0.06) ${pct}%, rgba(255,255,255,0.06) 100%)`,
     };
-    return (
-      <Tooltip content={getTooltipText(id)} side="left" width="w-64">
-        <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 hover:text-emerald-400 transition-colors cursor-help" />
-      </Tooltip>
-    );
   };
+
+  // Size-aware utility fragments
+  const pad = isXs ? "p-3" : isSm ? "p-4" : "p-5";
+  const titleText = isXs
+    ? "text-[0.95rem]"
+    : isSm
+    ? "text-[1.02rem]"
+    : "text-[1.15rem]";
+  const pillPx = isXs ? "px-2.5" : isSm ? "px-3" : "px-3.5";
+  const pillPy = isXs ? "py-1" : "py-1.5";
+  const pillText = isXs ? "text-xs" : isSm ? "text-[0.8rem]" : "text-sm";
+  const selectPadRight = isXs ? "pr-4" : "pr-5";
+  const toggleSize = isXs
+    ? "w-8 h-8 rounded-lg"
+    : isSm
+    ? "w-8 h-8 rounded-lg"
+    : "w-9 h-9 rounded-xl";
+  const labelText = isXs
+    ? "text-[0.65rem]"
+    : isSm
+    ? "text-[0.7rem]"
+    : "text-[0.72rem]";
+  const statText = isXs ? "text-[10px]" : "text-[11px]";
+  const numberWidth = isXs ? "w-20" : isSm ? "w-24" : "w-28";
+  const primaryBtn = isXs
+    ? "px-4 py-1.5 text-[0.8rem]"
+    : isSm
+    ? "px-4 py-1.5 text-[0.85rem]"
+    : "px-5 py-2 text-[0.9rem]";
+  const secondaryBtn = isXs
+    ? "px-3.5 py-1.5 text-[0.78rem]"
+    : isSm
+    ? "px-4 py-1.5 text-[0.8rem]"
+    : "px-4 py-2 text-sm";
+
+  // Stack buttons on narrow widths
+  const actionsLayout = isNarrow
+    ? "flex-col items-stretch"
+    : "flex-row items-center";
+
+  // One-column layout when narrow; two columns otherwise
+  const gridColsClass = isNarrow ? "grid-cols-1" : "md:grid-cols-2";
 
   return (
     <div
-      className={`bg-[#143529] text-white rounded-2xl px-6 py-3 w-full shadow-lg ${
-        disabled ? "opacity-50 pointer-events-none select-none" : ""
-      }`}
+      ref={rootRef}
+      className={[
+        "hb-scope relative w-full overflow-hidden rounded-[26px]",
+        "border border-white/10",
+        "bg-[rgba(22,40,36,0.45)] backdrop-blur-[18px] saturate-[1.4]",
+        "shadow-[0_8px_30px_-4px_rgba(0,0,0,0.45),0_2px_6px_-1px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]",
+        disabled ? "opacity-50 pointer-events-none select-none" : "",
+        isXs ? "hb-xs" : isSm ? "hb-sm" : isMd ? "hb-md" : "hb-lg",
+      ].join(" ")}
     >
-      <div className="flex items-center justify-between">
-        <div className="font-semibold text-lg">Chat with</div>
-        <div className="flex items-center space-x-2">
-          <div className="relative">
-            <select
-              className="appearance-none bg-transparent text-white border-none focus:outline-none pr-4 cursor-pointer"
-              style={{
-                backgroundImage: 'none',
-                WebkitAppearance: 'none',
-                MozAppearance: 'none',
-                msAppearance: 'none'
-              }}
-              value={currentModel}
-              onChange={e => onModelChange && onModelChange(e.target.value)}
-              disabled={disabled}
+      <style>{`
+        .hb-scope input.hb-range { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; outline: none; }
+        .hb-scope input.hb-range::-webkit-slider-thumb {
+          -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; border: 0; cursor: pointer;
+          background: radial-gradient(circle at 30% 30%, #ffffff, #d9e4dd 60%, #b7c6c0 100%);
+          box-shadow: 0 2px 6px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.4), inset 0 1px 2px rgba(255,255,255,0.7);
+          transition: transform .25s ease, box-shadow .25s ease;
+        }
+        /* Compact thumb sizes */
+        .hb-scope.hb-sm input.hb-range::-webkit-slider-thumb { width: 16px; height: 16px; }
+        .hb-scope.hb-xs input.hb-range::-webkit-slider-thumb { width: 14px; height: 14px; }
+        .hb-scope input.hb-range:hover::-webkit-slider-thumb { transform: scale(1.07); }
+        .hb-scope input.hb-range:active::-webkit-slider-thumb { transform: scale(.9); }
+        .hb-scope input.hb-range:focus-visible::-webkit-slider-thumb {
+          box-shadow: 0 0 0 4px rgba(37,192,138,0.35), 0 2px 6px rgba(0,0,0,0.55), inset 0 1px 2px rgba(255,255,255,0.8);
+        }
+        /* Firefox */
+        .hb-scope input.hb-range::-moz-range-track { height: 6px; background: rgba(255,255,255,0.06); border-radius: 999px; }
+        .hb-scope input.hb-range::-moz-range-thumb {
+          width: 18px; height: 18px; border-radius: 50%; border: 0; cursor: pointer;
+          background: radial-gradient(circle at 30% 30%, #ffffff, #d9e4dd 60%, #b7c6c0 100%);
+          box-shadow: 0 2px 6px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.4), inset 0 1px 2px rgba(255,255,255,0.7);
+        }
+        .hb-scope.hb-sm input.hb-range::-moz-range-thumb { width: 16px; height: 16px; }
+        .hb-scope.hb-xs input.hb-range::-moz-range-thumb { width: 14px; height: 14px; }
+        .hb-scope input.hb-range:focus-visible::-moz-range-thumb {
+          box-shadow: 0 0 0 4px rgba(37,192,138,0.35), 0 2px 6px rgba(0,0,0,0.55), inset 0 1px 2px rgba(255,255,255,0.8);
+        }
+      `}</style>
+
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none rounded-[26px] mix-blend-overlay"
+        style={{
+          background:
+            "linear-gradient(to bottom, rgba(255,255,255,0.18), rgba(255,255,255,0) 40%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
+        style={{
+          backgroundImage:
+            'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")',
+          backgroundSize: "200px 200px",
+        }}
+      />
+
+      <div className={`relative z-10 ${pad}`}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-wrap min-w-0">
+            <h3
+              className={`${titleText} font-semibold tracking-tight text-[#F2F7F4] truncate`}
+              title="Chat with"
             >
-              {models.map((model) => (
-                <option key={model.id} value={model.name} className="text-black">
-                  {model.name}
-                </option>
-              ))}
-            </select>
+              Chat with
+            </h3>
+
+            <div
+              className={[
+                "inline-flex items-center gap-1.5 rounded-full",
+                pillPx,
+                pillPy,
+                pillText,
+                "border transition",
+                "bg-white/5 hover:bg-white/10 border-white/10 hover:border-white/20",
+                "backdrop-blur-sm text-gray-100",
+                "max-w-[100%]",
+              ].join(" ")}
+            >
+              <select
+                value={currentModel}
+                onChange={(e) => onModelChange?.(e.target.value)}
+                disabled={disabled}
+                className={[
+                  "appearance-none bg-transparent border-0 outline-none cursor-pointer",
+                  selectPadRight,
+                  "font-medium truncate",
+                  isNarrow ? "max-w-[110px]" : "max-w-[150px]",
+                ].join(" ")}
+                style={{
+                  WebkitAppearance: "none",
+                  MozAppearance: "none",
+                  backgroundImage: "none",
+                }}
+                title={currentModel}
+              >
+                {models.map((m) => (
+                  <option
+                    key={m.id ?? m.name}
+                    value={m.name}
+                    className="text-gray-900"
+                  >
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={isXs ? 14 : 16}
+                className="opacity-70 shrink-0"
+              />
+            </div>
           </div>
-          <button onClick={() => setIsOpen((v) => !v)} className="flex items-center">
-            {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+
+          <button
+            type="button"
+            aria-label="Toggle settings"
+            onClick={() => setIsOpen((v) => !v)}
+            className={[
+              "inline-flex items-center justify-center",
+              toggleSize,
+              "bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20",
+              "text-gray-300 hover:text-emerald-400 transition",
+              "shrink-0",
+            ].join(" ")}
+          >
+            <SlidersHorizontal size={isXs ? 16 : 18} />
           </button>
         </div>
+
+        <AnimatePresence initial={false}>
+          {isOpen && (
+            <motion.div
+              key="controls"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ type: "tween", duration: 0.3 }}
+              className="overflow-hidden"
+            >
+              <div className={`mt-6 grid gap-6 ${gridColsClass}`}>
+                <div className="flex flex-col gap-6">
+                  <div className="relative">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span
+                        className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
+                      >
+                        Creativity
+                      </span>
+                      <TooltipIcon
+                        id="temperature"
+                        side={isNarrow ? "bottom-right" : "right"}
+                      />
+                      <span
+                        className={`ml-auto ${statText} font-semibold text-emerald-200/90 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-400/25`}
+                      >
+                        {temperature.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="relative pt-1">
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={temperature}
+                        onChange={(e) =>
+                          setTemperature(parseFloat(e.target.value))
+                        }
+                        className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
+                        style={sliderBg(temperature)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span
+                        className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
+                      >
+                        Diversity
+                      </span>
+                      <TooltipIcon id="top-p" side="right" />
+                      <span
+                        className={`ml-auto ${statText} font-semibold text-emerald-200/90 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-400/25`}
+                      >
+                        {topP.toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="relative pt-1">
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={topP}
+                        onChange={(e) => setTopP(parseFloat(e.target.value))}
+                        className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
+                        style={sliderBg(topP)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col justify-center gap-6">
+                  <div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <span
+                        className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
+                      >
+                        Max Response Length
+                      </span>
+                    </div>
+
+                    <div
+                      className={[
+                        "inline-flex items-center rounded-full px-4",
+                        isXs ? "py-1" : "py-1.5",
+                        "bg-white/10 border border-white/20 shadow",
+                      ].join(" ")}
+                    >
+                      <input
+                        type="number"
+                        min="1"
+                        max="2000"
+                        value={maxTokens}
+                        onChange={(e) =>
+                          setMaxTokens(parseInt(e.target.value || "0", 10))
+                        }
+                        className={`bg-transparent border-0 outline-none ${numberWidth} text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className={`flex ${actionsLayout} gap-3 w-full`}>
+                    <div
+                      className={`flex ${
+                        isNarrow ? "items-center gap-2" : "items-center gap-2"
+                      } w-full`}
+                    >
+                      <button
+                        type="button"
+                        onClick={onCustomizePrompt}
+                        className={[
+                          "rounded-full font-semibold",
+                          primaryBtn,
+                          "bg-emerald-500 hover:bg-emerald-600 text-[#0f2f25]",
+                          "border border-white/20 shadow",
+                          "transition active:scale-95",
+                          isNarrow ? "flex-1" : "",
+                        ].join(" ")}
+                      >
+                        Customize Prompt
+                      </button>
+                      <div>
+                        <TooltipIcon id="prompt" side="top-left" />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleApply}
+                      className={[
+                        "rounded-full font-semibold",
+                        secondaryBtn,
+                        "bg-white/10 hover:bg-white/15 text-gray-100",
+                        "border border-white/20 backdrop-blur-sm shadow-sm",
+                        "transition active:scale-95",
+                        isNarrow ? "w-full" : "ml-auto",
+                      ].join(" ")}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-
-      <AnimatePresence initial={false}>
-        {isOpen && (
-          <motion.div
-            key="controls"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ type: "tween", duration: 0.2 }}
-            className="overflow-hidden mt-4 rounded-xl"
-          >
-            <GradientBox className="p-3 mb-4">
-              <div className="flex flex-col md:flex-row justify-between items-center items-end space-y-4 md:space-y-0 w-full">
-                <div className="flex flex-col gap-1 min-w-0">
-                  <div className="flex items-center gap-1">
-                    <label className="block text-white text-sm">
-                      Creativity (Temperature)
-                    </label>
-                    <TooltipIcon id="temperature" />
-                  </div>
-                  <input
-                    type="range"
-                    step="0.01"
-                    min="0"
-                    max="1"
-                    value={temperature}
-                    onChange={(e) =>
-                      setTemperature(parseFloat(e.target.value))
-                    }
-                    className="my-1 w-full md:w-48 h-1
-                              bg-gray-700/50 rounded-full
-                              appearance-none
-                              accent-emerald-400
-                              hover:accent-emerald-500
-                              focus:outline-none"
-                  />
-                  <div className="flex items-center gap-1">
-                    <label className="block text-white text-sm">
-                      Diversity (Top-P)
-                    </label>
-                    <TooltipIcon id="top-p" />
-                  </div>
-                  <input
-                    type="range"
-                    step="0.1"
-                    min="0"
-                    max="1"
-                    value={topP}
-                    onChange={(e) => setTopP(parseFloat(e.target.value))}
-                    className="my-1 w-full md:w-48 h-1
-                              bg-gray-700/50 rounded-full
-                              appearance-none
-                              accent-emerald-400
-                              hover:accent-emerald-500
-                              focus:outline-none"
-                  />
-                </div>
-                <div className="flex flex-col gap-1 min-w-0">
-                  <div className="flex items-center gap-1">
-                    <label className="text-white text-sm font-medium">
-                      Max Tokens
-                    </label>
-                    <TooltipIcon id="max-tokens" />
-                  </div>
-                  <input
-                    type="number"
-                    min="1"
-                    max="2000"
-                    value={maxTokens}
-                    onChange={(e) => setMaxTokens(parseInt(e.target.value, 10))}
-                    className="
-                      w-full md:w-28
-                      bg-transparent
-                      border border-emerald-400/40
-                      rounded-full
-                      px-3 py-2
-                      text-sm text-white
-                      focus:outline-none focus:border-emerald-400 focus:ring-0
-                      transition
-                    "
-                  />
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <TooltipIconLeft id="prompt" />
-                  <button
-                    onClick={onCustomizePrompt}
-                    className="bg-emerald-600/60 hover:bg-emerald-700/50 transition-colors text-white py-2 px-4 rounded-xl text-sm whitespace-nowrap"
-                  >
-                    Customize Prompt
-                  </button>
-                </div>
-              </div>
-
-            </GradientBox>
-            <div className="flex justify-center mt-4">
-                <button
-                  onClick={handleApply}
-                  className="
-                    bg-emerald-500
-                    text-white
-                    font-semibold
-                    px-6 py-2
-                    rounded-full
-                    hover:bg-emerald-600
-                    focus:outline-none focus:ring-2 focus:ring-emerald-400
-                  transition-colors">
-                  Apply
-                </button>
-              </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
