@@ -5,6 +5,7 @@ import QuestionInput from "../components/QuestionInput";
 import { askArena } from "../services/arenaService.js";
 import { Trash } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
+import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
@@ -317,39 +318,17 @@ export default function ArenaPage() {
       {panels.map(
         (panel) =>
           panel.showPromptModal && (
-            <div
+            <CustomizePromptModal
               key={`modal-${panel.id}`}
-              className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]"
-            >
-              <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6 relative z-[10000]">
-                <h2 className="text-xl font-semibold mb-4">
-                  Personalize the prompt
-                </h2>
-                <textarea
-                  className="w-full h-40 border rounded p-2 mb-4"
-                  value={panel.customPrompt}
-                  onChange={(e) =>
-                    handleSettingsChange(panel.id, {
-                      customPrompt: e.target.value,
-                    })
-                  }
-                />
-                <div className="flex justify-end space-x-2">
-                  <button
-                    onClick={() => handleCustomizePrompt(panel.id, false)}
-                    className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => handleCustomizePrompt(panel.id, false)}
-                    className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-            </div>
+              isOpen={panel.showPromptModal}
+              onClose={() => handleCustomizePrompt(panel.id, false)}
+              customPrompt={panel.customPrompt}
+              onSave={(newPrompt) =>
+                handleSettingsChange(panel.id, {
+                  customPrompt: newPrompt,
+                })
+              }
+            />
           )
       )}
     </div>
