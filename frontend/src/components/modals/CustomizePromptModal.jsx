@@ -30,7 +30,6 @@ export default function CustomizePromptModal({
             transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             className="relative w-full max-w-2xl"
           >
-            {/* Modal container with HeaderBar-like styling */}
             <div
               className={[
                 "relative w-full rounded-[26px] overflow-hidden",
@@ -39,7 +38,6 @@ export default function CustomizePromptModal({
                 "shadow-[0_8px_30px_-4px_rgba(0,0,0,0.45),0_2px_6px_-1px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]",
               ].join(" ")}
             >
-              {/* Glossy overlays matching HeaderBar */}
               <div
                 aria-hidden
                 className="absolute inset-0 pointer-events-none rounded-[26px] mix-blend-overlay"
