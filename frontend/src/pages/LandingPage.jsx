@@ -5,6 +5,7 @@ import ModelCard from "../components/ModelCard";
 import ModelInfoModal from "../components/modals/ModelInfoModal";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import HardwareLoadingPopup from "../components/LoadingPopup";
+import { RefreshCcw } from "lucide-react";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
 
@@ -19,6 +20,7 @@ export default function LandingPage() {
   const [remoteModels, setRemoteModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
   const [selectedModelInfo, setSelectedModelInfo] = useState(null);
+  const [errorMessage, setErrorMessage] = useState("");
   const localModelsRef = useRef(null);
 
   useEffect(() => {
@@ -165,10 +167,33 @@ fetchWelcomePopupStatus();
     }
   };
 
+  const reloadLocalModels = async () => {
+    setModelsLoading(true);
+    try {
+      const url = `${API_BASE_URL}/main_window/llms/local`;
+      const res = await fetch(url);
+      if (res.ok) setLocalModels(await res.json());
+      else
+        setErrorMessage(
+          "Failed to fetch local models. Please try again and contact the Erudi team for support."
+        );
+    } catch (err) {
+      console.error("Failed to fetch local models:", err);
+      setErrorMessage(
+        "Failed to fetch local models. Please try again and contact the Erudi team for support."
+      );
+    } finally {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setModelsLoading(false);
+    }
+  };
+
   const scrollToExplore = () => {
     const exploreSection = document.getElementById('explore-models');
     if (exploreSection) {
       exploreSection.scrollIntoView({ behavior: 'smooth' });
+    } else {
+      console.error('explore-models section not found');
     }
   };
 
@@ -262,7 +287,16 @@ fetchWelcomePopupStatus();
         <div className="p-8 space-y-8">
           {/* Local Models Section */}
           <section>
-            <h2 className="text-2xl font-bold text-white mb-5">Local Models</h2>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-2xl font-bold text-white">Local Models</h2>
+              <RefreshCcw
+                className="w-4 h-4 hover:opacity-70  text-white cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  reloadLocalModels();
+                }}
+              />
+            </div>
             <div className="grid grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-2">
               {modelsLoading ? (
                 <div className="col-span-3 text-center py-8">
@@ -296,11 +330,11 @@ fetchWelcomePopupStatus();
             </div>
           </section>
 
-          {/* Explore Models Section */}
-          <section id="explore-models">
-            <div className="sticky top-0 bg-[#071b18]/95 backdrop-blur-md z-10 py-6 border-b border-white/10">
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-2xl font-bold text-white">Explore Models</h2>
+          {/* Sticky Header for Explore Models */}
+          <div className="sticky top-0 bg-[#071b18] backdrop-blur-md z-10 py-6 border-b border-white/10">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-2xl font-bold text-white">Explore Models</h2>
+              <div className="flex items-center gap-3">
                 <div className="relative">
                   <input 
                     type="text" 
@@ -325,8 +359,19 @@ fetchWelcomePopupStatus();
                     </button>
                   )}
                 </div>
+                <RefreshCcw
+                  className="w-4 h-4 hover:opacity-70 text-white cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    reloadLocalModels();
+                  }}
+                />
               </div>
             </div>
+          </div>
+
+          {/* Explore Models Section */}
+          <section id="explore-models">
 
             {/* Base Models Subsection */}
             <div className="mb-6 pt-3">
