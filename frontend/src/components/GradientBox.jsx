@@ -4,6 +4,8 @@ export default function GradientBox({
   children,
   className = "",
   contentClassName,
+  onClick,
+  ...props
 }) {
   // Default content wrapper classes: padding, flex layout, full height, hide overflow
   const defaultContentClasses = "p-8 flex flex-col h-full overflow-hidden";
@@ -11,6 +13,8 @@ export default function GradientBox({
   return (
     <div
       className={`relative rounded-2xl overflow-hidden shadow-xl ${className}`}
+      onClick={onClick}
+      {...props}
     >
       {/* gradient layer (11% opacity) */}
       <div
