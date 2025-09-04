@@ -1,20 +1,35 @@
 import React from "react";
 
 // Reusable Tooltip component
-export default function Tooltip({ children, content, side = "right", width = "w-64" }) {
-  const positionClasses = {
-    top: "bottom-full left-1/2 -translate-x-1/2 mb-2",
-    bottom: "top-full left-1/2 -translate-x-1/2 mt-2",
-    left: "right-full top-1/2 -translate-y-1/2 mr-2",
-    right: "left-full top-1/2 -translate-y-1/2 ml-2",
-  }[side] || "left-full top-1/2 -translate-y-1/2 ml-2";
+export default function Tooltip({
+  children,
+  content,
+  side = "right",
+  width = "w-64",
+}) {
+  const positionClasses =
+    {
+      top: "bottom-full left-1/2 -translate-x-1/2 mb-2",
+      bottom: "top-full left-1/2 -translate-x-1/2 mt-2",
+      left: "right-full top-1/2 -translate-y-1/2 mr-2",
+      right: "left-full top-1/2 -translate-y-1/2 ml-2",
+      "top-left": "bottom-full right-0 mb-2",
+      "top-right": "bottom-full left-0 mb-2",
+      "bottom-left": "top-full right-0 mt-2",
+      "bottom-right": "top-full left-0 mt-2",
+    }[side] || "left-full top-1/2 -translate-y-1/2 ml-2";
 
-  const arrowPosition = {
-    right: "left-0 -translate-x-1/2 top-1/2 -translate-y-1/2",
-    left: "right-0 translate-x-1/2 top-1/2 -translate-y-1/2",
-    top: "left-1/2 -translate-x-1/2 bottom-0 translate-y-1/2",
-    bottom: "left-1/2 -translate-x-1/2 top-0 -translate-y-1/2",
-  }[side] || "left-0 -translate-x-1/2 top-1/2 -translate-y-1/2";
+  const arrowPosition =
+    {
+      right: "left-0 -translate-x-1/2 top-1/2 -translate-y-1/2",
+      left: "right-0 translate-x-1/2 top-1/2 -translate-y-1/2",
+      top: "left-1/2 -translate-x-1/2 bottom-0 translate-y-1/2",
+      bottom: "left-1/2 -translate-x-1/2 top-0 -translate-y-1/2",
+      "top-left": "right-0 bottom-0 translate-x-1/2 translate-y-1/2",
+      "top-right": "left-0 bottom-0 -translate-x-1/2 translate-y-1/2",
+      "bottom-left": "right-0 top-0 translate-x-1/2 -translate-y-1/2",
+      "bottom-right": "left-0 top-0 -translate-x-1/2 -translate-y-1/2",
+    }[side] || "left-0 -translate-x-1/2 top-1/2 -translate-y-1/2";
 
   return (
     <span className="relative group inline-block align-middle">
