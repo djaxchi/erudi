@@ -4,6 +4,8 @@ import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
 import ModelCard from "../components/ModelCard";
 import ModelInfoModal from "../components/modals/ModelInfoModal";
+import DeleteModelModal from "../components/modals/DeleteModelModal";
+import MessageModal from "../components/modals/MessageModal";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import HardwareLoadingPopup from "../components/LoadingPopup";
 import { RefreshCcw } from "lucide-react";
@@ -24,6 +26,8 @@ export default function LandingPage() {
   const [modelsLoading, setModelsLoading] = useState(true);
   const [selectedModelInfo, setSelectedModelInfo] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
   const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
   const localModelsRef = useRef(null);
 
@@ -171,6 +175,11 @@ fetchWelcomePopupStatus();
     }
   };
 
+  const handleMainPageRefresh = async () => {
+    // This function refreshes the main page local models when called from ModelCollapsibleSection
+    await reloadLocalModels();
+  };
+
   const reloadLocalModels = async () => {
     setModelsLoading(true);
     try {
@@ -248,7 +257,19 @@ fetchWelcomePopupStatus();
     console.log("Download model:", model);
     // Implement download logic or use existing download modal
     if (open) {
-      open(model);
+      open(model, {
+        onComplete: async () => {
+          // Refresh local models on both main page and sidebar
+          await reloadLocalModels();
+          if (localModelsRef.current) {
+            localModelsRef.current.reloadLocalModels();
+          }
+        },
+        onError: (err) => {
+          console.error("Download failed:", err);
+          setErrorMessage("Download failed. Please try again.");
+        }
+      });
     }
   };
 
@@ -267,6 +288,41 @@ fetchWelcomePopupStatus();
     console.log("Open knowledge base for model:", model);
     // Navigate to knowledge base page with model parameter
     navigate(`/main_window/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
+  };
+
+  const handleDelete = (model) => {
+    console.log("Delete model:", model);
+    setDeleteConfirmation({ show: true, model });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirmation.model) return;
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/main_window/llms/${deleteConfirmation.model.id}`, {
+        method: 'DELETE',
+      });
+      
+      if (response.ok) {
+        setSuccessMessage(`Model ${deleteConfirmation.model.name} has been successfully deleted.`);
+        // Reload local models on both main page and sidebar
+        await reloadLocalModels();
+        if (localModelsRef.current) {
+          localModelsRef.current.reloadLocalModels();
+        }
+      } else {
+        throw new Error(`Failed to delete model: ${response.status}`);
+      }
+    } catch (error) {
+      console.error("Failed to delete model:", error);
+      setErrorMessage("Failed to delete the model. Please try again and contact the Erudi team for support.");
+    } finally {
+      setDeleteConfirmation({ show: false, model: null });
+    }
+  };
+
+  const cancelDelete = () => {
+    setDeleteConfirmation({ show: false, model: null });
   };
 
   const handleToggleBrainSidebar = () => {
@@ -298,12 +354,13 @@ fetchWelcomePopupStatus();
         <ModelCollapsibleSection 
           title="Local Models" 
           ref={localModelsRef}
+          onLocalModelRefresh={handleMainPageRefresh}
         />
         <ModelCollapsibleSection
           title="Remote Models"
          hasSearch={true}
-         onDownload={(model) => open(model)}
-         onLocalModelRefresh={handleLocalModelRefresh}
+         onDownload={handleDownload}
+         onLocalModelRefresh={handleMainPageRefresh}
         />
       </aside>
 
@@ -340,6 +397,7 @@ fetchWelcomePopupStatus();
                       onChat={handleChat}
                       onInfo={handleInfo}
                       onKnowledgeBase={handleKnowledgeBase}
+                      onDelete={handleDelete}
                     />
                   ))}
                   {!searchQuery && (
@@ -703,6 +761,33 @@ fetchWelcomePopupStatus();
         onClose={() => setSelectedModelInfo(null)}
         onDownload={handleDownload}
       />
+
+      {/* Delete Confirmation Modal */}
+      <DeleteModelModal
+        isOpen={deleteConfirmation.show}
+        model={deleteConfirmation.model}
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
+
+      {/* Success Message Modal */}
+      <MessageModal
+        isOpen={!!successMessage}
+        title="Success"
+        message={successMessage}
+        type="success"
+        onClose={() => setSuccessMessage("")}
+      />
+
+      {/* Error Message Modal */}
+      <MessageModal
+        isOpen={!!errorMessage}
+        title="Error"
+        message={errorMessage}
+        type="error"
+        onClose={() => setErrorMessage("")}
+      />
+
       {/* Loading Popup (appears on top of welcome popup when hardware is still loading) */}
       <HardwareLoadingPopup show={showLoadingPopup} loading={loading} onClose={closeLoadingOnly} />
 

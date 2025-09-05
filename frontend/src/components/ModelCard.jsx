@@ -1,6 +1,6 @@
 import React from "react";
 import GradientBox from "./GradientBox";
-import { Download, Info, BookOpen, MessageSquare, Plus } from "lucide-react";
+import { Download, Info, BookOpen, MessageSquare, Plus, Trash2 } from "lucide-react";
 
 export default function ModelCard({ 
   model,
@@ -9,6 +9,7 @@ export default function ModelCard({
   onInfo,
   onChat,
   onKnowledgeBase,
+  onDelete,
   onClick
 }) {
   if (type === "add") {
@@ -32,7 +33,16 @@ export default function ModelCard({
         <div className="flex items-start justify-between mb-3">
           <h3 className="text-lg font-semibold text-white">{model.name}</h3>
           {type === "local" && (
-            <div className={`w-2 h-2 rounded-full ${model.isOnline ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <button
+                className="p-1 bg-red-500/20 hover:bg-red-500/40 rounded-lg transition-colors ml-8"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete && onDelete(model);
+                }}
+                title="Delete model"
+              >
+                <Trash2 className="w-4 h-4 text-red-400" />
+              </button>
           )}
         </div>
         
