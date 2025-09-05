@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { RefreshCcw } from "lucide-react";
 import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
 import ModelCard from "../components/ModelCard";
@@ -284,58 +283,15 @@ export default function LandingPage() {
   };
 
   const handleChat = (model) => {
+    console.log("Start chat with model:", model);
     // Navigate to chat page with model parameter
     navigate(`/main_window/chat?model=${encodeURIComponent(model.name)}`);
   };
 
   const handleKnowledgeBase = (model) => {
+    console.log("Open knowledge base for model:", model);
     // Navigate to knowledge base page with model parameter
-    navigate(
-      `/main_window/attach_knowledge_base?model=${encodeURIComponent(
-        model.name
-      )}`
-    );
-  };
-
-  const handleDelete = (model) => {
-    setDeleteConfirmation({ show: true, model });
-  };
-
-  const confirmDelete = async () => {
-    if (!deleteConfirmation.model) return;
-
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/main_window/llms/${deleteConfirmation.model.id}`,
-        {
-          method: "DELETE",
-        }
-      );
-
-      if (response.ok) {
-        setSuccessMessage(
-          `Model ${deleteConfirmation.model.name} has been successfully deleted.`
-        );
-        // Reload local models on both main page and sidebar
-        await reloadLocalModels();
-        if (localModelsRef.current) {
-          localModelsRef.current.reloadLocalModels();
-        }
-      } else {
-        throw new Error(`Failed to delete model: ${response.status}`);
-      }
-    } catch (error) {
-      console.error("Failed to delete model:", error);
-      setErrorMessage(
-        "Failed to delete the model. Please try again and contact the Erudi team for support."
-      );
-    } finally {
-      setDeleteConfirmation({ show: false, model: null });
-    }
-  };
-
-  const cancelDelete = () => {
-    setDeleteConfirmation({ show: false, model: null });
+    navigate(`/main_window/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
   };
 
   const handleToggleBrainSidebar = () => {
@@ -352,7 +308,7 @@ export default function LandingPage() {
       />
 
       {/* Main sidebar */}
-      <aside className={`${brainSidebarCollapsed ? 'w-0 min-w-0 overflow-hidden' : 'w-[30%] sm:w-[35%] xl:w-[25%] overflow-visible'} ${brainSidebarCollapsed ? 'opacity-0' : 'opacity-100 p-6 space-y-6 '} bg-[#272727] text-white flex flex-col transition-all duration-300`}>
+      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-[30%] sm:w-[35%] xl:w-[25%] opacity-100 p-6 space-y-6 '} bg-[#272727] text-white flex flex-col transition-all duration-300 overflow-hidden`}>
         <div className="flex items-center justify-start">
           <img 
             src={logoErudi} 
@@ -378,7 +334,7 @@ export default function LandingPage() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 bg-[#071b18] relative overflow-auto transition-all duration-300">
+      <main className="flex-1 bg-[#071b18] relative overflow-auto">
         <div className="p-8 space-y-8">
           {/* Local Models Section */}
           <section>
@@ -410,7 +366,6 @@ export default function LandingPage() {
                       onChat={handleChat}
                       onInfo={handleInfo}
                       onKnowledgeBase={handleKnowledgeBase}
-                      onDelete={handleDelete}
                     />
                   ))}
                   {!searchQuery && (

@@ -1,15 +1,16 @@
-import React, { useEffect, useState } from "react";
-import { HelpCircle } from "lucide-react";
+import React, { useEffect, useState, useRef } from "react";
+import { HelpCircle, X } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
-import DatasetCard from "../components/DatasetCard";
-import HardwareInfo from "../components/HardwareInfo";
 import ModelLibrary from "../components/ModelLibrary";
 import InfoRow from "../components/InfoRow";
 import DragDropArea from "../components/DragDropArea";
-import Dropdown from "../components/Dropdown";
 import { API_BASE_URL } from "../config/api";
 
 export default function KnowledgeBasePage() {
+  const [searchParams] = useSearchParams();
+  const [isValidated, setIsValidated] = useState(false);
+  
   const [hw, setHw] = useState({
     storage_path: "soon...",
     disk_available: "fetching…",
@@ -29,9 +30,7 @@ export default function KnowledgeBasePage() {
   const [modelName, setModelName] = useState("");
   const [description, setDescription] = useState("");
   const [paths, setPaths] = useState([]);
-  const [isValidated, setIsValidated] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [modelId, setModelId] = useState(null);
 
   // Handle files dropped from DragDropArea
   const addDroppedFiles = (newPathObjects) => {
@@ -177,6 +176,27 @@ export default function KnowledgeBasePage() {
       });
     fetchModels();
   }, []);
+
+  // Handle URL parameter for model selection
+  useEffect(() => {
+    const modelParam = searchParams.get('model');
+    if (modelParam && models.length > 0) {
+      // Find the model by name or id
+      const foundModel = models.find(model => 
+        model.name === modelParam || 
+        model.id === modelParam ||
+        model.name.toLowerCase() === modelParam.toLowerCase()
+      );
+      
+      if (foundModel) {
+        console.log('Setting model from URL parameter:', foundModel);
+        setSelectedModel(foundModel.id);
+        setModelName(foundModel.name);
+      } else {
+        console.warn('Model not found for parameter:', modelParam);
+      }
+    }
+  }, [searchParams, models]); // Re-run when searchParams or models change
 
   // Handle model selection from ModelLibrary
   const handleModelSelect = (modelId) => {
