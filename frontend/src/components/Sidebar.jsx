@@ -15,6 +15,7 @@ export default function Sidebar({
   brainCollapsed = false
 }) {
   const [isHovering, setIsHovering] = useState(false);
+  const [isBrainHovering, setIsBrainHovering] = useState(false);
   const location = useLocation();
   const isModelsActive =
     location.pathname === "/main_window/models" ||
@@ -30,19 +31,51 @@ export default function Sidebar({
         disabled ? "opacity-50 pointer-events-none select-none" : ""
       }`}
     >
-      <Link
-        to="/main_window/models"
-        className={`w-full flex justify-center items-center py-4 border-l-4 ${
-          isModelsActive ? "border-green-500" : "border-transparent"
-        }`}
-      >
-      <Brain
-  className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 ${
-    isModelsActive ? "text-green-400" : "text-gray-400 hover:text-green-400"
-  }`}
-/>
-
-      </Link>
+      {showBrainCollapsible ? (
+        <button
+          onClick={onToggleBrainSidebar}
+          onMouseEnter={() => setIsBrainHovering(true)}
+          onMouseLeave={() => setIsBrainHovering(false)}
+          className={`w-full flex justify-center items-center py-4 border-l-4 ${
+            isModelsActive ? "border-green-500" : "border-transparent"
+          }`}
+        >
+          {isBrainHovering ? (
+            brainCollapsed ? (
+              <PanelLeftOpen
+                className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
+                  isModelsActive ? "text-green-400" : "text-gray-400"
+                }`}
+              />
+            ) : (
+              <PanelLeftClose
+                className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
+                  isModelsActive ? "text-green-400" : "text-gray-400"
+                }`}
+              />
+            )
+          ) : (
+            <Brain
+              className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
+                isModelsActive ? "text-green-400" : "text-gray-400"
+              }`}
+            />
+          )}
+        </button>
+      ) : (
+        <Link
+          to="/main_window/models"
+          className={`w-full flex justify-center items-center py-4 border-l-4 ${
+            isModelsActive ? "border-green-500" : "border-transparent"
+          }`}
+        >
+          <Brain
+            className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 ${
+              isModelsActive ? "text-green-400" : "text-gray-400 hover:text-green-400"
+            }`}
+          />
+        </Link>
+      )}
 
       {showCollapsible ? (
         <button

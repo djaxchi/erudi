@@ -1,47 +1,53 @@
 // src/components/CollapsibleSection.jsx
-import React, {
-  useState,
-  useEffect,
-  forwardRef,
-  useImperativeHandle,
-} from "react";
+import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from "react";
 import Tooltip from "./Tooltip";
 import {
   ChevronDown,
-  ChevronRight,
   RefreshCcw,
   X,
   HelpCircle,
   Trash2,
+  Database,
+  Globe,
+  Search,
 } from "lucide-react";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
-import { API_BASE_URL } from "../config/api";
 
+const API_BASE_URL = "http://127.0.0.1:8000";
 
-const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
+// Icon mapping for different section types
+const getIconForSection = (title) => {
+  switch (title) {
+    case "Local Models":
+      return <Database className="w-5 h-5" />;
+    case "Remote Models":
+      return <Globe className="w-5 h-5" />;
+    default:
+      return <Database className="w-5 h-5" />;
+  }
+};
+
+const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch = false }, ref) => {
   const [openSection, setOpenSection] = useState(true);
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [deleteConfirmation, setDeleteConfirmation] = useState({
-    show: false,
-    model: null,
-  });
+  const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
   const [successMessage, setSuccessMessage] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const { open: openDownload } = useDownloadModal();
 
   // Expose reloadLocalModels to parent via ref
   useImperativeHandle(ref, () => ({
-    reloadLocalModels,
+    reloadLocalModels
   }));
 
   // TooltipIcon component - Simple CSS-based tooltip
   const TooltipIcon = () => {
-    const tooltipText =
-      title === "Local Models"
-        ? "Models downloaded and ready to use on your computer. These are available for chat, and specialization!"
-        : "Models available for download. Click on any model to download it to your local storage.";
+    const tooltipText = title === "Local Models" 
+      ? "Models downloaded and ready to use on your computer. These are available for chat, and specialization!"
+      : "Models available for download. Click on any model to download it to your local storage.";
 
     return (
       <Tooltip content={tooltipText} side="right" width="w-80">
@@ -65,9 +71,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
         }
       } catch (err) {
         console.error("Failed to fetch models:", err);
-        setErrorMessage(
-          "Failed to fetch available models. Please try again and contact the Erudi team for support."
-        );
+        setErrorMessage("Failed to fetch available models. Please try again and contact the Erudi team for support.");
       } finally {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         setLoading(false);
@@ -75,23 +79,20 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
     }
     fetchModels();
   }, [title]);
-
+  
   const reloadLocalModels = async () => {
     setLoading(true);
     try {
       const url = `${API_BASE_URL}/main_window/llms/local`;
       const res = await fetch(url);
       if (res.ok) setModels(await res.json());
-      else
-        setErrorMessage(
-          "Failed to fetch local models. Please try again and contact the Erudi team for support."
-        );
-    } catch (err) {
+      else setErrorMessage("Failed to fetch local models. Please try again and contact the Erudi team for support.");
+    } 
+    catch (err) {
       console.error("Failed to fetch local models:", err);
-      setErrorMessage(
-        "Failed to fetch local models. Please try again and contact the Erudi team for support."
-      );
-    } finally {
+      setErrorMessage("Failed to fetch local models. Please try again and contact the Erudi team for support.");
+    } 
+    finally {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setLoading(false);
     }
@@ -152,75 +153,101 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
     setSuccessMessage("");
   };
 
+  // Filter models based on search term
+  const filteredModels = models.filter(model =>
+    model.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <>
       <div className="text-gray-200 w-full">
         {/* Section header */}
         <div
-          className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
+          className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30 transition-colors"
           onClick={() => setOpenSection((prev) => !prev)}
         >
-          <div className="flex items-center gap-2">
-            {openSection ? (
-              <ChevronDown className="w-4 h-4" />
-            ) : (
-              <ChevronRight className="w-4 h-4" />
-            )}
-            <span className="font-semibold text-xl sm:text-lg">{title}</span>
+          <div className="flex items-center gap-3">
+            {getIconForSection(title)}
+            <span className="font-medium text-lg text-gray-200">{title}</span>
             <TooltipIcon />
+            {title === "Local Models" && (
+              <RefreshCcw 
+                className="w-4 h-4 text-gray-400 hover:text-gray-200 cursor-pointer transition-colors" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  reloadLocalModels();
+                }} 
+              />
+            )}
           </div>
-          {title === "Local Models" && (
-            <RefreshCcw
-              className="w-4 h-4 hover:opacity-70 cursor-pointer"
-              onClick={(e) => {
-                e.stopPropagation();
-                reloadLocalModels();
-              }}
-            />
-          )}
+          <div className="flex items-center gap-2">
+            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${!openSection ? '-rotate-90' : ''}`} />
+          </div>
         </div>
 
-        <div
-          className={`grid transition-all duration-300 ease-in-out ${
-            openSection
-              ? "grid-rows-[1fr] opacity-100"
-              : "grid-rows-[0fr] opacity-0"
-          }`}
-        >
-          <div className="px-10 py-2 text-sm text-gray-500 max-h-[35vh] max-w-full overflow-y-auto overflow-x-visible custom-scroll">
-            {loading ? (
-              <div className="flex items-center gap-2 py-1">
-                <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+        {/* Collapsible content */}
+        <div className={`grid transition-all duration-300 ease-in-out ${openSection ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+          <div className="overflow-hidden">
+            {/* Search bar for Remote Models only */}
+            {hasSearch && title !== "Local Models" && openSection && (
+              <div className="px-4 py-2 pb-3">
+                <div className="relative">
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Looking for a model?"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-[#1a1a1a]/60 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-white/30"
+                  />
+                </div>
               </div>
-            ) : models.length > 0 ? (
-              models.map((m) =>
-                title === "Local Models" ? (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between py-1 max-w-full group"
-                  >
-                    <span className="flex-1 pr-2 truncate">{m.name}</span>
-                    <button
-                      onClick={(e) => handleDeleteClick(e, m)}
-                      className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:text-red-400 p-1"
-                      title="Delete model"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <p
-                    key={m.id}
-                    className="py-1 max-w-full cursor-pointer hover:text-blue-500"
-                    onClick={() => handleModelClick(m)}
-                  >
-                    {m.name}
-                  </p>
-                )
-              )
-            ) : (
-              <p className="italic">Nothing here…</p>
             )}
+                  
+
+            {/* Models list */}
+            <div className="pl-12 pr-4 pb-2 max-h-[40vh] overflow-y-auto custom-scroll">
+              {loading ? (
+                <div className="flex items-center gap-2 py-2 text-gray-400">
+                  <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-sm">Loading models...</span>
+                </div>
+              ) : (filteredModels.length > 0 || models.length > 0) ? (
+                (hasSearch ? filteredModels : models).length > 0 ? (
+                  (hasSearch ? filteredModels : models).map((m) => (
+                    title === "Local Models" ? (
+                      <div
+                        key={m.id}
+                        className="flex items-center justify-between py-1.5 group hover:bg-gray-700/20 rounded px-2 -ml-2 transition-colors"
+                      >
+                        <span className="flex-1 text-gray-300 text-sm truncate pr-2">{m.name}</span>
+                        <button
+                          onClick={(e) => handleDeleteClick(e, m)}
+                          className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:text-red-300 p-1 rounded hover:bg-red-900/20"
+                          title="Delete model"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        key={m.id}
+                        className="py-1.5 px-2 -ml-2 text-sm text-gray-400 cursor-pointer hover:text-gray-200 hover:bg-gray-700/20 rounded transition-colors truncate"
+                        onClick={() => handleModelClick(m)}
+                      >
+                        {m.name}
+                      </div>
+                    )
+                  ))
+                ) : (
+                  <p className="text-gray-500 text-sm italic py-2">No models found...</p>
+                )
+              ) : (
+                <p className="text-gray-500 text-sm italic py-2">
+                  {title === "Local Models" ? "No models here..." : "No models available..."}
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>

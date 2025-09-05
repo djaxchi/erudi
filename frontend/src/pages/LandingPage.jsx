@@ -10,8 +10,9 @@ import DeleteModelModal from "../components/modals/DeleteModelModal";
 import MessageModal from "../components/modals/MessageModal";
 import HardwareLoadingPopup from "../components/modals/HardwareLoadingPopup";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
-import { API_BASE_URL } from "../config/api";
-import logoErudi from "../../assets/erudi.png";
+import HardwareLoadingPopup from "../components/LoadingPopup";
+import { RefreshCcw } from "lucide-react";
+import logoErudi from "../img/logo-erudi.png";
 
 
 export default function LandingPage() {
@@ -27,8 +28,6 @@ export default function LandingPage() {
   const [modelsLoading, setModelsLoading] = useState(true);
   const [selectedModelInfo, setSelectedModelInfo] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
   const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
   const localModelsRef = useRef(null);
 
@@ -346,41 +345,35 @@ export default function LandingPage() {
   return (
     <div className="flex h-screen">
       {/* Left mini sidebar */}
-      <Sidebar
+      <Sidebar 
         showBrainCollapsible={true}
         onToggleBrainSidebar={handleToggleBrainSidebar}
         brainCollapsed={brainSidebarCollapsed}
       />
 
       {/* Main sidebar */}
-      <aside
-        className={`${
-          brainSidebarCollapsed
-            ? "w-0 opacity-0"
-            : "w-80 opacity-100 p-6 space-y-6"
-        } bg-[#272727] text-white flex flex-col transition-all duration-300`}
-      >
+      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-[30%] sm:w-[35%] xl:w-[25%] opacity-100'} bg-[#272727] text-white flex flex-col p-6 space-y-6 transition-all duration-300 overflow-hidden`}>
         <div className="flex items-center justify-start">
-          <img
-            src={logoErudi}
-            alt="Erudi"
-            className="h-[55px] ml-2 w-auto"
+          <img 
+            src={logoErudi} 
+            alt="Erudi" 
+            className="h-[55px] ml-2 w-auto" 
             onError={(e) => {
-              console.error("Failed to load logo:", e.target.src);
+              console.error('Failed to load logo:', e.target.src);
             }}
-            onLoad={() => console.log("Logo loaded successfully")}
+            onLoad={() => console.log('Logo loaded successfully')}
           />
         </div>
-        <ModelCollapsibleSection
-          title="Local Models"
+        <ModelCollapsibleSection 
+          title="Local Models" 
           ref={localModelsRef}
           onLocalModelRefresh={handleMainPageRefresh}
         />
         <ModelCollapsibleSection
           title="Remote Models"
-          hasSearch={true}
-          onDownload={handleDownload}
-          onLocalModelRefresh={handleMainPageRefresh}
+         hasSearch={true}
+         onDownload={(model) => open(model)}
+         onLocalModelRefresh={handleLocalModelRefresh}
         />
       </aside>
 
