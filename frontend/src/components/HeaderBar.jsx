@@ -20,6 +20,9 @@ export default function HeaderBar({
   const [maxTokens, setMaxTokens] = useState(initialMaxTokens);
 
   const rootRef = useRef(null);
+  const selectRef = useRef(null);
+  const dropdownRef = useRef(null);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [tier, setTier] = useState("lg");
 
   useEffect(() => {
@@ -42,6 +45,20 @@ export default function HeaderBar({
     });
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   const isXs = tier === "xs";
@@ -194,48 +211,52 @@ export default function HeaderBar({
             </h3>
 
             <div
+              ref={dropdownRef}
               className={[
-                "inline-flex items-center rounded-lg",
+                "inline-flex items-center rounded-lg relative",
                 pillPx,
                 pillPy,
                 pillText,
                 "border transition",
                 "bg-white/5 hover:bg-white/10 border-white/10 hover:border-white/20",
                 "backdrop-blur-sm text-gray-100",
-                "max-w-[100%]",
+                "max-w-[100%] cursor-pointer",
               ].join(" ")}
+              onClick={() => !disabled && setIsDropdownOpen(!isDropdownOpen)}
             >
-              <select
-                value={currentModel}
-                onChange={(e) => onModelChange?.(e.target.value)}
-                disabled={disabled}
+              <div
                 className={[
-                  "appearance-none bg-transparent border-0 outline-none cursor-pointer",
-                  selectPadRight,
                   "font-medium truncate",
+                  selectPadRight,
                   isNarrow ? "max-w-[110px]" : "max-w-[150px]",
                 ].join(" ")}
-                style={{
-                  WebkitAppearance: "none",
-                  MozAppearance: "none",
-                  backgroundImage: "none",
-                }}
                 title={currentModel}
               >
-                {models.map((m) => (
-                  <option
-                    key={m.id ?? m.name}
-                    value={m.name}
-                    className="text-gray-900"
-                  >
-                    {m.name}
-                  </option>
-                ))}
-              </select>
+                {currentModel || "Select model..."}
+              </div>
               <ChevronDown
                 size={isXs ? 14 : 16}
-                className="opacity-70 shrink-0"
+                className={`opacity-70 shrink-0 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`}
               />
+              
+              {/* Custom Dropdown */}
+              {isDropdownOpen && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-[#2a2a2a] border border-white/20 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                  {models.map((m) => (
+                    <div
+                      key={m.id ?? m.name}
+                      className="px-3 py-2 hover:bg-white/10 cursor-pointer text-gray-100 border-b border-white/10 last:border-b-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onModelChange?.(m.name);
+                        setIsDropdownOpen(false);
+                      }}
+                    >
+                      {m.name}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -343,8 +364,7 @@ export default function HeaderBar({
 
                     <div
                       className={
-                        "inline-flex items-center rounded-full px-4",
-                        isXs ? "py-0 m-0" : "py-1.5",
+                        "inline-flex items-center rounded-md bg-white/10 border border-white/20 shadow p-0 m-0"
                       }
                     >
                       <input
@@ -370,7 +390,7 @@ export default function HeaderBar({
                         type="button"
                         onClick={onCustomizePrompt}
                         className={[
-                          "rounded-full font-semibold",
+                          "rounded-md font-semibold",
                           primaryBtn,
                           "bg-emerald-800 hover:bg-emerald-900 text-white",
                           "border border-white/20 shadow",
