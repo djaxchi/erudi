@@ -6,6 +6,7 @@ import ModelInfoModal from "../components/modals/ModelInfoModal";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import HardwareLoadingPopup from "../components/LoadingPopup";
 import { RefreshCcw } from "lucide-react";
+import logoErudi from "../img/logo-erudi.png";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
 
@@ -21,6 +22,7 @@ export default function LandingPage() {
   const [modelsLoading, setModelsLoading] = useState(true);
   const [selectedModelInfo, setSelectedModelInfo] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
+  const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
   const localModelsRef = useRef(null);
 
   useEffect(() => {
@@ -263,23 +265,42 @@ fetchWelcomePopupStatus();
     // Implement navigation to knowledge base page
   };
 
+  const handleToggleBrainSidebar = () => {
+    setBrainSidebarCollapsed(!brainSidebarCollapsed);
+  };
+
   return (
     <div className="flex h-screen">
       {/* Left mini sidebar */}
-      <Sidebar />
+      <Sidebar 
+        showBrainCollapsible={true}
+        onToggleBrainSidebar={handleToggleBrainSidebar}
+        brainCollapsed={brainSidebarCollapsed}
+      />
 
       {/* Main sidebar */}
-      <aside className="w-[30%] sm:w-[35%] xl:w-[25%]  bg-[#272727] text-white flex flex-col p-6 space-y-6 transition-all duration-300">
-        <h1 className="text-3xl font-bold">Models</h1>
+      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-[30%] sm:w-[35%] xl:w-[25%] opacity-100'} bg-[#272727] text-white flex flex-col p-6 space-y-6 transition-all duration-300 overflow-hidden`}>
+        <div className="flex items-center justify-start">
+          <img 
+            src={logoErudi} 
+            alt="Erudi" 
+            className="h-[55px] ml-2 w-auto" 
+            onError={(e) => {
+              console.error('Failed to load logo:', e.target.src);
+            }}
+            onLoad={() => console.log('Logo loaded successfully')}
+          />
+        </div>
         <ModelCollapsibleSection 
           title="Local Models" 
           ref={localModelsRef}
         />
         <ModelCollapsibleSection
-         title="Remote Models"
+          title="Remote Models"
+         hasSearch={true}
          onDownload={(model) => open(model)}
          onLocalModelRefresh={handleLocalModelRefresh}
-       />
+        />
       </aside>
 
       {/* Main content */}
@@ -343,21 +364,6 @@ fetchWelcomePopupStatus();
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="bg-[#1a1a1a]/60 border border-white/10 rounded-lg px-3 py-2 pl-8 pr-8 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-white/30"
                   />
-                  <div className="absolute left-2 top-1/2 transform -translate-y-1/2">
-                    <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                    </svg>
-                  </div>
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery("")}
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                      </svg>
-                    </button>
-                  )}
                 </div>
                 <RefreshCcw
                   className="w-4 h-4 hover:opacity-70 text-white cursor-pointer"
