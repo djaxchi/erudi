@@ -1,6 +1,8 @@
 // src/components/CollapsibleSection.jsx
 import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from "react";
 import Tooltip from "./Tooltip";
+import DeleteModelModal from "./modals/DeleteModelModal";
+import MessageModal from "./modals/MessageModal";
 import {
   ChevronDown,
   RefreshCcw,
@@ -128,8 +130,12 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
       
       if (response.ok) {
         setSuccessMessage(`Model ${deleteConfirmation.model.name} has been successfully deleted.`);
-        // Recharger la liste des modèles
+        // Reload models in this component
         await reloadLocalModels();
+        // Also refresh the main page local models
+        if (onLocalModelRefresh) {
+          onLocalModelRefresh();
+        }
       } else {
         throw new Error(`Failed to delete model: ${response.status}`);
       }
@@ -253,135 +259,30 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
       </div>
 
       {/* Error Modal */}
-      {errorMessage && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#2B2B2B] rounded-2xl border border-white/10 shadow-2xl max-w-md w-full">
-            {/* Header */}
-            <div className="p-4 border-b border-white/10">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white flex items-center gap-3">
-                  Error
-                </h2>
-                <button
-                  onClick={closeErrorModal}
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="p-6">
-              <div className="text-red-400 bg-red-900/20 border border-red-600/30 rounded-lg p-4">
-                <p className="text-sm">{errorMessage}</p>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-white/10">
-              <div className="flex justify-end">
-                <button
-                  onClick={closeErrorModal}
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <MessageModal
+        isOpen={!!errorMessage}
+        title="Error"
+        message={errorMessage}
+        type="error"
+        onClose={closeErrorModal}
+      />
 
       {/* Success Modal */}
-      {successMessage && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#2B2B2B] rounded-2xl border border-white/10 shadow-2xl max-w-md w-full">
-            {/* Header */}
-            <div className="p-4 border-b border-white/10">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white flex items-center gap-3">
-                  Success
-                </h2>
-                <button
-                  onClick={closeSuccessModal}
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="p-6">
-              <div className="text-green-400 rounded-lg p-4">
-                <p className="text-sm">{successMessage}</p>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-white/10">
-              <div className="flex justify-end">
-                <button
-                  onClick={closeSuccessModal}
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <MessageModal
+        isOpen={!!successMessage}
+        title="Success"
+        message={successMessage}
+        type="success"
+        onClose={closeSuccessModal}
+      />
 
       {/* Delete Confirmation Modal */}
-      {deleteConfirmation.show && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#2B2B2B] rounded-2xl border border-white/10 shadow-2xl max-w-md w-full">
-            {/* Header */}
-            <div className="p-4 border-b border-white/10">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white flex items-center gap-3">
-                  Delete Model
-                </h2>
-                <button
-                  onClick={cancelDelete}
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="p-6">
-              <div className="text-white-400 rounded-lg p-4">
-                <p className="text-sm">
-                  Do you want to delete the model {deleteConfirmation.model?.name} ?
-                </p>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-white/10">
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={cancelDelete}
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-                >
-                  No
-                </button>
-                <button
-                  onClick={confirmDelete}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-                >
-                  Yes
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeleteModelModal
+        isOpen={deleteConfirmation.show}
+        model={deleteConfirmation.model}
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
     </>
   );
 });
