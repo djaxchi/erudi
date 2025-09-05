@@ -279,7 +279,7 @@ fetchWelcomePopupStatus();
       />
 
       {/* Main sidebar */}
-      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-[30%] sm:w-[35%] xl:w-[25%] opacity-100'} bg-[#272727] text-white flex flex-col p-6 space-y-6 transition-all duration-300 overflow-hidden`}>
+      <aside className={`${brainSidebarCollapsed ? 'w-0 min-w-0 overflow-hidden' : 'w-[30%] sm:w-[35%] xl:w-[25%] overflow-visible'} ${brainSidebarCollapsed ? 'opacity-0' : 'opacity-100 p-6 space-y-6 '} bg-[#272727] text-white flex flex-col transition-all duration-300`}>
         <div className="flex items-center justify-start">
           <img 
             src={logoErudi} 
@@ -304,7 +304,7 @@ fetchWelcomePopupStatus();
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 bg-[#071b18] relative overflow-auto">
+      <main className="flex-1 bg-[#071b18] relative overflow-auto transition-all duration-300">
         <div className="p-8 space-y-8">
           {/* Local Models Section */}
           <section>
