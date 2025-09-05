@@ -42,7 +42,7 @@ export default function LandingPage() {
         const data = await response.json();
         setShowWelcome(!data.has_already_displayed);
       } catch (error) {
-        console.error("Failed to fetch welcome popup status:", error);
+        console.error("Error fetching welcome popup status:", error);
       }
     };
 
@@ -56,7 +56,6 @@ export default function LandingPage() {
         const data = await response.json();
         setHardwareInfo(data);
       } catch (error) {
-        console.error("Failed to fetch hardware evaluation:", error);
         setHardwareInfo({
           error: "Failed to evaluate hardware capabilities. Please contact the Erudi team for support."
         });
@@ -87,7 +86,6 @@ fetchWelcomePopupStatus();
       
       return metadata;
     } catch (error) {
-      console.error('Error parsing metadata:', error);
       return {};
     }
   };
@@ -144,7 +142,8 @@ fetchWelcomePopupStatus();
           setRemoteModels(transformedRemoteModels);
         }
       } catch (error) {
-        console.error("Failed to fetch models:", error);
+        // Error fetching models
+        console.error("Error fetching models:", error);
       } finally {
         setModelsLoading(false);
       }
@@ -191,7 +190,6 @@ fetchWelcomePopupStatus();
           "Failed to fetch local models. Please try again and contact the Erudi team for support."
         );
     } catch (err) {
-      console.error("Failed to fetch local models:", err);
       setErrorMessage(
         "Failed to fetch local models. Please try again and contact the Erudi team for support."
       );
@@ -206,7 +204,7 @@ fetchWelcomePopupStatus();
     if (exploreSection) {
       exploreSection.scrollIntoView({ behavior: 'smooth' });
     } else {
-      console.error('explore-models section not found');
+      console.warn('Explore models section not found');
     }
   };
 
@@ -254,7 +252,6 @@ fetchWelcomePopupStatus();
 
   // Event handlers
   const handleDownload = (model) => {
-    console.log("Download model:", model);
     // Implement download logic or use existing download modal
     if (open) {
       open(model, {
@@ -266,7 +263,6 @@ fetchWelcomePopupStatus();
           }
         },
         onError: (err) => {
-          console.error("Download failed:", err);
           setErrorMessage("Download failed. Please try again.");
         }
       });
@@ -274,24 +270,20 @@ fetchWelcomePopupStatus();
   };
 
   const handleInfo = (model) => {
-    console.log("Show info for model:", model);
     setSelectedModelInfo(model);
   };
 
   const handleChat = (model) => {
-    console.log("Start chat with model:", model);
     // Navigate to chat page with model parameter
     navigate(`/main_window/chat?model=${encodeURIComponent(model.name)}`);
   };
 
   const handleKnowledgeBase = (model) => {
-    console.log("Open knowledge base for model:", model);
     // Navigate to knowledge base page with model parameter
     navigate(`/main_window/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
   };
 
   const handleDelete = (model) => {
-    console.log("Delete model:", model);
     setDeleteConfirmation({ show: true, model });
   };
 

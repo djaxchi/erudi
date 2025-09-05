@@ -89,7 +89,6 @@ async def search_llms(name: str, db: Session = Depends(get_db)):
     llms = db.query(Llm).filter(Llm.name.ilike(f"%{name}%")).all()
     return llms
 
-
 @router.post(
     "/llms/{llm_id}/download",
     response_model=DownloadJobResponse,
@@ -107,11 +106,13 @@ async def download_llm_route(
     if not remote_llm:
         raise HTTPException(status_code=404, detail="LLM not found")
 
-    # Create new instance of Llm
+    # Create new instance of Llm with same metadata as remote model
     local_llm = Llm(
         name=remote_llm.name,
         local=2,  # 2 means downloading
         type=remote_llm.type,
+        description=remote_llm.description,
+        model_metadata=remote_llm.model_metadata,  # Copy metadata from remote model
     )
     db.add(local_llm)
     db.commit()
