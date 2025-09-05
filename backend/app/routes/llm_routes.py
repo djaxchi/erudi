@@ -109,11 +109,13 @@ async def download_llm_route(
     if not remote_llm:
         raise HTTPException(status_code=404, detail="LLM not found")
 
-    # Create new instance of Llm
+    # Create new instance of Llm with same metadata as remote model
     local_llm = Llm(
         name=remote_llm.name,
         local=2,  # 2 means downloading
         type=remote_llm.type,
+        description=remote_llm.description,
+        model_metadata=remote_llm.model_metadata,  # Copy metadata from remote model
     )
     db.add(local_llm)
     db.commit()

@@ -196,7 +196,6 @@ export default function LandingPage() {
           "Failed to fetch local models. Please try again and contact the Erudi team for support."
         );
     } catch (err) {
-      console.error("Failed to fetch local models:", err);
       setErrorMessage(
         "Failed to fetch local models. Please try again and contact the Erudi team for support."
       );
@@ -211,7 +210,7 @@ export default function LandingPage() {
     if (exploreSection) {
       exploreSection.scrollIntoView({ behavior: 'smooth' });
     } else {
-      console.error('explore-models section not found');
+      console.warn('Explore models section not found');
     }
   };
 
@@ -273,7 +272,6 @@ export default function LandingPage() {
           }
         },
         onError: (err) => {
-          console.error("Download failed:", err);
           setErrorMessage("Download failed. Please try again.");
         }
       });
@@ -285,19 +283,16 @@ export default function LandingPage() {
   };
 
   const handleChat = (model) => {
-    console.log("Start chat with model:", model);
     // Navigate to chat page with model parameter
     navigate(`/main_window/chat?model=${encodeURIComponent(model.name)}`);
   };
 
   const handleKnowledgeBase = (model) => {
-    console.log("Open knowledge base for model:", model);
     // Navigate to knowledge base page with model parameter
     navigate(`/main_window/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
   };
 
   const handleDelete = (model) => {
-    console.log("Delete model:", model);
     setDeleteConfirmation({ show: true, model });
   };
 
