@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import GradientBox from "../components/GradientBox";
@@ -9,6 +9,7 @@ import ErrorModal from "../components/modals/ErrorModal";
 
 export default function ChatPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
@@ -53,6 +54,26 @@ export default function ChatPage() {
 
     fetchConversations();
   }, []);
+
+  // Handle URL parameter for model selection
+  useEffect(() => {
+    const modelParam = searchParams.get('model');
+    if (modelParam && models.length > 0) {
+      // Find the model by name or id
+      const foundModel = models.find(model => 
+        model.name === modelParam || 
+        model.id === modelParam ||
+        model.name.toLowerCase() === modelParam.toLowerCase()
+      );
+      
+      if (foundModel) {
+        console.log('Setting model from URL parameter:', foundModel);
+        setSelectedModel(foundModel.name);
+      } else {
+        console.warn('Model not found for parameter:', modelParam);
+      }
+    }
+  }, [searchParams, models]); // Re-run when searchParams or models change
 
   const handleConversationClick = (id) => {
     navigate(`/main_window/conversation/${id}`);
