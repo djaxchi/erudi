@@ -206,7 +206,7 @@ async def startup_populate_database():
                     db.add(base_model)
                     print(f"Added base model {name} with size estimate: {size_estimate}")
 
-        LIMIT_MODELS = 10000  # Limit the number of models to fetch and add
+        LIMIT_MODELS = 100  # Limit the number of models to fetch and add
         
         SKIP_IDS = [
             "mistral-7b-instruct-v0.3",
