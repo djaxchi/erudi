@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
 import ModelCard from "../components/ModelCard";
@@ -12,6 +13,7 @@ const API_BASE_URL = "http://127.0.0.1:8000";
 
 export default function LandingPage() {
   const { open } = useDownloadModal();
+  const navigate = useNavigate();
   const [showWelcome, setShowWelcome] = useState(false);
   const [showLoadingPopup, setShowLoadingPopup] = useState(false);
   const [hardwareInfo, setHardwareInfo] = useState(null);
@@ -257,12 +259,14 @@ fetchWelcomePopupStatus();
 
   const handleChat = (model) => {
     console.log("Start chat with model:", model);
-    // Implement navigation to chat page
+    // Navigate to chat page with model parameter
+    navigate(`/main_window/chat?model=${encodeURIComponent(model.name)}`);
   };
 
   const handleKnowledgeBase = (model) => {
     console.log("Open knowledge base for model:", model);
-    // Implement navigation to knowledge base page
+    // Navigate to knowledge base page with model parameter
+    navigate(`/main_window/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
   };
 
   const handleToggleBrainSidebar = () => {
@@ -279,7 +283,7 @@ fetchWelcomePopupStatus();
       />
 
       {/* Main sidebar */}
-      <aside className={`${brainSidebarCollapsed ? 'w-0 min-w-0 overflow-hidden' : 'w-[30%] sm:w-[35%] xl:w-[25%] overflow-visible'} ${brainSidebarCollapsed ? 'opacity-0' : 'opacity-100 p-6 space-y-6 '} bg-[#272727] text-white flex flex-col transition-all duration-300`}>
+      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-[30%] sm:w-[35%] xl:w-[25%] opacity-100 p-6 space-y-6 '} bg-[#272727] text-white flex flex-col transition-all duration-300 overflow-hidden`}>
         <div className="flex items-center justify-start">
           <img 
             src={logoErudi} 
@@ -304,7 +308,7 @@ fetchWelcomePopupStatus();
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 bg-[#071b18] relative overflow-auto transition-all duration-300">
+      <main className="flex-1 bg-[#071b18] relative overflow-auto">
         <div className="p-8 space-y-8">
           {/* Local Models Section */}
           <section>
@@ -335,6 +339,7 @@ fetchWelcomePopupStatus();
                       type="local"
                       onChat={handleChat}
                       onInfo={handleInfo}
+                      onKnowledgeBase={handleKnowledgeBase}
                     />
                   ))}
                   {!searchQuery && (
