@@ -32,10 +32,10 @@ export default function Tooltip({
     }[side] || "left-0 -translate-x-1/2 top-1/2 -translate-y-1/2";
 
   return (
-    <span className="relative group inline-block align-middle">
+    <span className="relative group inline-block align-middle overflow-visible">
       {children}
       <span
-        className={`pointer-events-none absolute ${positionClasses} ${width} opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100 transition-all duration-300 ease-out z-[99999]`}
+        className={`pointer-events-none absolute ${positionClasses} ${width} opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100 transition-all duration-300 ease-out z-[999999] overflow-visible`}
       >
         <span className="relative block px-4 py-3 text-sm text-gray-200 bg-gradient-to-br from-[#1a1a1a] via-[#2a2a2a] to-[#1a1a1a] rounded-xl shadow-2xl border border-emerald-500/20 backdrop-blur-sm font-normal">
           {content}
