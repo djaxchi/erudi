@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { RefreshCcw } from "lucide-react";
 import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
 import ModelCard from "../components/ModelCard";
@@ -7,10 +8,10 @@ import WelcomeModal from "../components/modals/WelcomeModal";
 import ModelInfoModal from "../components/modals/ModelInfoModal";
 import DeleteModelModal from "../components/modals/DeleteModelModal";
 import MessageModal from "../components/modals/MessageModal";
+import HardwareLoadingPopup from "../components/modals/HardwareLoadingPopup";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
-import HardwareLoadingPopup from "../components/LoadingPopup";
-import { RefreshCcw } from "lucide-react";
-import logoErudi from "../img/logo-erudi.png";
+import { API_BASE_URL } from "../config/api";
+import logoErudi from "../../assets/erudi.png";
 
 
 export default function LandingPage() {
@@ -637,39 +638,10 @@ export default function LandingPage() {
       />
 
       {/* Loading Popup (appears on top of welcome popup when hardware is still loading) */}
-      <HardwareLoadingPopup show={showLoadingPopup} loading={loading} onClose={closeLoadingOnly} />
-
-      {/* Delete Confirmation Modal */}
-      <DeleteModelModal
-        isOpen={deleteConfirmation.show}
-        model={deleteConfirmation.model}
-        onConfirm={confirmDelete}
-        onCancel={cancelDelete}
-      />
-
-      {/* Success Message Modal */}
-      <MessageModal
-        isOpen={!!successMessage}
-        title="Success"
-        message={successMessage}
-        type="success"
-        onClose={() => setSuccessMessage("")}
-      />
-
-      {/* Error Message Modal */}
-      <MessageModal
-        isOpen={!!errorMessage}
-        title="Error"
-        message={errorMessage}
-        type="error"
-        onClose={() => setErrorMessage("")}
-      />
-
-      {/* Loading Popup (appears on top of welcome popup when hardware is still loading) */}
-      <HardwareLoadingPopup
-        show={showLoadingPopup}
-        loading={loading}
-        onClose={closeLoadingOnly}
+      <HardwareLoadingPopup 
+        show={showLoadingPopup} 
+        loading={loading} 
+        onClose={closeLoadingOnly} 
       />
     </div>
   );
