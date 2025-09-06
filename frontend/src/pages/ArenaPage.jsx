@@ -10,9 +10,9 @@ import { API_BASE_URL } from "../config/api";
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
-  temperature: 0.5,
-  topP: 0.9,
-  maxTokens: 200,
+  temperature: 0.2,
+  topP: 0.5,
+  maxTokens: 512,
   customPrompt: "",
 };
 
@@ -206,6 +206,8 @@ export default function ArenaPage() {
   };
 
   const handleDeletePanel = (panelId) => {
+    if (panels.length <= 1) return;
+
     setPanels((prev) =>
       prev.map((p) => (p.id === panelId ? { ...p, isRemoving: true } : p))
     );
@@ -253,9 +255,18 @@ export default function ArenaPage() {
         </div>
         <div className="flex items-center pt-3 flex-shrink-0">
           <button
-            className="p-1 text-gray-400 hover:text-gray-200"
+            className={`p-1 ${
+              panels.length <= 1
+                ? "text-gray-600 cursor-not-allowed opacity-50"
+                : "text-gray-400 hover:text-gray-200 cursor-pointer"
+            }`}
             onClick={() => handleDeletePanel(panel.id)}
-            title="Delete this panel"
+            disabled={panels.length <= 1}
+            title={
+              panels.length <= 1
+                ? "Cannot delete the last panel"
+                : "Delete this panel"
+            }
           >
             <Trash className="w-5 h-5" />
           </button>

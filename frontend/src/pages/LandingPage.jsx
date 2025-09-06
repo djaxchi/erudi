@@ -28,7 +28,10 @@ export default function LandingPage() {
   const [selectedModelInfo, setSelectedModelInfo] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
+  const [deleteConfirmation, setDeleteConfirmation] = useState({
+    show: false,
+    model: null,
+  });
   const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
   const localModelsRef = useRef(null);
 
@@ -67,9 +70,7 @@ export default function LandingPage() {
         setLoading(false);
       }
     };
-    
     fetchWelcomePopupStatus();
-    
     // Helper function to parse model metadata
     const parseMetadata = (metadataString) => {
       if (!metadataString) return {};
@@ -143,7 +144,7 @@ export default function LandingPage() {
               description: model.description,
               metadata: metadata,
               rawMetadata: model.model_metadata,
-              downloads: metadata.downloads || "Unknown",
+              downloads: metadata.downloads || model.description || "Unknown",
               likes: metadata.likes || "Unknown",
               author: metadata.author || "Unknown",
               library: metadata.library || "Unknown"
@@ -209,9 +210,9 @@ export default function LandingPage() {
   const scrollToExplore = () => {
     const exploreSection = document.getElementById("explore-models");
     if (exploreSection) {
-      exploreSection.scrollIntoView({ behavior: 'smooth' });
+      exploreSection.scrollIntoView({ behavior: "smooth" });
     } else {
-      console.warn('Explore models section not found');
+      console.warn("Explore models section not found");
     }
   };
 
@@ -274,7 +275,7 @@ export default function LandingPage() {
         },
         onError: (err) => {
           setErrorMessage("Download failed. Please try again.");
-        }
+        },
       });
     }
   };
@@ -290,7 +291,11 @@ export default function LandingPage() {
 
   const handleKnowledgeBase = (model) => {
     // Navigate to knowledge base page with model parameter
-    navigate(`/main_window/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
+    navigate(
+      `/main_window/attach_knowledge_base?model=${encodeURIComponent(
+        model.name
+      )}`
+    );
   };
 
   const handleDelete = (model) => {
@@ -299,14 +304,19 @@ export default function LandingPage() {
 
   const confirmDelete = async () => {
     if (!deleteConfirmation.model) return;
-    
+
     try {
-      const response = await fetch(`${API_BASE_URL}/main_window/llms/${deleteConfirmation.model.id}`, {
-        method: 'DELETE',
-      });
-      
+      const response = await fetch(
+        `${API_BASE_URL}/main_window/llms/${deleteConfirmation.model.id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
       if (response.ok) {
-        setSuccessMessage(`Model ${deleteConfirmation.model.name} has been successfully deleted.`);
+        setSuccessMessage(
+          `Model ${deleteConfirmation.model.name} has been successfully deleted.`
+        );
         // Reload local models on both main page and sidebar
         await reloadLocalModels();
         if (localModelsRef.current) {
@@ -317,7 +327,9 @@ export default function LandingPage() {
       }
     } catch (error) {
       console.error("Failed to delete model:", error);
-      setErrorMessage("Failed to delete the model. Please try again and contact the Erudi team for support.");
+      setErrorMessage(
+        "Failed to delete the model. Please try again and contact the Erudi team for support."
+      );
     } finally {
       setDeleteConfirmation({ show: false, model: null });
     }
@@ -334,35 +346,41 @@ export default function LandingPage() {
   return (
     <div className="flex h-screen">
       {/* Left mini sidebar */}
-      <Sidebar 
+      <Sidebar
         showBrainCollapsible={true}
         onToggleBrainSidebar={handleToggleBrainSidebar}
         brainCollapsed={brainSidebarCollapsed}
       />
 
       {/* Main sidebar */}
-      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-[30%] sm:w-[35%] xl:w-[25%] opacity-100 p-6 space-y-6 '} bg-[#272727] text-white flex flex-col transition-all duration-300 overflow-hidden`}>
+      <aside
+        className={`${
+          brainSidebarCollapsed
+            ? "w-0 opacity-0"
+            : "w-80 opacity-100 p-6 space-y-6"
+        } bg-[#272727] text-white flex flex-col transition-all duration-300`}
+      >
         <div className="flex items-center justify-start">
-          <img 
-            src={logoErudi} 
-            alt="Erudi" 
-            className="h-[55px] ml-2 w-auto" 
+          <img
+            src={logoErudi}
+            alt="Erudi"
+            className="h-[55px] ml-2 w-auto"
             onError={(e) => {
-              console.error('Failed to load logo:', e.target.src);
+              console.error("Failed to load logo:", e.target.src);
             }}
-            onLoad={() => console.log('Logo loaded successfully')}
+            onLoad={() => console.log("Logo loaded successfully")}
           />
         </div>
-        <ModelCollapsibleSection 
-          title="Local Models" 
+        <ModelCollapsibleSection
+          title="Local Models"
           ref={localModelsRef}
           onLocalModelRefresh={handleMainPageRefresh}
         />
         <ModelCollapsibleSection
           title="Remote Models"
-         hasSearch={true}
-         onDownload={handleDownload}
-         onLocalModelRefresh={handleMainPageRefresh}
+          hasSearch={true}
+          onDownload={handleDownload}
+          onLocalModelRefresh={handleMainPageRefresh}
         />
       </aside>
 
@@ -641,7 +659,7 @@ export default function LandingPage() {
       <HardwareLoadingPopup 
         show={showLoadingPopup} 
         loading={loading} 
-        onClose={closeLoadingOnly} 
+        onClose={closeLoadingOnly}
       />
     </div>
   );
