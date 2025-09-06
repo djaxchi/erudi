@@ -28,7 +28,10 @@ export default function LandingPage() {
   const [selectedModelInfo, setSelectedModelInfo] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
+  const [deleteConfirmation, setDeleteConfirmation] = useState({
+    show: false,
+    model: null,
+  });
   const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
   const localModelsRef = useRef(null);
 
@@ -36,7 +39,9 @@ export default function LandingPage() {
     // To know if it should spawn the welcome popup
     const fetchWelcomePopupStatus = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/main_window/welcome-popup`);
+        const response = await fetch(
+          `${API_BASE_URL}/main_window/welcome-popup`
+        );
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -58,77 +63,82 @@ export default function LandingPage() {
         setHardwareInfo(data);
       } catch (error) {
         setHardwareInfo({
-          error: "Failed to evaluate hardware capabilities. Please contact the Erudi team for support."
+          error:
+            "Failed to evaluate hardware capabilities. Please contact the Erudi team for support.",
         });
       } finally {
         setLoading(false);
       }
     };
-fetchWelcomePopupStatus();
-  // Helper function to parse model metadata
-  const parseMetadata = (metadataString) => {
-    if (!metadataString) return {};
-    
-    try {
-      const lines = metadataString.split('\n');
-      const metadata = {};
-      
-      lines.forEach(line => {
-        const trimmedLine = line.trim();
-        if (trimmedLine.includes(':')) {
-          const [key, ...valueParts] = trimmedLine.split(':');
-          const value = valueParts.join(':').trim();
-          
-          // Clean up the key
-          const cleanKey = key.trim().toLowerCase().replace(/\s+/g, '_');
-          metadata[cleanKey] = value;
-        }
-      });
-      
-      return metadata;
-    } catch (error) {
-      return {};
-    }
-  };
+    fetchWelcomePopupStatus();
+    // Helper function to parse model metadata
+    const parseMetadata = (metadataString) => {
+      if (!metadataString) return {};
 
-  // Fetch models from backend
-  const fetchModels = async () => {
+      try {
+        const lines = metadataString.split("\n");
+        const metadata = {};
+
+        lines.forEach((line) => {
+          const trimmedLine = line.trim();
+          if (trimmedLine.includes(":")) {
+            const [key, ...valueParts] = trimmedLine.split(":");
+            const value = valueParts.join(":").trim();
+
+            // Clean up the key
+            const cleanKey = key.trim().toLowerCase().replace(/\s+/g, "_");
+            metadata[cleanKey] = value;
+          }
+        });
+
+        return metadata;
+      } catch (error) {
+        return {};
+      }
+    };
+
+    // Fetch models from backend
+    const fetchModels = async () => {
       setModelsLoading(true);
       try {
         // Fetch local models
-        const localResponse = await fetch(`${API_BASE_URL}/main_window/llms/local`);
+        const localResponse = await fetch(
+          `${API_BASE_URL}/main_window/llms/local`
+        );
         if (localResponse.ok) {
           const localData = await localResponse.json();
           // Transform API data to match our UI format
-          const transformedLocalModels = localData.map(model => {
+          const transformedLocalModels = localData.map((model) => {
             const metadata = parseMetadata(model.model_metadata);
             return {
               id: model.id,
               name: model.name,
               size: metadata.size || "Unknown",
-              parameters: metadata.parameters || "Unknown", 
+              parameters: metadata.parameters || "Unknown",
               lastUpdate: metadata.last_modified || "Unknown",
               isOnline: false, // Default to offline
               description: model.description,
               metadata: metadata,
-              rawMetadata: model.model_metadata
+              rawMetadata: model.model_metadata,
             };
           });
           setLocalModels(transformedLocalModels);
         }
 
         // Fetch remote models
-        const remoteResponse = await fetch(`${API_BASE_URL}/main_window/llms/remote`);
+        const remoteResponse = await fetch(
+          `${API_BASE_URL}/main_window/llms/remote`
+        );
         if (remoteResponse.ok) {
           const remoteData = await remoteResponse.json();
           // Transform API data to match our UI format
-          const transformedRemoteModels = remoteData.map(model => {
+          const transformedRemoteModels = remoteData.map((model) => {
             const metadata = parseMetadata(model.model_metadata);
             return {
               id: model.id,
               name: model.name,
               size: metadata.size || "Unknown",
-              parameters: metadata.parameters || "Unknown", 
+              parameters: metadata.parameters || "Unknown",
               downloads: metadata.downloads || model.description || "Unknown",
               lastUpdate: metadata.last_modified || "Unknown",
               author: metadata.author || "Unknown",
@@ -137,7 +147,7 @@ fetchWelcomePopupStatus();
               likes: metadata.likes || "Unknown",
               description: model.description,
               metadata: metadata,
-              rawMetadata: model.model_metadata
+              rawMetadata: model.model_metadata,
             };
           });
           setRemoteModels(transformedRemoteModels);
@@ -201,41 +211,43 @@ fetchWelcomePopupStatus();
   };
 
   const scrollToExplore = () => {
-    const exploreSection = document.getElementById('explore-models');
+    const exploreSection = document.getElementById("explore-models");
     if (exploreSection) {
-      exploreSection.scrollIntoView({ behavior: 'smooth' });
+      exploreSection.scrollIntoView({ behavior: "smooth" });
     } else {
-      console.warn('Explore models section not found');
+      console.warn("Explore models section not found");
     }
   };
 
   // Derived data from fetched models
   const baseModelNames = [
     "Mistral-7B-Instruct-v0.3",
-    "Mistral-7B-v0.3", 
+    "Mistral-7B-v0.3",
     "Gemma-3-1B-it",
     "Gemma-2-2B-it",
-    "Gemma-3-4B-it"
+    "Gemma-3-4B-it",
   ];
-  
-  const baseModels = remoteModels.filter(model => 
+
+  const baseModels = remoteModels.filter((model) =>
     baseModelNames.includes(model.name)
   );
-  
-  const communityModels = remoteModels.filter(model => 
-    !baseModelNames.includes(model.name)
+
+  const communityModels = remoteModels.filter(
+    (model) => !baseModelNames.includes(model.name)
   );
-  
+
   const modelsForYou = baseModels.slice(0, 6); // First 6 base models
 
   // Search functionality
   const filterModels = (models, query) => {
     if (!query.trim()) return models;
-    
-    return models.filter(model => 
-      model.name.toLowerCase().includes(query.toLowerCase()) ||
-      (model.parameters && model.parameters.toLowerCase().includes(query.toLowerCase())) ||
-      (model.size && model.size.toLowerCase().includes(query.toLowerCase()))
+
+    return models.filter(
+      (model) =>
+        model.name.toLowerCase().includes(query.toLowerCase()) ||
+        (model.parameters &&
+          model.parameters.toLowerCase().includes(query.toLowerCase())) ||
+        (model.size && model.size.toLowerCase().includes(query.toLowerCase()))
     );
   };
 
@@ -246,10 +258,11 @@ fetchWelcomePopupStatus();
   const filteredCommunityModels = filterModels(communityModels, searchQuery);
 
   // Check if any models match the search
-  const hasSearchResults = filteredLocalModels.length > 0 ||
-                          filteredBaseModels.length > 0 || 
-                          filteredModelsForYou.length > 0 || 
-                          filteredCommunityModels.length > 0;
+  const hasSearchResults =
+    filteredLocalModels.length > 0 ||
+    filteredBaseModels.length > 0 ||
+    filteredModelsForYou.length > 0 ||
+    filteredCommunityModels.length > 0;
 
   // Event handlers
   const handleDownload = (model) => {
@@ -265,7 +278,7 @@ fetchWelcomePopupStatus();
         },
         onError: (err) => {
           setErrorMessage("Download failed. Please try again.");
-        }
+        },
       });
     }
   };
@@ -281,7 +294,11 @@ fetchWelcomePopupStatus();
 
   const handleKnowledgeBase = (model) => {
     // Navigate to knowledge base page with model parameter
-    navigate(`/main_window/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
+    navigate(
+      `/main_window/attach_knowledge_base?model=${encodeURIComponent(
+        model.name
+      )}`
+    );
   };
 
   const handleDelete = (model) => {
@@ -290,14 +307,19 @@ fetchWelcomePopupStatus();
 
   const confirmDelete = async () => {
     if (!deleteConfirmation.model) return;
-    
+
     try {
-      const response = await fetch(`${API_BASE_URL}/main_window/llms/${deleteConfirmation.model.id}`, {
-        method: 'DELETE',
-      });
-      
+      const response = await fetch(
+        `${API_BASE_URL}/main_window/llms/${deleteConfirmation.model.id}`,
+        {
+          method: "DELETE",
+        }
+      );
+
       if (response.ok) {
-        setSuccessMessage(`Model ${deleteConfirmation.model.name} has been successfully deleted.`);
+        setSuccessMessage(
+          `Model ${deleteConfirmation.model.name} has been successfully deleted.`
+        );
         // Reload local models on both main page and sidebar
         await reloadLocalModels();
         if (localModelsRef.current) {
@@ -308,7 +330,9 @@ fetchWelcomePopupStatus();
       }
     } catch (error) {
       console.error("Failed to delete model:", error);
-      setErrorMessage("Failed to delete the model. Please try again and contact the Erudi team for support.");
+      setErrorMessage(
+        "Failed to delete the model. Please try again and contact the Erudi team for support."
+      );
     } finally {
       setDeleteConfirmation({ show: false, model: null });
     }
@@ -325,35 +349,41 @@ fetchWelcomePopupStatus();
   return (
     <div className="flex h-screen">
       {/* Left mini sidebar */}
-      <Sidebar 
+      <Sidebar
         showBrainCollapsible={true}
         onToggleBrainSidebar={handleToggleBrainSidebar}
         brainCollapsed={brainSidebarCollapsed}
       />
 
       {/* Main sidebar */}
-      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-[30%] sm:w-[35%] xl:w-[25%] opacity-100 p-6 space-y-6 '} bg-[#272727] text-white flex flex-col transition-all duration-300 overflow-hidden`}>
+      <aside
+        className={`${
+          brainSidebarCollapsed
+            ? "w-0 opacity-0"
+            : "w-80 opacity-100 p-6 space-y-6"
+        } bg-[#272727] text-white flex flex-col transition-all duration-300`}
+      >
         <div className="flex items-center justify-start">
-          <img 
-            src={logoErudi} 
-            alt="Erudi" 
-            className="h-[55px] ml-2 w-auto" 
+          <img
+            src={logoErudi}
+            alt="Erudi"
+            className="h-[55px] ml-2 w-auto"
             onError={(e) => {
-              console.error('Failed to load logo:', e.target.src);
+              console.error("Failed to load logo:", e.target.src);
             }}
-            onLoad={() => console.log('Logo loaded successfully')}
+            onLoad={() => console.log("Logo loaded successfully")}
           />
         </div>
-        <ModelCollapsibleSection 
-          title="Local Models" 
+        <ModelCollapsibleSection
+          title="Local Models"
           ref={localModelsRef}
           onLocalModelRefresh={handleMainPageRefresh}
         />
         <ModelCollapsibleSection
           title="Remote Models"
-         hasSearch={true}
-         onDownload={handleDownload}
-         onLocalModelRefresh={handleMainPageRefresh}
+          hasSearch={true}
+          onDownload={handleDownload}
+          onLocalModelRefresh={handleMainPageRefresh}
         />
       </aside>
 
@@ -399,7 +429,9 @@ fetchWelcomePopupStatus();
                 </>
               ) : searchQuery ? (
                 <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">No local models found for "{searchQuery}"</p>
+                  <p className="text-gray-400">
+                    No local models found for "{searchQuery}"
+                  </p>
                 </div>
               ) : (
                 <ModelCard type="add" onDownload={scrollToExplore} />
@@ -413,8 +445,8 @@ fetchWelcomePopupStatus();
               <h2 className="text-2xl font-bold text-white">Explore Models</h2>
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="Looking for a model?"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -434,7 +466,6 @@ fetchWelcomePopupStatus();
 
           {/* Explore Models Section */}
           <section id="explore-models">
-
             {/* Base Models Subsection */}
             <div className="mb-6 pt-3">
               <h3 className="text-lg font-semibold text-white mb-3">
@@ -465,7 +496,9 @@ fetchWelcomePopupStatus();
                   ))
                 ) : searchQuery ? (
                   <div className="col-span-3 text-center py-8">
-                    <p className="text-gray-400">No base models found for "{searchQuery}"</p>
+                    <p className="text-gray-400">
+                      No base models found for "{searchQuery}"
+                    </p>
                   </div>
                 ) : (
                   <div className="col-span-3 text-center py-8">
@@ -491,7 +524,9 @@ fetchWelcomePopupStatus();
                 <div className="col-span-3 text-center py-8">
                   <div className="flex items-center justify-center">
                     <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
-                    <p className="text-gray-400">Loading recommended models...</p>
+                    <p className="text-gray-400">
+                      Loading recommended models...
+                    </p>
                   </div>
                 </div>
               ) : filteredModelsForYou.length > 0 ? (
@@ -506,11 +541,15 @@ fetchWelcomePopupStatus();
                 ))
               ) : searchQuery ? (
                 <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">No recommended models found for "{searchQuery}"</p>
+                  <p className="text-gray-400">
+                    No recommended models found for "{searchQuery}"
+                  </p>
                 </div>
               ) : (
                 <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">No recommended models available</p>
+                  <p className="text-gray-400">
+                    No recommended models available
+                  </p>
                 </div>
               )}
             </div>
@@ -546,7 +585,9 @@ fetchWelcomePopupStatus();
                 ))
               ) : searchQuery ? (
                 <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">No community models found for "{searchQuery}"</p>
+                  <p className="text-gray-400">
+                    No community models found for "{searchQuery}"
+                  </p>
                 </div>
               ) : (
                 <div className="col-span-3 text-center py-8">
@@ -561,7 +602,8 @@ fetchWelcomePopupStatus();
             <div className="text-center py-12">
               <div className="text-gray-400 text-lg mb-2">No models found</div>
               <p className="text-gray-500">
-                No models match your search for "{searchQuery}". Try a different search term.
+                No models match your search for "{searchQuery}". Try a different
+                search term.
               </p>
               <button
                 onClick={() => setSearchQuery("")}
@@ -617,8 +659,11 @@ fetchWelcomePopupStatus();
       />
 
       {/* Loading Popup (appears on top of welcome popup when hardware is still loading) */}
-      <HardwareLoadingPopup show={showLoadingPopup} loading={loading} onClose={closeLoadingOnly} />
-
+      <HardwareLoadingPopup
+        show={showLoadingPopup}
+        loading={loading}
+        onClose={closeLoadingOnly}
+      />
     </div>
   );
 }
