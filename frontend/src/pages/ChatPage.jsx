@@ -123,11 +123,17 @@ export default function ChatPage() {
         return;
       }
       try {
-        // 1. Create a new conversation
+        // 1. Create a new conversation with the specified parameters
         const res = await fetch("http://127.0.0.1:8000/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ llm_id: llm.id }),
+          body: JSON.stringify({
+            llm_id: llm.id,
+            temperature: settings.temperature,
+            top_p: settings.topP,
+            max_tokens: settings.maxTokens,
+            custom_prompt: customPrompt,
+          }),
         });
         if (!res.ok) throw new Error("Failed to create conversation");
         const conversation = await res.json();
@@ -198,11 +204,6 @@ export default function ChatPage() {
     return {
       background: `linear-gradient(to right, #25C08A 0%, #1EAB78 ${pct}%, rgba(255,255,255,0.06) ${pct}%, rgba(255,255,255,0.06) 100%)`,
     };
-  };
-
-  const handleApplySettings = () => {
-    // Settings are already applied through state
-    setIsSettingsOpen(false);
   };
 
   return (
@@ -491,20 +492,6 @@ export default function ChatPage() {
                                 <TooltipIcon id="prompt" side="top-left" />
                               </div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={handleApplySettings}
-                              className={[
-                                "rounded-lg font-semibold",
-                                "px-4 py-2 text-sm",
-                                "bg-white/10 hover:bg-white/15 text-gray-100",
-                                "border border-white/20 backdrop-blur-sm shadow-sm",
-                                "transition active:scale-95",
-                                "ml-auto",
-                              ].join(" ")}
-                            >
-                              Apply
-                            </button>
                           </div>
                         </div>
                       </div>
