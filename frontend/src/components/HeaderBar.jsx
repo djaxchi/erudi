@@ -19,6 +19,19 @@ export default function HeaderBar({
   const [topP, setTopP] = useState(initialTopP);
   const [maxTokens, setMaxTokens] = useState(initialMaxTokens);
 
+  // Sync internal state with props when they change
+  useEffect(() => {
+    setTemperature(initialTemperature);
+  }, [initialTemperature]);
+
+  useEffect(() => {
+    setTopP(initialTopP);
+  }, [initialTopP]);
+
+  useEffect(() => {
+    setMaxTokens(initialMaxTokens);
+  }, [initialMaxTokens]);
+
   const rootRef = useRef(null);
   const selectRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -55,9 +68,9 @@ export default function HeaderBar({
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
 
@@ -236,9 +249,11 @@ export default function HeaderBar({
               </div>
               <ChevronDown
                 size={isXs ? 14 : 16}
-                className={`opacity-70 shrink-0 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`}
+                className={`opacity-70 shrink-0 transition-transform ${
+                  isDropdownOpen ? "rotate-180" : ""
+                }`}
               />
-              
+
               {/* Custom Dropdown */}
               {isDropdownOpen && (
                 <div className="absolute top-full left-0 right-0 mt-1 bg-[#2a2a2a] border border-white/20 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
