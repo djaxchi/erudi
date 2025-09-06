@@ -5,7 +5,7 @@ export default function QuestionInput({
   placeholder = "Ask a question…",
   onSend,
   disabled = false,
-  backgroundClass = "bg-gray-900/80",
+  backgroundClass = "bg-emerald-900",
   className = "",
 }) {
   const [value, setValue] = useState("");

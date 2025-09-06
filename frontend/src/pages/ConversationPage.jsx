@@ -286,6 +286,15 @@ export default function ConversationPage() {
 
       if (location.state && location.state.initialQuestion && !initialHandled) {
         setInitialHandled(true);
+
+        if (location.state.initialSettings) {
+          setSettings(location.state.initialSettings);
+        }
+
+        if (location.state.initialCustomPrompt) {
+          setCustomPrompt(location.state.initialCustomPrompt);
+        }
+
         await handleAsk(location.state.initialQuestion);
         navigate(location.pathname, { replace: true, state: {} });
       } else if (!location.state || !location.state.initialQuestion) {
