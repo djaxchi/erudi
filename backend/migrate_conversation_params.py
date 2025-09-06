@@ -1,6 +1,6 @@
 """
 Migration script to add conversation parameters
-Run this script to add temperature, top_p, max_tokens, and custom_prompt columns to the conversations table
+Run this script to add temperature, top_p, max_tokens, quantize, and custom_prompt columns to the conversations table
 """
 
 import sys
@@ -21,6 +21,7 @@ def migrate_conversation_parameters():
         "ALTER TABLE conversations ADD COLUMN temperature REAL DEFAULT 0.2;",
         "ALTER TABLE conversations ADD COLUMN top_p REAL DEFAULT 0.5;", 
         "ALTER TABLE conversations ADD COLUMN max_tokens INTEGER DEFAULT 1024;",
+        "ALTER TABLE conversations ADD COLUMN quantize BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE conversations ADD COLUMN custom_prompt TEXT DEFAULT '';",
     ]
     

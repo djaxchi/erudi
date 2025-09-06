@@ -7,6 +7,7 @@ export default function HeaderBar({
   initialTemperature = 0.2,
   initialTopP = 0.2,
   initialMaxTokens = 1024,
+  initialQuantize = false,
   onApply,
   onCustomizePrompt,
   disabled = false,
@@ -18,6 +19,7 @@ export default function HeaderBar({
   const [temperature, setTemperature] = useState(initialTemperature);
   const [topP, setTopP] = useState(initialTopP);
   const [maxTokens, setMaxTokens] = useState(initialMaxTokens);
+  const [quantize, setQuantize] = useState(initialQuantize);
 
   // Sync internal state with props when they change
   useEffect(() => {
@@ -31,6 +33,10 @@ export default function HeaderBar({
   useEffect(() => {
     setMaxTokens(initialMaxTokens);
   }, [initialMaxTokens]);
+
+  useEffect(() => {
+    setQuantize(initialQuantize);
+  }, [initialQuantize]);
 
   const rootRef = useRef(null);
   const selectRef = useRef(null);
@@ -80,7 +86,7 @@ export default function HeaderBar({
   const isNarrow = isSm || isXs;
 
   const handleApply = () => {
-    onApply?.({ temperature, topP, maxTokens });
+    onApply?.({ temperature, topP, maxTokens, quantize });
     setIsOpen(false);
   };
 
@@ -92,6 +98,8 @@ export default function HeaderBar({
         ? "Controls word variety. Lower = predictable, higher = diverse."
         : id === "prompt"
         ? "Customize system instructions that guide AI behavior."
+        : id === "quantize"
+        ? "Lower memory usage: faster inference but may reduce response quality."
         : "";
     const widthClass = isXs ? "w-40" : isSm ? "w-52" : "w-64";
     const iconSize = isXs ? "w-3 h-3" : isSm ? "w-3.5 h-3.5" : "w-4 h-4";
@@ -373,25 +381,57 @@ export default function HeaderBar({
                       <span
                         className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
                       >
-                        Max Response Length
+                        Max Tokens
                       </span>
                     </div>
 
-                    <div
-                      className={
-                        "inline-flex items-center rounded-md bg-white/10 border border-white/20 shadow p-0 m-0"
-                      }
-                    >
-                      <input
-                        type="number"
-                        min="1"
-                        max="2000"
-                        value={maxTokens}
-                        onChange={(e) =>
-                          setMaxTokens(parseInt(e.target.value || "0", 10))
+                    <div className="flex items-center gap-4">
+                      <div
+                        className={
+                          "inline-flex items-center rounded-md bg-white/10 border border-white/20 shadow p-0 m-0"
                         }
-                        className={`bg-transparent border-0 outline-none ${numberWidth} text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                      />
+                      >
+                        <input
+                          type="number"
+                          min="1"
+                          max="2000"
+                          value={maxTokens}
+                          onChange={(e) =>
+                            setMaxTokens(parseInt(e.target.value || "0", 10))
+                          }
+                          className={`bg-transparent border-0 outline-none ${numberWidth} text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                        />
+                      </div>
+
+                      <div className="flex flex-col items-center gap-2">
+                        <span
+                          className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
+                        >
+                          Low-Memory
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <TooltipIcon id="quantize" side="right" />
+                          <button
+                            type="button"
+                            onClick={() => setQuantize(!quantize)}
+                            className={`
+                              relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                              ${
+                                quantize
+                                  ? "bg-emerald-600 hover:bg-emerald-700"
+                                  : "bg-white/20 hover:bg-white/30"
+                              }
+                            `}
+                          >
+                            <span
+                              className={`
+                                inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                                ${quantize ? "translate-x-6" : "translate-x-1"}
+                              `}
+                            />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
 

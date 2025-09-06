@@ -10,6 +10,7 @@ class ConversationCreate(ConversationBase):
     temperature: Optional[float] = 0.2
     top_p: Optional[float] = 0.5
     max_tokens: Optional[int] = 1024
+    quantize: Optional[bool] = False
     custom_prompt: Optional[str] = ""
 
 class ConversationUpdate(ConversationBase):
@@ -20,6 +21,7 @@ class ConversationUpdate(ConversationBase):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_tokens: Optional[int] = None
+    quantize: Optional[bool] = None
     custom_prompt: Optional[str] = None
 
 class ConversationResponse(ConversationBase):
@@ -30,6 +32,7 @@ class ConversationResponse(ConversationBase):
     temperature: float
     top_p: float
     max_tokens: int
+    quantize: bool
     custom_prompt: str
 
 
@@ -44,7 +47,8 @@ class ConversationQuery(BaseModel):
     language: Optional[str] = None         
     temperature: Optional[float] = None
     top_p: Optional[float] = None
-    max_new_tokens: Optional[int] = None 
+    max_new_tokens: Optional[int] = None
+    quantize: Optional[bool] = None
     custom_prompt: Optional[str] = None
     n_relevent_msgs_to_get: Optional[int] = None
     n_last_turns_to_get: Optional[int] = None

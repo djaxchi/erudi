@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text, Boolean
 from sqlalchemy.orm import relationship
 from ..database import Base
 from datetime import datetime
@@ -14,6 +14,7 @@ class Conversation(Base):
     temperature = Column(Float, default=0.2)
     top_p = Column(Float, default=0.5) 
     max_tokens = Column(Integer, default=1024)
+    quantize = Column(Boolean, default=False)
     custom_prompt = Column(Text, default="")
 
     messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")

@@ -27,6 +27,7 @@ export default function ChatPage() {
     temperature: 0.2,
     topP: 0.5,
     maxTokens: 1024,
+    quantize: false,
   });
   const [customPrompt, setCustomPrompt] = useState("");
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -132,6 +133,7 @@ export default function ChatPage() {
             temperature: settings.temperature,
             top_p: settings.topP,
             max_tokens: settings.maxTokens,
+            quantize: settings.quantize,
             custom_prompt: customPrompt,
           }),
         });
@@ -191,6 +193,8 @@ export default function ChatPage() {
         ? "Controls word variety. Lower = predictable, higher = diverse."
         : id === "prompt"
         ? "Customize system instructions that guide AI behavior."
+        : id === "quantize"
+        ? "Lower memory usage: faster inference but may reduce response quality."
         : "";
     return (
       <Tooltip content={text} side={side} width="w-64">
@@ -449,27 +453,66 @@ export default function ChatPage() {
                           <div>
                             <div className="flex items-center gap-1.5 mb-2">
                               <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
-                                Max Response Length
+                                Max Tokens
                               </span>
                             </div>
 
-                            <div className="inline-flex items-center rounded-md bg-white/10 border border-white/20 shadow p-0 m-0">
-                              <input
-                                type="number"
-                                min="1"
-                                max="2000"
-                                value={settings.maxTokens}
-                                onChange={(e) =>
-                                  setSettings((prev) => ({
-                                    ...prev,
-                                    maxTokens: parseInt(
-                                      e.target.value || "0",
-                                      10
-                                    ),
-                                  }))
-                                }
-                                className="bg-transparent border-0 outline-none w-28 text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              />
+                            <div className="flex items-center gap-4">
+                              <div className="inline-flex items-center rounded-md bg-white/10 border border-white/20 shadow p-0 m-0">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="2000"
+                                  value={settings.maxTokens}
+                                  onChange={(e) =>
+                                    setSettings((prev) => ({
+                                      ...prev,
+                                      maxTokens: parseInt(
+                                        e.target.value || "0",
+                                        10
+                                      ),
+                                    }))
+                                  }
+                                  className="bg-transparent border-0 outline-none w-28 text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                              </div>
+
+                              <div className="flex flex-col items-center gap-2">
+                                <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
+                                  Low-Memory
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <TooltipIcon id="quantize" side="right" />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSettings((prev) => ({
+                                        ...prev,
+                                        quantize: !prev.quantize,
+                                      }))
+                                    }
+                                    className={`
+                                      relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                                      ${
+                                        settings.quantize
+                                          ? "bg-emerald-600 hover:bg-emerald-700"
+                                          : "bg-white/20 hover:bg-white/30"
+                                      }
+                                    `}
+                                  >
+                                    <span
+                                      className={`
+                                        inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                                        ${
+                                          settings.quantize
+                                            ? "translate-x-6"
+                                            : "translate-x-1"
+                                        }
+                                      `}
+                                    />
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           </div>
 

@@ -30,6 +30,7 @@ export default function ConversationPage() {
     temperature: 0.2,
     topP: 0.5,
     maxTokens: 3074,
+    quantize: false,
   });
   const [collapsed, setCollapsed] = useState(false);
 
@@ -51,7 +52,7 @@ export default function ConversationPage() {
       .then((data) => {
         setModels(data);
       });
-  }, []); 
+  }, []);
 
   const handleModelChange = async (modelName) => {
     setCurrentModel(modelName);
@@ -77,6 +78,7 @@ export default function ConversationPage() {
           temperature: newSettings.temperature,
           top_p: newSettings.topP,
           max_tokens: newSettings.maxTokens,
+          quantize: newSettings.quantize,
           custom_prompt: newCustomPrompt || customPrompt,
         }),
       });
@@ -187,6 +189,7 @@ export default function ConversationPage() {
               temperature: settings.temperature,
               top_p: settings.topP,
               max_new_tokens: settings.maxTokens,
+              quantize: settings.quantize,
               custom_prompt: customPrompt,
             }),
           }
@@ -317,6 +320,7 @@ export default function ConversationPage() {
             temperature: conversation.temperature,
             topP: conversation.top_p,
             maxTokens: conversation.max_tokens,
+            quantize: conversation.quantize || false,
           });
           setCustomPrompt(conversation.custom_prompt || "");
 
@@ -440,6 +444,7 @@ export default function ConversationPage() {
             initialTemperature={settings.temperature}
             initialTopP={settings.topP}
             initialMaxTokens={settings.maxTokens}
+            initialQuantize={settings.quantize}
             onApply={(newSettings) => {
               setSettings(newSettings);
               saveConversationParameters(newSettings, customPrompt);

@@ -241,6 +241,7 @@ async def create_conversation(
         temperature=payload.temperature,
         top_p=payload.top_p,
         max_tokens=payload.max_tokens,
+        quantize=payload.quantize,
         custom_prompt=payload.custom_prompt
     )
     try:
@@ -313,6 +314,10 @@ async def update_conversation(
 
     if payload.max_tokens is not None and payload.max_tokens != conversation.max_tokens:
         conversation.max_tokens = payload.max_tokens
+        updated = True
+
+    if payload.quantize is not None and payload.quantize != conversation.quantize:
+        conversation.quantize = payload.quantize
         updated = True
 
     if payload.custom_prompt is not None and payload.custom_prompt != conversation.custom_prompt:
