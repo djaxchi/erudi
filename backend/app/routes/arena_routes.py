@@ -143,6 +143,7 @@ async def query_arena(
     temperature = payload.temperature or 0.7
     top_p = payload.top_p or 0.95
     max_new_tokens = payload.max_new_tokens or 200
+    quantize = payload.quantize or False
     custom_prompt = payload.custom_prompt or ""
     lang = payload.language or "fr"
 
