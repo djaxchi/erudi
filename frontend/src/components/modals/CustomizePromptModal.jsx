@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function CustomizePromptModal({
@@ -8,8 +8,21 @@ export default function CustomizePromptModal({
   onSave,
   title = "Customize System Prompt",
 }) {
+  const [localPrompt, setLocalPrompt] = useState(customPrompt);
+
+  // Update local state when the prop changes (when switching conversations)
+  useEffect(() => {
+    setLocalPrompt(customPrompt);
+  }, [customPrompt]);
+
   const handleSave = () => {
-    onSave?.(customPrompt);
+    onSave?.(localPrompt);
+    onClose();
+  };
+
+  const handleCancel = () => {
+    // Reset to original value on cancel
+    setLocalPrompt(customPrompt);
     onClose();
   };
 
@@ -99,8 +112,8 @@ export default function CustomizePromptModal({
                       "focus:outline-none focus:ring-2 focus:ring-emerald-400/60 focus:border-emerald-400/60",
                       "backdrop-blur-sm transition-all",
                     ].join(" ")}
-                    value={customPrompt}
-                    onChange={(e) => onSave?.(e.target.value)}
+                    value={localPrompt}
+                    onChange={(e) => setLocalPrompt(e.target.value)}
                     placeholder="Enter your custom system prompt here..."
                   />
                 </div>
@@ -108,7 +121,7 @@ export default function CustomizePromptModal({
                 {/* Buttons */}
                 <div className="flex items-center justify-end gap-3">
                   <button
-                    onClick={onClose}
+                    onClick={handleCancel}
                     className={[
                       "rounded-full px-5 py-2 text-sm font-semibold",
                       "bg-white/10 hover:bg-white/15 text-gray-100",

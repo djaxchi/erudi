@@ -49,19 +49,12 @@ export default function ConversationPage() {
   };
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/main_window/llms/local")
+    fetch(`${API_BASE_URL}/main_window/llms/local`)
       .then((res) => res.json())
       .then((data) => {
         setModels(data);
-        if (conversations.length > 0) {
-          const conv = conversations.find((c) => c.id === Number(id));
-          if (conv) {
-            const model = data.find((m) => m.id === conv.llm_id);
-            if (model) setCurrentModel(model.name);
-          }
-        }
       });
-  }, [id, conversations]);
+  }, []); 
 
   const handleModelChange = async (modelName) => {
     setCurrentModel(modelName);
@@ -75,6 +68,24 @@ export default function ConversationPage() {
     });
     // // Optionally, refresh conversations state here
     // fetchMessagesAndConversations();
+  };
+
+  // Function to save conversation parameters
+  const saveConversationParameters = async (newSettings, newCustomPrompt) => {
+    try {
+      await fetch(`${API_BASE_URL}/conversations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          temperature: newSettings.temperature,
+          top_p: newSettings.topP,
+          max_tokens: newSettings.maxTokens,
+          custom_prompt: newCustomPrompt || customPrompt,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to save conversation parameters:", error);
+    }
   };
 
   const fetchMessagesAndConversations = useCallback(async () => {
@@ -271,21 +282,63 @@ export default function ConversationPage() {
     [id, settings, customPrompt, fetchMessagesAndConversations, messages.length]
   );
 
+  // Load conversation data when ID changes
   useEffect(() => {
-    const run = async () => {
+    if (!id) return;
+
+    const loadConversationData = async () => {
       try {
-        const convRes = await fetch(`${API_BASE_URL}/conversations`);
+        const [convRes, msgRes, convDetailRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/conversations`),
+          fetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`),
+          fetch(`${API_BASE_URL}/conversations/${id}`),
+        ]);
+
+        // Load conversations
         const convs = await convRes.json();
         convs.sort(
           (a, b) =>
             new Date(b.last_message_time) - new Date(a.last_message_time)
         );
         setConversations(convs);
-      } catch (err) {
-        console.error("Fetch error (conversations):", err);
-      }
 
-      if (location.state && location.state.initialQuestion && !initialHandled) {
+        // Load messages
+        const msgs = await msgRes.json();
+        const starredMap = {};
+        msgs.forEach((m) => {
+          if (m.starred) starredMap[m.id] = true;
+        });
+        setStarredIds(starredMap);
+        setMessages(msgs);
+
+        // Load conversation parameters
+        if (convDetailRes.ok) {
+          const conversation = await convDetailRes.json();
+          setSettings({
+            temperature: conversation.temperature,
+            topP: conversation.top_p,
+            maxTokens: conversation.max_tokens,
+          });
+          setCustomPrompt(conversation.custom_prompt || "");
+
+          // Set current model
+          if (models.length > 0) {
+            const model = models.find((m) => m.id === conversation.llm_id);
+            if (model) setCurrentModel(model.name);
+          }
+        }
+      } catch (err) {
+        console.error("Fetch error:", err);
+      }
+    };
+
+    loadConversationData();
+  }, [id, models]);
+
+  // Handle initial question from ChatPage
+  useEffect(() => {
+    if (location.state?.initialQuestion && !initialHandled) {
+      const handleInitialQuestion = async () => {
         setInitialHandled(true);
 
         if (location.state.initialSettings) {
@@ -298,32 +351,11 @@ export default function ConversationPage() {
 
         await handleAsk(location.state.initialQuestion);
         navigate(location.pathname, { replace: true, state: {} });
-      } else if (!location.state || !location.state.initialQuestion) {
-        try {
-          const msgRes = await fetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`);
-          const msgs = await msgRes.json();
-          // initialize starred state on initial load
-          const starredMap = {};
-          msgs.forEach((m) => {
-            if (m.starred) starredMap[m.id] = true;
-          });
-          setStarredIds(starredMap);
-          setMessages(msgs);
-        } catch (err) {
-          console.error("Fetch error (messages):", err);
-        }
-      }
-    };
+      };
 
-    run();
-  }, [
-    id,
-    location.state,
-    handleAsk,
-    navigate,
-    location.pathname,
-    initialHandled,
-  ]);
+      handleInitialQuestion();
+    }
+  }, [location.state, initialHandled]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -405,7 +437,10 @@ export default function ConversationPage() {
             initialTemperature={settings.temperature}
             initialTopP={settings.topP}
             initialMaxTokens={settings.maxTokens}
-            onApply={(newSettings) => setSettings(newSettings)}
+            onApply={(newSettings) => {
+              setSettings(newSettings);
+              saveConversationParameters(newSettings, customPrompt);
+            }}
             onCustomizePrompt={() => setShowPromptModal(true)}
             disabled={loading}
             models={models}
@@ -418,7 +453,10 @@ export default function ConversationPage() {
           isOpen={showPromptModal}
           onClose={() => setShowPromptModal(false)}
           customPrompt={customPrompt}
-          onSave={(newPrompt) => setCustomPrompt(newPrompt)}
+          onSave={(newPrompt) => {
+            setCustomPrompt(newPrompt);
+            saveConversationParameters(settings, newPrompt);
+          }}
           title="Personnaliser le prompt"
         />
         <div

@@ -7,19 +7,30 @@ class ConversationBase(BaseModel):
     llm_id: int
 
 class ConversationCreate(ConversationBase):
-    pass
+    temperature: Optional[float] = 0.2
+    top_p: Optional[float] = 0.5
+    max_tokens: Optional[int] = 1024
+    custom_prompt: Optional[str] = ""
 
 class ConversationUpdate(ConversationBase):
     """Schéma utilisé pour les mises à jour partielles (PATCH)."""
 
     llm_id: Optional[int] = None
     name: Optional[str] = None
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_tokens: Optional[int] = None
+    custom_prompt: Optional[str] = None
 
 class ConversationResponse(ConversationBase):
     id: int
     created_at: datetime
     last_message_time: datetime
     name: str
+    temperature: float
+    top_p: float
+    max_tokens: int
+    custom_prompt: str
 
 
     class Config:

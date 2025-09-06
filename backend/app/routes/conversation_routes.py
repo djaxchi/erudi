@@ -208,7 +208,14 @@ async def create_conversation(
 ):
     """Create a new conversation for a specific LLM (body JSON)."""
 
-    conversation = Conversation(llm_id=payload.llm_id, name="New Conversation")
+    conversation = Conversation(
+        llm_id=payload.llm_id,
+        name="New Conversation",
+        temperature=payload.temperature,
+        top_p=payload.top_p,
+        max_tokens=payload.max_tokens,
+        custom_prompt=payload.custom_prompt
+    )
     try:
         db.add(conversation)
         db.commit()
@@ -261,6 +268,22 @@ async def update_conversation(
 
     if payload.llm_id is not None and payload.llm_id != conversation.llm_id:
         conversation.llm_id = payload.llm_id
+        updated = True
+
+    if payload.temperature is not None and payload.temperature != conversation.temperature:
+        conversation.temperature = payload.temperature
+        updated = True
+
+    if payload.top_p is not None and payload.top_p != conversation.top_p:
+        conversation.top_p = payload.top_p
+        updated = True
+
+    if payload.max_tokens is not None and payload.max_tokens != conversation.max_tokens:
+        conversation.max_tokens = payload.max_tokens
+        updated = True
+
+    if payload.custom_prompt is not None and payload.custom_prompt != conversation.custom_prompt:
+        conversation.custom_prompt = payload.custom_prompt
         updated = True
 
     if updated:
