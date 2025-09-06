@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
 import torch
 from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, QuantoConfig
 import logging
 from typing import List
 from ..database import get_db
@@ -52,7 +52,7 @@ current_tokenizer = None
 loaded_model_id = None
 embedder = None
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-
+is_quant_on_current_load = None
 conversation_summary_cache = {}
 
 MISTRAL_RE = re.compile(
@@ -611,12 +611,11 @@ async def generate_title(
 
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
-
             loaded_model = AutoModelForCausalLM.from_pretrained(
                 llm.link,
                 local_files_only=True,
                 torch_dtype=torch.float16,
-                quantization_config=None,
+                quantization_config=QuantoConfig(weights="int8", activations=None),
                 attn_implementation=None,
                 low_cpu_mem_usage=True,
             )
@@ -803,6 +802,7 @@ async def query_and_respond(
     db: Session = Depends(get_db),
 ):
     logging.info("Payload reçu : %s", payload.dict())
+    quantize = True
     user_prompt = payload.custom_prompt
     conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -824,18 +824,58 @@ async def query_and_respond(
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     model_type = llm.type
-    global loaded_model, current_tokenizer, loaded_model_id
+    global loaded_model, current_tokenizer, loaded_model_id, is_quant_on_current_load
 
     try:
         if loaded_model_id != llm.id or loaded_model is None:
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
 
+            quant_config = None
+            is_quant_on_current_load = False
+            if quantize:
+                quant_config = QuantoConfig(
+                    weights="int8",
+                    activations=None,
+                )
+                is_quant_on_current_load = True
+
             loaded_model = AutoModelForCausalLM.from_pretrained(
                 llm.link,
                 local_files_only=True,
                 torch_dtype=torch.float16,
-                quantization_config=None,
+                quantization_config=quant_config,
+                low_cpu_mem_usage=True,
+                attn_implementation=None,
+            )
+            current_tokenizer = AutoTokenizer.from_pretrained(
+                llm.link, local_files_only=True, use_fast=True
+            )
+            loaded_model_id = llm.id
+            loaded_model.eval()
+            loaded_model.to(device)
+            logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
+        elif loaded_model_id == llm.id and quantize != is_quant_on_current_load:
+            
+            clear_memory()
+
+            start = datetime.now()
+            logging.info(f"Loading model {llm.id} from {llm.link}")
+
+            quant_config = None
+            is_quant_on_current_load = False
+            if quantize:
+                quant_config = QuantoConfig(
+                    weights="int8",
+                    activations=None,
+                )
+                is_quant_on_current_load = True
+                
+            loaded_model = AutoModelForCausalLM.from_pretrained(
+                llm.link,
+                local_files_only=True,
+                torch_dtype=torch.float16,
+                quantization_config=quant_config,
                 low_cpu_mem_usage=True,
                 attn_implementation=None,
             )
