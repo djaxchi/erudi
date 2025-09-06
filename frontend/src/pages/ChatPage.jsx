@@ -216,9 +216,9 @@ export default function ChatPage() {
 
       {/* barre latérale */}
       <aside
-        className={`relative bg-[#272727] text-white transition-all duration-300 ease-in-out ${
-          collapsed ? "w-0 p-0" : "w-80 p-6 space-y-6"
-        }`}
+        className={`${
+          collapsed ? "w-0 opacity-0" : "w-80 opacity-100 p-6 space-y-6"
+        } relative bg-[#272727] text-white transition-all duration-300`}
       >
         {/* Content only when expanded */}
         {!collapsed && (
