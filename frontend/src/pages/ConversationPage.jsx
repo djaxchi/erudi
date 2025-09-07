@@ -29,7 +29,7 @@ export default function ConversationPage() {
   const [settings, setSettings] = useState({
     temperature: 0.2,
     topP: 0.5,
-    maxTokens: 3074,
+    maxTokens: 1024,
     quantize: false,
   });
   const [collapsed, setCollapsed] = useState(false);
@@ -110,8 +110,13 @@ export default function ConversationPage() {
       console.error("Fetch error:", err);
     }
   }, [id]);
-  const handleAsk = useCallback(
-    async (question) => {
+
+  const handleAskWithParams = useCallback(
+    async (question, explicitSettings = null, explicitCustomPrompt = null) => {
+      const settingsToUse = explicitSettings || settings;
+      const customPromptToUse =
+        explicitCustomPrompt !== null ? explicitCustomPrompt : customPrompt;
+
       setLoading(true);
 
       const isFirstMessage = messages.length === 0;
@@ -142,7 +147,14 @@ export default function ConversationPage() {
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ question }),
+                body: JSON.stringify({
+                  question,
+                  temperature: settingsToUse.temperature,
+                  top_p: settingsToUse.topP,
+                  max_new_tokens: settingsToUse.maxTokens,
+                  quantize: settingsToUse.quantize,
+                  custom_prompt: customPromptToUse,
+                }),
               }
             );
 
@@ -186,11 +198,11 @@ export default function ConversationPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               question,
-              temperature: settings.temperature,
-              top_p: settings.topP,
-              max_new_tokens: settings.maxTokens,
-              quantize: settings.quantize,
-              custom_prompt: customPrompt,
+              temperature: settingsToUse.temperature,
+              top_p: settingsToUse.topP,
+              max_new_tokens: settingsToUse.maxTokens,
+              quantize: settingsToUse.quantize,
+              custom_prompt: customPromptToUse,
             }),
           }
         );
@@ -281,7 +293,14 @@ export default function ConversationPage() {
 
       setLoading(false);
     },
-    [id, settings, customPrompt, fetchMessagesAndConversations, messages.length]
+    [id, fetchMessagesAndConversations, messages.length]
+  );
+
+  const handleAsk = useCallback(
+    async (question) => {
+      return handleAskWithParams(question, settings, customPrompt);
+    },
+    [handleAskWithParams, settings, customPrompt]
   );
 
   // Load conversation data when ID changes
@@ -344,6 +363,10 @@ export default function ConversationPage() {
       const handleInitialQuestion = async () => {
         setInitialHandled(true);
 
+        const settingsToUse = location.state.initialSettings || settings;
+        const customPromptToUse =
+          location.state.initialCustomPrompt || customPrompt;
+
         if (location.state.initialSettings) {
           setSettings(location.state.initialSettings);
         }
@@ -352,7 +375,11 @@ export default function ConversationPage() {
           setCustomPrompt(location.state.initialCustomPrompt);
         }
 
-        await handleAsk(location.state.initialQuestion);
+        await handleAskWithParams(
+          location.state.initialQuestion,
+          settingsToUse,
+          customPromptToUse
+        );
         navigate(location.pathname, { replace: true, state: {} });
       };
 
