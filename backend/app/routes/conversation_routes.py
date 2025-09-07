@@ -1,4 +1,5 @@
 import gc
+import random
 
 from ..models.VectorStore import VectorStore
 
@@ -52,6 +53,7 @@ current_tokenizer = None
 loaded_model_id = None
 embedder = None
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+device = "cpu"
 is_quant_on_current_load = None
 conversation_summary_cache = {}
 
@@ -470,8 +472,8 @@ def retrieve_context(
                 output = loaded_model.generate(
                     input_ids,
                     max_new_tokens=150,
-                    temperature=0.3,
-                    top_p=0.8,
+                    temperature=0.1,
+                    top_p=0.5,
                     num_beams=1,
                     pad_token_id=0 if model_type == "gemma" else None,
                     end_token_id=end_ids,
@@ -603,7 +605,7 @@ async def generate_title(
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     model_type = llm.type
-    global loaded_model, current_tokenizer, loaded_model_id
+    global loaded_model, current_tokenizer, loaded_model_id, is_quant_on_current_load
 
     try:
         if loaded_model_id != llm.id:
@@ -619,7 +621,7 @@ async def generate_title(
             loaded_model = AutoModelForCausalLM.from_pretrained(
                 llm.link,
                 local_files_only=True,
-                torch_dtype=torch.float16,
+                dtype=torch.float16,
                 quantization_config=QuantoConfig(weights="int8", activations=None),
                 attn_implementation=None,
                 low_cpu_mem_usage=True,
@@ -628,6 +630,7 @@ async def generate_title(
                 llm.link, local_files_only=True, use_fast=True
             )
             loaded_model_id = llm.id
+            is_quant_on_current_load = True
             loaded_model.eval()
             loaded_model.to(device)
             logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
@@ -808,6 +811,9 @@ async def query_and_respond(
 ):
     logging.info("Payload reçu : %s", payload.dict())
     quantize = True
+    if random.randint(0, 1):
+        quantize = False
+    logging.info(quantize)
     user_prompt = payload.custom_prompt
     conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -848,7 +854,7 @@ async def query_and_respond(
             loaded_model = AutoModelForCausalLM.from_pretrained(
                 llm.link,
                 local_files_only=True,
-                torch_dtype=torch.float16,
+                dtype=torch.float16,
                 quantization_config=quant_config,
                 low_cpu_mem_usage=True,
                 attn_implementation=None,
@@ -879,7 +885,7 @@ async def query_and_respond(
             loaded_model = AutoModelForCausalLM.from_pretrained(
                 llm.link,
                 local_files_only=True,
-                torch_dtype=torch.float16,
+                dtype=torch.float16,
                 quantization_config=quant_config,
                 low_cpu_mem_usage=True,
                 attn_implementation=None,
