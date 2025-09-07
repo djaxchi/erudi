@@ -377,20 +377,26 @@ export default function HeaderBar({
 
                 <div className="flex flex-col justify-center gap-6">
                   <div>
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <span
-                        className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
-                      >
-                        Max Tokens
-                      </span>
-                    </div>
+                    {/* Labels row */}
+                    <div className="grid grid-cols-2 items-start justify-items-start gap-x-6 gap-y-2 mb-2">
+                      <div>
+                        <span
+                          className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
+                        >
+                          Max Tokens
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
+                        >
+                          Low-Memory
+                        </span>
+                        <TooltipIcon id="quantize" side="bottom-left" />
+                      </div>
 
-                    <div className="flex items-center gap-4">
-                      <div
-                        className={
-                          "inline-flex items-center rounded-md bg-white/10 border border-white/20 shadow p-0 m-0"
-                        }
-                      >
+                      {/* Controls row */}
+                      <div className="inline-flex items-center rounded-md bg-white/10 border border-white/20 shadow p-0 m-0">
                         <input
                           type="number"
                           min="1"
@@ -403,34 +409,22 @@ export default function HeaderBar({
                         />
                       </div>
 
-                      <div className="flex flex-col items-center gap-2">
-                        <span
-                          className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setQuantize(!quantize)}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                            quantize
+                              ? "bg-emerald-600 hover:bg-emerald-700"
+                              : "bg-white/20 hover:bg-white/30"
+                          }`}
                         >
-                          Low-Memory
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <TooltipIcon id="quantize" side="right" />
-                          <button
-                            type="button"
-                            onClick={() => setQuantize(!quantize)}
-                            className={`
-                              relative inline-flex h-6 w-11 items-center rounded-full transition-colors
-                              ${
-                                quantize
-                                  ? "bg-emerald-600 hover:bg-emerald-700"
-                                  : "bg-white/20 hover:bg-white/30"
-                              }
-                            `}
-                          >
-                            <span
-                              className={`
-                                inline-block h-4 w-4 transform rounded-full bg-white transition-transform
-                                ${quantize ? "translate-x-6" : "translate-x-1"}
-                              `}
-                            />
-                          </button>
-                        </div>
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              quantize ? "translate-x-6" : "translate-x-1"
+                            }`}
+                          />
+                        </button>
                       </div>
                     </div>
                   </div>
