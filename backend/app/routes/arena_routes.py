@@ -1,4 +1,5 @@
 from datetime import datetime
+import gc
 import logging
 from ..schemas.arena_schemas import ArenaQueryPayload
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,6 +9,7 @@ from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     TextIteratorStreamer,
+    QuantoConfig
 )
 import torch, re, threading
 from ..database import get_db
@@ -79,7 +81,7 @@ def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
             if not chunk.strip():
                 continue
             try:
-                query_emb = embedder.encode(chunk, convert_to_tensor=True)
+                query_emb = _embedder.encode(chunk, convert_to_tensor=True)
             except Exception as e:
                 logging.error(f"Error embedding chunk: {e}")
                 continue
@@ -111,22 +113,34 @@ def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
     return relevant_texts
 
 def get_embedder():
-        global embedder
-        if embedder is None:
+        global _embedder
+        if _embedder is None:
             logging.info("Loading the Embedder")
             os.makedirs(CACHE_DIR, exist_ok=True)
-            embedder = SentenceTransformer(
+            _embedder = SentenceTransformer(
                 "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
                 cache_folder=CACHE_DIR
             )
             logging.info("Embedder loaded")
-        return embedder
+        return _embedder
+
+
+def clear_memory():
+    """Clear GPU memory and cache for macOS"""
+    if torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+        torch.mps.synchronize()
+    gc.collect()
+
 
 # Globals to cache model/tokenizer
-embedder = None
+_embedder = None
 _loaded_model = None
 _current_tokenizer = None
 _loaded_model_id = None
+_is_quant_on_current_load = None
+_device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+
 
 @router.post("/{llm_id}/query")
 async def query_arena(
@@ -140,9 +154,9 @@ async def query_arena(
     - payload: { question, temperature?, topP?, maxNewTokens?, customPrompt? }
     """
     question = payload.question
-    temperature = payload.temperature or 0.7
-    top_p = payload.top_p or 0.95
-    max_new_tokens = payload.max_new_tokens or 200
+    temperature = payload.temperature or 0.2
+    top_p = payload.top_p or 0.5
+    max_new_tokens = payload.max_new_tokens or 512
     quantize = payload.quantize or False
     custom_prompt = payload.custom_prompt or ""
     lang = payload.language or "fr"
@@ -159,21 +173,31 @@ async def query_arena(
 
     is_gemma = llm.type == "gemma"
 
-    global _loaded_model, _current_tokenizer, _loaded_model_id
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    global _loaded_model, _current_tokenizer, _loaded_model_id, _is_quant_on_current_load
+    
     
     try:
         if _loaded_model_id != llm.id or _loaded_model is None:
             start = datetime.now()
             logging.info(f"Loading model {llm.id} from {llm.link}")
+            
+            quant_config = None
+            _is_quant_on_current_load = False
+            if quantize:
+                quant_config = QuantoConfig(
+                    weights="int8",
+                    activations=None,
+                )
+                _is_quant_on_current_load = True
 
             _loaded_model = AutoModelForCausalLM.from_pretrained(
                 llm.link,
                 local_files_only=True,
                 torch_dtype=torch.float16,
-                quantization_config=None,
+                quantization_config=quant_config,
                 low_cpu_mem_usage=True,
                 attn_implementation=None,
+                device_map="auto"
             )
             
             _current_tokenizer = AutoTokenizer.from_pretrained(
@@ -184,7 +208,7 @@ async def query_arena(
             
             _loaded_model_id = llm.id
             _loaded_model.eval()
-            _loaded_model.to(device)
+            _loaded_model.to(_device)
             logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
         else:
             logging.info(f"Model {llm.id} already loaded")
@@ -215,7 +239,7 @@ async def query_arena(
     )
     logging.info("Final prompt to model:\n%s", prompt_text)
 
-    input_ids = _current_tokenizer.encode(prompt_text, return_tensors="pt").to(device)
+    input_ids = _current_tokenizer.encode(prompt_text, return_tensors="pt").to(_device)
 
     if is_gemma:
         eos_token_ids = [1, 106]

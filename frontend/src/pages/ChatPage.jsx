@@ -6,7 +6,6 @@ import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import Tooltip from "../components/Tooltip";
-import { ask } from "../services/conversationService";
 import ErrorModal from "../components/modals/ErrorModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";

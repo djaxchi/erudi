@@ -3,7 +3,6 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import QuestionInput from "../components/QuestionInput";
-import { ask } from "../services/conversationService";
 import HeaderBar from "../components/HeaderBar";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import { Copy, Check, Star } from "lucide-react";
