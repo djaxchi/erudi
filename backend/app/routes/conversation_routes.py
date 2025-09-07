@@ -1,5 +1,4 @@
 import gc
-import random
 
 from ..models.VectorStore import VectorStore
 
@@ -14,6 +13,7 @@ import logging
 from typing import List
 from ..database import get_db
 from ..utils.file_processor import chunk_by_tokens
+from app.utils.hardware_info import build_max_memory
 from ..models.Conversation import Conversation
 from ..models.Llm import Llm
 from ..models.Message import Message
@@ -27,6 +27,7 @@ from ..schemas.conversation_schemas import (
     ConversationWithMessagesResponse,
 )
 import os
+
 os.environ.setdefault("VECLIB_MAXIMUM_THREADS","1")
 os.environ.setdefault("OMP_NUM_THREADS","1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS","1")
@@ -48,14 +49,12 @@ from dotenv import load_dotenv
 load_dotenv()
 CACHE_DIR = os.getenv("CACHE_DIR")
 
-loaded_model = None
-current_tokenizer = None
-loaded_model_id = None
-embedder = None
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-device = "cpu"
-is_quant_on_current_load = None
-conversation_summary_cache = {}
+_loaded_model = None
+_current_tokenizer = None
+_loaded_model_id = None
+_embedder = None
+_is_quant_on_current_load = None
+_conversation_summary_cache = {}
 
 MISTRAL_RE = re.compile(
     r"(?:<s>|</s>|\[/?INST\]|\<\|/?(?:assistant|user|system|end)\|\>)"
@@ -108,7 +107,7 @@ def get_relevant_texts_if_kb(query: str, llm: Llm, db: Session) -> List[str]:
                 continue
             try:
                 logging.info(f"Encoding query chunk: {chunk[:50]}...")
-                query_emb = embedder.encode(chunk, convert_to_tensor=True)
+                query_emb = _embedder.encode(chunk, convert_to_tensor=True)
                 logging.info(f"Query chunk encoded: {query_emb.shape}")
             except Exception as e:
                 logging.error(f"Error embedding chunk: {e}")
@@ -148,16 +147,16 @@ def get_relevant_texts_if_kb(query: str, llm: Llm, db: Session) -> List[str]:
 
 
 def get_embedder():
-    global embedder
-    if embedder is None:
+    global _embedder
+    if _embedder is None:
         logging.info("Loading the Embedder")
         os.makedirs(CACHE_DIR, exist_ok=True)
-        embedder = SentenceTransformer(
+        _embedder = SentenceTransformer(
             "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
             cache_folder=CACHE_DIR,
         )
         logging.info("Embedder loaded")
-    return embedder
+    return _embedder
 
 
 router = APIRouter()
@@ -170,6 +169,83 @@ def clear_memory():
         torch.mps.synchronize()
     gc.collect()
 
+
+def load_model(quantize: bool, llm: Llm) -> None:
+    """
+    Load model with optional quantization. Handles memory management.
+    Args:
+        quantize (bool): Whether to apply quantization
+        llm (Llm): The LLM object containing model info
+    """
+    global _loaded_model, _current_tokenizer, _loaded_model_id, _is_quant_on_current_load
+
+    logging.info(f"Loading model {llm.id} (quantize={quantize})")
+    # Clear existing model if different LLM or different quantization state
+    should_reload = (
+        _loaded_model_id != llm.id or 
+        _loaded_model is None or 
+        (_loaded_model_id == llm.id and quantize != _is_quant_on_current_load)
+    )
+    
+    if not should_reload:
+        logging.info(f"Model {llm.id} already loaded with correct quantization state")
+        _loaded_model.eval()
+        return
+    
+    # Clear memory before loading
+    if _loaded_model is not None:
+        del _loaded_model
+        _loaded_model = None
+    if _current_tokenizer is not None:
+        del _current_tokenizer 
+        _current_tokenizer = None
+    clear_memory()
+    
+    start = datetime.now()
+    logging.info(f"Loading model {llm.id} from {llm.link} (quantize={quantize})")
+    
+    quant_config = None
+    _is_quant_on_current_load = False
+    if quantize:
+        quant_config = QuantoConfig(
+            weights="int8",
+            activations=None,
+        )
+        _is_quant_on_current_load = True
+    
+    try:
+        max_memory = build_max_memory()
+        _loaded_model = AutoModelForCausalLM.from_pretrained(
+            llm.link,
+            local_files_only=True,
+            dtype="auto",
+            max_memory=max_memory,
+            quantization_config=quant_config,
+            low_cpu_mem_usage=True,
+            attn_implementation=None,
+            device_map="auto"
+        )
+        _current_tokenizer = AutoTokenizer.from_pretrained(
+            llm.link, local_files_only=True, use_fast=True
+        )
+        _loaded_model_id = llm.id
+        _loaded_model.eval()
+        logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
+    except Exception as e:
+        # Clean up on failure
+        if _loaded_model is not None:
+            del _loaded_model
+            _loaded_model = None
+        if _current_tokenizer is not None:
+            del _current_tokenizer
+            _current_tokenizer = None
+        _loaded_model_id = None
+        _is_quant_on_current_load = None
+        clear_memory()
+        raise e
+
+
+clear_memory()
 
 @router.get(
     "/conversations/{conversation_id}/fetch_messages",
@@ -270,9 +346,9 @@ async def delete_conversation(conversation_id: int, db: Session = Depends(get_db
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    global conversation_summary_cache
-    if conversation_id in conversation_summary_cache:
-        del conversation_summary_cache[conversation_id]
+    global _conversation_summary_cache
+    if conversation_id in _conversation_summary_cache:
+        del _conversation_summary_cache[conversation_id]
         logging.info(
             f"Cleared summary cache for deleted conversation {conversation_id}"
         )
@@ -386,12 +462,12 @@ def retrieve_context(
 
     def get_cached_summary(conversation_id: int, current_message_count: int):
         """Get cached summary or determine if regeneration is needed."""
-        global conversation_summary_cache
+        global _conversation_summary_cache
 
-        if conversation_id not in conversation_summary_cache:
+        if conversation_id not in _conversation_summary_cache:
             return None, True
 
-        cache_entry = conversation_summary_cache[conversation_id]
+        cache_entry = _conversation_summary_cache[conversation_id]
         cached_count = cache_entry["message_count"]
 
         if current_message_count >= cached_count * 2:
@@ -407,8 +483,8 @@ def retrieve_context(
 
     def cache_summary(conversation_id: int, summary: str, message_count: int):
         """Cache the generated summary."""
-        global conversation_summary_cache
-        conversation_summary_cache[conversation_id] = {
+        global _conversation_summary_cache
+        _conversation_summary_cache[conversation_id] = {
             "summary": summary,
             "message_count": message_count,
             "generated_at": datetime.now(),
@@ -426,7 +502,7 @@ def retrieve_context(
         Returns:
             str: The generated summary.
         """
-        if not loaded_model or not current_tokenizer or len(history) < 10:
+        if not _loaded_model or not _current_tokenizer or len(history) < 10:
             return ""
 
         conv_text = ""
@@ -457,19 +533,20 @@ def retrieve_context(
         <start_of_turn>model
         """
         try:
+            input_device = _loaded_model.get_input_embeddings().weight.device
             if model_type == "mistral":
-                input_ids = current_tokenizer.encode(
+                input_ids = _current_tokenizer.encode(
                     mistral_summary_prompt, return_tensors="pt"
-                ).to(device)
+                ).to(input_device)
                 end_ids = [4, 2]
             elif model_type == "gemma":
-                input_ids = current_tokenizer.encode(
+                input_ids = _current_tokenizer.encode(
                     gemma_summary_prompt, return_tensors="pt"
-                ).to(device)
+                ).to(input_device)
                 end_ids = [1, 106]
 
             with torch.no_grad():
-                output = loaded_model.generate(
+                output = _loaded_model.generate(
                     input_ids,
                     max_new_tokens=150,
                     temperature=0.1,
@@ -480,7 +557,7 @@ def retrieve_context(
                     do_sample=True,
                 )
 
-            full_response = current_tokenizer.decode(
+            full_response = _current_tokenizer.decode(
                 output[0], skip_special_tokens=True
             )
 
@@ -506,7 +583,7 @@ def retrieve_context(
 
     # Conv summary context
     summary_threshold = n_last_turns * 2 * 5
-    if len(history) > summary_threshold and loaded_model and current_tokenizer:
+    if len(history) > summary_threshold and _loaded_model and _current_tokenizer:
         cached_summary, need_regenerate = get_cached_summary(
             conversation_id, current_message_count
         )
@@ -535,9 +612,9 @@ def retrieve_context(
     # Semantic context
     if len(semantic_history) >= top_k * 2:
         get_embedder()
-        query_emb = embedder.encode(query, convert_to_tensor=True)
+        query_emb = _embedder.encode(query, convert_to_tensor=True)
         messages = [msg[1] for msg in semantic_history]
-        msg_embs = embedder.encode(messages, convert_to_tensor=False)
+        msg_embs = _embedder.encode(messages, convert_to_tensor=False)
         index = IndexFlatL2(len(msg_embs[0]))
         index.add(np.array(msg_embs))
         _, idxs = index.search(
@@ -605,41 +682,12 @@ async def generate_title(
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     model_type = llm.type
-    global loaded_model, current_tokenizer, loaded_model_id, is_quant_on_current_load
+    global _loaded_model, _current_tokenizer, _loaded_model_id, _is_quant_on_current_load
 
     try:
-        if loaded_model_id != llm.id:
-            if loaded_model is not None:
-                del loaded_model
-                clear_memory()
-            if current_tokenizer is not None:
-                del current_tokenizer
-                clear_memory()
-
-            start = datetime.now()
-            logging.info(f"Loading model {llm.id} from {llm.link}")
-            loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link,
-                local_files_only=True,
-                dtype=torch.float16,
-                quantization_config=QuantoConfig(weights="int8", activations=None),
-                attn_implementation=None,
-                low_cpu_mem_usage=True,
-            )
-            current_tokenizer = AutoTokenizer.from_pretrained(
-                llm.link, local_files_only=True, use_fast=True
-            )
-            loaded_model_id = llm.id
-            is_quant_on_current_load = True
-            loaded_model.eval()
-            loaded_model.to(device)
-            logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
-        else:
-            logging.info(f"Model {llm.id} already loaded")
-            loaded_model.eval()
-            loaded_model.to(device)
+        load_model(payload.quantize or False, llm)
     except Exception as e:
-        logging.exception("Failed to load model or tokenizer")
+        logging.exception("Failed to load model or tokenizer: %s", e)
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
     try:
@@ -667,23 +715,24 @@ Examples you need to follow:
 
 Create a 2-to-5-word title for: {payload.question}<end_of_turn>
 <start_of_turn>model
-"""
+"""     
+        input_device = _loaded_model.get_input_embeddings().weight.device
         if model_type == "mistral":
-            input_ids = current_tokenizer.encode(
+            input_ids = _current_tokenizer.encode(
                 mistral_title_generation_prompt, return_tensors="pt"
-            ).to(device)
+            ).to(input_device)
             end_ids = [4, 2]
         elif model_type == "gemma":
-            input_ids = current_tokenizer.encode(
+            input_ids = _current_tokenizer.encode(
                 gemma_title_generation_prompt, return_tensors="pt"
-            ).to(device)
+            ).to(input_device)
             end_ids = [1, 106]
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
 
     streamer = TextIteratorStreamer(
-        current_tokenizer, skip_prompt=True, skip_special_tokens=True
+        _current_tokenizer, skip_prompt=True, skip_special_tokens=True
     )
 
     generation_kwargs = dict(
@@ -701,7 +750,7 @@ Create a 2-to-5-word title for: {payload.question}<end_of_turn>
     def run_title_generation():
         try:
             with torch.no_grad():
-                loaded_model.generate(**generation_kwargs)
+                _loaded_model.generate(**generation_kwargs)
         except Exception as e:
             logging.exception(f"Title generation failed: {e}")
             raise HTTPException(
@@ -810,9 +859,7 @@ async def query_and_respond(
     db: Session = Depends(get_db),
 ):
     logging.info("Payload reçu : %s", payload.dict())
-    quantize = True
-    if random.randint(0, 1):
-        quantize = False
+    quantize = payload.quantize or False
     logging.info(quantize)
     user_prompt = payload.custom_prompt
     conversation = (
@@ -835,72 +882,10 @@ async def query_and_respond(
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     model_type = llm.type
-    global loaded_model, current_tokenizer, loaded_model_id, is_quant_on_current_load
+    global _loaded_model, _current_tokenizer, _loaded_model_id, _is_quant_on_current_load
 
     try:
-        if loaded_model_id != llm.id or loaded_model is None:
-            start = datetime.now()
-            logging.info(f"Loading model {llm.id} from {llm.link}")
-
-            quant_config = None
-            is_quant_on_current_load = False
-            if quantize:
-                quant_config = QuantoConfig(
-                    weights="int8",
-                    activations=None,
-                )
-                is_quant_on_current_load = True
-
-            loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link,
-                local_files_only=True,
-                dtype=torch.float16,
-                quantization_config=quant_config,
-                low_cpu_mem_usage=True,
-                attn_implementation=None,
-            )
-            current_tokenizer = AutoTokenizer.from_pretrained(
-                llm.link, local_files_only=True, use_fast=True
-            )
-            loaded_model_id = llm.id
-            loaded_model.eval()
-            loaded_model.to(device)
-            logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
-        elif loaded_model_id == llm.id and quantize != is_quant_on_current_load:
-            
-            clear_memory()
-
-            start = datetime.now()
-            logging.info(f"Loading model {llm.id} from {llm.link}")
-
-            quant_config = None
-            is_quant_on_current_load = False
-            if quantize:
-                quant_config = QuantoConfig(
-                    weights="int8",
-                    activations=None,
-                )
-                is_quant_on_current_load = True
-                
-            loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link,
-                local_files_only=True,
-                dtype=torch.float16,
-                quantization_config=quant_config,
-                low_cpu_mem_usage=True,
-                attn_implementation=None,
-            )
-            current_tokenizer = AutoTokenizer.from_pretrained(
-                llm.link, local_files_only=True, use_fast=True
-            )
-            loaded_model_id = llm.id
-            loaded_model.eval()
-            loaded_model.to(device)
-            logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
-        else:
-            logging.info(f"Model {llm.id} already loaded")
-            loaded_model.eval()
-            loaded_model.to(device)
+        load_model(quantize, llm)
     except Exception as e:
         logging.exception("Failed to load model or tokenizer")
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
@@ -954,8 +939,8 @@ async def query_and_respond(
                 status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}"
             )
 
-    lang = payload.language
-    max_tokens_out = payload.max_new_tokens or 3074
+    lang = payload.language or "fr"
+    max_tokens_out = payload.max_new_tokens or 1024
     custom_sys_prompt = payload.custom_prompt if payload.custom_prompt else None
     messages_starred = []
     if conversation_history:
@@ -980,9 +965,8 @@ async def query_and_respond(
     logging.info("Final prompt to model:\n%s", prompt_text)
 
     try:
-        input_ids = current_tokenizer.encode(prompt_text, return_tensors="pt").to(
-            device
-        )
+        input_device = _loaded_model.get_input_embeddings().weight.device
+        input_ids = _current_tokenizer.encode(prompt_text, return_tensors="pt").to(input_device)
         if model_type == "mistral":
             end_ids = [4, 2]
         elif model_type == "gemma":
@@ -992,13 +976,13 @@ async def query_and_respond(
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
 
     streamer = TextIteratorStreamer(
-        current_tokenizer, skip_prompt=True, skip_special_tokens=True
+        _current_tokenizer, skip_prompt=True, skip_special_tokens=True
     )
 
     # Fixer le pad_token_id pour Gemma
     if model_type == "gemma":
-        if current_tokenizer.pad_token_id is None:
-            current_tokenizer.pad_token_id = current_tokenizer.eos_token_id
+        if _current_tokenizer.pad_token_id is None:
+            _current_tokenizer.pad_token_id = _current_tokenizer.eos_token_id
 
     generation_kwargs = dict(
         input_ids=input_ids,
@@ -1008,7 +992,7 @@ async def query_and_respond(
         top_p=payload.top_p or 0.9,
         top_k=64,
         num_beams=1,
-        pad_token_id=current_tokenizer.pad_token_id if model_type == "gemma" else (0 if model_type == "gemma" else None),
+        pad_token_id=_current_tokenizer.pad_token_id if model_type == "gemma" else (0 if model_type == "gemma" else None),
         eos_token_id=end_ids,
         do_sample=True,
     )
@@ -1034,7 +1018,7 @@ async def query_and_respond(
         )
         try:
             with torch.no_grad():
-                loaded_model.generate(**generation_kwargs)
+                _loaded_model.generate(**generation_kwargs)
         except Exception as e:
             logging.exception(f"Generation failed : {e}")
             logging.error(f"Generation error: {str(e)}")
@@ -1092,10 +1076,10 @@ async def delete_bulk(
     try:
         conversation_ids = payload.conversation_ids
 
-        global conversation_summary_cache
+        global _conversation_summary_cache
         for conv_id in conversation_ids:
-            if conv_id in conversation_summary_cache:
-                del conversation_summary_cache[conv_id]
+            if conv_id in _conversation_summary_cache:
+                del _conversation_summary_cache[conv_id]
                 logging.info(
                     f"Cleared summary cache for deleted conversation {conv_id}"
                 )
@@ -1138,12 +1122,12 @@ async def store_error_message(
         conversation.last_message_time = datetime.now()
         db.commit()
         logging.info(f"Stored error message for conversation {conversation_id}")
-        global loaded_model, current_tokenizer
-        if loaded_model is not None:
-            loaded_model = None
+        global _loaded_model, _current_tokenizer
+        if _loaded_model is not None:
+            _loaded_model = None
             logging.info("Cleared model cache after error message storage")
-        if current_tokenizer is not None:
-            current_tokenizer = None
+        if _current_tokenizer is not None:
+            _current_tokenizer = None
             logging.info("Cleared tokenizer cache after error message storage")
         return {
             "message": "Error message stored successfully",

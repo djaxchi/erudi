@@ -11,6 +11,7 @@ This module provides comprehensive hardware detection for Apple Silicon Macs,
 replacing the previous Windows/CUDA-specific code with macOS MPS equivalents.
 """
 
+import logging
 import time
 import psutil
 import cpuinfo
@@ -185,6 +186,34 @@ def mps_runtime_available() -> bool:
     """
     return torch.backends.mps.is_available()
 
+
+def get_mps_memory():
+    if torch.backends.mps.is_available():
+        try:
+            return torch.mps.recommended_max_memory() # en bytes
+        except Exception:
+            # fallback : prenons 4 GB par défaut
+            return 4 * 1024**3
+    return None
+
+def get_cpu_memory():
+    vm = psutil.virtual_memory()
+    return vm.available # en bytes
+
+def build_max_memory(cpu_frac=0.9, mps_frac=0.6):
+    max_memory = {}
+    
+    # CPU
+    cpu_mem = get_cpu_memory()
+    max_memory["cpu"] = f"{int(cpu_mem * cpu_frac / (1024**3))}GB"
+    
+    # MPS
+    mps_mem = get_mps_memory()
+    if mps_mem:
+        max_memory["mps"] = f"{int(mps_mem * mps_frac / (1024**3))}GB"
+
+    logging.info(f"Max memory: {max_memory}")
+    return max_memory
 
 def get_macos_system_info() -> Dict[str, Any]:
     """

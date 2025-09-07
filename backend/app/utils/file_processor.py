@@ -21,9 +21,7 @@ embedder = SentenceTransformer(MODEL_NAME)
 # Discover safe max length for this specific model
 # (SBERT often sets model.max_seq_length to 128/256, while the base transformer supports up to 512)
 transformer_limit = getattr(tok, "model_max_length", 512)
-print(f"Transformer max length: {transformer_limit}")
 sbert_limit = getattr(embedder, "max_seq_length", transformer_limit)
-print(f"SBERT max length: {sbert_limit}")
 del embedder
 MAX_TOK = min(transformer_limit, sbert_limit)
 
