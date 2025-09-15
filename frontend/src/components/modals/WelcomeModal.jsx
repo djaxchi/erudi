@@ -1,6 +1,6 @@
 import React from "react";
-import { HelpCircle } from "lucide-react";
-import logoErudi from "../../img/logo-erudi.png";
+import { HelpCircle, Cpu, AlertTriangle } from "lucide-react";
+import logoErudi from "../../img/logoerudifinal.png";
 
 export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading }) {
     if (!isOpen) return null;
@@ -25,7 +25,7 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                         <span className="text-[#00B574]">Welcome!</span>
                     </h1>
                     <p className="text-lg sm:text-xl text-gray-300 mb-2 flex items-center justify-center gap-2">
-                        <img src={logoErudi} alt="erudi" className="h-12 sm:h-12" /> is a <span className="text-[#00B574]">personal</span> AI training platform.
+                        <img src={logoErudi} alt="erudi" className="h-7 sm:h-7 -mt-2" /> is a <span className="text-[#00B574]">personal</span> AI training platform.
                     </p>
                     <p className="text-lg sm:text-xl text-gray-300">
                         Get ready to chat and <span className="text-[#00B574]">specialize</span> your <span className="text-[#00B574]">own</span> AI models!
@@ -38,7 +38,7 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                         {/* Left Column - Important Notice */}
                         <div className="bg-amber-900/30 border border-amber-600/40 rounded-xl p-4 sm:p-6">
                             <div className="flex items-start gap-3 sm:gap-4">
-                                <div className="text-xl sm:text-2xl mt-1">⚠️</div>
+                                <AlertTriangle className="w-8 h-8 text-[#E5D07D] mt-1" />
                                 <div className="flex-1">
                                     <h3 className="text-[#E5D07D] font-semibold text-lg mb-3 flex items-center gap-2">
                                         Important Notice
@@ -53,7 +53,7 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                                         <p className="text-gray-300 leading-relaxed">
                                             Every report helps us improve and your feedback means a lot, and we truly appreciate the time you take to test and support the project.
                                         </p>
-                                        <p className="text-[#E5D07D] font-medium">
+                                        <p className="text-[#E5D07D] font-bold">
                                             Thank you for being part of this journey
                                         </p>
                                     </div>
@@ -64,11 +64,10 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                         {/* Right Column - Hardware Evaluation */}
                         <div className="space-y-4">
                             {/* Hardware Evaluation */}
-                            <div className="bg-[#1A1A1A] rounded-xl p-4 sm:p-6">
+                            <div className="bg-[#1A1A1A]/70 border border-white/10 rounded-xl p-4 sm:p-6 backdrop-blur-[10px] saturate-[1.2]">
                                 <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-8 h-8 bg-[#00B574]/20 rounded-lg flex items-center justify-center">
-                                        <span className="text-[#00B574] text-lg">🖥️</span>
-                                    </div>
+                                    {/* Remove the container div and use a larger CPU icon */}
+                                    <Cpu className="w-8 h-8 text-[#00B574]" />
                                     <h3 className="text-[#00B574] font-semibold text-lg">Hardware Evaluation</h3>
                                 </div>
 
@@ -86,7 +85,7 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                                     <div className="space-y-3">
                                         {/* Performance Cards */}
                                         <div className="space-y-3">
-                                            <div className="bg-[#242424] rounded-lg p-3 sm:p-4">
+                                            <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-gray-400 text-sm">Chat Performance</span>
                                                     <div className="flex items-center gap-2">
@@ -104,7 +103,7 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                                                 </div>
                                             </div>
 
-                                            <div className="bg-[#242424] rounded-lg p-3 sm:p-4">
+                                            <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-gray-400 text-sm">Training Performance</span>
                                                     <div className="flex items-center gap-2">
@@ -124,7 +123,7 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                                         </div>
 
                                         {/* Summary */}
-                                        <div className="bg-[#242424] rounded-lg p-3 sm:p-4">
+                                        <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
                                             <div className="flex items-start gap-3">
                                                 <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#E3712B] transition-colors cursor-help mt-0.5" />
                                                 <div className="flex-1 min-w-0">
@@ -144,25 +143,26 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                                 ) : null}
                             </div>
 
-                            {/* Get Started Button */}
-                            <div className="flex justify-center">
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onClose();
-                                    }}
-                                    className={[
-                                        "rounded-full px-5 py-2 text-sm font-semibold",
-                                        "bg-[#00B574] hover:bg-[#009960] text-white",
-                                        "border border-white/20 shadow",
-                                        "transition active:scale-95",
-                                        "flex items-center gap-2",
-                                    ].join(" ")}
-                                >
-                                    Get Started
-                                </button>
-                            </div>
                         </div>
+                    </div>
+
+                    {/* Get Started Button - Centered */}
+                    <div className="flex justify-center mt-6">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onClose();
+                            }}
+                            className={[
+                                "rounded-full px-5 py-2 text-sm font-semibold",
+                                "bg-[#00B574]/80 hover:bg-[#009960]/80 text-white",
+                                "border border-white/20 shadow backdrop-blur-[6px] saturate-[1.1]",
+                                "transition active:scale-95",
+                                "flex items-center gap-2",
+                            ].join(" ")}
+                        >
+                            Get Started
+                        </button>
                     </div>
                 </div>
             </div>

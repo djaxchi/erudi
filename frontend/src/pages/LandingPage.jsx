@@ -6,11 +6,11 @@ import ModelCard from "../components/ModelCard";
 import ModelInfoModal from "../components/modals/ModelInfoModal";
 import DeleteModelModal from "../components/modals/DeleteModelModal";
 import MessageModal from "../components/modals/MessageModal";
-import WelcomeModal from "../components/modals/WelcomeModal";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import HardwareLoadingPopup from "../components/LoadingPopup";
-import { RefreshCcw } from "lucide-react";
-import logoErudi from "../img/logo-erudi.png";
+import { RefreshCcw, Search, MonitorCheck, SearchCode, Blocks, Star, Users } from "lucide-react";
+import WelcomeModal from "../components/modals/WelcomeModal";
+import logoErudi from "../img/logoerudifinal.png";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
 
@@ -28,10 +28,7 @@ export default function LandingPage() {
   const [selectedModelInfo, setSelectedModelInfo] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [deleteConfirmation, setDeleteConfirmation] = useState({
-    show: false,
-    model: null,
-  });
+  const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
   const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
   const localModelsRef = useRef(null);
 
@@ -39,14 +36,13 @@ export default function LandingPage() {
     // To know if it should spawn the welcome popup
     const fetchWelcomePopupStatus = async () => {
       try {
-        const response = await fetch(
-          `${API_BASE_URL}/main_window/welcome-popup`
-        );
+        const response = await fetch(`${API_BASE_URL}/main_window/welcome-popup`);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
         const data = await response.json();
-        setShowWelcome(!data.has_already_displayed);
+        // setShowWelcome(!data.has_already_displayed);
+        setShowWelcome(true); // Always show for now
       } catch (error) {
         console.error("Error fetching welcome popup status:", error);
       }
@@ -63,82 +59,77 @@ export default function LandingPage() {
         setHardwareInfo(data);
       } catch (error) {
         setHardwareInfo({
-          error:
-            "Failed to evaluate hardware capabilities. Please contact the Erudi team for support.",
+          error: "Failed to evaluate hardware capabilities. Please contact the Erudi team for support."
         });
       } finally {
         setLoading(false);
       }
     };
-    fetchWelcomePopupStatus();
-    // Helper function to parse model metadata
-    const parseMetadata = (metadataString) => {
-      if (!metadataString) return {};
+fetchWelcomePopupStatus();
+  // Helper function to parse model metadata
+  const parseMetadata = (metadataString) => {
+    if (!metadataString) return {};
+    
+    try {
+      const lines = metadataString.split('\n');
+      const metadata = {};
+      
+      lines.forEach(line => {
+        const trimmedLine = line.trim();
+        if (trimmedLine.includes(':')) {
+          const [key, ...valueParts] = trimmedLine.split(':');
+          const value = valueParts.join(':').trim();
+          
+          // Clean up the key
+          const cleanKey = key.trim().toLowerCase().replace(/\s+/g, '_');
+          metadata[cleanKey] = value;
+        }
+      });
+      
+      return metadata;
+    } catch (error) {
+      return {};
+    }
+  };
 
-      try {
-        const lines = metadataString.split("\n");
-        const metadata = {};
-
-        lines.forEach((line) => {
-          const trimmedLine = line.trim();
-          if (trimmedLine.includes(":")) {
-            const [key, ...valueParts] = trimmedLine.split(":");
-            const value = valueParts.join(":").trim();
-
-            // Clean up the key
-            const cleanKey = key.trim().toLowerCase().replace(/\s+/g, "_");
-            metadata[cleanKey] = value;
-          }
-        });
-
-        return metadata;
-      } catch (error) {
-        return {};
-      }
-    };
-
-    // Fetch models from backend
-    const fetchModels = async () => {
+  // Fetch models from backend
+  const fetchModels = async () => {
       setModelsLoading(true);
       try {
         // Fetch local models
-        const localResponse = await fetch(
-          `${API_BASE_URL}/main_window/llms/local`
-        );
+        const localResponse = await fetch(`${API_BASE_URL}/main_window/llms/local`);
         if (localResponse.ok) {
           const localData = await localResponse.json();
           // Transform API data to match our UI format
-          const transformedLocalModels = localData.map((model) => {
+          const transformedLocalModels = localData.map(model => {
             const metadata = parseMetadata(model.model_metadata);
             return {
               id: model.id,
               name: model.name,
               size: metadata.size || "Unknown",
-              parameters: metadata.parameters || "Unknown",
+              parameters: metadata.parameters || "Unknown", 
               lastUpdate: metadata.last_modified || "Unknown",
               isOnline: false, // Default to offline
               description: model.description,
               metadata: metadata,
-              rawMetadata: model.model_metadata,
+              rawMetadata: model.model_metadata
             };
           });
           setLocalModels(transformedLocalModels);
         }
 
         // Fetch remote models
-        const remoteResponse = await fetch(
-          `${API_BASE_URL}/main_window/llms/remote`
-        );
+        const remoteResponse = await fetch(`${API_BASE_URL}/main_window/llms/remote`);
         if (remoteResponse.ok) {
           const remoteData = await remoteResponse.json();
           // Transform API data to match our UI format
-          const transformedRemoteModels = remoteData.map((model) => {
+          const transformedRemoteModels = remoteData.map(model => {
             const metadata = parseMetadata(model.model_metadata);
             return {
               id: model.id,
               name: model.name,
               size: metadata.size || "Unknown",
-              parameters: metadata.parameters || "Unknown",
+              parameters: metadata.parameters || "Unknown", 
               downloads: metadata.downloads || model.description || "Unknown",
               lastUpdate: metadata.last_modified || "Unknown",
               author: metadata.author || "Unknown",
@@ -147,7 +138,7 @@ export default function LandingPage() {
               likes: metadata.likes || "Unknown",
               description: model.description,
               metadata: metadata,
-              rawMetadata: model.model_metadata,
+              rawMetadata: model.model_metadata
             };
           });
           setRemoteModels(transformedRemoteModels);
@@ -211,43 +202,41 @@ export default function LandingPage() {
   };
 
   const scrollToExplore = () => {
-    const exploreSection = document.getElementById("explore-models");
+    const exploreSection = document.getElementById('explore-models');
     if (exploreSection) {
-      exploreSection.scrollIntoView({ behavior: "smooth" });
+      exploreSection.scrollIntoView({ behavior: 'smooth' });
     } else {
-      console.warn("Explore models section not found");
+      console.warn('Explore models section not found');
     }
   };
 
   // Derived data from fetched models
   const baseModelNames = [
     "Mistral-7B-Instruct-v0.3",
-    "Mistral-7B-v0.3",
+    "Mistral-7B-v0.3", 
     "Gemma-3-1B-it",
     "Gemma-2-2B-it",
-    "Gemma-3-4B-it",
+    "Gemma-3-4B-it"
   ];
-
-  const baseModels = remoteModels.filter((model) =>
+  
+  const baseModels = remoteModels.filter(model => 
     baseModelNames.includes(model.name)
   );
-
-  const communityModels = remoteModels.filter(
-    (model) => !baseModelNames.includes(model.name)
+  
+  const communityModels = remoteModels.filter(model => 
+    !baseModelNames.includes(model.name)
   );
-
+  
   const modelsForYou = baseModels.slice(0, 6); // First 6 base models
 
   // Search functionality
   const filterModels = (models, query) => {
     if (!query.trim()) return models;
-
-    return models.filter(
-      (model) =>
-        model.name.toLowerCase().includes(query.toLowerCase()) ||
-        (model.parameters &&
-          model.parameters.toLowerCase().includes(query.toLowerCase())) ||
-        (model.size && model.size.toLowerCase().includes(query.toLowerCase()))
+    
+    return models.filter(model => 
+      model.name.toLowerCase().includes(query.toLowerCase()) ||
+      (model.parameters && model.parameters.toLowerCase().includes(query.toLowerCase())) ||
+      (model.size && model.size.toLowerCase().includes(query.toLowerCase()))
     );
   };
 
@@ -258,11 +247,10 @@ export default function LandingPage() {
   const filteredCommunityModels = filterModels(communityModels, searchQuery);
 
   // Check if any models match the search
-  const hasSearchResults =
-    filteredLocalModels.length > 0 ||
-    filteredBaseModels.length > 0 ||
-    filteredModelsForYou.length > 0 ||
-    filteredCommunityModels.length > 0;
+  const hasSearchResults = filteredLocalModels.length > 0 ||
+                          filteredBaseModels.length > 0 || 
+                          filteredModelsForYou.length > 0 || 
+                          filteredCommunityModels.length > 0;
 
   // Event handlers
   const handleDownload = (model) => {
@@ -278,7 +266,7 @@ export default function LandingPage() {
         },
         onError: (err) => {
           setErrorMessage("Download failed. Please try again.");
-        },
+        }
       });
     }
   };
@@ -294,11 +282,7 @@ export default function LandingPage() {
 
   const handleKnowledgeBase = (model) => {
     // Navigate to knowledge base page with model parameter
-    navigate(
-      `/main_window/attach_knowledge_base?model=${encodeURIComponent(
-        model.name
-      )}`
-    );
+    navigate(`/main_window/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
   };
 
   const handleDelete = (model) => {
@@ -307,19 +291,14 @@ export default function LandingPage() {
 
   const confirmDelete = async () => {
     if (!deleteConfirmation.model) return;
-
+    
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/main_window/llms/${deleteConfirmation.model.id}`,
-        {
-          method: "DELETE",
-        }
-      );
-
+      const response = await fetch(`${API_BASE_URL}/main_window/llms/${deleteConfirmation.model.id}`, {
+        method: 'DELETE',
+      });
+      
       if (response.ok) {
-        setSuccessMessage(
-          `Model ${deleteConfirmation.model.name} has been successfully deleted.`
-        );
+        setSuccessMessage(`Model ${deleteConfirmation.model.name} has been successfully deleted.`);
         // Reload local models on both main page and sidebar
         await reloadLocalModels();
         if (localModelsRef.current) {
@@ -330,9 +309,7 @@ export default function LandingPage() {
       }
     } catch (error) {
       console.error("Failed to delete model:", error);
-      setErrorMessage(
-        "Failed to delete the model. Please try again and contact the Erudi team for support."
-      );
+      setErrorMessage("Failed to delete the model. Please try again and contact the Erudi team for support.");
     } finally {
       setDeleteConfirmation({ show: false, model: null });
     }
@@ -349,41 +326,35 @@ export default function LandingPage() {
   return (
     <div className="flex h-screen">
       {/* Left mini sidebar */}
-      <Sidebar
+      <Sidebar 
         showBrainCollapsible={true}
         onToggleBrainSidebar={handleToggleBrainSidebar}
         brainCollapsed={brainSidebarCollapsed}
       />
 
       {/* Main sidebar */}
-      <aside
-        className={`${
-          brainSidebarCollapsed
-            ? "w-0 opacity-0"
-            : "w-80 opacity-100 p-6 space-y-6"
-        } bg-[#272727] text-white flex flex-col transition-all duration-300`}
-      >
+      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-[30%] sm:w-[35%] xl:w-[25%] opacity-100 p-6 space-y-6 '} bg-[#272727] text-white flex flex-col transition-all duration-300 overflow-hidden`}>
         <div className="flex items-center justify-start">
-          <img
-            src={logoErudi}
-            alt="Erudi"
-            className="h-[55px] ml-2 w-auto"
+          <img 
+            src={logoErudi} 
+            alt="Erudi" 
+            className="h-[40px] ml-2 w-auto" 
             onError={(e) => {
-              console.error("Failed to load logo:", e.target.src);
+              console.error('Failed to load logo:', e.target.src);
             }}
-            onLoad={() => console.log("Logo loaded successfully")}
+            onLoad={() => console.log('Logo loaded successfully')}
           />
         </div>
-        <ModelCollapsibleSection
-          title="Local Models"
+        <ModelCollapsibleSection 
+          title="Local Models" 
           ref={localModelsRef}
           onLocalModelRefresh={handleMainPageRefresh}
         />
         <ModelCollapsibleSection
           title="Remote Models"
-          hasSearch={true}
-          onDownload={handleDownload}
-          onLocalModelRefresh={handleMainPageRefresh}
+         hasSearch={true}
+         onDownload={handleDownload}
+         onLocalModelRefresh={handleMainPageRefresh}
         />
       </aside>
 
@@ -393,7 +364,10 @@ export default function LandingPage() {
           {/* Local Models Section */}
           <section>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-2xl font-bold text-white">Local Models</h2>
+              <div className="flex items-center gap-2">
+                <MonitorCheck className="w-6 h-6 text-white" />
+                <h2 className="text-2xl font-bold text-white">Local Models</h2>
+              </div>
               <RefreshCcw
                 className="w-4 h-4 hover:opacity-70  text-white cursor-pointer"
                 onClick={(e) => {
@@ -429,9 +403,7 @@ export default function LandingPage() {
                 </>
               ) : searchQuery ? (
                 <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">
-                    No local models found for "{searchQuery}"
-                  </p>
+                  <p className="text-gray-400">No local models found for "{searchQuery}"</p>
                 </div>
               ) : (
                 <ModelCard type="add" onDownload={scrollToExplore} />
@@ -442,15 +414,19 @@ export default function LandingPage() {
           {/* Sticky Header for Explore Models */}
           <div className="sticky top-0 bg-[#071b18] backdrop-blur-md z-10 py-6 border-b border-white/10">
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-2xl font-bold text-white">Explore Models</h2>
+              <div className="flex items-center gap-2">
+                <SearchCode className="w-6 h-6 text-white" />
+                <h2 className="text-2xl font-bold text-white">Explore Models</h2>
+              </div>
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <input
-                    type="text"
+                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none" />
+                  <input 
+                    type="text" 
                     placeholder="Looking for a model?"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="bg-[#1a1a1a]/60 border border-white/10 rounded-lg px-3 py-2 pl-8 pr-8 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-white/30"
+                    className="bg-[#1a1a1a]/60 border border-white/10 rounded-2xl px-3 py-1 pl-8 pr-8 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-white/30"
                   />
                 </div>
                 <RefreshCcw
@@ -466,16 +442,20 @@ export default function LandingPage() {
 
           {/* Explore Models Section */}
           <section id="explore-models">
+
             {/* Base Models Subsection */}
             <div className="mb-6 pt-3">
-              <h3 className="text-lg font-semibold text-white mb-3">
-                Base Models
-                {searchQuery && (
-                  <span className="text-xs text-gray-400 ml-2">
-                    ({filteredBaseModels.length} results)
-                  </span>
-                )}
-              </h3>
+              <div className="flex items-center gap-2 mb-4">
+                <Blocks className="w-5 h-5 text-white" />
+                <h3 className="text-lg font-semibold text-white">
+                  Base Models
+                  {searchQuery && (
+                    <span className="text-xs text-gray-400 ml-2">
+                      ({filteredBaseModels.length} results)
+                    </span>
+                  )}
+                </h3>
+              </div>
               <div className="grid grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-2">
                 {modelsLoading ? (
                   <div className="col-span-3 text-center py-8">
@@ -496,9 +476,7 @@ export default function LandingPage() {
                   ))
                 ) : searchQuery ? (
                   <div className="col-span-3 text-center py-8">
-                    <p className="text-gray-400">
-                      No base models found for "{searchQuery}"
-                    </p>
+                    <p className="text-gray-400">No base models found for "{searchQuery}"</p>
                   </div>
                 ) : (
                   <div className="col-span-3 text-center py-8">
@@ -511,22 +489,23 @@ export default function LandingPage() {
 
           {/* Models For You Section */}
           <section>
-            <h3 className="text-xl font-semibold text-white mb-4">
-              Models For You
-              {searchQuery && (
-                <span className="text-sm text-gray-400 ml-2">
-                  ({filteredModelsForYou.length} results)
-                </span>
-              )}
-            </h3>
+            <div className="flex items-center gap-2 mb-4">
+              <Star className="w-5 h-5 text-white" />
+              <h3 className="text-xl font-semibold text-white">
+                Models For You
+                {searchQuery && (
+                  <span className="text-sm text-gray-400 ml-2">
+                    ({filteredModelsForYou.length} results)
+                  </span>
+                )}
+              </h3>
+            </div>
             <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
               {modelsLoading ? (
                 <div className="col-span-3 text-center py-8">
                   <div className="flex items-center justify-center">
                     <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
-                    <p className="text-gray-400">
-                      Loading recommended models...
-                    </p>
+                    <p className="text-gray-400">Loading recommended models...</p>
                   </div>
                 </div>
               ) : filteredModelsForYou.length > 0 ? (
@@ -541,15 +520,11 @@ export default function LandingPage() {
                 ))
               ) : searchQuery ? (
                 <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">
-                    No recommended models found for "{searchQuery}"
-                  </p>
+                  <p className="text-gray-400">No recommended models found for "{searchQuery}"</p>
                 </div>
               ) : (
                 <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">
-                    No recommended models available
-                  </p>
+                  <p className="text-gray-400">No recommended models available</p>
                 </div>
               )}
             </div>
@@ -557,14 +532,17 @@ export default function LandingPage() {
 
           {/* Community Models Section */}
           <section>
-            <h3 className="text-lg font-semibold text-white mb-3">
-              Community Models
-              {searchQuery && (
-                <span className="text-xs text-gray-400 ml-2">
-                  ({filteredCommunityModels.length} results)
-                </span>
-              )}
-            </h3>
+            <div className="flex items-center gap-2 mb-3">
+              <Users className="w-5 h-5 text-white" />
+              <h3 className="text-lg font-semibold text-white">
+                Community Models
+                {searchQuery && (
+                  <span className="text-xs text-gray-400 ml-2">
+                    ({filteredCommunityModels.length} results)
+                  </span>
+                )}
+              </h3>
+            </div>
             <div className="grid grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-2">
               {modelsLoading ? (
                 <div className="col-span-3 text-center py-8">
@@ -585,9 +563,7 @@ export default function LandingPage() {
                 ))
               ) : searchQuery ? (
                 <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">
-                    No community models found for "{searchQuery}"
-                  </p>
+                  <p className="text-gray-400">No community models found for "{searchQuery}"</p>
                 </div>
               ) : (
                 <div className="col-span-3 text-center py-8">
@@ -602,8 +578,7 @@ export default function LandingPage() {
             <div className="text-center py-12">
               <div className="text-gray-400 text-lg mb-2">No models found</div>
               <p className="text-gray-500">
-                No models match your search for "{searchQuery}". Try a different
-                search term.
+                No models match your search for "{searchQuery}". Try a different search term.
               </p>
               <button
                 onClick={() => setSearchQuery("")}
@@ -659,11 +634,8 @@ export default function LandingPage() {
       />
 
       {/* Loading Popup (appears on top of welcome popup when hardware is still loading) */}
-      <HardwareLoadingPopup
-        show={showLoadingPopup}
-        loading={loading}
-        onClose={closeLoadingOnly}
-      />
+      <HardwareLoadingPopup show={showLoadingPopup} loading={loading} onClose={closeLoadingOnly} />
+
     </div>
   );
 }

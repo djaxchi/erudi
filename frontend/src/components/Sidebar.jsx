@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Brain, MessageSquare, Swords, BookOpen, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Brain, MessageSquare, Swords, BookOpen, PanelLeftClose, PanelLeftOpen, Bug } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 
 /**
@@ -146,6 +146,17 @@ export default function Sidebar({
           }`}
         />
       </Link>
+
+      {/* Bug Report Button - Bottom of sidebar */}
+      <div className="flex-1" />
+      <button
+        onClick={() => window.open('https://erudi.app/contact', '_blank')}
+        className="w-full flex justify-center items-center py-4 border-l-4 border-transparent mb-4"
+      >
+        <Bug
+          className="w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 text-gray-400 hover:text-red-400"
+        />
+      </button>
 
       
     </div>
