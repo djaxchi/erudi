@@ -476,7 +476,7 @@ export default function ConversationPage() {
               const isUser = msg.sender === "user";
               const alignmentClass = isUser ? "items-end" : "items-start";
               const bubbleClass = isUser
-                ? "bg-[#191919] ml-auto rounded-tr-none text-white"
+                ? "bg-[rgba(25,25,25,0.85)] ml-auto rounded-tr-none text-white border border-gray-300/10 shadow-lg relative"
                 : msg.content.includes("[ERROR_MESSAGE_SYSTEM]")
                 ? "text-red-400 mr-auto rounded-tl-none"
                 : " text-white mr-auto rounded-tl-none";
@@ -485,9 +485,7 @@ export default function ConversationPage() {
                   key={msg.id}
                   className={`group flex flex-col mb-2 ${alignmentClass}`}
                 >
-                  <div
-                    className={`break-words w-fit max-w-[75%] p-4 rounded-2xl whitespace-pre-wrap overflow-wrap break-word ${bubbleClass}`}
-                  >
+                  <div className={`break-words w-fit max-w-[75%] p-4 rounded-2xl whitespace-pre-wrap overflow-wrap break-word ${bubbleClass}`} style={{position: 'relative'}}>
                     {getDisplayContent(msg.content)}
                   </div>
                   <div className="flex mt-1 space-x-2 opacity-0 group-hover:opacity-100">
