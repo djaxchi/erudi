@@ -60,7 +60,7 @@ export default function WelcomeModal({
                     <p className="text-gray-300 leading-relaxed">
                       Every report helps us improve and your feedback means a lot, and we truly appreciate the time you take to test and support the project.
                     </p>
-                    <p className="text-[#E5D07D] font-medium">
+                    <p className="text-[#E5D07D] font-bold">
                       Thank you for being part of this journey
                     </p>
                   </div>
@@ -71,7 +71,7 @@ export default function WelcomeModal({
             {/* Right Column - Hardware Evaluation */}
             <div className="space-y-4">
               {/* Hardware Evaluation */}
-              <div className="bg-[#1A1A1A] rounded-xl p-4 sm:p-6">
+              <div className="bg-[#1A1A1A]/70 border border-white/10 rounded-xl p-4 sm:p-6 backdrop-blur-[10px] saturate-[1.2]">
                 <div className="flex items-center gap-3 mb-4">
                   <Cpu className="w-8 h-8 text-[#00B574]" />
                   <h3 className="text-[#00B574] font-semibold text-lg">Hardware Evaluation</h3>
@@ -91,34 +91,36 @@ export default function WelcomeModal({
                   <div className="space-y-3">
                     {/* Performance Cards */}
                     <div className="space-y-3">
-                      <div className="bg-[#242424] rounded-lg p-3 sm:p-4">
+                      <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
                         <div className="flex items-center justify-between">
                           <span className="text-gray-400 text-sm">Chat Performance</span>
                           <div className="flex items-center gap-2">
                             <span className="text-lg sm:text-xl font-bold text-white">
                               {Math.round(hardwareInfo.global_inference_score)}%
                             </span>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${hardwareInfo.global_inference_score >= 70 ? 'bg-[#00B574]/80 text-white' :
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              hardwareInfo.global_inference_score >= 70 ? 'bg-[#00B574]/80 text-white' :
                               hardwareInfo.global_inference_score >= 50 ? 'bg-yellow-900/80 text-yellow-300' :
-                                'bg-red-900/80 text-red-300'
-                              }`}>
+                              'bg-red-900/80 text-red-300'
+                            }`}>
                               {hardwareInfo.global_inference_label || 'Unknown'}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="bg-[#242424] rounded-lg p-3 sm:p-4">
+                      <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
                         <div className="flex items-center justify-between">
                           <span className="text-gray-400 text-sm">Training Performance</span>
                           <div className="flex items-center gap-2">
                             <span className="text-lg sm:text-xl font-bold text-white">
                               {Math.round(hardwareInfo.global_finetuning_score)}%
                             </span>
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${hardwareInfo.global_finetuning_score >= 70 ? 'bg-[#00B574] text-white' :
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              hardwareInfo.global_finetuning_score >= 70 ? 'bg-[#00B574] text-white' :
                               hardwareInfo.global_finetuning_score >= 50 ? 'bg-yellow-600 text-white' :
-                                'bg-red-900/80 text-red-300'
-                              }`}>
+                              'bg-red-900/80 text-red-300'
+                            }`}>
                               {hardwareInfo.global_finetuning_label || 'Unknown'}
                             </span>
                           </div>
@@ -127,17 +129,17 @@ export default function WelcomeModal({
                     </div>
 
                     {/* Summary */}
-                    <div className="bg-[#242424] rounded-lg p-3 sm:p-4">
+                    <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
                       <div className="flex items-start gap-3">
                         <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#E3712B] transition-colors cursor-help mt-0.5" />
                         <div className="flex-1 min-w-0">
                           <h4 className="text-[#E3712B] font-semibold mb-2 flex items-center gap-0">Summary</h4>
                           <p className="text-gray-300 text-sm leading-relaxed">
-                            {(hardwareInfo.global_inference_score >= 70 && hardwareInfo.global_finetuning_score >= 70)
+                            {(hardwareInfo.global_inference_score >= 70 && hardwareInfo.global_finetuning_score >= 70) 
                               ? 'Good overall performance, you should get fluid experience on most models'
                               : (hardwareInfo.global_inference_score >= 50 || hardwareInfo.global_finetuning_score >= 50)
-                                ? 'Good overall performance, some finetuning operations may be slower'
-                                : 'Limited performance. It will do the trick on smaller models but you may experience some lag with larger ones.'
+                              ? 'Good overall performance, some finetuning operations may be slower'
+                              : 'Limited performance. It will do the trick on smaller models but you may experience some lag with larger ones.'
                             }
                           </p>
                         </div>
@@ -146,26 +148,26 @@ export default function WelcomeModal({
                   </div>
                 ) : null}
               </div>
-
-              {/* Get Started Button */}
-              <div className="flex justify-center">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onClose();
-                  }}
-                  className={[
-                    "rounded-full px-5 py-2 text-sm font-semibold",
-                    "bg-[#00B574] hover:bg-[#009960] text-white",
-                    "border border-white/20 shadow",
-                    "transition active:scale-95",
-                    "flex items-center gap-2",
-                  ].join(" ")}
-                >
-                  Get Started
-                </button>
-              </div>
             </div>
+          </div>
+
+          {/* Get Started Button - Centered */}
+          <div className="flex justify-center mt-6">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              className={[
+                "rounded-full px-5 py-2 text-sm font-semibold",
+                "bg-[#00B574]/80 hover:bg-[#009960]/80 text-white",
+                "border border-white/20 shadow backdrop-blur-[6px] saturate-[1.1]",
+                "transition active:scale-95",
+                "flex items-center gap-2",
+              ].join(" ")}
+            >
+              Get Started
+            </button>
           </div>
         </div>
       </div>

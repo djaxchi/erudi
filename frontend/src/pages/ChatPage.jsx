@@ -10,6 +10,7 @@ import { ask } from "../services/conversationService";
 import { API_BASE_URL } from "../config/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";
+import logoErudi from "../img/logoerudifinal.png";
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -248,6 +249,15 @@ export default function ChatPage() {
         ) : (
           /* Interface de création de chat avec design HeaderBar */
           <div className="w-[700px] max-w-full">
+            {/* Logo Erudi */}
+            <div className="flex justify-center mb-8">
+              <img 
+                src={logoErudi} 
+                alt="Erudi" 
+                className="h-20 w-auto" 
+              />
+            </div>
+
             {/* HeaderBar-like container */}
             <div
               className={[
@@ -309,7 +319,7 @@ export default function ChatPage() {
                     <div
                       ref={dropdownRef}
                       className={[
-                        "inline-flex items-center rounded-lg relative",
+                        "inline-flex items-center rounded-lg relative z-50",
                         "px-3.5 py-1.5 text-sm",
                         "border transition",
                         "bg-white/5 hover:bg-white/10 border-white/10 hover:border-white/20",
@@ -333,7 +343,7 @@ export default function ChatPage() {
 
                       {/* Custom Dropdown */}
                       {isDropdownOpen && (
-                        <div className="absolute top-full left-0 right-0 mt-1 bg-[#2a2a2a] border border-white/20 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-[#2a2a2a] border border-white/20 rounded-lg shadow-lg z-[9999] max-h-60 overflow-y-auto">
                           {models.map((m) => (
                             <div
                               key={m.id ?? m.name}
@@ -497,7 +507,10 @@ export default function ChatPage() {
 
                 {/* Question Input - Always visible */}
                 <div className="mt-6">
-                  <QuestionInput onSend={handleAsk} />
+                  <QuestionInput 
+                    onSend={handleAsk} 
+                    placeholder="Ask me anything..."
+                  />
                 </div>
               </div>
             </div>
