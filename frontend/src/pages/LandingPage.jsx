@@ -12,7 +12,7 @@ import HardwareLoadingPopup from "../components/modals/HardwareLoadingPopup";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { API_BASE_URL } from "../config/api";
 import { Search, MonitorCheck, SearchCode, Blocks, Star, Users } from "lucide-react";
-import logoErudi from "../../../assets/logoerudifinal.png";
+import logoErudi from "../../assets/logoerudifinal.png";
 
 
 export default function LandingPage() {
