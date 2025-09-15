@@ -21,11 +21,11 @@ const API_BASE_URL = "http://127.0.0.1:8000";
 const getIconForSection = (title) => {
   switch (title) {
     case "Local Models":
-      return <Database className="w-5 h-5" />;
+      return <Database className="w-5 h-5 font-bold text-white" />;
     case "Remote Models":
-      return <Globe className="w-5 h-5" />;
+      return <Globe className="w-5 h-5 font-bold text-white" />;
     default:
-      return <Database className="w-5 h-5" />;
+      return <Database className="w-5 h-5 font-bold text-white" />;
   }
 };
 
@@ -174,7 +174,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
         >
           <div className="flex items-center gap-3">
             {getIconForSection(title)}
-            <span className="font-medium text-lg text-gray-200">{title}</span>
+            <span className="font-bold text-lg text-gray-200">{title}</span>
             <TooltipIcon />
             {title === "Local Models" && (
               <RefreshCcw 
@@ -196,15 +196,15 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
           <div className="overflow-hidden">
             {/* Search bar for Remote Models only */}
             {hasSearch && title !== "Local Models" && openSection && (
-              <div className="px-4 py-2 pb-3">
-                <div className="relative">
+              <div className="px-4 py-1 pb-3">
+                <div className="relative rounded-2xl bg-[#1a1a1a]/60 border-[0.2px] border-white/10">
                   <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
                   <input
                     type="text"
                     placeholder="Looking for a model?"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full bg-[#1a1a1a]/60 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-white/30"
+                    className="w-full bg-transparent rounded-2xl pl-10 pr-4 py-1 text-sm text-white placeholder-gray-400 focus:outline-none border-[0.2px] focus:border-white/10"
                   />
                 </div>
               </div>

@@ -74,21 +74,9 @@ export default function ModelCard({
           )}
           
           {/* Local model specific info */}
-          {type === "local" && (
-            <>
-              {model.parameters && model.parameters !== "Unknown" && (
-                <p>Parameters: {model.parameters}</p>
-              )}
-              {model.lastUpdate && model.lastUpdate !== "Unknown" && (
-                <p>Last update: {new Date(model.lastUpdate).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}</p>
-              )}
-            </>
+          {type === "local" && model.lastUpdate && model.lastUpdate !== "Unknown" && (
+            <p>Parameters: {model.parameters}</p>,
+            <p>Last update: {model.lastUpdate}</p>
           )}
         </div>
         

@@ -34,7 +34,7 @@ export default function CustomizePromptModal({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
+          className="fixed inset-0 bg-black/30 backdrop-blur-[10px] flex items-center justify-center z-[9999] p-4"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -46,9 +46,9 @@ export default function CustomizePromptModal({
             <div
               className={[
                 "relative w-full rounded-[26px] overflow-hidden",
-                "border border-white/10",
-                "bg-[rgba(22,40,36,0.45)] backdrop-blur-[18px] saturate-[1.4]",
-                "shadow-[0_8px_30px_-4px_rgba(0,0,0,0.45),0_2px_6px_-1px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]",
+                "border border-white/12",
+                "bg-[rgba(22,40,36,0.38)] backdrop-blur-[18px] saturate-[1.35]",
+                "shadow-[0_8px_30px_-4px_rgba(0,0,0,0.45),0_2px_6px_-1px_rgba(0,0,0,0.4)]",
               ].join(" ")}
             >
               <div
@@ -56,7 +56,7 @@ export default function CustomizePromptModal({
                 className="absolute inset-0 pointer-events-none rounded-[26px] mix-blend-overlay"
                 style={{
                   background:
-                    "linear-gradient(to bottom, rgba(255,255,255,0.18), rgba(255,255,255,0) 40%)",
+                    "linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.08) 28%, rgba(255,255,255,0.02) 60%, rgba(255,255,255,0) 100%)",
                 }}
               />
               <div
@@ -68,6 +68,11 @@ export default function CustomizePromptModal({
                   backgroundSize: "200px 200px",
                 }}
               />
+              {/* Liseré + streak lumineux pour effet givré */}
+              <div aria-hidden className="absolute inset-0 rounded-[26px] pointer-events-none"
+                   style={{boxShadow:"inset 0 1px 0 rgba(255,255,255,0.24), inset 0 -1px 0 rgba(255,255,255,0.08)"}}/>
+              <div aria-hidden className="absolute -top-1/3 -left-1/5 w-[160%] h-[55%] rotate-[-8deg] pointer-events-none
+                                      bg-gradient-to-b from-white/14 via-white/6 to-transparent blur-[6px] rounded-[32px]" />
 
               {/* Content */}
               <div className="relative z-10 p-6">
