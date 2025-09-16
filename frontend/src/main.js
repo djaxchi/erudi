@@ -1,12 +1,59 @@
 const { app, BrowserWindow, ipcMain, dialog} = require("electron");
 const path = require("node:path");
+const { fork } = require("child_process");
 
 // Add this line to define the entry point
 const MAIN_WINDOW_WEBPACK_ENTRY = process.env.MAIN_WINDOW_WEBPACK_ENTRY || 'http://localhost:3000';
 
+let mockBackendProcess = null;
+
 if (require("electron-squirrel-startup")) {
   app.quit();
 }
+
+const startMockBackend = () => {
+  // Use absolute path to the mock backend in the frontend folder
+  const backendPath = path.join(__dirname, '..', '..', 'mock-backend.js');
+  console.log('Starting mock backend from:', backendPath);
+  console.log('__dirname is:', __dirname);
+  
+  // Check if file exists
+  const fs = require('fs');
+  if (!fs.existsSync(backendPath)) {
+    console.error('Mock backend file not found at:', backendPath);
+    // Try alternative path
+    const altPath = path.join(process.cwd(), 'mock-backend.js');
+    console.log('Trying alternative path:', altPath);
+    if (fs.existsSync(altPath)) {
+      console.log('Found mock backend at alternative path');
+      mockBackendProcess = fork(altPath, [], {
+        silent: false,
+        stdio: 'inherit'
+      });
+    } else {
+      console.error('Mock backend not found at alternative path either');
+      return Promise.resolve();
+    }
+  } else {
+    mockBackendProcess = fork(backendPath, [], {
+      silent: false,
+      stdio: 'inherit'
+    });
+  }
+  
+  mockBackendProcess.on('error', (error) => {
+    console.error('Mock backend error:', error);
+  });
+  
+  mockBackendProcess.on('exit', (code) => {
+    console.log(`Mock backend exited with code ${code}`);
+  });
+  
+  // Give the backend a moment to start
+  return new Promise((resolve) => {
+    setTimeout(resolve, 2000);
+  });
+};
 
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
@@ -61,12 +108,17 @@ const createWindow = () => {
     return result.filePaths[0];
   });
 
-  mainWindow.webContents.openDevTools();
+  // Only open dev tools in development
+  if (process.env.NODE_ENV === 'development') {
+    mainWindow.webContents.openDevTools();
+  }
 };
 
 app.commandLine.appendSwitch("no-sandbox")
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Start the mock backend first
+  await startMockBackend();
   createWindow();
 });
 
@@ -77,7 +129,21 @@ app.on("activate", () => {
 });
 
 app.on("window-all-closed", () => {
+  // Kill the mock backend when the app closes
+  if (mockBackendProcess) {
+    mockBackendProcess.kill();
+    mockBackendProcess = null;
+  }
+  
   if (process.platform !== "darwin") {
     app.quit();
+  }
+});
+
+app.on("before-quit", () => {
+  // Ensure the mock backend is killed when quitting
+  if (mockBackendProcess) {
+    mockBackendProcess.kill();
+    mockBackendProcess = null;
   }
 });
