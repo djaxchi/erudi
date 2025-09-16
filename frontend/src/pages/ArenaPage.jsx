@@ -3,7 +3,7 @@ import Sidebar from "../components/Sidebar";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
 import { askArena } from "../services/arenaService.js";
-import { Trash } from "lucide-react";
+import { Trash, Plus } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 
@@ -256,7 +256,7 @@ export default function ArenaPage() {
                 : "Delete this panel"
             }
           >
-            <Trash className="w-5 h-5" />
+            <Trash className="w-5 h-5 mt-2" />
           </button>
         </div>
       </div>
@@ -300,28 +300,51 @@ export default function ArenaPage() {
         <div className={`flex-1 p-8 ${gridClass}`}>
           {panels.map(renderChatPanel)}
         </div>
-        <button
-          className={`fixed bottom-8 right-8 z-50 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full w-14 h-14 flex items-center justify-center text-4xl leading-none shadow-lg transition-all duration-200 ${
-            panels.length >= MAX_PANELS ? "opacity-50 cursor-not-allowed" : ""
-          } ${
-            addButtonAnimating ? "transform scale-110" : "transform scale-100"
-          }`}
-          onClick={handleAddPanel}
-          disabled={panels.length >= MAX_PANELS}
-          title={
-            panels.length >= MAX_PANELS ? "Maximum 4 panels" : "Add chat panel"
-          }
-        >
-          +
-        </button>
       </main>
-      <div className="fixed bottom-0 left-0 right-0 flex justify-center z-30">
-        <div className="max-w-lg w-full px-4 py-2">
-          <QuestionInput
-            onSend={handleAsk}
-            backgroundClass="bg-emerald-900"
-            disabled={loading}
-          />
+      <div className="fixed bottom-0 left-0 right-0 flex justify-center align-center z-30">
+        <div className="max-w-lg w-full mb-8 px-4 py-2 flex items-center gap-3">
+          <div className="flex-1">
+            <QuestionInput
+              onSend={handleAsk}
+              backgroundClass="bg-emerald-900"
+              disabled={loading}
+            />
+          </div>
+          
+          {/* Add Panel Button */}
+          <button
+            className={`rounded-full transition-all duration-200 -mb-1 ${
+              panels.length >= MAX_PANELS ? "opacity-50 cursor-not-allowed" : ""
+            } ${
+              addButtonAnimating ? "transform scale-110" : "transform scale-100"
+            }`}
+            onClick={handleAddPanel}
+            disabled={panels.length >= MAX_PANELS}
+            title={
+              panels.length >= MAX_PANELS ? "Maximum 4 panels" : "Add chat panel"
+            }
+          >
+            {/* Glassy effect container */}
+            <div
+              className={[
+                "relative flex items-center justify-center w-10 h-10 rounded-full overflow-hidden",
+                "border border-emerald-400/20",
+                "bg-emerald-900/30 backdrop-blur-[10px] saturate-[1.3]",
+                "shadow-[0_10px_30px_-6px_rgba(0,0,0,0.5),0_2px_6px_-1px_rgba(0,0,0,0.45)]",
+              ].join(" ")}
+            >
+              {/* Frost overlays with emerald tint */}
+              <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full mix-blend-overlay"
+                   style={{background:"linear-gradient(180deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.06) 28%, rgba(16,185,129,0.02) 60%, rgba(16,185,129,0) 100%)"}}/>
+              <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full opacity-20 mix-blend-overlay"
+                   style={{backgroundImage:'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")', backgroundSize:"200px 200px"}}/>
+              <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full"
+                   style={{boxShadow:"inset 0 1px 0 rgba(16,185,129,0.15), inset 0 -1px 0 rgba(16,185,129,0.08)"}}/>
+              
+              {/* Plus icon from Lucide */}
+              <Plus className="w-6 h-6 text-white relative z-10" strokeWidth={2} />
+            </div>
+          </button>
         </div>
       </div>
 
