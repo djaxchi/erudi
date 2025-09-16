@@ -16,7 +16,7 @@ export default function LoadingScreen() {
         className="text-xl mt-1 mb-8"
         style={{ color: '#e0e0e0' }}
       >
-        The future of AI specialization
+        AI with you, for you
       </p>
       <div className="w-12 h-12 border-4 border-gray-200/20 border-t-gray-200/80 rounded-full animate-spin">
       </div>
