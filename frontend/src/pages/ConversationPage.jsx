@@ -5,7 +5,6 @@ import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import QuestionInput from "../components/QuestionInput";
 import { ask } from "../services/conversationService";
 import HeaderBar from "../components/HeaderBar";
-import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import { Copy, Check, Star } from "lucide-react";
 import { API_BASE_URL } from "../config/api";
 import TypingIndicator from "../components/TypingIndicator";
@@ -31,8 +30,8 @@ export default function ConversationPage() {
   const [settings, setSettings] = useState({
     temperature: 0.2,
     topP: 0.5,
-    maxTokens: 3074,
-  });
+    maxTokens: 3074
+  })
   const [collapsed, setCollapsed] = useState(false);
   const [firstReplyPending, setFirstReplyPending] = useState(false);
 
@@ -53,12 +52,19 @@ export default function ConversationPage() {
       .then((res) => res.json())
       .then((data) => {
         setModels(data);
+        if (conversations.length > 0) {
+          const conv = conversations.find(c => c.id === Number(id));
+          if (conv) {
+            const model = data.find(m => m.id === conv.llm_id);
+            if (model) setCurrentModel(model.name);
+          }
+        }
       });
-  }, []); 
+  }, [id, conversations]);
 
   const handleModelChange = async (modelName) => {
     setCurrentModel(modelName);
-    const model = models.find((m) => m.name === modelName);
+    const model = models.find(m => m.name === modelName);
     if (!model) return;
     // Call API to update conversation's llm_id
     await fetch(`${API_BASE_URL}/conversations/${id}`, {
@@ -70,24 +76,6 @@ export default function ConversationPage() {
     // fetchMessagesAndConversations();
   };
 
-  // Function to save conversation parameters
-  const saveConversationParameters = async (newSettings, newCustomPrompt) => {
-    try {
-      await fetch(`${API_BASE_URL}/conversations/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          temperature: newSettings.temperature,
-          top_p: newSettings.topP,
-          max_tokens: newSettings.maxTokens,
-          custom_prompt: newCustomPrompt || customPrompt,
-        }),
-      });
-    } catch (error) {
-      console.error("Failed to save conversation parameters:", error);
-    }
-  };
-
   const fetchMessagesAndConversations = useCallback(async () => {
     try {
       const [msgRes, convRes] = await Promise.all([
@@ -97,13 +85,12 @@ export default function ConversationPage() {
       const msgs = await msgRes.json();
       // initialize starred state from backend
       const starredMap = {};
-      msgs.forEach((m) => {
-        if (m.starred) starredMap[m.id] = true;
-      });
+      msgs.forEach(m => { if (m.starred) starredMap[m.id] = true; });
       setStarredIds(starredMap);
       const convs = await convRes.json();
       convs.sort(
-        (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
+        (a, b) =>
+          new Date(b.last_message_time) - new Date(a.last_message_time)
       );
       setMessages(msgs);
       setConversations(convs);
@@ -114,9 +101,9 @@ export default function ConversationPage() {
   const handleAsk = useCallback(
     async (question) => {
       setLoading(true);
-
+      
       const isFirstMessage = messages.length === 0;
-
+      
       if (isFirstMessage) {
         setCurrentTitle("");
         setFirstReplyPending(true);
@@ -156,16 +143,13 @@ export default function ConversationPage() {
 
                 const chunk = decoder.decode(value, { stream: true });
                 fullTitle += chunk;
-
-                setCurrentTitle((prev) => {
+                
+                setCurrentTitle(prev => {
                   const newTitle = prev + chunk;
-                  setConversations((prevConvs) =>
-                    prevConvs.map((conv) =>
-                      conv.id === Number(id)
-                        ? {
-                            ...conv,
-                            name: newTitle.trim() || "New Conversation",
-                          }
+                  setConversations(prevConvs => 
+                    prevConvs.map(conv => 
+                      conv.id === Number(id) 
+                        ? { ...conv, name: newTitle.trim() || "New Conversation" }
                         : conv
                     )
                   );
@@ -216,13 +200,11 @@ export default function ConversationPage() {
                     : msg
                 )
               );
-            }
-          } catch (streamError) {
+            }          } catch (streamError) {
             console.error("Streaming error:", streamError);
-
+            
             // If streaming failed mid-way, append an error note with robust header
-            assistantMessage.content +=
-              "\n\n[ERROR_MESSAGE_SYSTEM] Connection interrupted while generating response.";
+            assistantMessage.content += "\n\n[ERROR_MESSAGE_SYSTEM] Connection interrupted while generating response.";
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === assistantMessage.id
@@ -230,7 +212,7 @@ export default function ConversationPage() {
                   : msg
               )
             );
-
+            
             try {
               await fetch(`${API_BASE_URL}/conversations/${id}/store_error_message`, {
                 method: "POST",
@@ -241,11 +223,8 @@ export default function ConversationPage() {
             }
           }
         } else {
-          console.error(
-            "Server error during response generation:",
-            responseRes.status
-          );
-
+          console.error("Server error during response generation:", responseRes.status);
+          
           try {
             await fetch(`${API_BASE_URL}/conversations/${id}/store_error_message`, {
               method: "POST",
@@ -255,9 +234,8 @@ export default function ConversationPage() {
           } catch (storeError) {
             console.error("Failed to store error message:", storeError);
           }
-          // Update the assistant message with error content using robust header
-          assistantMessage.content =
-            "[ERROR_MESSAGE_SYSTEM] I apologize, but I encountered an error while generating a response. Please try asking your question again.";
+            // Update the assistant message with error content using robust header
+          assistantMessage.content = "[ERROR_MESSAGE_SYSTEM] I apologize, but I encountered an error while generating a response. Please try asking your question again.";
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantMessage.id
@@ -266,27 +244,25 @@ export default function ConversationPage() {
             )
           );
         }
+
       } catch (err) {
         console.error("Failed to send message:", err);
       }
 
       await fetchMessagesAndConversations();
-
+      
       if (isFirstMessage) {
         setTimeout(() => setCurrentTitle(""), 3000);
         setFirstReplyPending(false);
       }
-
+      
       setLoading(false);
     },
     [id, settings, customPrompt, fetchMessagesAndConversations, messages.length]
   );
 
-  // Load conversation data when ID changes
   useEffect(() => {
-    if (!id) return;
-
-    const loadConversationData = async () => {
+    const run = async () => {
       try {
         const [convRes, msgRes, convDetailRes] = await Promise.all([
           fetch(`${API_BASE_URL}/conversations`),
@@ -297,65 +273,34 @@ export default function ConversationPage() {
         // Load conversations
         const convs = await convRes.json();
         convs.sort(
-          (a, b) =>
-            new Date(b.last_message_time) - new Date(a.last_message_time)
+          (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
         );
         setConversations(convs);
-
-        // Load messages
-        const msgs = await msgRes.json();
-        const starredMap = {};
-        msgs.forEach((m) => {
-          if (m.starred) starredMap[m.id] = true;
-        });
-        setStarredIds(starredMap);
-        setMessages(msgs);
-
-        // Load conversation parameters
-        if (convDetailRes.ok) {
-          const conversation = await convDetailRes.json();
-          setSettings({
-            temperature: conversation.temperature,
-            topP: conversation.top_p,
-            maxTokens: conversation.max_tokens,
-          });
-          setCustomPrompt(conversation.custom_prompt || "");
-
-          // Set current model
-          if (models.length > 0) {
-            const model = models.find((m) => m.id === conversation.llm_id);
-            if (model) setCurrentModel(model.name);
-          }
-        }
       } catch (err) {
-        console.error("Fetch error:", err);
+        console.error("Fetch error (conversations):", err);
+      }
+
+      if (location.state && location.state.initialQuestion && !initialHandled) {
+        setInitialHandled(true);
+        await handleAsk(location.state.initialQuestion);
+        navigate(location.pathname, { replace: true, state: {} });
+      } else if (!location.state || !location.state.initialQuestion) {
+        try {
+          const msgRes = await fetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`);
+          const msgs = await msgRes.json();
+          // initialize starred state on initial load
+          const starredMap = {};
+          msgs.forEach(m => { if (m.starred) starredMap[m.id] = true; });
+          setStarredIds(starredMap);
+          setMessages(msgs);
+        } catch (err) {
+          console.error("Fetch error (messages):", err);
+        }
       }
     };
 
-    loadConversationData();
-  }, [id, models]);
-
-  // Handle initial question from ChatPage
-  useEffect(() => {
-    if (location.state?.initialQuestion && !initialHandled) {
-      const handleInitialQuestion = async () => {
-        setInitialHandled(true);
-
-        if (location.state.initialSettings) {
-          setSettings(location.state.initialSettings);
-        }
-
-        if (location.state.initialCustomPrompt) {
-          setCustomPrompt(location.state.initialCustomPrompt);
-        }
-
-        await handleAsk(location.state.initialQuestion);
-        navigate(location.pathname, { replace: true, state: {} });
-      };
-
-      handleInitialQuestion();
-    }
-  }, [location.state, initialHandled]);
+    run();
+  }, [id, location.state, handleAsk, navigate, location.pathname, initialHandled]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -389,30 +334,28 @@ export default function ConversationPage() {
     const url = `${API_BASE_URL}/conversations/${isStarred ? 'unstar_message' : 'star_message'}`;
     try {
       await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: content }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message : content }),
       });
-      setStarredIds((prev) => ({ ...prev, [msgId]: !isStarred }));
+      setStarredIds(prev => ({ ...prev, [msgId]: !isStarred }));
     } catch (err) {
-      console.error("Star toggle failed:", err);
+      console.error('Star toggle failed:', err);
     }
   };
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar
-        disabled={loading}
+      <Sidebar 
+        disabled={loading} 
         showCollapsible={true}
         onToggleSidebar={toggleSidebar}
         collapsed={collapsed}
       />
 
-      <aside
-        className={`relative bg-[#272727] text-white transition-all duration-300 ease-in-out ${
-          collapsed ? "w-0 p-0" : "w-80 p-6 space-y-6"
-        }`}
-      >
+      <aside className={`relative bg-[#272727] text-white transition-all duration-300 ease-in-out ${
+        collapsed ? "w-0 p-0" : "w-80 p-6 space-y-6"
+      }`}>
         {!collapsed && (
           <>
             <h1 className="text-3xl font-bold">History</h1>
@@ -437,10 +380,7 @@ export default function ConversationPage() {
             initialTemperature={settings.temperature}
             initialTopP={settings.topP}
             initialMaxTokens={settings.maxTokens}
-            onApply={(newSettings) => {
-              setSettings(newSettings);
-              saveConversationParameters(newSettings, customPrompt);
-            }}
+            onApply={(newSettings) => setSettings(newSettings)}
             onCustomizePrompt={() => setShowPromptModal(true)}
             disabled={loading}
             models={models}
@@ -448,17 +388,35 @@ export default function ConversationPage() {
             onModelChange={handleModelChange}
           />
         </div>
-
-        <CustomizePromptModal
-          isOpen={showPromptModal}
-          onClose={() => setShowPromptModal(false)}
-          customPrompt={customPrompt}
-          onSave={(newPrompt) => {
-            setCustomPrompt(newPrompt);
-            saveConversationParameters(settings, newPrompt);
-          }}
-          title="Personnaliser le prompt"
-        />
+        
+        {showPromptModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+            <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6 relative z-[10000]">
+              <h2 className="text-xl font-semibold mb-4">Personnaliser le prompt</h2>
+              <textarea
+                className="w-full h-40 border rounded p-2 mb-4"
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+              />
+              <div className="flex justify-end space-x-2">
+                <button
+                  onClick={() => setShowPromptModal(false)}
+                  className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => {
+                    setShowPromptModal(false);
+                  }}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto px-10 pt-10 pb-4"
@@ -470,20 +428,29 @@ export default function ConversationPage() {
           <style>{`::-webkit-scrollbar { display: none; }`}</style>
           <div className="flex flex-col gap-6">
             {messages.map((msg) => {
-              const isUser = msg.sender === "user";
-              const alignmentClass = isUser ? "items-end" : "items-start";
+              const isUser = msg.sender === 'user';
+              const alignmentClass = isUser ? 'items-end' : 'items-start';
               const bubbleClass = isUser
-                ? "bg-[rgba(25,25,25,0.85)] ml-auto rounded-tr-none text-white border border-gray-300/10 shadow-lg relative"
-                : msg.content.includes("[ERROR_MESSAGE_SYSTEM]")
-                ? "text-red-400 mr-auto rounded-tl-none"
-                : " text-white mr-auto rounded-tl-none";
+                ? 'bg-[#191919] ml-auto rounded-tr-none text-white'
+                : msg.content.includes('[ERROR_MESSAGE_SYSTEM]')
+                ? 'text-red-400 mr-auto rounded-tl-none'
+                : ' text-white mr-auto rounded-tl-none';
+              
+              // Show TypingIndicator for assistant messages that are loading
+              const showTypingIndicator = !isUser && loading && !msg.content;
+              
               return (
-                <div
-                  key={msg.id}
-                  className={`group flex flex-col mb-2 ${alignmentClass}`}
-                >
-                  <div className={`break-words w-fit max-w-[75%] p-4 rounded-2xl whitespace-pre-wrap overflow-wrap break-word ${bubbleClass}`} style={{position: 'relative'}}>
-                    {getDisplayContent(msg.content)}
+                <div key={msg.id} className={`group flex flex-col mb-2 ${alignmentClass}`}>  
+                  <div
+                    className={`break-words w-fit max-w-[75%] p-4 rounded-2xl whitespace-pre-wrap overflow-wrap break-word ${bubbleClass}`}
+                  >
+                    {showTypingIndicator ? (
+                      <div className="flex items-start pt-1">
+                        <TypingIndicator size={8} colorClass="bg-gray-400" className="-mt-1" />
+                      </div>
+                    ) : (
+                      getDisplayContent(msg.content)
+                    )}
                   </div>
                   <div className="flex mt-1 space-x-2 opacity-0 group-hover:opacity-100">
                     {/* Copy button */}
@@ -511,8 +478,8 @@ export default function ConversationPage() {
                     >
                       <Star
                         size={16}
-                        className={starredIds[msg.id] ? "text-yellow-400" : ""}
-                        fill={starredIds[msg.id] ? "currentColor" : "none"}
+                        className={starredIds[msg.id] ? 'text-yellow-400' : ''}
+                        fill={starredIds[msg.id] ? 'currentColor' : 'none'}
                       />
                     </button>
                   </div>

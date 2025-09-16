@@ -186,7 +186,8 @@ async def get_all_conversations(db: Session = Depends(get_db)):
     try:
         conversations = db.query(Conversation).all()
         # Use model_validate for serialization (from_orm deprecated)
-        return [ConversationResponse.model_validate(conv) for conv in conversations]
+        # return [ConversationResponse.model_validate(conv) for conv in conversations]
+        return conversations
     except Exception as e:
         import traceback
         traceback.print_exc()

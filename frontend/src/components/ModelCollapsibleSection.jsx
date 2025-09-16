@@ -14,8 +14,8 @@ import {
   Search,
 } from "lucide-react";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
+import { API_BASE_URL } from "../config/api";
 
-const API_BASE_URL = "http://127.0.0.1:8000";
 
 // Icon mapping for different section types
 const getIconForSection = (title) => {
