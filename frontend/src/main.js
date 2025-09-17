@@ -1,57 +1,120 @@
 const { app, BrowserWindow, ipcMain, dialog} = require("electron");
 const path = require("node:path");
-const { fork } = require("child_process");
+const { spawn } = require("child_process");
+const fs = require('fs');
+const os = require('os');
 
 // Add this line to define the entry point
 const MAIN_WINDOW_WEBPACK_ENTRY = process.env.MAIN_WINDOW_WEBPACK_ENTRY || 'http://localhost:3000';
 
 let mockBackendProcess = null;
 
+// Create a log file for debugging
+const logFile = path.join(os.tmpdir(), 'erudi-backend.log');
+const log = (message) => {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}\n`;
+  console.log(message);
+  try {
+    fs.appendFileSync(logFile, logMessage);
+  } catch (err) {
+    console.error('Failed to write to log file:', err);
+  }
+};
+
+log(`Starting app, log file: ${logFile}`);
+
 if (require("electron-squirrel-startup")) {
   app.quit();
 }
 
 const startMockBackend = () => {
-  // Use absolute path to the mock backend in the frontend folder
-  const backendPath = path.join(__dirname, '..', '..', 'mock-backend.js');
-  console.log('Starting mock backend from:', backendPath);
-  console.log('__dirname is:', __dirname);
-  
-  // Check if file exists
-  const fs = require('fs');
-  if (!fs.existsSync(backendPath)) {
-    console.error('Mock backend file not found at:', backendPath);
-    // Try alternative path
-    const altPath = path.join(process.cwd(), 'mock-backend.js');
-    console.log('Trying alternative path:', altPath);
-    if (fs.existsSync(altPath)) {
-      console.log('Found mock backend at alternative path');
-      mockBackendProcess = fork(altPath, [], {
-        silent: false,
-        stdio: 'inherit'
-      });
+  return new Promise((resolve, reject) => {
+    log('Starting Python mock backend server...');
+    
+    const PORT = 8000;
+    
+    // Path to the Python mock backend
+    let backendPath;
+    if (app.isPackaged) {
+      // In packaged app, backend is in the resources directory
+      backendPath = path.join(process.resourcesPath, 'mock-backend', 'server.py');
     } else {
-      console.error('Mock backend not found at alternative path either');
-      return Promise.resolve();
+      // In development, backend is relative to the frontend directory
+      backendPath = path.join(__dirname, '..', '..', '..', 'mock-backend', 'server.py');
     }
-  } else {
-    mockBackendProcess = fork(backendPath, [], {
-      silent: false,
-      stdio: 'inherit'
+    
+    // Check if Python backend exists
+    if (!fs.existsSync(backendPath)) {
+      const error = `Python backend not found at: ${backendPath}`;
+      log(error);
+      reject(new Error(error));
+      return;
+    }
+    
+    // Spawn Python process
+    const pythonPath = '/opt/anaconda3/bin/python3';
+    log(`Spawning Python backend: ${pythonPath} ${backendPath} ${PORT}`);
+    const workingDir = path.dirname(backendPath);
+    log(`Working directory: ${workingDir}`);
+    
+    mockBackendProcess = spawn(pythonPath, [backendPath, PORT.toString()], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: workingDir
     });
-  }
-  
-  mockBackendProcess.on('error', (error) => {
-    console.error('Mock backend error:', error);
-  });
-  
-  mockBackendProcess.on('exit', (code) => {
-    console.log(`Mock backend exited with code ${code}`);
-  });
-  
-  // Give the backend a moment to start
-  return new Promise((resolve) => {
-    setTimeout(resolve, 2000);
+    
+    // Handle process output
+    mockBackendProcess.stdout.on('data', (data) => {
+      const output = data.toString().trim();
+      log(`Backend stdout: ${output}`);
+    });
+    
+    mockBackendProcess.stderr.on('data', (data) => {
+      const output = data.toString().trim();
+      log(`Backend stderr: ${output}`);
+    });
+    
+    // Handle process exit
+    mockBackendProcess.on('exit', (code, signal) => {
+      log(`Backend process exited with code ${code}, signal ${signal}`);
+      mockBackendProcess = null;
+    });
+    
+    // Handle process errors
+    mockBackendProcess.on('error', (error) => {
+      log(`Failed to start backend process: ${error.message}`);
+      reject(error);
+    });
+    
+    // Wait for the server to start (check health endpoint)
+    const checkHealth = async () => {
+      for (let i = 0; i < 30; i++) {
+        try {
+          log(`Health check attempt ${i + 1}/30`);
+          const response = await fetch(`http://127.0.0.1:${PORT}/health`);
+          if (response.ok) {
+            const data = await response.json();
+            log(`Backend is ready: ${data.message}`);
+            resolve();
+            return;
+          }
+        } catch (error) {
+          // Ignore connection errors during startup
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      const error = 'Backend failed to start within 30 seconds';
+      log(error);
+      if (mockBackendProcess) {
+        mockBackendProcess.kill();
+        mockBackendProcess = null;
+      }
+      reject(new Error(error));
+    };
+    
+    // Start health checks after a brief delay
+    setTimeout(checkHealth, 2000);
   });
 };
 
@@ -60,7 +123,7 @@ const createWindow = () => {
     width: 1280,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, '..', '..', '..', 'frontend', 'src', 'preload.js'),
+      preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
@@ -100,14 +163,6 @@ const createWindow = () => {
 
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-  // Ouvrir l'explorateur de fichiers et récupérer le chemin
-  ipcMain.handle('dialog:openDirectory', async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ['openDirectory']
-    });
-    return result.filePaths[0];
-  });
-
   // Only open dev tools in development
   if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
@@ -116,10 +171,26 @@ const createWindow = () => {
 
 app.commandLine.appendSwitch("no-sandbox")
 
+// Register IPC handlers once globally
+ipcMain.handle('dialog:openDirectory', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory']
+  });
+  return result.filePaths[0];
+});
+
 app.whenReady().then(async () => {
-  // Start the mock backend first
-  await startMockBackend();
-  createWindow();
+  log('App ready, starting mock backend...');
+  try {
+    // Start the mock backend first
+    await startMockBackend();
+    log('Mock backend started successfully, creating window...');
+    createWindow();
+  } catch (error) {
+    log('Failed to start application: ' + error.toString());
+    // Create window anyway, maybe the backend will work later
+    createWindow();
+  }
 });
 
 app.on("activate", () => {
@@ -129,9 +200,10 @@ app.on("activate", () => {
 });
 
 app.on("window-all-closed", () => {
-  // Kill the mock backend when the app closes
+  // Stop the Python backend process when the app closes
   if (mockBackendProcess) {
-    mockBackendProcess.kill();
+    log('Shutting down Python backend process...');
+    mockBackendProcess.kill('SIGTERM');
     mockBackendProcess = null;
   }
   
@@ -141,9 +213,10 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-  // Ensure the mock backend is killed when quitting
+  // Ensure the Python backend process is stopped when quitting
   if (mockBackendProcess) {
-    mockBackendProcess.kill();
+    log('Stopping Python backend process before quit...');
+    mockBackendProcess.kill('SIGTERM');
     mockBackendProcess = null;
   }
 });
