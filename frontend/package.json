@@ -1,14 +1,14 @@
 {
   "name": "erudi",
-  "productName": "erudi",
+  "productName": "Erudi - AI Assistant",
   "version": "1.0.0",
-  "description": "Erudi is a modern, windows desktop application designed to query and fine-tune models locally, on a no-code friendly-user interface and with your own data.",
+  "description": "Erudi is a modern desktop application designed to query and fine-tune AI models locally, with a user-friendly interface and your own data.",
   "main": ".webpack/main",
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
     "build-backend": "cd .. && pyinstaller backend.spec",
-    "make": "npm run build-backend && electron-forge make",
+    "make": "npx electron-forge make",
     "publish": "electron-forge publish",
     "lint": "echo \"No linting configured\""
   },

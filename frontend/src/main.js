@@ -8,6 +8,8 @@ const os = require('os');
 const MAIN_WINDOW_WEBPACK_ENTRY = process.env.MAIN_WINDOW_WEBPACK_ENTRY || 'http://localhost:3000';
 
 let backendProcess = null;
+let mainWindow = null;
+let isCreatingWindow = false;
 
 // Create a log file for debugging
 const logFile = path.join(os.tmpdir(), 'erudi-backend.log');
@@ -31,14 +33,29 @@ if (require("electron-squirrel-startup")) {
 function resolvePackagedBackendPath() {
   // Candidate locations inside the packaged app
   const candidates = [
-    path.join(process.resourcesPath, 'backend', 'backend'), // when entire dist/backend folder copied
-    path.join(process.resourcesPath, 'backend'),            // if only the executable was copied (legacy)
-    path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', 'backend'), // in case ASAR unpacked use
+    path.join(process.resourcesPath, 'backend', 'backend', 'backend'), 
+    path.join(process.resourcesPath, 'backend', 'backend'), 
+    path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', 'backend'), 
   ];
+  
+  log(`Checking packaged backend paths...`);
+  log(`process.resourcesPath: ${process.resourcesPath}`);
+  
   for (const c of candidates) {
+    log(`Checking candidate: ${c}`);
     try {
-      if (fs.existsSync(c)) return c;
-    } catch (_) { /* ignore */ }
+      if (fs.existsSync(c)) {
+        const stat = fs.statSync(c);
+        log(`Found ${c}, isFile: ${stat.isFile()}, isExecutable: ${!!(stat.mode & 0o111)}`);
+        if (stat.isFile()) {
+          return c;
+        }
+      } else {
+        log(`Path does not exist: ${c}`);
+      }
+    } catch (error) {
+      log(`Error checking ${c}: ${error.message}`);
+    }
   }
   return null;
 }
@@ -49,21 +66,16 @@ const startRealBackend = () => {
     
     const PORT = 8000;
     
-    // Path to the real backend executable
     let backendPath;
     if (app.isPackaged) {
       backendPath = resolvePackagedBackendPath();
     } else {
-      // Dev: assume you've run PyInstaller already OR just run the API via python separately.
-      // Prefer a local virtualenv binary if available.
       const devCandidates = [
-        path.join(__dirname, '..', '..', '..', 'dist', 'backend', 'backend'),
-        path.join(__dirname, '..', '..', '..', 'build', 'backend', 'backend'),
+        path.join(__dirname, '..', '..', 'backend', 'backend'),
       ];
       backendPath = devCandidates.find(p => fs.existsSync(p)) || null;
     }
     
-    // Check if backend executable exists
     if (!backendPath || !fs.existsSync(backendPath)) {
       const error = `Backend executable not found. Checked path: ${backendPath || 'None'}\n` +
         `You likely need to build it first (e.g. 'pyinstaller backend.spec').`;
@@ -72,17 +84,23 @@ const startRealBackend = () => {
       return;
     }
     
-    // Spawn backend process (no need for Python interpreter)
     log(`Spawning backend: ${backendPath} --port ${PORT}`);
     const workingDir = path.dirname(backendPath);
     log(`Working directory: ${workingDir}`);
     
+    const backendEnv = {
+      ...process.env,
+      DATABASE_URL: "sqlite:///./data/erudi.db",
+      CACHE_DIR: "./data/models_cache", 
+      INDEXES_DIR: "./data/indexes"
+    };
+    
     backendProcess = spawn(backendPath, ['--port', PORT.toString()], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      cwd: workingDir
+      cwd: workingDir,
+      env: backendEnv
     });
     
-    // Handle process output
     backendProcess.stdout.on('data', (data) => {
       const output = data.toString().trim();
       log(`Backend stdout: ${output}`);
@@ -93,16 +111,13 @@ const startRealBackend = () => {
       log(`Backend stderr: ${output}`);
     });
     
-    // Handle process exit
     backendProcess.on('exit', (code, signal) => {
       log(`Backend process exited with code ${code}, signal ${signal}`);
       backendProcess = null;
     });
     
-    // Handle process errors
     backendProcess.on('error', (error) => {
       log(`Failed to start backend process: ${error.message}`);
-      // Provide macOS Gatekeeper hint
       if (process.platform === 'darwin') {
         log('On macOS, the first run of an unsigned binary may be blocked.');
         log('If you see a security popup, open System Settings > Privacy & Security and allow the backend binary.');
@@ -110,7 +125,6 @@ const startRealBackend = () => {
       reject(error);
     });
     
-    // Wait for the server to start (check health endpoint)
     const checkHealth = async () => {
       for (let i = 0; i < 30; i++) {
         try {
@@ -123,7 +137,6 @@ const startRealBackend = () => {
             return;
           }
         } catch (error) {
-          // Ignore connection errors during startup
         }
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
@@ -137,15 +150,28 @@ const startRealBackend = () => {
       reject(new Error(error));
     };
     
-    // Start health checks after a brief delay
     setTimeout(checkHealth, 2000);
   });
 };
 
 const createWindow = () => {
-  const mainWindow = new BrowserWindow({
+  if (isCreatingWindow || mainWindow) {
+    log('Window creation already in progress or window exists, skipping...');
+    return;
+  }
+
+  if (!app.isReady()) {
+    log('createWindow called before app ready; deferring until ready event.');
+    return; 
+  }
+  
+  isCreatingWindow = true;
+  log('Creating main window...');
+  
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    title: "erudi - AI Assistant",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
@@ -154,9 +180,17 @@ const createWindow = () => {
       webSecurity: true,
     },
     autoHideMenuBar: true,
+    // Personnalisation de la fenêtre - boutons à droite style Windows
+    titleBarStyle: 'default',
+    frame: true,
+    icon: process.platform !== 'darwin' ? path.join(__dirname, '..', 'assets', 'icons', 'icon.png') : undefined,
   });
 
-  // Add global drag & drop support after DOM is ready
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    isCreatingWindow = false;
+  });
+
   mainWindow.webContents.on('dom-ready', () => {
     mainWindow.webContents.executeJavaScript(`
       // Block navigation everywhere, but let events bubble to React
@@ -166,14 +200,12 @@ const createWindow = () => {
     `);
   });
 
-  // Extra safety - Block any navigation the renderer still tries to start
   mainWindow.webContents.on('will-navigate', (event) => {
-    event.preventDefault(); // cancel stray navigations (file://, http://, etc.)
+    event.preventDefault(); 
   });
 
   mainWindow.webContents.session.clearCache();
 
-  // Add CSP headers to allow backend connections
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
@@ -187,15 +219,15 @@ const createWindow = () => {
 
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
-  // Only open dev tools in development
   if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
   }
+  
+  isCreatingWindow = false;
 };
 
 app.commandLine.appendSwitch("no-sandbox")
 
-// Register IPC handlers once globally
 ipcMain.handle('dialog:openDirectory', async () => {
   const result = await dialog.showOpenDialog({
     properties: ['openDirectory']
@@ -204,27 +236,25 @@ ipcMain.handle('dialog:openDirectory', async () => {
 });
 
 app.whenReady().then(async () => {
-  log('App ready, starting backend...');
+  log('App ready. Attempting to start backend...');
+  
   try {
-    // Start the real backend first
     await startRealBackend();
-    log('Backend started successfully, creating window...');
+    log('Real backend started successfully, creating window...');
     createWindow();
   } catch (error) {
-    log('Failed to start application: ' + error.toString());
-    // Create window anyway, maybe the backend will work later
+    log('Backend failed to start: ' + error.toString());
     createWindow();
   }
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (BrowserWindow.getAllWindows().length === 0 && !mainWindow) {
     createWindow();
   }
 });
 
 app.on("window-all-closed", () => {
-  // Stop the backend process when the app closes
   if (backendProcess) {
     log('Shutting down backend process...');
     backendProcess.kill('SIGTERM');
@@ -237,7 +267,6 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-  // Ensure the backend process is stopped when quitting
   if (backendProcess) {
     log('Stopping backend process before quit...');
     backendProcess.kill('SIGTERM');

@@ -6,7 +6,18 @@ module.exports = {
     asar: true,
     extraResource: [
       "../dist/backend"
-    ]
+    ],
+    // Personnalisation de l'application
+    name: "erudi",
+    executableName: "erudi",
+    appBundleId: "com.erudi.app",
+    appCategoryType: "public.app-category.productivity",
+    // Icône de l'application
+    icon: "./assets/icons/icon", // Electron Forge cherchera icon.icns sur macOS, icon.ico sur Windows, icon.png sur Linux
+    // Métadonnées de l'application
+    appCopyright: "Copyright © 2025 Erudi Team",
+    appVersion: "1.0.0",
+    buildVersion: "1.0.0"
   },
   rebuildConfig: {},
   makers: [
@@ -21,8 +32,7 @@ module.exports = {
     {
       name: "@electron-forge/maker-dmg",
       config: {
-        format: "ULFO",
-        name: "Erudi-Installer"
+        name: "erudi-Installer"
       }
     },
     {
