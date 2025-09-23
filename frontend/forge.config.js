@@ -19,6 +19,13 @@ module.exports = {
       platforms: ["darwin"],
     },
     {
+      name: "@electron-forge/maker-dmg",
+      config: {
+        format: "ULFO",
+        name: "Erudi-Installer"
+      }
+    },
+    {
       name: "@electron-forge/maker-deb",
       config: {},
     },

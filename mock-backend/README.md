@@ -87,19 +87,33 @@ mockBackendProcess = spawn(backendPath, [PORT.toString()], {
 ### Step 4: Test the Integration
 
 1. Test in development mode:
+
 ```bash
 cd frontend
 npm start
 ```
 
 2. Test the packaged version:
+
 ```bash
 cd frontend
 npm run package
 open out/erudi-darwin-arm64/erudi.app
 ```
 
-3. Verify the health endpoint responds correctly:
+3. Create distribution installers:
+
+```bash
+cd frontend
+npm run make
+```
+
+This creates:
+- **DMG Installer**: `out/make/Erudi-Installer.dmg` (recommended for macOS distribution)
+- **ZIP Archive**: `out/make/zip/darwin/arm64/erudi-darwin-arm64-1.0.0.zip`
+
+4. Verify the health endpoint responds correctly:
+
 ```bash
 curl http://127.0.0.1:8000/health
 ```
@@ -184,8 +198,35 @@ When replacing the backend, you may need to update these frontend files:
 - [ ] Updated startup command in `main.js`
 - [ ] Tested in development mode (`npm start`)
 - [ ] Tested packaged version (`npm run package`)
+- [ ] Created and tested installers (`npm run make`)
+- [ ] DMG installer works correctly on macOS
 - [ ] All API calls work correctly
 - [ ] Backend shuts down gracefully with the app
+
+## 📦 Distribution Options
+
+After replacing with your real backend, you can create distribution packages:
+
+### For macOS:
+- **DMG Installer**: Professional drag-and-drop installer (recommended)
+  ```bash
+  npm run make
+  # Creates: out/make/Erudi-Installer.dmg
+  ```
+
+### For Cross-Platform:
+- **ZIP Archive**: Simple compressed app bundle
+  ```bash
+  npm run make
+  # Creates: out/make/zip/darwin/arm64/erudi-darwin-arm64-1.0.0.zip
+  ```
+
+### Installer Features:
+- ✅ Includes Python backend automatically
+- ✅ Self-contained installation
+- ✅ Professional macOS DMG with proper metadata
+- ✅ Signed and ready for distribution (when properly configured)
+- ✅ Works offline after installation
 
 ## 📝 Notes
 
