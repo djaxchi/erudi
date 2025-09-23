@@ -7,7 +7,7 @@ const os = require('os');
 // Add this line to define the entry point
 const MAIN_WINDOW_WEBPACK_ENTRY = process.env.MAIN_WINDOW_WEBPACK_ENTRY || 'http://localhost:3000';
 
-let mockBackendProcess = null;
+let backendProcess = null;
 
 // Create a log file for debugging
 const logFile = path.join(os.tmpdir(), 'erudi-backend.log');
@@ -28,61 +28,85 @@ if (require("electron-squirrel-startup")) {
   app.quit();
 }
 
-const startMockBackend = () => {
+function resolvePackagedBackendPath() {
+  // Candidate locations inside the packaged app
+  const candidates = [
+    path.join(process.resourcesPath, 'backend', 'backend'), // when entire dist/backend folder copied
+    path.join(process.resourcesPath, 'backend'),            // if only the executable was copied (legacy)
+    path.join(process.resourcesPath, 'app.asar.unpacked', 'backend', 'backend'), // in case ASAR unpacked use
+  ];
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch (_) { /* ignore */ }
+  }
+  return null;
+}
+
+const startRealBackend = () => {
   return new Promise((resolve, reject) => {
-    log('Starting Python mock backend server...');
+    log('Starting backend server...');
     
     const PORT = 8000;
     
-    // Path to the Python mock backend
+    // Path to the real backend executable
     let backendPath;
     if (app.isPackaged) {
-      // In packaged app, backend is in the resources directory
-      backendPath = path.join(process.resourcesPath, 'mock-backend', 'server.py');
+      backendPath = resolvePackagedBackendPath();
     } else {
-      // In development, backend is relative to the frontend directory
-      backendPath = path.join(__dirname, '..', '..', '..', 'mock-backend', 'server.py');
+      // Dev: assume you've run PyInstaller already OR just run the API via python separately.
+      // Prefer a local virtualenv binary if available.
+      const devCandidates = [
+        path.join(__dirname, '..', '..', '..', 'dist', 'backend', 'backend'),
+        path.join(__dirname, '..', '..', '..', 'build', 'backend', 'backend'),
+      ];
+      backendPath = devCandidates.find(p => fs.existsSync(p)) || null;
     }
     
-    // Check if Python backend exists
-    if (!fs.existsSync(backendPath)) {
-      const error = `Python backend not found at: ${backendPath}`;
+    // Check if backend executable exists
+    if (!backendPath || !fs.existsSync(backendPath)) {
+      const error = `Backend executable not found. Checked path: ${backendPath || 'None'}\n` +
+        `You likely need to build it first (e.g. 'pyinstaller backend.spec').`;
       log(error);
       reject(new Error(error));
       return;
     }
     
-    // Spawn Python process
-    const pythonPath = '/opt/anaconda3/bin/python3';
-    log(`Spawning Python backend: ${pythonPath} ${backendPath} ${PORT}`);
+    // Spawn backend process (no need for Python interpreter)
+    log(`Spawning backend: ${backendPath} --port ${PORT}`);
     const workingDir = path.dirname(backendPath);
     log(`Working directory: ${workingDir}`);
     
-    mockBackendProcess = spawn(pythonPath, [backendPath, PORT.toString()], {
+    backendProcess = spawn(backendPath, ['--port', PORT.toString()], {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: workingDir
     });
     
     // Handle process output
-    mockBackendProcess.stdout.on('data', (data) => {
+    backendProcess.stdout.on('data', (data) => {
       const output = data.toString().trim();
       log(`Backend stdout: ${output}`);
     });
     
-    mockBackendProcess.stderr.on('data', (data) => {
+    backendProcess.stderr.on('data', (data) => {
       const output = data.toString().trim();
       log(`Backend stderr: ${output}`);
     });
     
     // Handle process exit
-    mockBackendProcess.on('exit', (code, signal) => {
+    backendProcess.on('exit', (code, signal) => {
       log(`Backend process exited with code ${code}, signal ${signal}`);
-      mockBackendProcess = null;
+      backendProcess = null;
     });
     
     // Handle process errors
-    mockBackendProcess.on('error', (error) => {
+    backendProcess.on('error', (error) => {
       log(`Failed to start backend process: ${error.message}`);
+      // Provide macOS Gatekeeper hint
+      if (process.platform === 'darwin') {
+        log('On macOS, the first run of an unsigned binary may be blocked.');
+        log('If you see a security popup, open System Settings > Privacy & Security and allow the backend binary.');
+      }
       reject(error);
     });
     
@@ -91,7 +115,7 @@ const startMockBackend = () => {
       for (let i = 0; i < 30; i++) {
         try {
           log(`Health check attempt ${i + 1}/30`);
-          const response = await fetch(`http://127.0.0.1:${PORT}/health`);
+          const response = await fetch(`http://127.0.0.1:${PORT}/main_window/health`);
           if (response.ok) {
             const data = await response.json();
             log(`Backend is ready: ${data.message}`);
@@ -106,9 +130,9 @@ const startMockBackend = () => {
       
       const error = 'Backend failed to start within 30 seconds';
       log(error);
-      if (mockBackendProcess) {
-        mockBackendProcess.kill();
-        mockBackendProcess = null;
+      if (backendProcess) {
+        backendProcess.kill();
+        backendProcess = null;
       }
       reject(new Error(error));
     };
@@ -180,11 +204,11 @@ ipcMain.handle('dialog:openDirectory', async () => {
 });
 
 app.whenReady().then(async () => {
-  log('App ready, starting mock backend...');
+  log('App ready, starting backend...');
   try {
-    // Start the mock backend first
-    await startMockBackend();
-    log('Mock backend started successfully, creating window...');
+    // Start the real backend first
+    await startRealBackend();
+    log('Backend started successfully, creating window...');
     createWindow();
   } catch (error) {
     log('Failed to start application: ' + error.toString());
@@ -200,11 +224,11 @@ app.on("activate", () => {
 });
 
 app.on("window-all-closed", () => {
-  // Stop the Python backend process when the app closes
-  if (mockBackendProcess) {
-    log('Shutting down Python backend process...');
-    mockBackendProcess.kill('SIGTERM');
-    mockBackendProcess = null;
+  // Stop the backend process when the app closes
+  if (backendProcess) {
+    log('Shutting down backend process...');
+    backendProcess.kill('SIGTERM');
+    backendProcess = null;
   }
   
   if (process.platform !== "darwin") {
@@ -213,10 +237,10 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
-  // Ensure the Python backend process is stopped when quitting
-  if (mockBackendProcess) {
-    log('Stopping Python backend process before quit...');
-    mockBackendProcess.kill('SIGTERM');
-    mockBackendProcess = null;
+  // Ensure the backend process is stopped when quitting
+  if (backendProcess) {
+    log('Stopping backend process before quit...');
+    backendProcess.kill('SIGTERM');
+    backendProcess = null;
   }
 });

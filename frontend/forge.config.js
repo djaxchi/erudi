@@ -5,7 +5,7 @@ module.exports = {
   packagerConfig: {
     asar: true,
     extraResource: [
-      "../mock-backend"
+      "../dist/backend"
     ]
   },
   rebuildConfig: {},
