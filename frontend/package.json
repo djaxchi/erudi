@@ -1,8 +1,8 @@
 {
   "name": "erudi",
-  "productName": "Erudi - AI Assistant",
+  "productName": "erudi - AI Assistant",
   "version": "1.0.0",
-  "description": "Erudi is a modern desktop application designed to query and fine-tune AI models locally, with a user-friendly interface and your own data.",
+  "description": "erudi is a modern desktop application designed to query and fine-tune AI models locally, with a user-friendly interface and your own data.",
   "main": ".webpack/main",
   "scripts": {
     "start": "electron-forge start",
