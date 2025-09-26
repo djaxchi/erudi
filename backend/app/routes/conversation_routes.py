@@ -7,8 +7,11 @@ from ..schemas.message_schemas import MessageCreate, MessageResponse
 from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
 import torch
+import mlx_lm
 from datetime import datetime
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, QuantoConfig
+import mlx.core as mx
+import mlx_lm
 import logging
 from typing import List
 from ..database import get_db
@@ -53,8 +56,9 @@ _loaded_model = None
 _current_tokenizer = None
 _loaded_model_id = None
 _embedder = None
-_is_quant_on_current_load = None
+# _is_quant_on_current_load = None
 _conversation_summary_cache = {}
+# _device = "cpu"
 
 MISTRAL_RE = re.compile(
     r"(?:<s>|</s>|\[/?INST\]|\<\|/?(?:assistant|user|system|end)\|\>)"
@@ -170,79 +174,95 @@ def clear_memory():
     gc.collect()
 
 
-def load_model(quantize: bool, llm: Llm) -> None:
-    """
-    Load model with optional quantization. Handles memory management.
-    Args:
-        quantize (bool): Whether to apply quantization
-        llm (Llm): The LLM object containing model info
-    """
-    global _loaded_model, _current_tokenizer, _loaded_model_id, _is_quant_on_current_load
-
-    logging.info(f"Loading model {llm.id} (quantize={quantize})")
-    # Clear existing model if different LLM or different quantization state
-    should_reload = (
-        _loaded_model_id != llm.id or 
-        _loaded_model is None or 
-        (_loaded_model_id == llm.id and quantize != _is_quant_on_current_load)
-    )
-    
-    if not should_reload:
-        logging.info(f"Model {llm.id} already loaded with correct quantization state")
-        _loaded_model.eval()
+def load_model(llm: Llm) -> None:
+    global _loaded_model, _current_tokenizer, _loaded_model_id
+    if llm.id == _loaded_model_id and _loaded_model is not None and _current_tokenizer is not None:
+        logging.info(f"Model {llm.id} already loaded")
         return
-    
-    # Clear memory before loading
-    if _loaded_model is not None:
-        del _loaded_model
-        _loaded_model = None
-    if _current_tokenizer is not None:
-        del _current_tokenizer 
-        _current_tokenizer = None
-    clear_memory()
-    
+    print("Loading MLX model and tokenizer...")
     start = datetime.now()
-    logging.info(f"Loading model {llm.id} from {llm.link} (quantize={quantize})")
+    _loaded_model_id = llm.id
+    _loaded_model, _current_tokenizer = mlx_lm.load(llm.link)
+    print(f"Model and tokenizer loaded in {datetime.now() - start}")
+
+
+# def load_model_backup(quantize: bool, llm: Llm) -> None:
+#     """
+#     Load model with optional quantization. Handles memory management.
+#     Args:
+#         quantize (bool): Whether to apply quantization
+#         llm (Llm): The LLM object containing model info
+#     """
+#     global _loaded_model, _current_tokenizer, _loaded_model_id, _is_quant_on_current_load
+
+#     logging.info(f"Loading model {llm.id} (quantize={quantize})")
+#     # Clear existing model if different LLM or different quantization state
+#     should_reload = (
+#         _loaded_model_id != llm.id or 
+#         _loaded_model is None or 
+#         (_loaded_model_id == llm.id and quantize != _is_quant_on_current_load)
+#     )
     
-    quant_config = None
-    _is_quant_on_current_load = False
-    if quantize:
-        quant_config = QuantoConfig(
-            weights="int8",
-            activations=None,
-        )
-        _is_quant_on_current_load = True
+#     if not should_reload:
+#         logging.info(f"Model {llm.id} already loaded with correct quantization state")
+#         _loaded_model.eval()
+#         return
     
-    try:
-        max_memory = build_max_memory()
-        _loaded_model = AutoModelForCausalLM.from_pretrained(
-            llm.link,
-            local_files_only=True,
-            dtype="auto",
-            max_memory=max_memory,
-            quantization_config=quant_config,
-            low_cpu_mem_usage=True,
-            attn_implementation=None,
-            device_map="auto"
-        )
-        _current_tokenizer = AutoTokenizer.from_pretrained(
-            llm.link, local_files_only=True, use_fast=True
-        )
-        _loaded_model_id = llm.id
-        _loaded_model.eval()
-        logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
-    except Exception as e:
-        # Clean up on failure
-        if _loaded_model is not None:
-            del _loaded_model
-            _loaded_model = None
-        if _current_tokenizer is not None:
-            del _current_tokenizer
-            _current_tokenizer = None
-        _loaded_model_id = None
-        _is_quant_on_current_load = None
-        clear_memory()
-        raise e
+#     # Clear memory before loading
+#     if _loaded_model is not None:
+#         del _loaded_model
+#         _loaded_model = None
+#     if _current_tokenizer is not None:
+#         del _current_tokenizer 
+#         _current_tokenizer = None
+#     clear_memory()
+    
+#     start = datetime.now()
+#     logging.info(f"Loading model {llm.id} from {llm.link} (quantize={quantize})")
+    
+#     quant_config = None
+#     _is_quant_on_current_load = False
+#     if quantize:
+#         quant_config = QuantoConfig(
+#             weights="int8",
+#             activations=None,
+#         )
+#         _is_quant_on_current_load = True
+    
+#     try:
+#         # Build max_memory for CPU and MPS
+#         # max_memory = build_max_memory(cpu_frac=0.9, mps_frac=0.8)
+
+#         # Load model avec device_map="auto" mais forcer les embeddings sur CPU
+#         _loaded_model = AutoModelForCausalLM.from_pretrained(
+#             llm.link,
+#             local_files_only=True,
+#             dtype="auto",
+#             # max_memory=max_memory,
+#             quantization_config=quant_config,
+#             low_cpu_mem_usage=True,
+#             attn_implementation=None,
+#             # device_map="auto"
+#         ).to(_device)
+
+#         _current_tokenizer = AutoTokenizer.from_pretrained(
+#             llm.link, local_files_only=True, use_fast=True
+#         )
+#         _loaded_model_id = llm.id
+#         _loaded_model.eval()
+#         logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
+#     except Exception as e:
+#         # Clean up on failure
+#         if _loaded_model is not None:
+#             del _loaded_model
+#             _loaded_model = None
+#         if _current_tokenizer is not None:
+#             del _current_tokenizer
+#             _current_tokenizer = None
+#         _loaded_model_id = None
+#         _is_quant_on_current_load = None
+#         clear_memory()
+#         raise e
 
 
 clear_memory()
@@ -416,7 +436,7 @@ async def update_conversation(
     return conversation
 
 
-def get_conversation_history(db: Session, conversation_id: int):
+def get_conversation_history(db: Session, conversation_id: int) -> List[tuple]:
     try:
         messages = (
             db.query(Message)
@@ -440,12 +460,14 @@ def get_conversation_history(db: Session, conversation_id: int):
 
 def retrieve_context(
     query: str,
-    conversation_history,
+    conversation_history: List,
     conversation_id: int,
-    top_k=3,
-    n_last_turns=2,
-    model_type="mistral",
-):
+    llm: Llm,
+    db: Session,
+    top_k: int = 3,
+    n_last_turns: int = 1,
+    model_type: str = "mistral",
+) -> dict :
     """
     Retrieve relevant context from the conversation history based on semantic similarity and recency.
     Uses SentenceTransformer for embeddings and FAISS for similarity search.
@@ -457,8 +479,19 @@ def retrieve_context(
         n_last_turns (int): Number of last turns to include.
         model_type (str): The type of model to use for prompt engineering.
     Returns:
-        str: Formatted context string.
+        dict :
+        {   context_str (str) : Formatted context string.
+            long_term_memory (str) : long-term-memory (conversation summary by llm)
+            middle_term_memory (list) : middle-term-memory (top_k most relevant turns relative to the user query)
+        }
     """
+
+    context = {
+        "context_str": None,
+        "long_term_memory": None,
+        "middle_term_memory": None,
+        "kb_context": None,
+    }
 
     def get_cached_summary(conversation_id: int, current_message_count: int):
         """Get cached summary or determine if regeneration is needed."""
@@ -510,39 +543,47 @@ def retrieve_context(
             role = "User" if sender == "user" else "Assistant"
             conv_text += f"{role}: {msg}\n"
 
+        # THIS IS TO FIX IN ORDER TO KEEP ALL OF TRHE CONTEXT, BY CHUNKS AND NOT BY TRUNCKING AFTER 4000 CHAR
         if len(conv_text) > 4000:
             conv_text = conv_text[:4000] + "..."
 
-        mistral_summary_prompt = f"""<|system|>You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.<|end|>
+        # mistral_summary_prompt = f"""<|system|>You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.<|end|>
 
-        <|user|>Summarize this conversation:
+        # <|user|>Summarize this conversation:
+
+        # {conv_text}
+
+        # Summary:<|end|>
+        # <|assistant|>"""
+
+        # gemma_summary_prompt = f"""<start_of_turn>user
+        # You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.
+
+        # Summarize this conversation:
+
+        # {conv_text}
+
+        # Summary:<end_of_turn>
+        # <start_of_turn>model
+        # """
+        
+        summary_sys_prompt = f"""You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words. No formatting needed, only a few phrases."""
+        summary_user_prompt = f"""Summarize this conversation:
 
         {conv_text}
 
-        Summary:<|end|>
-        <|assistant|>"""
+        Summary:"""
 
-        gemma_summary_prompt = f"""<start_of_turn>user
-        You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.
-
-        Summarize this conversation:
-
-        {conv_text}
-
-        Summary:<end_of_turn>
-        <start_of_turn>model
-        """
         try:
-            input_device = _loaded_model.get_input_embeddings().weight.device
-            if model_type == "mistral":
+            """if model_type == "mistral":
                 input_ids = _current_tokenizer.encode(
                     mistral_summary_prompt, return_tensors="pt"
-                ).to(input_device)
+                ).to(_device)
                 end_ids = [4, 2]
             elif model_type == "gemma":
                 input_ids = _current_tokenizer.encode(
                     gemma_summary_prompt, return_tensors="pt"
-                ).to(input_device)
+                ).to(_device)
                 end_ids = [1, 106]
 
             with torch.no_grad():
@@ -567,6 +608,30 @@ def retrieve_context(
                 summary = GEMMA_RE.sub("", full_response)
             else:
                 summary = full_response
+            """
+
+            # Model Loading
+            try:
+                prompt_tokens = _current_tokenizer.apply_chat_template([{"role": "system", "content": summary_sys_prompt}, {"role": "user", "content": summary_user_prompt}])
+                sampler = mlx_lm.sample_utils.make_sampler(
+                    0.1,
+                    0.5,
+                    min_p=0.0,
+                    top_k=64,
+                    xtc_special_tokens=_current_tokenizer.encode("\n") + list(_current_tokenizer.eos_token_ids)
+                )
+            except :
+                logging.exception("Failed to tokenize prompt")
+                raise
+            
+            summary = mlx_lm.generate(
+                _loaded_model,
+                _current_tokenizer,
+                prompt_tokens,
+                max_tokens=150,
+                sampler=sampler,
+                prompt_cache=None
+            )
 
             return summary
 
@@ -574,43 +639,41 @@ def retrieve_context(
             logging.exception(f"Summary generation failed: {e}")
             return ""
 
-    history = conversation_history[:-1]
-    if not history or len(history) < 2:
-        return ""
-
     context_lines = []
     current_message_count = len(conversation_history)
 
     # Conv summary context
-    summary_threshold = n_last_turns * 2 * 5
-    if len(history) > summary_threshold and _loaded_model and _current_tokenizer:
+    summary_threshold = n_last_turns * 2 * 2 
+    if len(conversation_history) > summary_threshold and _loaded_model and _current_tokenizer:
         cached_summary, need_regenerate = get_cached_summary(
             conversation_id, current_message_count
         )
 
         if need_regenerate:
             logging.info(
-                f"Generating new conversation summary for {len(history)} messages"
+                f"Generating new conversation summary for {len(conversation_history)} messages"
             )
-            summary = generate_conversation_summary(history, model_type=model_type)
-            if summary:
-                cache_summary(conversation_id, summary, current_message_count)
+            long_term_memory = generate_conversation_summary(conversation_history, model_type=model_type)
+            if long_term_memory:
+                cache_summary(conversation_id, long_term_memory, current_message_count + 1)
         else:
-            summary = cached_summary
+            long_term_memory = cached_summary
 
-        if summary:
+        if long_term_memory:
             context_lines.append("  - Conversation Summary:\n")
-            context_lines.append(f"{summary}")
+            context_lines.append(f"{long_term_memory}")
             context_lines.append("")
+            context["long_term_memory"] = long_term_memory
 
     n_recent = n_last_turns * 2
-    if len(history) > n_recent + 5:
-        semantic_history = history[:-n_recent]
+    if len(conversation_history) >= n_recent + 4:
+        semantic_history = conversation_history[:-n_recent]
     else:
         semantic_history = []
 
     # Semantic context
-    if len(semantic_history) >= top_k * 2:
+    if len(semantic_history) >= 2:
+        n_to_retrieve = top_k if len(semantic_history) >= 2*top_k else len(semantic_history)/2
         get_embedder()
         query_emb = _embedder.encode(query, convert_to_tensor=True)
         messages = [msg[1] for msg in semantic_history]
@@ -618,7 +681,7 @@ def retrieve_context(
         index = IndexFlatL2(len(msg_embs[0]))
         index.add(np.array(msg_embs))
         _, idxs = index.search(
-            np.array([query_emb.cpu().numpy()]), k=min(top_k, len(semantic_history))
+            np.array([query_emb.cpu().numpy()]), k=n_to_retrieve
         )
 
         used = set()
@@ -640,26 +703,49 @@ def retrieve_context(
                     semantic_lines.append(f"[user]: {prev_msg}")
                     used.add(prev_msg)
                     semantic_lines.append(f"[assistant]: {msg}")
-        if semantic_lines:
+        if semantic_lines and len(semantic_lines) > 0:
             context_lines.append(
                 f"  - Here are the {len(semantic_lines)//2} most relevant previous message exchanges:"
             )
             context_lines.extend(semantic_lines)
             context_lines.append("")
+            context["middle_term_memory"] = semantic_lines
+
+    # KB Context
+    if llm.is_attached_to_kb:
+        try:
+            kb_context = get_relevant_texts_if_kb(
+                query=query, llm=llm, db=db
+            )
+            if not kb_context:
+                logging.info("No relevant texts found in Knowledge Base")
+            else:
+                context_lines.append(
+                    "\n\nAlso: You are attached to a Knowledge Base. Here is context you need to know for this query:\n"
+                    + "\n".join(kb_context)
+                )
+                context["kb_context"] = kb_context
+
+        except Exception as e:
+            logging.exception("Failed to retrieve Knowledge Base context")
+            raise HTTPException(
+                status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}"
+            )
+    
 
     # Recency context
-    recent = history[-n_recent:] if len(history) >= n_recent else history
+    recent = conversation_history[-n_recent:] if len(conversation_history) >= n_recent else conversation_history
     if recent:
         context_lines.append(f"  - Here are the {len(recent)} most recent messages:")
         for sender, msg in recent:
             role = "[user]" if sender == "user" else "[assistant]"
             context_lines.append(f"{role}: {msg}")
 
-    if not context_lines:
-        return ""
-    return "Here is context about the conversation you had so far:\n\n" + "\n".join(
-        context_lines
-    )
+    if context_lines and len(context_lines)>0:
+        context["context_str"] = "Here is context about the conversation you had so far:\n\n" + "\n".join(context_lines)
+    
+    
+    return context
 
 
 @router.post("/conversations/{conversation_id}/generate_title")
@@ -685,26 +771,25 @@ async def generate_title(
     global _loaded_model, _current_tokenizer, _loaded_model_id, _is_quant_on_current_load
 
     try:
-        load_model(payload.quantize or False, llm)
+        load_model(llm)
     except Exception as e:
         logging.exception("Failed to load model or tokenizer: %s", e)
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
     try:
-        mistral_title_generation_prompt = f"""<|system|>You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation.<|end|>
+#         mistral_title_generation_prompt = f"""<|system|>You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation.<|end|>
 
-<|user|>Create a 2-to-5-word title for: {payload.question}
+# <|user|>Create a 2-to-5-word title for: {payload.question}
 
-Examples:
-- How to cook pasta? → Pasta Cooking Guide
-- What is machine learning? → Machine Learning Basics
-- Help me with Python code → Python Code Help
+# Examples:
+# - How to cook pasta? → Pasta Cooking Guide
+# - What is machine learning? → Machine Learning Basics
+# - Help me with Python code → Python Code Help
 
-Your very short title:<|end|>
-<|assistant|>"""
+# Your very short title:<|end|>
+# <|assistant|>"""
 
-        gemma_title_generation_prompt = f"""<start_of_turn>user
-You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation. Do NOT add any extra text, polite statements, or whatsoever. ONLY return the title.
+        system_title_generation_prompt = f"""You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation. Do NOT add any extra text, polite statements, or whatsoever. ONLY return the title.
 
 Examples you need to follow:
 - user: How to cook pasta? model: Pasta Cooking Guide
@@ -713,29 +798,44 @@ Examples you need to follow:
 - user: Hey what's up ? model: Chill Conversation
 - user: Can you help me with my homework?? I struggle with my maths excercice about Bayes' Theorem. Explain it please.. model: Bayes' Theorem Explained
 
-Create a 2-to-5-word title for: {payload.question}<end_of_turn>
-<start_of_turn>model
-"""     
-        input_device = _loaded_model.get_input_embeddings().weight.device
-        if model_type == "mistral":
+Now it's your turn. Keep it short, precise, and without any extra information."""     
+        
+        user_title_generation_prompt = f"""Create a 2-to-5-word title for:
+{payload.question}"""
+        full_title_generation_prompt = [
+            {"role": "system", "content": system_title_generation_prompt},
+            {"role": "user", "content": user_title_generation_prompt}
+        ]
+        prompt_tokens = _current_tokenizer.apply_chat_template(full_title_generation_prompt)
+        sampler = mlx_lm.sample_utils.make_sampler(
+            0.05,
+            0.3,
+            min_p=0.0,
+            top_k=64,
+            xtc_special_tokens=_current_tokenizer.encode("\n") + list(_current_tokenizer.eos_token_ids)
+        )
+
+        """if model_type == "mistral":
             input_ids = _current_tokenizer.encode(
                 mistral_title_generation_prompt, return_tensors="pt"
-            ).to(input_device)
+            ).to(_device)
             end_ids = [4, 2]
         elif model_type == "gemma":
             input_ids = _current_tokenizer.encode(
-                gemma_title_generation_prompt, return_tensors="pt"
-            ).to(input_device)
+                system_title_generation_prompt, return_tensors="pt"
+            ).to(_device)
             end_ids = [1, 106]
+    """
+    
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
 
-    streamer = TextIteratorStreamer(
+    """streamer = TextIteratorStreamer(
         _current_tokenizer, skip_prompt=True, skip_special_tokens=True
-    )
+    )"""
 
-    generation_kwargs = dict(
+    """generation_kwargs = dict(
         input_ids=input_ids,
         streamer=streamer,
         max_new_tokens=15,
@@ -745,9 +845,9 @@ Create a 2-to-5-word title for: {payload.question}<end_of_turn>
         pad_token_id=0 if model_type == "gemma" else None,
         eos_token_id=end_ids,
         do_sample=True,
-    )
+    )"""
 
-    def run_title_generation():
+    """def run_title_generation():
         try:
             with torch.no_grad():
                 _loaded_model.generate(**generation_kwargs)
@@ -758,50 +858,57 @@ Create a 2-to-5-word title for: {payload.question}<end_of_turn>
             )
 
     title_thread = threading.Thread(target=run_title_generation)
-    title_thread.start()
+    title_thread.start()"""
 
     async def title_stream():
         generated_title = ""
         try:
-            for new_text in streamer:
-
+            for new_text in mlx_lm.stream_generate(
+                _loaded_model,
+                _current_tokenizer,
+                prompt_tokens,
+                max_tokens=15,
+                sampler=sampler,
+                prompt_cache=None
+            ):
+                text = new_text.text
                 if (
                     model_type == "mistral"
-                    and new_text.strip() == ""
-                    or "<" in new_text
-                    or ">" in new_text
-                    or "INST" in new_text
-                    or "/" in new_text
-                    or "[" in new_text
-                    or "|" in new_text
-                    or "end" in new_text
-                    or "assistant" in new_text
-                    or "system" in new_text
-                    or "user" in new_text
-                    or "title" in new_text
-                    or "Your very short title" in new_text
-                    or "Examples:" in new_text
-                    or "Create a 2-to-5-word title for:" in new_text
+                    and text.strip() == ""
+                    or "<" in text
+                    or ">" in text
+                    or "INST" in text
+                    or "/" in text
+                    or "[" in text
+                    or "|" in text
+                    or "end" in text
+                    or "assistant" in text
+                    or "system" in text
+                    or "user" in text
+                    or "title" in text
+                    or "Your very short title" in text
+                    or "Examples:" in text
+                    or "Create a 2-to-5-word title for:" in text
                 ) or (
                     model_type == "gemma"
-                    and new_text.strip() == ""
-                    or "<start_of" in new_text
-                    or "bos" in new_text
-                    or "eos" in new_text
-                    or ">" in new_text
-                    or "<" in new_text
-                    or "<end_of" in new_text
-                    or "_turn>" in new_text
-                    or "assistant" in new_text
-                    or "system" in new_text
-                    or "user" in new_text
-                    or "title" in new_text
-                    or "Your very short title" in new_text
-                    or "Examples:" in new_text
-                    or "Create a 2-to-5-word title for:" in new_text
+                    and text.strip() == ""
+                    or "<start_of" in text
+                    or "bos" in text
+                    or "eos" in text
+                    or ">" in text
+                    or "<" in text
+                    or "<end_of" in text
+                    or "_turn>" in text
+                    or "assistant" in text
+                    or "system" in text
+                    or "user" in text
+                    or "title" in text
+                    or "Your very short title" in text
+                    or "Examples:" in text
+                    or "Create a 2-to-5-word title for:" in text
                 ):
                     continue
-                cleaned_token = new_text[0].upper() + new_text[1:]
+                cleaned_token = text[0].upper() + text[1:]
                 generated_title += cleaned_token
                 logging.info(f"Yielding title token: {cleaned_token}")
                 yield cleaned_token
@@ -809,7 +916,7 @@ Create a 2-to-5-word title for: {payload.question}<end_of_turn>
             logging.exception("Title streaming failed")
             raise HTTPException(status_code=500, detail="Title streaming failed")
         finally:
-            title_thread.join()
+            # title_thread.join()
             words = generated_title.strip().split()
             if (
                 '"' in words
@@ -826,6 +933,7 @@ Create a 2-to-5-word title for: {payload.question}<end_of_turn>
                 or "Okay" in words
                 or "," in words
                 or ":" in words
+                or "`" in words
             ):
                 words.remove('"')
                 words.remove("'")
@@ -841,10 +949,11 @@ Create a 2-to-5-word title for: {payload.question}<end_of_turn>
                 words.remove("Okay")
                 words.remove(",")
                 words.remove(":")
+                words.remove("`")
             words = [re.sub(r"<.*?>", "", word) for word in words if word]
             final_title = " ".join(words[:6]) if len(words) >= 6 else " ".join(words)
 
-            conversation.name = final_title
+            conversation.name = final_title if (final_title and final_title.strip() != "") else "New Conversation"
             db.add(conversation)
             db.commit()
             logging.info("Title generated and saved: %s", conversation.name)
@@ -859,8 +968,6 @@ async def query_and_respond(
     db: Session = Depends(get_db),
 ):
     logging.info("Payload reçu : %s", payload.dict())
-    quantize = payload.quantize or False
-    logging.info(quantize)
     user_prompt = payload.custom_prompt
     conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -882,104 +989,101 @@ async def query_and_respond(
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     model_type = llm.type
-    global _loaded_model, _current_tokenizer, _loaded_model_id, _is_quant_on_current_load
 
+    # Context Fetching
     try:
-        load_model(quantize, llm)
-    except Exception as e:
-        logging.exception("Failed to load model or tokenizer")
-        raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
-
-    context = None
-    try:
-        conversation_history = get_conversation_history(db, conversation_id)
-        if not conversation_history:
+        full_msgs_history = get_conversation_history(db, conversation_id)
+        if full_msgs_history[-1][0] == "user" :
+            full_msgs_history.pop(-1)
+        if not full_msgs_history or full_msgs_history == []:
             logging.info(
                 "No previous messages in conversation, skipping context retrieval"
             )
-        else:
-            logging.info(f"Retrieving context for conversation {conversation_id}")
-            start = datetime.now()
-            context = retrieve_context(
-                payload.question,
-                conversation_history,
-                conversation_id,
-                top_k=payload.n_relevent_msgs_to_get or 3,
-                n_last_turns=payload.n_last_turns_to_get or 2,
-                model_type=model_type,
-            )
 
+        logging.info(f"Retrieving context for conversation {conversation_id}")
+        start = datetime.now()
+        context = retrieve_context(
+            payload.question,
+            full_msgs_history,
+            conversation_id,
+            top_k=payload.n_relevent_msgs_to_get or 3,
+            n_last_turns=payload.n_last_turns_to_get or 2,
+            model_type=model_type,
+            llm=llm,
+            db=db
+        )
+        context_str, long_term_memory, middle_term_memory, kb_context = context["context_str"], context["long_term_memory"], context["middle_term_memory"], context["kb_context"],
+
+        messages_starred = []
+        if full_msgs_history:
+            for msg in full_msgs_history:
+                msg_starred_object = (
+                    db.query(Message)
+                    .filter(Message.content == msg[1], Message.starred == True)
+                    .first()
+                )
+                if msg_starred_object:
+                    messages_starred.append(msg_starred_object.content)
+            if len(messages_starred) == 0:
+                messages_starred = None
     except Exception as e:
         logging.exception("Failed to retrieve context")
         raise HTTPException(
             status_code=500, detail=f"Context retrieval error: {str(e)}"
         )
 
-    if llm.is_attached_to_kb:
-        try:
-            kb_knowledge = get_relevant_texts_if_kb(
-                query=payload.question, llm=llm, db=db
-            )
-            if not kb_knowledge:
-                logging.info("No relevant texts found in Knowledge Base")
-            else:
-                if context:
-                    context += (
-                        "\n\nAlso: You are attached to a Knowledge Base. Here is context you need to know for this query:\n"
-                        + "\n".join(kb_knowledge)
-                    )
-                else:
-                    context = (
-                        "You are attached to a Knowledge Base. Here is context you need to know for this query:\n"
-                        + "\n".join(kb_knowledge)
-                    )
-        except Exception as e:
-            logging.exception("Failed to retrieve Knowledge Base context")
-            raise HTTPException(
-                status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}"
-            )
+    # Prompt construction
+    sys_prompt = f"""You are {llm.name}, a concise and helpful assistant; answer directly in the user's tone without repeating context or mentioning instructions."""
+    if payload.custom_prompt:
+        sys_prompt += f"\nAdditional instructions: {payload.custom_prompt}"
+    if kb_context and kb_context != "":
+        sys_prompt += f"\nUser attached you to a Knowledge Base. Relevant parts are:\n" + "\n".join(kb_context)
+    if long_term_memory and long_term_memory != "":
+        sys_prompt += f"\nSummary of the conversation you had so far: {long_term_memory}"
+    final_prompt = [
+        {"role": "system", "content": sys_prompt}
+    ]
+    if len(full_msgs_history or []) > 0:
+        start_idx = len(full_msgs_history) - 1 - 2 * (payload.n_last_turns_to_get or 1) -1
+        print("start_idx:", start_idx)
+        print("len(full_msgs_history):", len(full_msgs_history))
+        for i in range(start_idx, len(full_msgs_history), 2):
+            print ("i:", i)
+            print("full_msgs_history[i]:", full_msgs_history[i])
+            final_prompt.append({"role": "user", "content": full_msgs_history[i]})
+            final_prompt.append({"role": "assistant", "content": full_msgs_history[i+1]})
+    
+    final_prompt.append({"role": "user", "content": payload.question})
+    logging.info("Final prompt to model:\n%s", final_prompt)
 
-    lang = payload.language or "fr"
-    max_tokens_out = payload.max_new_tokens or 1024
-    custom_sys_prompt = payload.custom_prompt if payload.custom_prompt else None
-    messages_starred = []
-    if conversation_history:
-        for msg in conversation_history:
-            msg_starred_object = (
-                db.query(Message)
-                .filter(Message.content == msg[1], Message.starred == True)
-                .first()
-            )
-            if msg_starred_object:
-                messages_starred.append(msg_starred_object.content)
-    prompt_text = build_conv_prompt(
-        question=payload.question,
-        context=context,
-        language=lang,
-        max_tokens=max_tokens_out,
-        custom_sys_prompt=custom_sys_prompt,
-        messages_starred=messages_starred,
-        model_type=model_type,
-    )
-
-    logging.info("Final prompt to model:\n%s", prompt_text)
+    # Model Loading
+    try:
+        load_model(llm)
+    except Exception as e:
+        logging.exception("Failed to load model or tokenizer")
+        raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
     try:
-        input_device = _loaded_model.get_input_embeddings().weight.device
-        input_ids = _current_tokenizer.encode(prompt_text, return_tensors="pt").to(input_device)
-        if model_type == "mistral":
-            end_ids = [4, 2]
-        elif model_type == "gemma":
-            end_ids = [1, 106]
+        prompt_tokens = _current_tokenizer.apply_chat_template(final_prompt)
+        sampler = mlx_lm.sample_utils.make_sampler(
+            payload.temperature,
+            payload.top_p,
+            min_p=0.0,
+            top_k=64,
+            xtc_special_tokens=_current_tokenizer.encode("\n") + list(_current_tokenizer.eos_token_ids)
+        )
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
 
-    streamer = TextIteratorStreamer(
+    """streamer = TextIteratorStreamer(
         _current_tokenizer, skip_prompt=True, skip_special_tokens=True
-    )
+    )"""
 
-    # Fixer le pad_token_id pour Gemma
+    # TO FIX BY ADDING LOGITS PROCESSORS
+    # Generate response
+
+    """# Fixer le pad_token_id pour Gemma
     if model_type == "gemma":
         if _current_tokenizer.pad_token_id is None:
             _current_tokenizer.pad_token_id = _current_tokenizer.eos_token_id
@@ -988,8 +1092,8 @@ async def query_and_respond(
         input_ids=input_ids,
         streamer=streamer,
         max_new_tokens=max_tokens_out,
-        temperature=payload.temperature or 0.7,
-        top_p=payload.top_p or 0.9,
+        temperature=payload.temperature or 0.2,
+        top_p=payload.top_p or 0.5,
         top_k=64,
         num_beams=1,
         pad_token_id=_current_tokenizer.pad_token_id if model_type == "gemma" else (0 if model_type == "gemma" else None),
@@ -1006,16 +1110,18 @@ async def query_and_respond(
         })
 
     logging.info(
-        "Generation kwargs for Mistral : %s, %s, %s",
+        "Generation kwargs : %s, %s, %s",
         generation_kwargs["max_new_tokens"],
         generation_kwargs["temperature"],
         generation_kwargs["top_p"],
     )
+    
 
     def run_response_inference():
         logging.info(
             f"Generating response for conversation {conversation_id} with question: {payload.question}"
         )
+        start = datetime.now()
         try:
             with torch.no_grad():
                 _loaded_model.generate(**generation_kwargs)
@@ -1024,8 +1130,10 @@ async def query_and_respond(
             logging.error(f"Generation error: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
+        logging.info(f"Generation of response took: {datetime.now() - start} seconds.")
     response_thread = threading.Thread(target=run_response_inference)
     response_thread.start()
+    
 
     async def assistant_response_token_stream():
         assistant_response = ""
@@ -1063,8 +1171,266 @@ async def query_and_respond(
             db.commit()
 
             logging.info("Generation thread finished")
+    """
 
+    async def assistant_response_token_stream():
+        assistant_response = ""
+        start = datetime.now()
+        logging.info(f"Generating response from MLX model for prompt: {payload.question}")
+        try:
+            for new_text in mlx_lm.stream_generate(
+                _loaded_model,
+                _current_tokenizer,
+                prompt_tokens,
+                max_tokens=payload.max_new_tokens or 1024,
+                sampler=sampler,
+                prompt_cache=None
+            ):
+                
+                text = new_text.text
+
+                assistant_response += text
+                logging.info(f"Yielding token: {text}")
+                if text:
+                    yield text
+
+        except Exception as e:
+            logging.exception("Streaming failed")
+            error_msg = "[ERROR_MESSAGE_SYSTEM] Generation failed due to an error. Please try again or contact developer team."
+            assistant_response = error_msg
+            yield error_msg
+            raise HTTPException(status_code=500, detail=f"Streaming error: {str(e)}")
+        finally:
+            # Store the response (either successful or error message)
+            assistant_message = Message(
+                conversation_id=conversation_id,
+                sender="llm",
+                content=assistant_response.strip(),
+            )
+            db.add(assistant_message)
+            conversation.last_message_time = datetime.now()
+            db.commit()
+            logging.info(f"Response generated in {datetime.now() - start} seconds")
+
+            logging.info("Generation finished")
+    
     return StreamingResponse(assistant_response_token_stream(), media_type="text/plain")
+
+
+
+# async def query_and_respond_backup(
+#     conversation_id: int,
+#     payload: ConversationQuery,
+#     db: Session = Depends(get_db),
+# ):
+#     logging.info("Payload reçu : %s", payload.dict())
+#     quantize = payload.quantize or False
+#     logging.info(quantize)
+#     user_prompt = payload.custom_prompt
+#     conversation = (
+#         db.query(Conversation).filter(Conversation.id == conversation_id).first()
+#     )
+
+#     if not conversation:
+#         raise HTTPException(status_code=404, detail="Conversation not found")
+
+#     user_message = Message(
+#         conversation_id=conversation_id, sender="user", content=payload.question
+#     )
+#     db.add(user_message)
+#     db.flush()
+
+#     conversation.last_message_time = datetime.now()
+#     db.commit()
+
+#     llm = db.query(Llm).filter(Llm.id == conversation.llm_id).first()
+#     if not llm:
+#         raise HTTPException(status_code=404, detail="LLM not found")
+#     model_type = llm.type
+#     global _loaded_model, _current_tokenizer, _loaded_model_id, _is_quant_on_current_load
+
+#     try:
+#         load_model(quantize, llm)
+#     except Exception as e:
+#         logging.exception("Failed to load model or tokenizer")
+#         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
+
+#     context = None
+#     try:
+#         conversation_history = get_conversation_history(db, conversation_id)
+#         if not conversation_history:
+#             logging.info(
+#                 "No previous messages in conversation, skipping context retrieval"
+#             )
+#         else:
+#             logging.info(f"Retrieving context for conversation {conversation_id}")
+#             start = datetime.now()
+#             context = retrieve_context(
+#                 payload.question,
+#                 conversation_history,
+#                 conversation_id,
+#                 top_k=payload.n_relevent_msgs_to_get or 3,
+#                 n_last_turns=payload.n_last_turns_to_get or 2,
+#                 model_type=model_type,
+#             )
+
+#     except Exception as e:
+#         logging.exception("Failed to retrieve context")
+#         raise HTTPException(
+#             status_code=500, detail=f"Context retrieval error: {str(e)}"
+#         )
+
+#     if llm.is_attached_to_kb:
+#         try:
+#             kb_knowledge = get_relevant_texts_if_kb(
+#                 query=payload.question, llm=llm, db=db
+#             )
+#             if not kb_knowledge:
+#                 logging.info("No relevant texts found in Knowledge Base")
+#             else:
+#                 if context:
+#                     context += (
+#                         "\n\nAlso: You are attached to a Knowledge Base. Here is context you need to know for this query:\n"
+#                         + "\n".join(kb_knowledge)
+#                     )
+#                 else:
+#                     context = (
+#                         "You are attached to a Knowledge Base. Here is context you need to know for this query:\n"
+#                         + "\n".join(kb_knowledge)
+#                     )
+#         except Exception as e:
+#             logging.exception("Failed to retrieve Knowledge Base context")
+#             raise HTTPException(
+#                 status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}"
+#             )
+
+#     lang = payload.language or "fr"
+#     max_tokens_out = payload.max_new_tokens or 1024
+#     custom_sys_prompt = payload.custom_prompt if payload.custom_prompt else None
+#     messages_starred = []
+#     if conversation_history:
+#         for msg in conversation_history:
+#             msg_starred_object = (
+#                 db.query(Message)
+#                 .filter(Message.content == msg[1], Message.starred == True)
+#                 .first()
+#             )
+#             if msg_starred_object:
+#                 messages_starred.append(msg_starred_object.content)
+#     prompt_text = build_conv_prompt(
+#         question=payload.question,
+#         context=context,
+#         language=lang,
+#         max_tokens=max_tokens_out,
+#         custom_sys_prompt=custom_sys_prompt,
+#         messages_starred=messages_starred,
+#         model_type=model_type,
+#     )
+
+#     logging.info("Final prompt to model:\n%s", prompt_text)
+
+#     try:
+#         input_ids = _current_tokenizer.encode(prompt_text, return_tensors="pt").to(_device)
+#         if model_type == "mistral":
+#             end_ids = [4, 2]
+#         elif model_type == "gemma":
+#             end_ids = [1, 106]
+#     except Exception as e:
+#         logging.exception("Failed to tokenize prompt")
+#         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
+
+#     streamer = TextIteratorStreamer(
+#         _current_tokenizer, skip_prompt=True, skip_special_tokens=True
+#     )
+
+#     # Fixer le pad_token_id pour Gemma
+#     if model_type == "gemma":
+#         if _current_tokenizer.pad_token_id is None:
+#             _current_tokenizer.pad_token_id = _current_tokenizer.eos_token_id
+
+#     generation_kwargs = dict(
+#         input_ids=input_ids,
+#         streamer=streamer,
+#         max_new_tokens=max_tokens_out,
+#         temperature=payload.temperature or 0.2,
+#         top_p=payload.top_p or 0.5,
+#         top_k=64,
+#         num_beams=1,
+#         pad_token_id=_current_tokenizer.pad_token_id if model_type == "gemma" else (0 if model_type == "gemma" else None),
+#         eos_token_id=end_ids,
+#         do_sample=True,
+#     )
+
+#     # Garde-fous spécifiques pour Gemma (petits modèles)
+#     if model_type == "gemma":
+#         generation_kwargs.update({
+#             "repetition_penalty": 1.12,
+#             "no_repeat_ngram_size": 6,
+#             "min_new_tokens": 1,
+#         })
+
+#     logging.info(
+#         "Generation kwargs : %s, %s, %s",
+#         generation_kwargs["max_new_tokens"],
+#         generation_kwargs["temperature"],
+#         generation_kwargs["top_p"],
+#     )
+
+#     def run_response_inference():
+#         logging.info(
+#             f"Generating response for conversation {conversation_id} with question: {payload.question}"
+#         )
+#         start = datetime.now()
+#         try:
+#             with torch.no_grad():
+#                 _loaded_model.generate(**generation_kwargs)
+#         except Exception as e:
+#             logging.exception(f"Generation failed : {e}")
+#             logging.error(f"Generation error: {str(e)}")
+#             raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
+
+#         logging.info(f"Generation of response took: {datetime.now() - start} seconds.")
+#     response_thread = threading.Thread(target=run_response_inference)
+#     response_thread.start()
+
+#     async def assistant_response_token_stream():
+#         assistant_response = ""
+#         try:
+#             for new_text in streamer:
+#                 if model_type == "mistral":
+#                     cleaned = MISTRAL_RE.sub("", new_text)
+#                 elif model_type.startswith("gemma"):
+#                     cleaned = GEMMA_RE.sub("", new_text)
+#                 else:
+#                     cleaned = new_text
+
+#                 assistant_response += cleaned
+#                 logging.info(f"Yielding token: {cleaned}")
+#                 if cleaned:
+#                     yield cleaned
+
+#         except Exception as e:
+#             logging.exception("Streaming failed")
+#             error_msg = "[ERROR_MESSAGE_SYSTEM] Generation failed due to an error. Please try again or contact developer team."
+#             assistant_response = error_msg
+#             yield error_msg
+#             raise HTTPException(status_code=500, detail=f"Streaming error: {str(e)}")
+#         finally:
+#             response_thread.join()
+
+#             # Store the response (either successful or error message)
+#             assistant_message = Message(
+#                 conversation_id=conversation_id,
+#                 sender="llm",
+#                 content=assistant_response.strip(),
+#             )
+#             db.add(assistant_message)
+#             conversation.last_message_time = datetime.now()
+#             db.commit()
+
+#             logging.info("Generation thread finished")
+
+#     return StreamingResponse(assistant_response_token_stream(), media_type="text/plain")
 
 
 @router.post("/conversations/delete_bulk")

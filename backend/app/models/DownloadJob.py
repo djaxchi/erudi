@@ -9,7 +9,8 @@ class DownloadJobModel(Base):
     remote_model_id = Column(String, nullable=False)
     local_model_id = Column(String, nullable=True)
     remote_model_link = Column(String, nullable=False)
-    local_model_link = Column(String, nullable=True)
+    temp_local_model_link = Column(String, nullable=True)
+    final_local_model_link = Column(String, nullable=True)
     status = Column(String, default="pending")  # pending, running, completed, failed
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
