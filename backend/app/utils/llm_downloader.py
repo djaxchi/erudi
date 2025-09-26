@@ -10,7 +10,7 @@ import threading
 import shutil
 import logging
 import asyncio
-import gc
+import mlx_lm
 from datetime import datetime
 from threading import Lock
 from typing import Callable, Optional, List, Tuple
@@ -34,7 +34,7 @@ HF_TOKEN = os.getenv("HF_TOKEN", "")
 FILES_TO_EXCLUDE = ["consolidated.safetensors"]
 
 
-class DownloadJob:
+class DownloadTracker:
     """
     Tracks download progress across multiple files and estimates ETA.
 
@@ -105,7 +105,7 @@ class DownloadJob:
         logger.info("ETA monitoring complete")
 
 
-def make_callback(job: DownloadJob) -> Callback:
+def make_callback(job: DownloadTracker) -> Callback:
     """
     Create an fsspec Callback to update DownloadJob on each transfer chunk.
 
@@ -123,7 +123,7 @@ def make_callback(job: DownloadJob) -> Callback:
     return Callback(size=job.total_bytes, hooks={"transfer-chunk": after_chunk})
 
 
-def update_db_with_progress(job: DownloadJob, job_id: int, model_id: int) -> None:
+def update_db_with_progress(job: DownloadTracker, job_id: int, model_id: int) -> None:
     """
     Periodically update DownloadJobModel row in the database.
 
@@ -194,11 +194,29 @@ async def download_files_concurrent(
         coros.append(loop.run_in_executor(None, fs.get_file, remote, dest, callback))
     await asyncio.gather(*coros)
 
+async def convert_hf_mlx(hf_dir: str, mlx_dir: str):
+    """Convert Hugging Face model to MLX format."""
+    try:
+        logger.info(f"Starting conversion from HF to MLX")
+        start = datetime.now()
+        if os.path.exists(mlx_dir):
+            shutil.rmtree(mlx_dir, ignore_errors=True)
+        mlx_lm.convert(
+            hf_dir,
+            mlx_path=mlx_dir,
+            quantize=True,
+            q_bits=4
+        )
+        logger.info(f"Model converted to mlx in {datetime.now() - start}")
+    except:
+        raise
+
 
 async def download_llm(
     model_link: str,
     model_id: int,
-    save_dir: str,
+    temp_save_dir: str,
+    final_save_dir: str,
     job_id: Optional[int] = None
 ) -> str:
     """
@@ -207,22 +225,23 @@ async def download_llm(
     Args:
         model_link (str): Hugging Face repo ID.
         model_id (int): Database ID of the LLM model.
-        save_dir (str): Base directory for downloads.
+        temp_save_dir (str): Temporary directory for full-precision model.
+        final_save_dir (str): Final directory for mlx quantized model.
         job_id (Optional[int]): DownloadJobModel ID to update.
 
     Returns:
         str: Final local path containing downloaded files.
     """
     # Prepare local path
-    os.makedirs(save_dir, exist_ok=True)
-    logger.info(f"Starting download for {model_link} → {save_dir}")
+    os.makedirs(temp_save_dir, exist_ok=True)
+    logger.info(f"Starting download for {model_link} → {temp_save_dir}")
 
     # Initialize HF API & filesystem
     api = HfApi(token=HF_TOKEN)
     fs = HfFileSystem(token=HF_TOKEN)
 
     # Initialize tracking
-    job = DownloadJob()
+    job = DownloadTracker()
 
     # Gather file sizes and compute total
     info = api.repo_info(model_link, files_metadata=True)
@@ -256,16 +275,24 @@ async def download_llm(
 
     # Download misc sequentially
     for path in misc:
-        await asyncio.to_thread(fs.get_file, f"{model_link}/{path}", os.path.join(save_dir, path), callback)
+        await asyncio.to_thread(fs.get_file, f"{model_link}/{path}", os.path.join(temp_save_dir, path), callback)
         logger.info(f"Downloaded {path}")
 
     # Download shards concurrently
     shard_tasks = [(model_link, path) for path in shards]
-    await download_files_concurrent(fs, callback, shard_tasks, save_dir)
+    await download_files_concurrent(fs, callback, shard_tasks, temp_save_dir)
     logger.info("All shards downloaded")
 
+    # Quantize the model and push into final directory
+    try:
+        await asyncio.to_thread(convert_hf_mlx, temp_save_dir, final_save_dir)
+        shutil.rmtree(temp_save_dir, ignore_errors=True)
+    except Exception as e:
+        logger.error(f"Failed to convert model: {e}")
+        raise
+    
     # Wait for ETA monitor to finish
     await eta_task
     logger.info("Download complete")
 
-    return save_dir
+    return temp_save_dir
