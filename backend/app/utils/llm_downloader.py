@@ -33,6 +33,32 @@ logger.setLevel(logging.INFO)
 HF_TOKEN = os.getenv("HF_TOKEN", "")
 FILES_TO_EXCLUDE = ["consolidated.safetensors"]
 
+# Mapping of original model links to MLX-quantized versions
+# Format: "original/repo": "mlx-community/quantized-repo"
+MLX_MODEL_MAPPING = {
+    "mistralai/Mistral-7B-Instruct-v0.3": "mlx-community/Mistral-7B-Instruct-v0.3-4bit",
+    "mistralai/Mistral-7B-v0.3": "mlx-community/Mistral-7B-v0.3-4bit",
+    "google/gemma-3-1b-it": "mlx-community/gemma-3-1b-it-8bit",
+    "google/gemma-2-2b-it": "mlx-community/gemma-2-2b-it-8bit",
+    "google/gemma-3-4b-it": "mlx-community/gemma-3-4b-it-8bit",
+}
+
+
+def get_mlx_model_link(original_link: str) -> str:
+    """
+    Convert an original model link to its MLX-quantized version if available.
+    
+    Args:
+        original_link (str): Original Hugging Face model link
+        
+    Returns:
+        str: MLX-quantized model link if mapping exists, otherwise original link
+    """
+    mlx_link = MLX_MODEL_MAPPING.get(original_link, original_link)
+    if mlx_link != original_link:
+        logger.info(f"Using MLX-quantized model: {original_link} -> {mlx_link}")
+    return mlx_link
+
 
 class DownloadTracker:
     """
@@ -232,10 +258,15 @@ async def download_llm(
     Returns:
         str: Final local path containing downloaded files.
     """
+    # Convert to MLX-quantized version if available
+    actual_download_link = get_mlx_model_link(model_link)
+    
     # Prepare local path
     os.makedirs(temp_save_dir, exist_ok=True)
     os.makedirs(final_save_dir, exist_ok=True)
     logger.info(f"Starting download for {model_link} → {temp_save_dir}")
+    if actual_download_link != model_link:
+        logger.info(f"Downloading MLX-quantized version from: {actual_download_link}")
 
     # Initialize HF API & filesystem
     api = HfApi(token=HF_TOKEN)
@@ -245,7 +276,7 @@ async def download_llm(
     job = DownloadTracker()
 
     # Gather file sizes and compute total
-    info = api.repo_info(model_link, files_metadata=True)
+    info = api.repo_info(actual_download_link, files_metadata=True)
     file_sizes = {
         s.rfilename: s.size
         for s in info.siblings
@@ -270,26 +301,35 @@ async def download_llm(
     eta_task = asyncio.create_task(job.monitor_eta(interval=5.0))
 
     # Split tasks into misc and shard files
-    all_files = [f for f in api.list_repo_files(model_link) if f in file_sizes]
+    all_files = [f for f in api.list_repo_files(actual_download_link) if f in file_sizes]
     misc = [f for f in all_files if not f.endswith(".safetensors")]
     shards = [f for f in all_files if f.endswith(".safetensors")]
 
     # Download misc sequentially
     for path in misc:
-        await asyncio.to_thread(fs.get_file, f"{model_link}/{path}", os.path.join(temp_save_dir, path), callback)
+        await asyncio.to_thread(fs.get_file, f"{actual_download_link}/{path}", os.path.join(temp_save_dir, path), callback)
         logger.info(f"Downloaded {path}")
 
     # Download shards concurrently
-    shard_tasks = [(model_link, path) for path in shards]
+    shard_tasks = [(actual_download_link, path) for path in shards]
     await download_files_concurrent(fs, callback, shard_tasks, temp_save_dir)
     logger.info("All shards downloaded")
 
-    # Quantize the model and push into final directory
+    # If using MLX-quantized model, just move files; otherwise convert
     try:
-        await asyncio.to_thread(convert_hf_mlx, temp_save_dir, final_save_dir)
-        shutil.rmtree(temp_save_dir, ignore_errors=True)
+        if actual_download_link != model_link:
+            # Already MLX-quantized, just move to final directory
+            logger.info("Using pre-quantized MLX model, moving files directly")
+            if os.path.exists(final_save_dir):
+                shutil.rmtree(final_save_dir, ignore_errors=True)
+            shutil.move(temp_save_dir, final_save_dir)
+        else:
+            # Need to convert to MLX format
+            logger.info("Converting model to MLX format")
+            await asyncio.to_thread(convert_hf_mlx, temp_save_dir, final_save_dir)
+            shutil.rmtree(temp_save_dir, ignore_errors=True)
     except Exception as e:
-        logger.error(f"Failed to convert model: {e}")
+        logger.error(f"Failed to process model: {e}")
         raise
     
     # Wait for ETA monitor to finish
