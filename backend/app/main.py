@@ -288,6 +288,12 @@ async def startup_populate_database():
                 if os.path.exists(llm.link):
                     shutil.rmtree(llm.link, ignore_errors=True)
                 db.delete(llm)
+            if job.temp_local_model_link and job.temp_local_model_link != "":
+                if os.path.exists(job.temp_local_model_link):
+                    shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
+                if "temp" not in job.temp_local_model_link and os.path.exists("./data/models/temp_"+str(job.local_model_id)):
+                    shutil.rmtree("./data/models/temp_"+str(job.local_model_id), ignore_errors=True)
+                job.temp_local_model_link = ""
             job.error_message = "Downloading was not completed due to application shutdown."
             job.local_model_id = -1
             job.updated_at = datetime.now()

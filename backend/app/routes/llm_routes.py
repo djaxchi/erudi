@@ -117,7 +117,7 @@ async def download_llm_route(
     
     try:
         temp_path = f"./data/models/temp_{local_llm.id}"
-        final_path = f"/data/models/{local_llm.id}"
+        final_path = f"./data/models/{local_llm.id}"
         if os.path.exists(temp_path):
             raise
         if os.path.exists(final_path):
@@ -220,9 +220,11 @@ def cancel_download(
     db.commit()
 
     # Clean up local model if it exists
-    if job.temp_local_model_link:
-        if os.path.exists(job.temp_local_model_link) and job.temp_local_model_link != "":
+    if job.temp_local_model_link and job.temp_local_model_link != "":
+        if os.path.exists(job.temp_local_model_link):
             shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
+        if "temp" not in job.temp_local_model_link and os.path.exists("./data/models/temp_"+str(job.local_model_id)):
+            shutil.rmtree("./data/models/temp_"+str(job.local_model_id), ignore_errors=True)
         job.temp_local_model_link = ""
     if job.final_local_model_link:
         if os.path.exists(job.final_local_model_link) and job.final_local_model_link!= "":
@@ -260,6 +262,8 @@ def get_download_status_by_jobId(
         if job.temp_local_model_link and job.temp_local_model_link != "":
             if os.path.exists(job.temp_local_model_link):
                 shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
+            if "temp" not in job.temp_local_model_link and os.path.exists("./data/models/temp_"+str(job.local_model_id)):
+                shutil.rmtree("./data/models/temp_"+str(job.local_model_id), ignore_errors=True)
             job.temp_local_model_link = ""
         if job.final_local_model_link and job.final_local_model_link != "":
             if os.path.exists(job.final_local_model_link):
@@ -307,6 +311,8 @@ def get_download_status_without_jobId(
         if job.temp_local_model_link and job.temp_local_model_link != "":
             if os.path.exists(job.temp_local_model_link):
                 shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
+            if "temp" not in job.temp_local_model_link and os.path.exists("./data/models/temp_"+str(job.local_model_id)):
+                shutil.rmtree("./data/models/temp_"+str(job.local_model_id), ignore_errors=True)
             job.temp_local_model_link = ""
         if job.final_local_model_link and job.final_local_model_link != "":
             if os.path.exists(job.final_local_model_link):
