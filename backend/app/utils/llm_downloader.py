@@ -194,7 +194,7 @@ async def download_files_concurrent(
         coros.append(loop.run_in_executor(None, fs.get_file, remote, dest, callback))
     await asyncio.gather(*coros)
 
-async def convert_hf_mlx(hf_dir: str, mlx_dir: str):
+def convert_hf_mlx(hf_dir: str, mlx_dir: str):
     """Convert Hugging Face model to MLX format."""
     try:
         logger.info(f"Starting conversion from HF to MLX")
@@ -234,6 +234,7 @@ async def download_llm(
     """
     # Prepare local path
     os.makedirs(temp_save_dir, exist_ok=True)
+    os.makedirs(final_save_dir, exist_ok=True)
     logger.info(f"Starting download for {model_link} → {temp_save_dir}")
 
     # Initialize HF API & filesystem
