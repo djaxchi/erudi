@@ -106,6 +106,7 @@ async def download_llm_route(
         type=remote_llm.type,
         description=remote_llm.description,
         model_metadata=remote_llm.model_metadata,  # Copy metadata from remote model
+        quantized=remote_llm.quantized,  # Copy quantized flag from remote model
     )
     try:
         db.add(local_llm)
