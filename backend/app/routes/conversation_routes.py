@@ -186,85 +186,6 @@ def load_model(llm: Llm) -> None:
     print(f"Model and tokenizer loaded in {datetime.now() - start}")
 
 
-# def load_model_backup(quantize: bool, llm: Llm) -> None:
-#     """
-#     Load model with optional quantization. Handles memory management.
-#     Args:
-#         quantize (bool): Whether to apply quantization
-#         llm (Llm): The LLM object containing model info
-#     """
-#     global _loaded_model, _current_tokenizer, _loaded_model_id, _is_quant_on_current_load
-
-#     logging.info(f"Loading model {llm.id} (quantize={quantize})")
-#     # Clear existing model if different LLM or different quantization state
-#     should_reload = (
-#         _loaded_model_id != llm.id or 
-#         _loaded_model is None or 
-#         (_loaded_model_id == llm.id and quantize != _is_quant_on_current_load)
-#     )
-    
-#     if not should_reload:
-#         logging.info(f"Model {llm.id} already loaded with correct quantization state")
-#         _loaded_model.eval()
-#         return
-    
-#     # Clear memory before loading
-#     if _loaded_model is not None:
-#         del _loaded_model
-#         _loaded_model = None
-#     if _current_tokenizer is not None:
-#         del _current_tokenizer 
-#         _current_tokenizer = None
-#     clear_memory()
-    
-#     start = datetime.now()
-#     logging.info(f"Loading model {llm.id} from {llm.link} (quantize={quantize})")
-    
-#     quant_config = None
-#     _is_quant_on_current_load = False
-#     if quantize:
-#         quant_config = QuantoConfig(
-#             weights="int8",
-#             activations=None,
-#         )
-#         _is_quant_on_current_load = True
-    
-#     try:
-#         # Build max_memory for CPU and MPS
-#         # max_memory = build_max_memory(cpu_frac=0.9, mps_frac=0.8)
-
-#         # Load model avec device_map="auto" mais forcer les embeddings sur CPU
-#         _loaded_model = AutoModelForCausalLM.from_pretrained(
-#             llm.link,
-#             local_files_only=True,
-#             dtype="auto",
-#             # max_memory=max_memory,
-#             quantization_config=quant_config,
-#             low_cpu_mem_usage=True,
-#             attn_implementation=None,
-#             # device_map="auto"
-#         ).to(_device)
-
-#         _current_tokenizer = AutoTokenizer.from_pretrained(
-#             llm.link, local_files_only=True, use_fast=True
-#         )
-#         _loaded_model_id = llm.id
-#         _loaded_model.eval()
-#         logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
-#     except Exception as e:
-#         # Clean up on failure
-#         if _loaded_model is not None:
-#             del _loaded_model
-#             _loaded_model = None
-#         if _current_tokenizer is not None:
-#             del _current_tokenizer
-#             _current_tokenizer = None
-#         _loaded_model_id = None
-#         _is_quant_on_current_load = None
-#         clear_memory()
-#         raise e
-
-
 clear_memory()
 
 @router.get(
@@ -794,11 +715,8 @@ async def generate_title(
 Examples you need to follow:
 - user: How to cook pasta? model: Pasta Cooking Guide
 - user: What is machine learning? model: Machine Learning Basics
-- user: Help me with Python code model: Python Code Help
-- user: Hey what's up ? model: Chill Conversation
-- user: Can you help me with my homework?? I struggle with my maths excercice about Bayes' Theorem. Explain it please.. model: Bayes' Theorem Explained
 
-Now it's your turn. Keep it short, precise, and without any extra information."""     
+Now it's your turn. Keep it short, precise, and without any extra information 5 Words Max."""
         
         user_title_generation_prompt = f"""Create a 2-to-5-word title for:
 {payload.question}"""
@@ -814,51 +732,11 @@ Now it's your turn. Keep it short, precise, and without any extra information.""
             top_k=64,
             xtc_special_tokens=_current_tokenizer.encode("\n") + list(_current_tokenizer.eos_token_ids)
         )
-
-        """if model_type == "mistral":
-            input_ids = _current_tokenizer.encode(
-                mistral_title_generation_prompt, return_tensors="pt"
-            ).to(_device)
-            end_ids = [4, 2]
-        elif model_type == "gemma":
-            input_ids = _current_tokenizer.encode(
-                system_title_generation_prompt, return_tensors="pt"
-            ).to(_device)
-            end_ids = [1, 106]
-    """
     
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
 
-    """streamer = TextIteratorStreamer(
-        _current_tokenizer, skip_prompt=True, skip_special_tokens=True
-    )"""
-
-    """generation_kwargs = dict(
-        input_ids=input_ids,
-        streamer=streamer,
-        max_new_tokens=15,
-        temperature=0.05,
-        top_p=0.3,
-        num_beams=1,
-        pad_token_id=0 if model_type == "gemma" else None,
-        eos_token_id=end_ids,
-        do_sample=True,
-    )"""
-
-    """def run_title_generation():
-        try:
-            with torch.no_grad():
-                _loaded_model.generate(**generation_kwargs)
-        except Exception as e:
-            logging.exception(f"Title generation failed: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Title generation error: {str(e)}"
-            )
-
-    title_thread = threading.Thread(target=run_title_generation)
-    title_thread.start()"""
 
     async def title_stream():
         generated_title = ""
@@ -1045,13 +923,16 @@ async def query_and_respond(
     ]
     if len(full_msgs_history or []) > 0:
         start_idx = len(full_msgs_history) - 1 - 2 * (payload.n_last_turns_to_get or 1) -1
+        start_idx = max(0, start_idx)
         print("start_idx:", start_idx)
         print("len(full_msgs_history):", len(full_msgs_history))
         for i in range(start_idx, len(full_msgs_history), 2):
             print ("i:", i)
             print("full_msgs_history[i]:", full_msgs_history[i])
-            final_prompt.append({"role": "user", "content": full_msgs_history[i]})
-            final_prompt.append({"role": "assistant", "content": full_msgs_history[i+1]})
+            if i < len(full_msgs_history):
+                final_prompt.append({"role": "user", "content": full_msgs_history[i][1]})
+            if i+1 < len(full_msgs_history):
+                final_prompt.append({"role": "assistant", "content": full_msgs_history[i+1][1]})
     
     final_prompt.append({"role": "user", "content": payload.question})
     logging.info("Final prompt to model:\n%s", final_prompt)
@@ -1076,102 +957,6 @@ async def query_and_respond(
         logging.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
 
-    """streamer = TextIteratorStreamer(
-        _current_tokenizer, skip_prompt=True, skip_special_tokens=True
-    )"""
-
-    # TO FIX BY ADDING LOGITS PROCESSORS
-    # Generate response
-
-    """# Fixer le pad_token_id pour Gemma
-    if model_type == "gemma":
-        if _current_tokenizer.pad_token_id is None:
-            _current_tokenizer.pad_token_id = _current_tokenizer.eos_token_id
-
-    generation_kwargs = dict(
-        input_ids=input_ids,
-        streamer=streamer,
-        max_new_tokens=max_tokens_out,
-        temperature=payload.temperature or 0.2,
-        top_p=payload.top_p or 0.5,
-        top_k=64,
-        num_beams=1,
-        pad_token_id=_current_tokenizer.pad_token_id if model_type == "gemma" else (0 if model_type == "gemma" else None),
-        eos_token_id=end_ids,
-        do_sample=True,
-    )
-
-    # Garde-fous spécifiques pour Gemma (petits modèles)
-    if model_type == "gemma":
-        generation_kwargs.update({
-            "repetition_penalty": 1.12,
-            "no_repeat_ngram_size": 6,
-            "min_new_tokens": 1,
-        })
-
-    logging.info(
-        "Generation kwargs : %s, %s, %s",
-        generation_kwargs["max_new_tokens"],
-        generation_kwargs["temperature"],
-        generation_kwargs["top_p"],
-    )
-    
-
-    def run_response_inference():
-        logging.info(
-            f"Generating response for conversation {conversation_id} with question: {payload.question}"
-        )
-        start = datetime.now()
-        try:
-            with torch.no_grad():
-                _loaded_model.generate(**generation_kwargs)
-        except Exception as e:
-            logging.exception(f"Generation failed : {e}")
-            logging.error(f"Generation error: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
-
-        logging.info(f"Generation of response took: {datetime.now() - start} seconds.")
-    response_thread = threading.Thread(target=run_response_inference)
-    response_thread.start()
-    
-
-    async def assistant_response_token_stream():
-        assistant_response = ""
-        try:
-            for new_text in streamer:
-                if model_type == "mistral":
-                    cleaned = MISTRAL_RE.sub("", new_text)
-                elif model_type.startswith("gemma"):
-                    cleaned = GEMMA_RE.sub("", new_text)
-                else:
-                    cleaned = new_text
-
-                assistant_response += cleaned
-                logging.info(f"Yielding token: {cleaned}")
-                if cleaned:
-                    yield cleaned
-
-        except Exception as e:
-            logging.exception("Streaming failed")
-            error_msg = "[ERROR_MESSAGE_SYSTEM] Generation failed due to an error. Please try again or contact developer team."
-            assistant_response = error_msg
-            yield error_msg
-            raise HTTPException(status_code=500, detail=f"Streaming error: {str(e)}")
-        finally:
-            response_thread.join()
-
-            # Store the response (either successful or error message)
-            assistant_message = Message(
-                conversation_id=conversation_id,
-                sender="llm",
-                content=assistant_response.strip(),
-            )
-            db.add(assistant_message)
-            conversation.last_message_time = datetime.now()
-            db.commit()
-
-            logging.info("Generation thread finished")
-    """
 
     async def assistant_response_token_stream():
         assistant_response = ""
@@ -1215,222 +1000,6 @@ async def query_and_respond(
             logging.info("Generation finished")
     
     return StreamingResponse(assistant_response_token_stream(), media_type="text/plain")
-
-
-
-# async def query_and_respond_backup(
-#     conversation_id: int,
-#     payload: ConversationQuery,
-#     db: Session = Depends(get_db),
-# ):
-#     logging.info("Payload reçu : %s", payload.dict())
-#     quantize = payload.quantize or False
-#     logging.info(quantize)
-#     user_prompt = payload.custom_prompt
-#     conversation = (
-#         db.query(Conversation).filter(Conversation.id == conversation_id).first()
-#     )
-
-#     if not conversation:
-#         raise HTTPException(status_code=404, detail="Conversation not found")
-
-#     user_message = Message(
-#         conversation_id=conversation_id, sender="user", content=payload.question
-#     )
-#     db.add(user_message)
-#     db.flush()
-
-#     conversation.last_message_time = datetime.now()
-#     db.commit()
-
-#     llm = db.query(Llm).filter(Llm.id == conversation.llm_id).first()
-#     if not llm:
-#         raise HTTPException(status_code=404, detail="LLM not found")
-#     model_type = llm.type
-#     global _loaded_model, _current_tokenizer, _loaded_model_id, _is_quant_on_current_load
-
-#     try:
-#         load_model(quantize, llm)
-#     except Exception as e:
-#         logging.exception("Failed to load model or tokenizer")
-#         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
-
-#     context = None
-#     try:
-#         conversation_history = get_conversation_history(db, conversation_id)
-#         if not conversation_history:
-#             logging.info(
-#                 "No previous messages in conversation, skipping context retrieval"
-#             )
-#         else:
-#             logging.info(f"Retrieving context for conversation {conversation_id}")
-#             start = datetime.now()
-#             context = retrieve_context(
-#                 payload.question,
-#                 conversation_history,
-#                 conversation_id,
-#                 top_k=payload.n_relevent_msgs_to_get or 3,
-#                 n_last_turns=payload.n_last_turns_to_get or 2,
-#                 model_type=model_type,
-#             )
-
-#     except Exception as e:
-#         logging.exception("Failed to retrieve context")
-#         raise HTTPException(
-#             status_code=500, detail=f"Context retrieval error: {str(e)}"
-#         )
-
-#     if llm.is_attached_to_kb:
-#         try:
-#             kb_knowledge = get_relevant_texts_if_kb(
-#                 query=payload.question, llm=llm, db=db
-#             )
-#             if not kb_knowledge:
-#                 logging.info("No relevant texts found in Knowledge Base")
-#             else:
-#                 if context:
-#                     context += (
-#                         "\n\nAlso: You are attached to a Knowledge Base. Here is context you need to know for this query:\n"
-#                         + "\n".join(kb_knowledge)
-#                     )
-#                 else:
-#                     context = (
-#                         "You are attached to a Knowledge Base. Here is context you need to know for this query:\n"
-#                         + "\n".join(kb_knowledge)
-#                     )
-#         except Exception as e:
-#             logging.exception("Failed to retrieve Knowledge Base context")
-#             raise HTTPException(
-#                 status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}"
-#             )
-
-#     lang = payload.language or "fr"
-#     max_tokens_out = payload.max_new_tokens or 1024
-#     custom_sys_prompt = payload.custom_prompt if payload.custom_prompt else None
-#     messages_starred = []
-#     if conversation_history:
-#         for msg in conversation_history:
-#             msg_starred_object = (
-#                 db.query(Message)
-#                 .filter(Message.content == msg[1], Message.starred == True)
-#                 .first()
-#             )
-#             if msg_starred_object:
-#                 messages_starred.append(msg_starred_object.content)
-#     prompt_text = build_conv_prompt(
-#         question=payload.question,
-#         context=context,
-#         language=lang,
-#         max_tokens=max_tokens_out,
-#         custom_sys_prompt=custom_sys_prompt,
-#         messages_starred=messages_starred,
-#         model_type=model_type,
-#     )
-
-#     logging.info("Final prompt to model:\n%s", prompt_text)
-
-#     try:
-#         input_ids = _current_tokenizer.encode(prompt_text, return_tensors="pt").to(_device)
-#         if model_type == "mistral":
-#             end_ids = [4, 2]
-#         elif model_type == "gemma":
-#             end_ids = [1, 106]
-#     except Exception as e:
-#         logging.exception("Failed to tokenize prompt")
-#         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
-
-#     streamer = TextIteratorStreamer(
-#         _current_tokenizer, skip_prompt=True, skip_special_tokens=True
-#     )
-
-#     # Fixer le pad_token_id pour Gemma
-#     if model_type == "gemma":
-#         if _current_tokenizer.pad_token_id is None:
-#             _current_tokenizer.pad_token_id = _current_tokenizer.eos_token_id
-
-#     generation_kwargs = dict(
-#         input_ids=input_ids,
-#         streamer=streamer,
-#         max_new_tokens=max_tokens_out,
-#         temperature=payload.temperature or 0.2,
-#         top_p=payload.top_p or 0.5,
-#         top_k=64,
-#         num_beams=1,
-#         pad_token_id=_current_tokenizer.pad_token_id if model_type == "gemma" else (0 if model_type == "gemma" else None),
-#         eos_token_id=end_ids,
-#         do_sample=True,
-#     )
-
-#     # Garde-fous spécifiques pour Gemma (petits modèles)
-#     if model_type == "gemma":
-#         generation_kwargs.update({
-#             "repetition_penalty": 1.12,
-#             "no_repeat_ngram_size": 6,
-#             "min_new_tokens": 1,
-#         })
-
-#     logging.info(
-#         "Generation kwargs : %s, %s, %s",
-#         generation_kwargs["max_new_tokens"],
-#         generation_kwargs["temperature"],
-#         generation_kwargs["top_p"],
-#     )
-
-#     def run_response_inference():
-#         logging.info(
-#             f"Generating response for conversation {conversation_id} with question: {payload.question}"
-#         )
-#         start = datetime.now()
-#         try:
-#             with torch.no_grad():
-#                 _loaded_model.generate(**generation_kwargs)
-#         except Exception as e:
-#             logging.exception(f"Generation failed : {e}")
-#             logging.error(f"Generation error: {str(e)}")
-#             raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
-
-#         logging.info(f"Generation of response took: {datetime.now() - start} seconds.")
-#     response_thread = threading.Thread(target=run_response_inference)
-#     response_thread.start()
-
-#     async def assistant_response_token_stream():
-#         assistant_response = ""
-#         try:
-#             for new_text in streamer:
-#                 if model_type == "mistral":
-#                     cleaned = MISTRAL_RE.sub("", new_text)
-#                 elif model_type.startswith("gemma"):
-#                     cleaned = GEMMA_RE.sub("", new_text)
-#                 else:
-#                     cleaned = new_text
-
-#                 assistant_response += cleaned
-#                 logging.info(f"Yielding token: {cleaned}")
-#                 if cleaned:
-#                     yield cleaned
-
-#         except Exception as e:
-#             logging.exception("Streaming failed")
-#             error_msg = "[ERROR_MESSAGE_SYSTEM] Generation failed due to an error. Please try again or contact developer team."
-#             assistant_response = error_msg
-#             yield error_msg
-#             raise HTTPException(status_code=500, detail=f"Streaming error: {str(e)}")
-#         finally:
-#             response_thread.join()
-
-#             # Store the response (either successful or error message)
-#             assistant_message = Message(
-#                 conversation_id=conversation_id,
-#                 sender="llm",
-#                 content=assistant_response.strip(),
-#             )
-#             db.add(assistant_message)
-#             conversation.last_message_time = datetime.now()
-#             db.commit()
-
-#             logging.info("Generation thread finished")
-
-#     return StreamingResponse(assistant_response_token_stream(), media_type="text/plain")
 
 
 @router.post("/conversations/delete_bulk")

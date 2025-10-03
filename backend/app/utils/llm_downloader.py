@@ -249,7 +249,7 @@ async def download_llm(
     Download a Hugging Face repo with progress tracking and optional DB updates.
 
     Args:
-        model_link (str): Hugging Face repo ID.
+        model_link (str): Hugging Face repo ID (could be original or MLX-quantized).
         model_id (int): Database ID of the LLM model.
         temp_save_dir (str): Temporary directory for full-precision model.
         final_save_dir (str): Final directory for mlx quantized model.
@@ -258,15 +258,23 @@ async def download_llm(
     Returns:
         str: Final local path containing downloaded files.
     """
-    # Convert to MLX-quantized version if available
-    actual_download_link = get_mlx_model_link(model_link)
+    # Check if model is already quantized from database
+    session = SessionLocal()
+    llm = session.query(Llm).get(model_id)
+    is_prequantized = llm.quantized == 1 if llm else False
+    session.close()
+    
+    # The link stored in DB is already the MLX link for pre-quantized models
+    actual_download_link = model_link
     
     # Prepare local path
     os.makedirs(temp_save_dir, exist_ok=True)
     os.makedirs(final_save_dir, exist_ok=True)
     logger.info(f"Starting download for {model_link} → {temp_save_dir}")
-    if actual_download_link != model_link:
-        logger.info(f"Downloading MLX-quantized version from: {actual_download_link}")
+    if is_prequantized:
+        logger.info(f"Model is pre-quantized (MLX), downloading directly: {actual_download_link}")
+    else:
+        logger.info(f"Model will be quantized locally after download")
 
     # Initialize HF API & filesystem
     api = HfApi(token=HF_TOKEN)
@@ -315,17 +323,17 @@ async def download_llm(
     await download_files_concurrent(fs, callback, shard_tasks, temp_save_dir)
     logger.info("All shards downloaded")
 
-    # If using MLX-quantized model, just move files; otherwise convert
+    # If pre-quantized (MLX), just move files; otherwise convert locally
     try:
-        if actual_download_link != model_link:
+        if is_prequantized:
             # Already MLX-quantized, just move to final directory
             logger.info("Using pre-quantized MLX model, moving files directly")
             if os.path.exists(final_save_dir):
                 shutil.rmtree(final_save_dir, ignore_errors=True)
             shutil.move(temp_save_dir, final_save_dir)
         else:
-            # Need to convert to MLX format
-            logger.info("Converting model to MLX format")
+            # Need to convert to MLX format and quantize locally
+            logger.info("Converting model to MLX format with local quantization")
             await asyncio.to_thread(convert_hf_mlx, temp_save_dir, final_save_dir)
             shutil.rmtree(temp_save_dir, ignore_errors=True)
     except Exception as e:

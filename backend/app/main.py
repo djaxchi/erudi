@@ -45,6 +45,38 @@ SIZE_MAP = {
     "google/gemma-3-4b-it": "~9.0 GB",
 }
 
+# Mapping of original model links to MLX-quantized versions (same as in llm_downloader.py)
+MLX_MODEL_MAPPING = {
+    "mistralai/Mistral-7B-Instruct-v0.3": "mlx-community/Mistral-7B-Instruct-v0.3-4bit",
+    "mistralai/Mistral-7B-v0.3": "mlx-community/Mistral-7B-v0.3-4bit",
+    "google/gemma-3-1b-it": "mlx-community/gemma-3-1b-it-4bit",
+    "google/gemma-2-2b-it": "mlx-community/gemma-2-2b-it-4bit",
+    "google/gemma-3-4b-it": "mlx-community/gemma-3-4b-it-4bit",
+}
+
+def get_mlx_model_size(mlx_link):
+    """Get the actual size of MLX quantized model from Hugging Face"""
+    try:
+        repo_info = api.repo_info(mlx_link, files_metadata=True)
+        total_size = sum(file.size for file in repo_info.siblings if file.size)
+        # Convert to GB
+        size_gb = total_size / (1024**3)
+        return f"~{size_gb:.1f} GB"
+    except Exception as e:
+        logging.error(f"Error getting MLX model size for {mlx_link}: {e}")
+        # Fallback estimates based on quantization
+        if "4bit" in mlx_link.lower():
+            return "~3-4 GB"  # Rough estimate for 4-bit 7B models
+        elif "8bit" in mlx_link.lower():
+            if "1b" in mlx_link.lower():
+                return "~1-2 GB"
+            elif "2b" in mlx_link.lower():
+                return "~2-3 GB"
+            elif "4b" in mlx_link.lower():
+                return "~4-5 GB"
+        return "Unknown"
+
+
 def get_model_size_estimate(model_name, link):
     """Get approximate model size for known base models and their derivatives"""
     # First check for exact match
@@ -97,7 +129,7 @@ def get_parameter_count_from_name(model_name, link):
     
     return "Unknown"
 
-def format_model_info_metadata(model_info, size_estimate=None):
+def format_model_info_metadata(model_info, size_estimate=None, quantized=False):
     """Format ModelInfo object into a structured string for storage"""
     try:
         # Extract parameter count from model name
@@ -112,6 +144,7 @@ def format_model_info_metadata(model_info, size_estimate=None):
                             Pipeline: {model_info.pipeline_tag}
                             Size: {size_estimate or 'Unknown'}
                             Parameters: {param_count}
+                            Quantized: {quantized}
                             Private: {model_info.private}
                             Gated: {model_info.gated}
                             Tags: {', '.join(model_info.tags[:10]) if model_info.tags else 'None'}{'...' if model_info.tags and len(model_info.tags) > 10 else ''}
@@ -177,34 +210,56 @@ async def startup_populate_database():
             existing_model = db.query(Llm).filter(Llm.name == name).first()
             if not existing_model:
                 try:
-                    # Get size estimate for this model
-                    size_estimate = get_model_size_estimate(name, link)
+                    # Check if MLX quantized version exists
+                    mlx_link = MLX_MODEL_MAPPING.get(link)
+                    is_quantized = mlx_link is not None
                     
-                    # Fetch metadata from Hugging Face
+                    # Fetch metadata from ORIGINAL model (for author, likes, downloads)
                     model_info = api.model_info(link)
+                    
+                    # Get size from MLX version if available, otherwise from original
+                    if is_quantized:
+                        size_estimate = get_mlx_model_size(mlx_link)
+                        # Store the MLX link as the actual link to download
+                        actual_link = mlx_link
+                    else:
+                        size_estimate = get_model_size_estimate(name, link)
+                        actual_link = link
+                    
                     base_model = Llm(
                         name=name,
                         local=0,
-                        link=link,
+                        link=actual_link,  # Use MLX link if available
                         type=model_type,
-                        model_metadata=format_model_info_metadata(model_info, size_estimate)
+                        quantized=1 if is_quantized else 0,
+                        model_metadata=format_model_info_metadata(model_info, size_estimate, is_quantized)
                     )
                     db.add(base_model)
-                    print(f"Added base model {name} with metadata and size estimate: {size_estimate}")
+                    print(f"Added base model {name} (quantized={is_quantized}) with metadata and size: {size_estimate}")
                 except Exception as e:
                     print(f"Error fetching metadata for {name}: {e}")
                     # Fallback: create with just size estimate
-                    size_estimate = get_model_size_estimate(name, link)
-                    fallback_metadata = f"Size: {size_estimate}\nModel ID: {link}\nAuthor: Unknown\nLibrary: Unknown"
+                    mlx_link = MLX_MODEL_MAPPING.get(link)
+                    is_quantized = mlx_link is not None
+                    
+                    if is_quantized:
+                        size_estimate = get_mlx_model_size(mlx_link)
+                        actual_link = mlx_link
+                    else:
+                        size_estimate = get_model_size_estimate(name, link)
+                        actual_link = link
+                    
+                    fallback_metadata = f"Size: {size_estimate}\nModel ID: {link}\nQuantized: {is_quantized}\nAuthor: Unknown\nLibrary: Unknown"
                     base_model = Llm(
                         name=name,
                         local=0,
-                        link=link,
+                        link=actual_link,
                         type=model_type,
+                        quantized=1 if is_quantized else 0,
                         model_metadata=fallback_metadata
                     )
                     db.add(base_model)
-                    print(f"Added base model {name} with size estimate: {size_estimate}")
+                    print(f"Added base model {name} (quantized={is_quantized}) with size estimate: {size_estimate}")
 
         LIMIT_MODELS = 100  # Limit the number of models to fetch and add
         
@@ -245,7 +300,8 @@ async def startup_populate_database():
                 local=0,
                 link=m.modelId,
                 type="mistral" if "mistral" in m.modelId.lower() else "gemma",
-                model_metadata=format_model_info_metadata(m, size_estimate)
+                quantized=0,  # Community models are not pre-quantized
+                model_metadata=format_model_info_metadata(m, size_estimate, quantized=False)
             )
             db.add(llm_entry)
 
@@ -270,7 +326,8 @@ async def startup_populate_database():
                 local=0,
                 link=m.modelId,
                 type="mistral" if "mistral" in m.modelId.lower() else "gemma",
-                model_metadata=format_model_info_metadata(m, size_estimate)
+                quantized=0,  # Community models are not pre-quantized
+                model_metadata=format_model_info_metadata(m, size_estimate, quantized=False)
             )
             db.add(llm_entry)
         
