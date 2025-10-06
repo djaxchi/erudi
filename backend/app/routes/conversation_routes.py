@@ -379,12 +379,100 @@ def get_conversation_history(db: Session, conversation_id: int) -> List[tuple]:
         return []
 
 
+def get_prompting_strategy(param_size: int) -> dict:
+    """
+    Determine prompting strategy based on model parameter size.
+    
+    Args:
+        param_size (int): Model parameter size in billions (2, 4, 8, 16, etc.)
+    
+    Returns:
+        dict: Strategy configuration with the following keys:
+            - use_system_prompt (bool): Include system prompt
+            - use_custom_prompt (bool): Include custom prompt
+            - max_history_turns (int): Maximum number of conversation turns to include
+            - use_short_term_memory (bool): Include recent messages
+            - use_middle_term_memory (bool): Include semantically relevant messages
+            - use_long_term_memory (bool): Include conversation summary
+            - use_kb_basic (bool): Use basic knowledge base retrieval
+            - use_kb_enhanced (bool): Use enhanced knowledge base retrieval with more context
+            - kb_top_k (int): Number of KB chunks to retrieve
+    """
+    
+    if param_size < 2:
+        # Ultra-lightweight strategy for tiny models (<2B)
+        return {
+            "use_system_prompt": True,
+            "use_custom_prompt": True,
+            "max_history_turns": 1,
+            "use_short_term_memory": True,
+            "use_middle_term_memory": False,
+            "use_long_term_memory": False,
+            "use_kb_basic": False,
+            "use_kb_enhanced": False,
+            "kb_top_k": 0,
+        }
+    elif param_size < 4:
+        # Lightweight strategy for small models (2-3B)
+        return {
+            "use_system_prompt": True,
+            "use_custom_prompt": True,
+            "max_history_turns": 1,
+            "use_short_term_memory": True,
+            "use_middle_term_memory": False,
+            "use_long_term_memory": False,
+            "use_kb_basic": False,
+            "use_kb_enhanced": False,
+            "kb_top_k": 0,
+        }
+    elif param_size < 8:
+        # Medium strategy for 4-7B models
+        return {
+            "use_system_prompt": True,
+            "use_custom_prompt": True,
+            "max_history_turns": 2,
+            "use_short_term_memory": True,
+            "use_middle_term_memory": False,
+            "use_long_term_memory": False,
+            "use_kb_basic": True,
+            "use_kb_enhanced": False,
+            "kb_top_k": 2,
+        }
+    elif param_size < 16:
+        # Full strategy for 8-15B models
+        return {
+            "use_system_prompt": True,
+            "use_custom_prompt": True,
+            "max_history_turns": 3,
+            "use_short_term_memory": True,
+            "use_middle_term_memory": True,
+            "use_long_term_memory": True,
+            "use_kb_basic": False,
+            "use_kb_enhanced": True,
+            "kb_top_k": 3,
+        }
+    else:
+        # Maximum strategy for large models (16B+)
+        return {
+            "use_system_prompt": True,
+            "use_custom_prompt": True,
+            "max_history_turns": 5,
+            "use_short_term_memory": True,
+            "use_middle_term_memory": True,
+            "use_long_term_memory": True,
+            "use_kb_basic": False,
+            "use_kb_enhanced": True,
+            "kb_top_k": 5,
+        }
+
+
 def retrieve_context(
     query: str,
     conversation_history: List,
     conversation_id: int,
     llm: Llm,
     db: Session,
+    strategy: dict,
     top_k: int = 3,
     n_last_turns: int = 1,
     model_type: str = "mistral",
@@ -396,6 +484,9 @@ def retrieve_context(
         query (str): The user's query.
         conversation_history (list): List of (sender, message) tuples.
         conversation_id (int): The ID of the conversation for caching purposes.
+        llm (Llm): The LLM model object.
+        db (Session): Database session.
+        strategy (dict): Prompting strategy configuration based on model size.
         top_k (int): Number of semantically relevant turns to retrieve.
         n_last_turns (int): Number of last turns to include.
         model_type (str): The type of model to use for prompt engineering.
@@ -533,7 +624,9 @@ def retrieve_context(
 
             # Model Loading
             try:
-                prompt_tokens = _current_tokenizer.apply_chat_template([{"role": "system", "content": summary_sys_prompt}, {"role": "user", "content": summary_user_prompt}])
+                # Merge system prompt into user message for models that don't support system role
+                merged_summary_prompt = f"{summary_sys_prompt}\n\n{summary_user_prompt}"
+                prompt_tokens = _current_tokenizer.apply_chat_template([{"role": "user", "content": merged_summary_prompt}])
                 sampler = mlx_lm.sample_utils.make_sampler(
                     0.1,
                     0.5,
@@ -563,9 +656,12 @@ def retrieve_context(
     context_lines = []
     current_message_count = len(conversation_history)
 
-    # Conv summary context
+    # Long-term memory (Conversation summary) - only if strategy allows
     summary_threshold = n_last_turns * 2 * 2 
-    if len(conversation_history) > summary_threshold and _loaded_model and _current_tokenizer:
+    if (strategy["use_long_term_memory"] and 
+        len(conversation_history) > summary_threshold and 
+        _loaded_model and 
+        _current_tokenizer):
         cached_summary, need_regenerate = get_cached_summary(
             conversation_id, current_message_count
         )
@@ -592,9 +688,9 @@ def retrieve_context(
     else:
         semantic_history = []
 
-    # Semantic context
-    if len(semantic_history) >= 2:
-        n_to_retrieve = top_k if len(semantic_history) >= 2*top_k else len(semantic_history)/2
+    # Middle-term memory (Semantic context) - only if strategy allows
+    if strategy["use_middle_term_memory"] and len(semantic_history) >= 2:
+        n_to_retrieve = top_k if len(semantic_history) >= 2*top_k else int(len(semantic_history)/2)
         get_embedder()
         query_emb = _embedder.encode(query, convert_to_tensor=True)
         messages = [msg[1] for msg in semantic_history]
@@ -632,19 +728,29 @@ def retrieve_context(
             context_lines.append("")
             context["middle_term_memory"] = semantic_lines
 
-    # KB Context
-    if llm.is_attached_to_kb:
+    # Knowledge Base Context - only if strategy allows and LLM is attached to KB
+    if llm.is_attached_to_kb and (strategy["use_kb_basic"] or strategy["use_kb_enhanced"]):
         try:
+            # Use enhanced KB retrieval with more chunks if strategy allows
+            kb_top_k = strategy["kb_top_k"]
             kb_context = get_relevant_texts_if_kb(
                 query=query, llm=llm, db=db
             )
+            
+            # Limit KB context based on strategy
+            if kb_context:
+                kb_context = kb_context[:kb_top_k]
+            
             if not kb_context:
                 logging.info("No relevant texts found in Knowledge Base")
             else:
-                context_lines.append(
-                    "\n\nAlso: You are attached to a Knowledge Base. Here is context you need to know for this query:\n"
-                    + "\n".join(kb_context)
-                )
+                context_prefix = "\n\nAlso: You are attached to a Knowledge Base."
+                if strategy["use_kb_enhanced"]:
+                    context_prefix += " Here is detailed context you need to know for this query:\n"
+                else:
+                    context_prefix += " Here is basic context for this query:\n"
+                
+                context_lines.append(context_prefix + "\n".join(kb_context))
                 context["kb_context"] = kb_context
 
         except Exception as e:
@@ -654,13 +760,14 @@ def retrieve_context(
             )
     
 
-    # Recency context
-    recent = conversation_history[-n_recent:] if len(conversation_history) >= n_recent else conversation_history
-    if recent:
-        context_lines.append(f"  - Here are the {len(recent)} most recent messages:")
-        for sender, msg in recent:
-            role = "[user]" if sender == "user" else "[assistant]"
-            context_lines.append(f"{role}: {msg}")
+    # Short-term memory (Recent messages) - only if strategy allows
+    if strategy["use_short_term_memory"]:
+        recent = conversation_history[-n_recent:] if len(conversation_history) >= n_recent else conversation_history
+        if recent:
+            context_lines.append(f"  - Here are the {len(recent)} most recent messages:")
+            for sender, msg in recent:
+                role = "[user]" if sender == "user" else "[assistant]"
+                context_lines.append(f"{role}: {msg}")
 
     if context_lines and len(context_lines)>0:
         context["context_str"] = "Here is context about the conversation you had so far:\n\n" + "\n".join(context_lines)
@@ -720,9 +827,10 @@ Now it's your turn. Keep it short, precise, and without any extra information 5 
         
         user_title_generation_prompt = f"""Create a 2-to-5-word title for:
 {payload.question}"""
+        # Merge system prompt into user message for models that don't support system role
+        merged_title_prompt = f"{system_title_generation_prompt}\n\n{user_title_generation_prompt}"
         full_title_generation_prompt = [
-            {"role": "system", "content": system_title_generation_prompt},
-            {"role": "user", "content": user_title_generation_prompt}
+            {"role": "user", "content": merged_title_prompt}
         ]
         prompt_tokens = _current_tokenizer.apply_chat_template(full_title_generation_prompt)
         sampler = mlx_lm.sample_utils.make_sampler(
@@ -830,6 +938,10 @@ Now it's your turn. Keep it short, precise, and without any extra information 5 
                 words.remove("`")
             words = [re.sub(r"<.*?>", "", word) for word in words if word]
             final_title = " ".join(words[:6]) if len(words) >= 6 else " ".join(words)
+            
+            # Force lowercase except for first letter
+            if final_title and len(final_title) > 0:
+                final_title = final_title[0].upper() + final_title[1:].lower()
 
             conversation.name = final_title if (final_title and final_title.strip() != "") else "New Conversation"
             db.add(conversation)
@@ -868,6 +980,11 @@ async def query_and_respond(
         raise HTTPException(status_code=404, detail="LLM not found")
     model_type = llm.type
 
+    # Get prompting strategy based on model size
+    param_size = llm.param_size if hasattr(llm, 'param_size') and llm.param_size else 2
+    strategy = get_prompting_strategy(param_size)
+    logging.info(f"Using prompting strategy for {param_size}B model: {strategy}")
+
     # Context Fetching
     try:
         full_msgs_history = get_conversation_history(db, conversation_id)
@@ -884,11 +1001,12 @@ async def query_and_respond(
             payload.question,
             full_msgs_history,
             conversation_id,
-            top_k=payload.n_relevent_msgs_to_get or 3,
-            n_last_turns=payload.n_last_turns_to_get or 2,
-            model_type=model_type,
             llm=llm,
-            db=db
+            db=db,
+            strategy=strategy,
+            top_k=payload.n_relevent_msgs_to_get or 3,
+            n_last_turns=payload.n_last_turns_to_get or strategy["max_history_turns"],
+            model_type=model_type,
         )
         context_str, long_term_memory, middle_term_memory, kb_context = context["context_str"], context["long_term_memory"], context["middle_term_memory"], context["kb_context"],
 
@@ -910,31 +1028,89 @@ async def query_and_respond(
             status_code=500, detail=f"Context retrieval error: {str(e)}"
         )
 
-    # Prompt construction
-    sys_prompt = f"""You are {llm.name}, a concise and helpful assistant; answer directly in the user's tone without repeating context or mentioning instructions."""
-    if payload.custom_prompt:
-        sys_prompt += f"\nAdditional instructions: {payload.custom_prompt}"
+    # Prompt construction - respects strategy
+    # Separate components for strategic placement:
+    # - System prompt: assistant's identity (goes at the beginning)
+    # - Custom prompt: task-specific instructions (goes with current question)
+    # - KB context: relevant knowledge (goes with current question)
+    # - Long-term memory: conversation summary (goes at the beginning)
+    
+    sys_prompt = ""
+    custom_prompt = ""
+    kb_prompt = ""
+    
+    # System prompt: defines the assistant's identity (goes at the beginning)
+    if strategy["use_system_prompt"]:
+        sys_prompt = f"""You are {llm.name}, a concise and helpful assistant; answer directly in the user's tone without repeating context or mentioning instructions."""
+    
+    # Custom prompt: task-specific instructions (will be added to current question)
+    if strategy["use_custom_prompt"] and payload.custom_prompt:
+        custom_prompt = f"\nAdditional instructions: {payload.custom_prompt}"
+    
+    # KB context: relevant knowledge for the current query (will be added to current question)
     if kb_context and kb_context != "":
-        sys_prompt += f"\nUser attached you to a Knowledge Base. Relevant parts are:\n" + "\n".join(kb_context)
+        kb_prompt = f"\nRelevant context from Knowledge Base:\n" + "\n".join(kb_context)
+    
+    # Long-term memory: conversation summary (goes at the beginning for overall context)
     if long_term_memory and long_term_memory != "":
         sys_prompt += f"\nSummary of the conversation you had so far: {long_term_memory}"
-    final_prompt = [
-        {"role": "system", "content": sys_prompt}
-    ]
+    
+    final_prompt = []
+    
+    # Build conversation history - limited by strategy
     if len(full_msgs_history or []) > 0:
-        start_idx = len(full_msgs_history) - 1 - 2 * (payload.n_last_turns_to_get or 1) -1
-        start_idx = max(0, start_idx)
-        print("start_idx:", start_idx)
-        print("len(full_msgs_history):", len(full_msgs_history))
+        # Use strategy's max_history_turns instead of hardcoded value
+        # max_history_turns = number of conversation turns (each turn = user + assistant)
+        max_turns = strategy["max_history_turns"]
+        
+        # Calculate how many messages to include (each turn = 2 messages)
+        max_messages = max_turns * 2
+        
+        # Start from the last max_messages in history
+        if len(full_msgs_history) > max_messages:
+            start_idx = len(full_msgs_history) - max_messages
+        else:
+            start_idx = 0
+        
+        # Ensure we start on a user message (even index)
+        if start_idx % 2 != 0:
+            start_idx += 1
+            
+        logging.info(f"Including {max_turns} conversation turn(s) starting from index {start_idx}")
+        logging.info(f"Total history length: {len(full_msgs_history)}, including from index {start_idx}")
+        
         for i in range(start_idx, len(full_msgs_history), 2):
-            print ("i:", i)
-            print("full_msgs_history[i]:", full_msgs_history[i])
             if i < len(full_msgs_history):
                 final_prompt.append({"role": "user", "content": full_msgs_history[i][1]})
             if i+1 < len(full_msgs_history):
                 final_prompt.append({"role": "assistant", "content": full_msgs_history[i+1][1]})
     
-    final_prompt.append({"role": "user", "content": payload.question})
+    # Add current question with custom prompt and KB context fused into it
+    current_question = payload.question
+    
+    # Build the current question with relevant context
+    # Order: KB context (if any) -> Custom instructions (if any) -> Question
+    question_with_context = ""
+    
+    if kb_prompt:
+        question_with_context += kb_prompt + "\n\n"
+    
+    if custom_prompt:
+        question_with_context += custom_prompt + "\n\n"
+    
+    question_with_context += payload.question
+    current_question = question_with_context
+    
+    if len(final_prompt) == 0:
+        # No history: merge system prompt into the first (and only) user message
+        if sys_prompt:
+            current_question = f"{sys_prompt}\n\n{current_question}"
+    else:
+        # Has history: prepend system prompt to first message in final_prompt
+        if sys_prompt:
+            final_prompt[0]["content"] = f"{sys_prompt}\n\n{final_prompt[0]['content']}"
+    
+    final_prompt.append({"role": "user", "content": current_question})
     logging.info("Final prompt to model:\n%s", final_prompt)
 
     # Model Loading
@@ -1056,6 +1232,7 @@ async def store_error_message(
         db.add(error_message)
         conversation.last_message_time = datetime.now()
         db.commit()
+
         logging.info(f"Stored error message for conversation {conversation_id}")
         global _loaded_model, _current_tokenizer
         if _loaded_model is not None:
@@ -1104,7 +1281,7 @@ async def star_message(
 async def unstar_message(
     message: str = Body(..., embed=True),
     db: Session = Depends(get_db),
-):
+): 
     """Unstar a message in the conversation."""
 
     message = db.query(Message).filter(Message.content == message).first()
