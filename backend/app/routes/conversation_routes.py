@@ -29,6 +29,7 @@ from ..schemas.conversation_schemas import (
     ConversationUpdate,
     ConversationWithMessagesResponse,
 )
+from ..utils.inference_utils import build_logits_processors, get_prompting_strategy
 import os
 
 os.environ.setdefault("VECLIB_MAXIMUM_THREADS","1")
@@ -173,7 +174,7 @@ def clear_memory():
         torch.mps.synchronize()
     gc.collect()
 
-
+# This function can't be put into inference_utils because the model and tokenizer need to be in memory scope
 def load_model(llm: Llm) -> None:
     global _loaded_model, _current_tokenizer, _loaded_model_id
     if llm.id == _loaded_model_id and _loaded_model is not None and _current_tokenizer is not None:
@@ -184,8 +185,6 @@ def load_model(llm: Llm) -> None:
     _loaded_model_id = llm.id
     _loaded_model, _current_tokenizer = mlx_lm.load(llm.link)
     print(f"Model and tokenizer loaded in {datetime.now() - start}")
-
-
 clear_memory()
 
 @router.get(
@@ -379,93 +378,6 @@ def get_conversation_history(db: Session, conversation_id: int) -> List[tuple]:
         return []
 
 
-def get_prompting_strategy(param_size: int) -> dict:
-    """
-    Determine prompting strategy based on model parameter size.
-    
-    Args:
-        param_size (int): Model parameter size in billions (2, 4, 8, 16, etc.)
-    
-    Returns:
-        dict: Strategy configuration with the following keys:
-            - use_system_prompt (bool): Include system prompt
-            - use_custom_prompt (bool): Include custom prompt
-            - max_history_turns (int): Maximum number of conversation turns to include
-            - use_short_term_memory (bool): Include recent messages
-            - use_middle_term_memory (bool): Include semantically relevant messages
-            - use_long_term_memory (bool): Include conversation summary
-            - use_kb_basic (bool): Use basic knowledge base retrieval
-            - use_kb_enhanced (bool): Use enhanced knowledge base retrieval with more context
-            - kb_top_k (int): Number of KB chunks to retrieve
-    """
-    
-    if param_size < 2:
-        # Ultra-lightweight strategy for tiny models (<2B)
-        return {
-            "use_system_prompt": True,
-            "use_custom_prompt": True,
-            "max_history_turns": 1,
-            "use_short_term_memory": True,
-            "use_middle_term_memory": False,
-            "use_long_term_memory": False,
-            "use_kb_basic": False,
-            "use_kb_enhanced": False,
-            "kb_top_k": 0,
-        }
-    elif param_size < 4:
-        # Lightweight strategy for small models (2-3B)
-        return {
-            "use_system_prompt": True,
-            "use_custom_prompt": True,
-            "max_history_turns": 1,
-            "use_short_term_memory": True,
-            "use_middle_term_memory": False,
-            "use_long_term_memory": False,
-            "use_kb_basic": False,
-            "use_kb_enhanced": False,
-            "kb_top_k": 0,
-        }
-    elif param_size < 8:
-        # Medium strategy for 4-7B models
-        return {
-            "use_system_prompt": True,
-            "use_custom_prompt": True,
-            "max_history_turns": 2,
-            "use_short_term_memory": True,
-            "use_middle_term_memory": False,
-            "use_long_term_memory": False,
-            "use_kb_basic": True,
-            "use_kb_enhanced": False,
-            "kb_top_k": 2,
-        }
-    elif param_size < 16:
-        # Full strategy for 8-15B models
-        return {
-            "use_system_prompt": True,
-            "use_custom_prompt": True,
-            "max_history_turns": 3,
-            "use_short_term_memory": True,
-            "use_middle_term_memory": True,
-            "use_long_term_memory": True,
-            "use_kb_basic": False,
-            "use_kb_enhanced": True,
-            "kb_top_k": 3,
-        }
-    else:
-        # Maximum strategy for large models (16B+)
-        return {
-            "use_system_prompt": True,
-            "use_custom_prompt": True,
-            "max_history_turns": 5,
-            "use_short_term_memory": True,
-            "use_middle_term_memory": True,
-            "use_long_term_memory": True,
-            "use_kb_basic": False,
-            "use_kb_enhanced": True,
-            "kb_top_k": 5,
-        }
-
-
 def retrieve_context(
     query: str,
     conversation_history: List,
@@ -495,6 +407,7 @@ def retrieve_context(
         {   context_str (str) : Formatted context string.
             long_term_memory (str) : long-term-memory (conversation summary by llm)
             middle_term_memory (list) : middle-term-memory (top_k most relevant turns relative to the user query)
+            kb_cont (list) : knowledge base context (if LLM is attached to a KB)
         }
     """
 
@@ -558,26 +471,6 @@ def retrieve_context(
         # THIS IS TO FIX IN ORDER TO KEEP ALL OF TRHE CONTEXT, BY CHUNKS AND NOT BY TRUNCKING AFTER 4000 CHAR
         if len(conv_text) > 4000:
             conv_text = conv_text[:4000] + "..."
-
-        # mistral_summary_prompt = f"""<|system|>You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.<|end|>
-
-        # <|user|>Summarize this conversation:
-
-        # {conv_text}
-
-        # Summary:<|end|>
-        # <|assistant|>"""
-
-        # gemma_summary_prompt = f"""<start_of_turn>user
-        # You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words.
-
-        # Summarize this conversation:
-
-        # {conv_text}
-
-        # Summary:<end_of_turn>
-        # <start_of_turn>model
-        # """
         
         summary_sys_prompt = f"""You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words. No formatting needed, only a few phrases."""
         summary_user_prompt = f"""Summarize this conversation:
@@ -587,41 +480,6 @@ def retrieve_context(
         Summary:"""
 
         try:
-            """if model_type == "mistral":
-                input_ids = _current_tokenizer.encode(
-                    mistral_summary_prompt, return_tensors="pt"
-                ).to(_device)
-                end_ids = [4, 2]
-            elif model_type == "gemma":
-                input_ids = _current_tokenizer.encode(
-                    gemma_summary_prompt, return_tensors="pt"
-                ).to(_device)
-                end_ids = [1, 106]
-
-            with torch.no_grad():
-                output = _loaded_model.generate(
-                    input_ids,
-                    max_new_tokens=150,
-                    temperature=0.1,
-                    top_p=0.5,
-                    num_beams=1,
-                    pad_token_id=0 if model_type == "gemma" else None,
-                    end_token_id=end_ids,
-                    do_sample=True,
-                )
-
-            full_response = _current_tokenizer.decode(
-                output[0], skip_special_tokens=True
-            )
-
-            if model_type == "mistral":
-                summary = MISTRAL_RE.sub("", full_response)
-            elif model_type.startswith("gemma"):
-                summary = GEMMA_RE.sub("", full_response)
-            else:
-                summary = full_response
-            """
-
             # Model Loading
             try:
                 # Merge system prompt into user message for models that don't support system role
@@ -637,14 +495,15 @@ def retrieve_context(
             except :
                 logging.exception("Failed to tokenize prompt")
                 raise
-            
+            logging.info("======= Generating conversation summary... =======")
             summary = mlx_lm.generate(
                 _loaded_model,
                 _current_tokenizer,
                 prompt_tokens,
                 max_tokens=150,
                 sampler=sampler,
-                prompt_cache=None
+                prompt_cache=None,
+                verbose=True,
             )
 
             return summary
@@ -805,25 +664,7 @@ async def generate_title(
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
     try:
-#         mistral_title_generation_prompt = f"""<|system|>You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation.<|end|>
-
-# <|user|>Create a 2-to-5-word title for: {payload.question}
-
-# Examples:
-# - How to cook pasta? → Pasta Cooking Guide
-# - What is machine learning? → Machine Learning Basics
-# - Help me with Python code → Python Code Help
-
-# Your very short title:<|end|>
-# <|assistant|>"""
-
-        system_title_generation_prompt = f"""You are a title generator. You must create VERY SHORT titles. No more than 5 words. Use only essential keywords. No articles (a, an, the). No punctuation. Do NOT add any extra text, polite statements, or whatsoever. ONLY return the title.
-
-Examples you need to follow:
-- user: How to cook pasta? model: Pasta Cooking Guide
-- user: What is machine learning? model: Machine Learning Basics
-
-Now it's your turn. Keep it short, precise, and without any extra information 5 Words Max."""
+        system_title_generation_prompt = f"""You are a very-short-title generator. You only return the title for the given message."""
         
         user_title_generation_prompt = f"""Create a 2-to-5-word title for:
 {payload.question}"""
@@ -832,7 +673,9 @@ Now it's your turn. Keep it short, precise, and without any extra information 5 
         full_title_generation_prompt = [
             {"role": "user", "content": merged_title_prompt}
         ]
-        prompt_tokens = _current_tokenizer.apply_chat_template(full_title_generation_prompt)
+        logging.info("Title generation prompt: %s", full_title_generation_prompt)
+        prompt_tokens = _current_tokenizer.apply_chat_template(full_title_generation_prompt, add_generation_prompt=True)
+        logits_processors = build_logits_processors(prompt=prompt_tokens, repetition_penalty=0.0, min_new_tokens = 2, patience = 2, eos_ids = list(_current_tokenizer.eos_token_ids))
         sampler = mlx_lm.sample_utils.make_sampler(
             0.05,
             0.3,
@@ -853,11 +696,13 @@ Now it's your turn. Keep it short, precise, and without any extra information 5 
                 _loaded_model,
                 _current_tokenizer,
                 prompt_tokens,
-                max_tokens=15,
+                max_tokens=12,
                 sampler=sampler,
-                prompt_cache=None
+                prompt_cache=None,
+                logits_processors=logits_processors,
             ):
                 text = new_text.text
+                logging.info(f"Received title token: {text}")
                 if (
                     model_type == "mistral"
                     and text.strip() == ""
@@ -902,7 +747,7 @@ Now it's your turn. Keep it short, precise, and without any extra information 5 
             logging.exception("Title streaming failed")
             raise HTTPException(status_code=500, detail="Title streaming failed")
         finally:
-            # title_thread.join()
+            
             words = generated_title.strip().split()
             if (
                 '"' in words
@@ -1121,14 +966,16 @@ async def query_and_respond(
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
     try:
-        prompt_tokens = _current_tokenizer.apply_chat_template(final_prompt)
+        prompt_tokens = _current_tokenizer.apply_chat_template(final_prompt, add_generation_prompt=True)
+        eos_ids = list(_current_tokenizer.eos_token_ids)
         sampler = mlx_lm.sample_utils.make_sampler(
             payload.temperature,
             payload.top_p,
             min_p=0.0,
             top_k=64,
-            xtc_special_tokens=_current_tokenizer.encode("\n") + list(_current_tokenizer.eos_token_ids)
+            xtc_special_tokens=_current_tokenizer.encode("\n") + eos_ids
         )
+        logits_processors = build_logits_processors(prompt_tokens, eos_ids=eos_ids)
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
@@ -1145,6 +992,7 @@ async def query_and_respond(
                 prompt_tokens,
                 max_tokens=payload.max_new_tokens or 1024,
                 sampler=sampler,
+                logits_processors=logits_processors,
                 prompt_cache=None
             ):
                 

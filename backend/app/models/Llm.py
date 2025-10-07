@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, Float
 from ..database import Base
 from sqlalchemy.orm import relationship
 
@@ -13,7 +13,7 @@ class Llm(Base):
     description = Column(String, nullable=True)  # Optional description of the model
     model_metadata = Column(String, nullable=True)  # Full ModelInfo metadata as formatted string
     quantized = Column(Integer, default=0)  # 0 = not quantized (full precision), 1 = pre-quantized (MLX)
-    param_size = Column(Integer, default=4)  # Model parameter size in billions (2, 4, 8, 16, etc.)
+    param_size = Column(Float, default=4)  # Model parameter size in billions (2, 4, 8, 16, etc.)
     is_attached_to_kb = Column(Integer, default=0)  # 0 or 1 Indicates if the model is attached to a knowledge base
     kb_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="SET NULL"), nullable=True)  # Foreign key to the knowledge base if attached
 
