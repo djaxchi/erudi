@@ -29,7 +29,7 @@ from ..schemas.conversation_schemas import (
     ConversationUpdate,
     ConversationWithMessagesResponse,
 )
-from ..utils.inference_utils import build_logits_processors, get_prompting_strategy
+from ..utils.inference_utils import build_logits_processors, get_prompting_strategy, build_system_prompt
 import os
 
 os.environ.setdefault("VECLIB_MAXIMUM_THREADS","1")
@@ -880,13 +880,18 @@ async def query_and_respond(
     # - KB context: relevant knowledge (goes with current question)
     # - Long-term memory: conversation summary (goes at the beginning)
     
-    sys_prompt = ""
     custom_prompt = ""
     kb_prompt = ""
     
-    # System prompt: defines the assistant's identity (goes at the beginning)
-    if strategy["use_system_prompt"]:
-        sys_prompt = f"""You are {llm.name}, a concise and helpful assistant; answer directly in the user's tone without repeating context or mentioning instructions."""
+    # System prompt: defines the assistant's identity based on model size category
+    size_category = strategy.get("system_prompt_size_category", "medium")
+    sys_prompt = build_system_prompt(
+        model_name=llm.name,
+        size_category=size_category,
+        long_term_memory=long_term_memory if long_term_memory and long_term_memory != "" else None
+    )
+    
+    logging.info(f"Using system prompt for size category '{size_category}': {sys_prompt[:100]}...")
     
     # Custom prompt: task-specific instructions (will be added to current question)
     if strategy["use_custom_prompt"] and payload.custom_prompt:
@@ -895,10 +900,6 @@ async def query_and_respond(
     # KB context: relevant knowledge for the current query (will be added to current question)
     if kb_context and kb_context != "":
         kb_prompt = f"\nRelevant context from Knowledge Base:\n" + "\n".join(kb_context)
-    
-    # Long-term memory: conversation summary (goes at the beginning for overall context)
-    if long_term_memory and long_term_memory != "":
-        sys_prompt += f"\nSummary of the conversation you had so far: {long_term_memory}"
     
     final_prompt = []
     

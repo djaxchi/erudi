@@ -63,3 +63,17 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
+
+reste a faire mnt:
+systeme prompt dynamique en fonction de model taille
+tune title
+starred messages (tester pertinence debut/fin prompt)
+opti KB (chunk plus petit)
+Clean code base
+
+plus tard: 
+user story kb
+actualisation info apres telechargement
+
+
+
