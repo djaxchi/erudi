@@ -386,14 +386,14 @@ export default function HeaderBar({
                           Max Tokens
                         </span>
                       </div>
-                      <div className="flex items-center gap-2">
+                      {/* <div className="flex items-center gap-2">
                         <span
                           className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
                         >
                           Low-Memory
                         </span>
                         <TooltipIcon id="quantize" side="bottom-left" />
-                      </div>
+                      </div> */}
 
                       {/* Controls row */}
                       <div className="inline-flex items-center rounded-md bg-white/10 border border-white/20 shadow p-0 m-0">
@@ -409,7 +409,7 @@ export default function HeaderBar({
                         />
                       </div>
 
-                      <div>
+                      {/* <div>
                         <button
                           type="button"
                           onClick={() => setQuantize(!quantize)}
@@ -425,7 +425,7 @@ export default function HeaderBar({
                             }`}
                           />
                         </button>
-                      </div>
+                      </div> */}
                     </div>
                   </div>
 

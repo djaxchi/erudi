@@ -49,7 +49,6 @@ SIZE_MAP = {
 MLX_MODEL_MAPPING = {
     "mistralai/Mistral-7B-Instruct-v0.3": "mlx-community/Mistral-7B-Instruct-v0.3-4bit",
     "mistralai/Mistral-7B-v0.3": "mlx-community/Mistral-7B-v0.3-4bit",
-    "google/gemma-3-1b-it": "mlx-community/gemma-3-1b-it-4bit",
     "google/gemma-2-2b-it": "mlx-community/gemma-2-2b-it-4bit",
     "google/gemma-3-4b-it": "mlx-community/gemma-3-4b-it-4bit",
 }
@@ -208,6 +207,15 @@ async def startup_populate_database():
         
         for name, link, model_type in base_models:
             existing_model = db.query(Llm).filter(Llm.name == name).first()
+            
+            param_str = get_parameter_count_from_name(name, link)
+            if "B" in param_str:
+                param_size = float(param_str.replace("B", ""))
+            elif "M" in param_str:
+                param_size = float(param_str.replace("M", "")) // 1000
+            else:
+                param_size = -1.0  # Unknown
+
             if not existing_model:
                 try:
                     # Check if MLX quantized version exists
@@ -225,14 +233,15 @@ async def startup_populate_database():
                     else:
                         size_estimate = get_model_size_estimate(name, link)
                         actual_link = link
-                    
+                
                     base_model = Llm(
                         name=name,
                         local=0,
                         link=actual_link,  # Use MLX link if available
                         type=model_type,
                         quantized=1 if is_quantized else 0,
-                        model_metadata=format_model_info_metadata(model_info, size_estimate, is_quantized)
+                        model_metadata=format_model_info_metadata(model_info, size_estimate, is_quantized),
+                        param_size=param_size
                     )
                     db.add(base_model)
                     print(f"Added base model {name} (quantized={is_quantized}) with metadata and size: {size_estimate}")
@@ -256,7 +265,8 @@ async def startup_populate_database():
                         link=actual_link,
                         type=model_type,
                         quantized=1 if is_quantized else 0,
-                        model_metadata=fallback_metadata
+                        model_metadata=fallback_metadata,
+                        param_size=param_size
                     )
                     db.add(base_model)
                     print(f"Added base model {name} (quantized={is_quantized}) with size estimate: {size_estimate}")
