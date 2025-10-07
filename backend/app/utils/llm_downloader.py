@@ -38,9 +38,8 @@ FILES_TO_EXCLUDE = ["consolidated.safetensors"]
 MLX_MODEL_MAPPING = {
     "mistralai/Mistral-7B-Instruct-v0.3": "mlx-community/Mistral-7B-Instruct-v0.3-4bit",
     "mistralai/Mistral-7B-v0.3": "mlx-community/Mistral-7B-v0.3-4bit",
-    "google/gemma-3-1b-it": "mlx-community/gemma-3-1b-it-8bit",
-    "google/gemma-2-2b-it": "mlx-community/gemma-2-2b-it-8bit",
-    "google/gemma-3-4b-it": "mlx-community/gemma-3-4b-it-8bit",
+    "google/gemma-2-2b-it": "mlx-community/gemma-2-2b-it-4bit",
+    "google/gemma-3-4b-it": "mlx-community/gemma-3-4b-it-4bit",
 }
 
 
