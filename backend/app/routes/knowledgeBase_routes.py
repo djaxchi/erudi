@@ -180,7 +180,9 @@ def create_knowledge_base(
             local=1, 
             link=base_llm.link,
             type=base_llm.type,
-            is_attached_to_kb=1
+            is_attached_to_kb=1,
+            param_size=base_llm.param_size,  # Copy parameter size from base model
+            quantized=base_llm.quantized,  # Copy quantized flag from base model
         )
         db.add(new_llm)
         db.flush()  # To get new_llm.id

@@ -304,6 +304,15 @@ async def startup_populate_database():
 
             # Get size estimate for community model
             size_estimate = get_model_size_estimate(m.modelId.split("/")[-1], m.modelId)
+            
+            # Extract parameter count from model name
+            param_str = get_parameter_count_from_name(m.modelId.split("/")[-1], m.modelId)
+            if "B" in param_str:
+                param_size = float(param_str.replace("B", ""))
+            elif "M" in param_str:
+                param_size = float(param_str.replace("M", "")) / 1000
+            else:
+                param_size = 4.0  # Default fallback
 
             llm_entry = Llm(
                 name=m.modelId.split("/")[-1],  
@@ -311,7 +320,8 @@ async def startup_populate_database():
                 link=m.modelId,
                 type="mistral" if "mistral" in m.modelId.lower() else "gemma",
                 quantized=0,  # Community models are not pre-quantized
-                model_metadata=format_model_info_metadata(m, size_estimate, quantized=False)
+                model_metadata=format_model_info_metadata(m, size_estimate, quantized=False),
+                param_size=param_size
             )
             db.add(llm_entry)
 
@@ -330,6 +340,15 @@ async def startup_populate_database():
 
             # Get size estimate for community model
             size_estimate = get_model_size_estimate(m.modelId.split("/")[-1], m.modelId)
+            
+            # Extract parameter count from model name
+            param_str = get_parameter_count_from_name(m.modelId.split("/")[-1], m.modelId)
+            if "B" in param_str:
+                param_size = float(param_str.replace("B", ""))
+            elif "M" in param_str:
+                param_size = float(param_str.replace("M", "")) / 1000
+            else:
+                param_size = 1.0  # Default fallback for Gemma (usually smaller)
 
             llm_entry = Llm(
                 name=m.modelId.split("/")[-1],  
@@ -337,7 +356,8 @@ async def startup_populate_database():
                 link=m.modelId,
                 type="mistral" if "mistral" in m.modelId.lower() else "gemma",
                 quantized=0,  # Community models are not pre-quantized
-                model_metadata=format_model_info_metadata(m, size_estimate, quantized=False)
+                model_metadata=format_model_info_metadata(m, size_estimate, quantized=False),
+                param_size=param_size
             )
             db.add(llm_entry)
         
@@ -511,7 +531,7 @@ async def startup_populate_database():
 @app.on_event("startup")
 async def startup_event():
     await createTables()
-    # await delete_all_data()
+    #await delete_all_data()
     await startup_populate_database()
 
 app.add_middleware(

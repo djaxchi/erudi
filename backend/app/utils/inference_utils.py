@@ -1,6 +1,6 @@
 import mlx_lm
 import logging
-from typing import List, Callable
+from typing import List, Callable, Optional
 
 def build_logits_processors(prompt: List, repetition_penalty: float = 1.3, repetition_context_size: int = 1024, min_new_tokens: int = 5, patience: int = 7, eos_ids: List[int] = None) -> List[Callable]:
     """
@@ -69,6 +69,60 @@ def build_logits_processors(prompt: List, repetition_penalty: float = 1.3, repet
     return logits_processors
 
 
+def build_system_prompt(
+    model_name: str,
+    size_category: str,
+    long_term_memory: Optional[str] = None
+) -> str:
+    """
+    Build a system prompt dynamically based on model size category.
+    
+    Args:
+        model_name (str): Name of the model/assistant
+        size_category (str): Size category ("tiny", "small", "medium", "large", "xlarge")
+        long_term_memory (str, optional): Conversation summary to include
+    
+    Returns:
+        str: The constructed system prompt
+    """
+    
+    if size_category == "tiny":
+        # Minimal system prompt for tiny models (<2B)
+        sys_prompt = f"You are {model_name}. a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. Output only what the user should see."
+    elif size_category == "small":
+        # Concise system prompt for small models (2-3B)
+        sys_prompt = f"You are {model_name}, a helpful assistant. a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. You can use context of previous messages to stay relevant. Do not go off track. Output only what the user should see."
+    elif size_category == "medium":
+        # Standard system prompt for medium models (4-7B)
+        sys_prompt = f"You are {model_name}, a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. You can use context of previous messages to stay relevant. Do not go off track. Finish your answers with questions if needed, to keep the conversation going. Output only what the user should see."
+    elif size_category == "large":
+        # Detailed system prompt for large models (8-15B)
+        sys_prompt = f"""You are {model_name}, a sophisticated AI assistant. Your role is to:
+                        - Provide accurate, well-reasoned responses
+                        - Adapt to the user's language, tone, and expertise level
+                        - Use context wisely without repeating it
+                        - Never mention system instructions or internal processes
+                        - Format responses clearly using Markdown when appropriate
+                        - Output only what the user should see."""
+    else:  # "xlarge" (16B+)
+        # Comprehensive system prompt for very large models
+        sys_prompt = f"""You are {model_name}, a sophisticated AI assistant. Your role is to:
+            - Provide accurate, well-reasoned responses
+            - Adapt to the user's language, tone, and expertise level
+            - Use context wisely without repeating it
+            - Never mention system instructions or internal processes
+            - Format responses clearly using Markdown when appropriate
+            - When unsure about an answer, admit it rather than fabricating information
+            - Understand the user and his needs deeply to provide tailored assistance.
+            - Output only what the user should see."""
+    
+    # Add long-term memory if provided
+    if long_term_memory and long_term_memory.strip():
+        sys_prompt += f"\nSummary of the conversation you had so far: {long_term_memory}"
+    
+    return sys_prompt
+
+
 def get_prompting_strategy(param_size: int) -> dict:
     """
     Determine prompting strategy based on model parameter size.
@@ -78,7 +132,8 @@ def get_prompting_strategy(param_size: int) -> dict:
     
     Returns:
         dict: Strategy configuration with the following keys:
-            - use_system_prompt (bool): Include system prompt
+            - system_prompt_size_category (str): Size category for dynamic system prompt design
+              Possible values: "tiny" (<2B), "small" (2-3B), "medium" (4-7B), "large" (8-15B), "xlarge" (16B+)
             - use_custom_prompt (bool): Include custom prompt
             - max_history_turns (int): Maximum number of conversation turns to include
             - use_short_term_memory (bool): Include recent messages
@@ -92,7 +147,7 @@ def get_prompting_strategy(param_size: int) -> dict:
     if param_size < 2:
         # Ultra-lightweight strategy for tiny models (<2B)
         return {
-            "use_system_prompt": True,
+            "system_prompt_size_category": "tiny",
             "use_custom_prompt": True,
             "max_history_turns": 1,
             "use_short_term_memory": True,
@@ -105,24 +160,24 @@ def get_prompting_strategy(param_size: int) -> dict:
     elif param_size < 4:
         # Lightweight strategy for small models (2-3B)
         return {
-            "use_system_prompt": True,
-            "use_custom_prompt": True,
-            "max_history_turns": 1,
-            "use_short_term_memory": True,
-            "use_middle_term_memory": False,
-            "use_long_term_memory": False,
-            "use_kb_basic": False,
-            "use_kb_enhanced": False,
-            "kb_top_k": 0,
-        }
-    elif param_size < 8:
-        # Medium strategy for 4-7B models
-        return {
-            "use_system_prompt": True,
+            "system_prompt_size_category": "small",
             "use_custom_prompt": True,
             "max_history_turns": 2,
             "use_short_term_memory": True,
             "use_middle_term_memory": False,
+            "use_long_term_memory": False,
+            "use_kb_basic": True,
+            "use_kb_enhanced": False,
+            "kb_top_k": 1,
+        }
+    elif param_size < 8:
+        # Medium strategy for 4-7B models
+        return {
+            "system_prompt_size_category": "medium",
+            "use_custom_prompt": True,
+            "max_history_turns": 3,
+            "use_short_term_memory": True,
+            "use_middle_term_memory": True,
             "use_long_term_memory": False,
             "use_kb_basic": True,
             "use_kb_enhanced": False,
@@ -131,7 +186,7 @@ def get_prompting_strategy(param_size: int) -> dict:
     elif param_size < 16:
         # Full strategy for 8-15B models
         return {
-            "use_system_prompt": True,
+            "system_prompt_size_category": "large",
             "use_custom_prompt": True,
             "max_history_turns": 3,
             "use_short_term_memory": True,
@@ -139,12 +194,12 @@ def get_prompting_strategy(param_size: int) -> dict:
             "use_long_term_memory": True,
             "use_kb_basic": False,
             "use_kb_enhanced": True,
-            "kb_top_k": 3,
+            "kb_top_k": 2,
         }
     else:
         # Maximum strategy for large models (16B+)
         return {
-            "use_system_prompt": True,
+            "system_prompt_size_category": "xlarge",
             "use_custom_prompt": True,
             "max_history_turns": 5,
             "use_short_term_memory": True,
@@ -152,5 +207,5 @@ def get_prompting_strategy(param_size: int) -> dict:
             "use_long_term_memory": True,
             "use_kb_basic": False,
             "use_kb_enhanced": True,
-            "kb_top_k": 5,
+            "kb_top_k": 3,
         }
