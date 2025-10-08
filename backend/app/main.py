@@ -1,9 +1,9 @@
 from datetime import datetime
 import os
 import shutil
+from contextlib import asynccontextmanager
 
-
-
+from .utils.inference_utils import ModelManager
 from .utils.hardware_info import get_hardware_eval_for_apple_silicon
 
 from .models.StaticHardwareInfos import StaticHardwareInfo
@@ -74,7 +74,6 @@ def get_mlx_model_size(mlx_link):
             elif "4b" in mlx_link.lower():
                 return "~4-5 GB"
         return "Unknown"
-
 
 def get_model_size_estimate(model_name, link):
     """Get approximate model size for known base models and their derivatives"""
@@ -528,11 +527,18 @@ async def startup_populate_database():
         db.close()
         return
 
-@app.on_event("startup")
-async def startup_event():
+# on_startup was deprecated, use lifespan instead
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Before yield comes the startup code
     await createTables()
     #await delete_all_data()
     await startup_populate_database()
+    ModelManager.start_cleanup_task()
+    yield
+    # Shutdown code can go here if needed
+    ModelManager.stop_cleanup_task()
+    ModelManager.cleanup()
 
 app.add_middleware(
     CORSMiddleware,

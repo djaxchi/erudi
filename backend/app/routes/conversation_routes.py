@@ -1,191 +1,47 @@
-import gc
+import os
+import numpy as np
+import logging
+from datetime import datetime
+from typing import List
+import faiss
+import re
 
-from ..models.VectorStore import VectorStore
-
-from ..models.KnowledgeBase import KnowledgeBase
-from ..schemas.message_schemas import MessageCreate, MessageResponse
 from fastapi import APIRouter, Depends, HTTPException, Body, status
 from sqlalchemy.orm import Session
-import torch
-import mlx_lm
-from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer, QuantoConfig
-import mlx.core as mx
-import mlx_lm
-import logging
-from typing import List
-from ..database import get_db
-from ..utils.file_processor import chunk_by_tokens
-from app.utils.hardware_info import build_max_memory
-from ..models.Conversation import Conversation
-from ..models.Llm import Llm
-from ..models.Message import Message
-from ..schemas.conversation_schemas import (
+from fastapi.responses import StreamingResponse
+
+from app.schemas.message_schemas import MessageResponse
+from app.database import get_db
+from app.models.Conversation import Conversation
+from app.models.Llm import Llm
+from app.models.Message import Message
+from app.utils.inference_utils import (
+    EmbedderService, 
+    ModelManager, 
+    get_prompting_strategy, 
+    get_relevant_texts_from_kb,
+    build_system_prompt
+)
+from app.schemas.conversation_schemas import (
     ConversationCreate,
     ConversationDeleteBulk,
     ConversationQuery,
-    ConversationQueryResponse,
     ConversationResponse,
     ConversationUpdate,
     ConversationWithMessagesResponse,
 )
-from ..utils.inference_utils import build_logits_processors, get_prompting_strategy, build_system_prompt
-import os
 
 os.environ.setdefault("VECLIB_MAXIMUM_THREADS","1")
 os.environ.setdefault("OMP_NUM_THREADS","1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS","1")
 os.environ.setdefault("MKL_NUM_THREADS","1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS","1")
-
-
-import threading
-from fastapi.responses import StreamingResponse
-from faiss import IndexFlatL2
-import faiss
 faiss.omp_set_num_threads(1)
-from sentence_transformers import SentenceTransformer
-import numpy as np
-from ..prompting.builder import build_conv_prompt
-import re
-from dotenv import load_dotenv
 
-load_dotenv()
-CACHE_DIR = os.getenv("CACHE_DIR")
-
-_loaded_model = None
-_current_tokenizer = None
-_loaded_model_id = None
-_embedder = None
-# _is_quant_on_current_load = None
 _conversation_summary_cache = {}
-# _device = "cpu"
-
-MISTRAL_RE = re.compile(
-    r"(?:<s>|</s>|\[/?INST\]|\<\|/?(?:assistant|user|system|end)\|\>)"
-)
-
-GEMMA_RE = re.compile(
-    r"(?:<bos>|</s>|<eos>|"
-    r"<start_of_turn>(?:\s*(?:user|model|assistant|system))?|"
-    r"<end_of_turn>)"
-)
-
-
-def get_relevant_texts_if_kb(query: str, llm: Llm, db: Session) -> List[str]:
-    kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == llm.kb_id).first()
-
-    if not os.path.exists(kb.index_path):
-        raise HTTPException(
-            status_code=404, detail=f"Knowledge Base index not found for LLM {llm.id}"
-        )
-    try:
-        faiss_index = faiss.read_index(kb.index_path)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to read FAISS index for Knowledge Base {kb.id}: {str(e)}",
-        )
-    if not faiss_index:
-        raise HTTPException(
-            status_code=404, detail=f"FAISS index not found for Knowledge Base {kb.id}"
-        )
-
-    # Get the VectorStore for this KB
-    vector_store = db.query(VectorStore).filter(VectorStore.kb_id == kb.id).first()
-    if not vector_store:
-        raise HTTPException(
-            status_code=404, detail=f"VectorStore not found for Knowledge Base {kb.id}"
-        )
-
-    get_embedder()
-    chunks = chunk_by_tokens(text=query)
-    logging.info("Chunks created for query.")
-    relevant_texts = []
-    if not chunks or len(chunks) < 1:
-        raise HTTPException(
-            status_code=400, detail="No valid text chunks found in the query."
-        )
-    else:
-        for chunk in chunks:
-            if not chunk.strip():
-                continue
-            try:
-                logging.info(f"Encoding query chunk: {chunk[:50]}...")
-                query_emb = _embedder.encode(chunk, convert_to_tensor=True)
-                logging.info(f"Query chunk encoded: {query_emb.shape}")
-            except Exception as e:
-                logging.error(f"Error embedding chunk: {e}")
-                continue
-            if query_emb is None or query_emb.numel() == 0:
-                raise HTTPException(status_code=400, detail="Error embedding chunk.")
-            try:
-                logging.info(f"Searching FAISS index for query chunk...")
-                # _, idxs = faiss_index.search(
-                #     query_emb.cpu().numpy().reshape(1, -1), k=3
-                # )
-                q = np.ascontiguousarray(
-                    query_emb.detach().cpu().numpy().astype("float32")
-                ).reshape(1, -1)
-
-                D, I = faiss_index.search(q, k=3)
-                logging.info(f"FAISS index search completed, found {len(I[0])} results.")
-            except Exception as e:
-                raise HTTPException(
-                    status_code=500, detail=f"Error searching FAISS index: {str(e)}"
-                )
-            logging.info(f"FAISS index search returned {len(I[0])} IDs.")
-            for idx in I[0]:  # I is 2D array, take first row
-                if idx < 0:
-                    continue
-                try:
-                    logging.info(f"Fetching text for FAISS ID: {idx}")
-                    # Get text from vectors_data JSON using FAISS ID as key
-                    faiss_id_str = str(idx)
-                    if faiss_id_str in vector_store.vectors_data:
-                        relevant_texts.append(vector_store.vectors_data[faiss_id_str])
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=500, detail=f"Error fetching vector text: {e}"
-                    )
-    return relevant_texts
-
-
-def get_embedder():
-    global _embedder
-    if _embedder is None:
-        logging.info("Loading the Embedder")
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        _embedder = SentenceTransformer(
-            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-            cache_folder=CACHE_DIR,
-        )
-        logging.info("Embedder loaded")
-    return _embedder
-
 
 router = APIRouter()
 
-
-def clear_memory():
-    """Clear GPU memory and cache for macOS"""
-    if torch.backends.mps.is_available():
-        torch.mps.empty_cache()
-        torch.mps.synchronize()
-    gc.collect()
-
-# This function can't be put into inference_utils because the model and tokenizer need to be in memory scope
-def load_model(llm: Llm) -> None:
-    global _loaded_model, _current_tokenizer, _loaded_model_id
-    if llm.id == _loaded_model_id and _loaded_model is not None and _current_tokenizer is not None:
-        logging.info(f"Model {llm.id} already loaded")
-        return
-    print("Loading MLX model and tokenizer...")
-    start = datetime.now()
-    _loaded_model_id = llm.id
-    _loaded_model, _current_tokenizer = mlx_lm.load(llm.link)
-    print(f"Model and tokenizer loaded in {datetime.now() - start}")
-clear_memory()
 
 @router.get(
     "/conversations/{conversation_id}/fetch_messages",
@@ -259,7 +115,6 @@ async def create_conversation(
         temperature=payload.temperature,
         top_p=payload.top_p,
         max_tokens=payload.max_tokens,
-        quantize=payload.quantize,
         custom_prompt=payload.custom_prompt
     )
     try:
@@ -332,10 +187,6 @@ async def update_conversation(
 
     if payload.max_tokens is not None and payload.max_tokens != conversation.max_tokens:
         conversation.max_tokens = payload.max_tokens
-        updated = True
-
-    if payload.quantize is not None and payload.quantize != conversation.quantize:
-        conversation.quantize = payload.quantize
         updated = True
 
     if payload.custom_prompt is not None and payload.custom_prompt != conversation.custom_prompt:
@@ -460,7 +311,8 @@ def retrieve_context(
         Returns:
             str: The generated summary.
         """
-        if not _loaded_model or not _current_tokenizer or len(history) < 10:
+        model, tokenizer = ModelManager.get_model(llm)
+        if len(history) < 10:
             return ""
 
         conv_text = ""
@@ -480,31 +332,23 @@ def retrieve_context(
         Summary:"""
 
         try:
-            # Model Loading
-            try:
-                # Merge system prompt into user message for models that don't support system role
-                merged_summary_prompt = f"{summary_sys_prompt}\n\n{summary_user_prompt}"
-                prompt_tokens = _current_tokenizer.apply_chat_template([{"role": "user", "content": merged_summary_prompt}])
-                sampler = mlx_lm.sample_utils.make_sampler(
-                    0.1,
-                    0.5,
-                    min_p=0.0,
-                    top_k=64,
-                    xtc_special_tokens=_current_tokenizer.encode("\n") + list(_current_tokenizer.eos_token_ids)
-                )
-            except :
-                logging.exception("Failed to tokenize prompt")
-                raise
+            # Merge system prompt into user message for models that don't support system role
+            merged_summary_prompt = f"{summary_sys_prompt}\n\n{summary_user_prompt}"
+        
             logging.info("======= Generating conversation summary... =======")
-            summary = mlx_lm.generate(
-                _loaded_model,
-                _current_tokenizer,
-                prompt_tokens,
+            summary = ""
+
+            for chunk in ModelManager.generate_stream(
+                model=model,
+                tokenizer=tokenizer,
+                prompt=merged_summary_prompt,
                 max_tokens=150,
-                sampler=sampler,
-                prompt_cache=None,
-                verbose=True,
-            )
+                temperature=0.1,
+                top_p=0.5,
+                repetition_penalty=1.3,
+                repetition_context_size=150,
+            ):
+                summary += chunk
 
             return summary
 
@@ -518,9 +362,7 @@ def retrieve_context(
     # Long-term memory (Conversation summary) - only if strategy allows
     summary_threshold = n_last_turns * 2 * 2 
     if (strategy["use_long_term_memory"] and 
-        len(conversation_history) > summary_threshold and 
-        _loaded_model and 
-        _current_tokenizer):
+        len(conversation_history) > summary_threshold):
         cached_summary, need_regenerate = get_cached_summary(
             conversation_id, current_message_count
         )
@@ -550,11 +392,12 @@ def retrieve_context(
     # Middle-term memory (Semantic context) - only if strategy allows
     if strategy["use_middle_term_memory"] and len(semantic_history) >= 2:
         n_to_retrieve = top_k if len(semantic_history) >= 2*top_k else int(len(semantic_history)/2)
-        get_embedder()
-        query_emb = _embedder.encode(query, convert_to_tensor=True)
+        embedder = EmbedderService.get_embedder()
+        query_emb = embedder.encode(query, convert_to_tensor=True)
         messages = [msg[1] for msg in semantic_history]
-        msg_embs = _embedder.encode(messages, convert_to_tensor=False)
-        index = IndexFlatL2(len(msg_embs[0]))
+        msg_embs = embedder.encode(messages, convert_to_tensor=False)
+        EmbedderService.cleanup()
+        index = faiss.IndexFlatL2(len(msg_embs[0]))
         index.add(np.array(msg_embs))
         _, idxs = index.search(
             np.array([query_emb.cpu().numpy()]), k=n_to_retrieve
@@ -592,13 +435,9 @@ def retrieve_context(
         try:
             # Use enhanced KB retrieval with more chunks if strategy allows
             kb_top_k = strategy["kb_top_k"]
-            kb_context = get_relevant_texts_if_kb(
-                query=query, llm=llm, db=db
+            kb_context = get_relevant_texts_from_kb(
+                query=query, llm=llm, db=db, kb_top_k=kb_top_k
             )
-            
-            # Limit KB context based on strategy
-            if kb_context:
-                kb_context = kb_context[:kb_top_k]
             
             if not kb_context:
                 logging.info("No relevant texts found in Knowledge Base")
@@ -655,10 +494,8 @@ async def generate_title(
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     model_type = llm.type
-    global _loaded_model, _current_tokenizer, _loaded_model_id, _is_quant_on_current_load
-
     try:
-        load_model(llm)
+        model, tokenizer = ModelManager.get_model(llm)
     except Exception as e:
         logging.exception("Failed to load model or tokenizer: %s", e)
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
@@ -674,15 +511,6 @@ async def generate_title(
             {"role": "user", "content": merged_title_prompt}
         ]
         logging.info("Title generation prompt: %s", full_title_generation_prompt)
-        prompt_tokens = _current_tokenizer.apply_chat_template(full_title_generation_prompt, add_generation_prompt=True)
-        logits_processors = build_logits_processors(prompt=prompt_tokens, repetition_penalty=0.0, min_new_tokens = 2, patience = 2, eos_ids = list(_current_tokenizer.eos_token_ids))
-        sampler = mlx_lm.sample_utils.make_sampler(
-            0.01,
-            0.2,
-            min_p=0.0,
-            top_k=64,
-            xtc_special_tokens=_current_tokenizer.encode("\n") + list(_current_tokenizer.eos_token_ids)
-        )
     
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
@@ -692,16 +520,18 @@ async def generate_title(
     async def title_stream():
         generated_title = ""
         try:
-            for new_text in mlx_lm.stream_generate(
-                _loaded_model,
-                _current_tokenizer,
-                prompt_tokens,
+            for new_text in ModelManager.generate_stream(
+                model=model,
+                tokenizer=tokenizer,
+                prompt=full_title_generation_prompt,
+                temperature=0.01,
+                top_p=0.2,
                 max_tokens=8,
-                sampler=sampler,
-                prompt_cache=None,
-                logits_processors=logits_processors,
+                repetition_penalty=None,
+                min_new_tokens=2,
+                patience=2,
             ):
-                text = new_text.text
+                text = new_text
                 logging.info(f"Received title token: {text}")
                 if (
                     model_type == "mistral"
@@ -961,47 +791,31 @@ async def query_and_respond(
 
     # Model Loading
     try:
-        load_model(llm)
+        model, tokenizer = ModelManager.get_model(llm=llm)
     except Exception as e:
-        logging.exception("Failed to load model or tokenizer")
+        logging.exception("Failed to load model or tokenizer: %s", e)
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
-
-    try:
-        prompt_tokens = _current_tokenizer.apply_chat_template(final_prompt, add_generation_prompt=True)
-        eos_ids = list(_current_tokenizer.eos_token_ids)
-        sampler = mlx_lm.sample_utils.make_sampler(
-            payload.temperature,
-            payload.top_p,
-            min_p=0.0,
-            top_k=64,
-            xtc_special_tokens=_current_tokenizer.encode("\n") + eos_ids
-        )
-        logits_processors = build_logits_processors(prompt_tokens, eos_ids=eos_ids)
-    except Exception as e:
-        logging.exception("Failed to tokenize prompt")
-        raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
-
 
     async def assistant_response_token_stream():
         assistant_response = ""
         start = datetime.now()
         logging.info(f"Generating response from MLX model for prompt: {payload.question}")
         try:
-            for new_text in mlx_lm.stream_generate(
-                _loaded_model,
-                _current_tokenizer,
-                prompt_tokens,
+            for text in ModelManager.generate_stream(
+                model=model,
+                tokenizer=tokenizer,
+                prompt=final_prompt,
                 max_tokens=payload.max_new_tokens or 1024,
-                sampler=sampler,
-                logits_processors=logits_processors,
-                prompt_cache=None
+                temperature=payload.temperature,
+                top_p=payload.top_p,
+                repetition_penalty=1.2,
+                repetition_context_size=payload.max_new_tokens or 1024,
+                min_new_tokens=5,
+                patience=7
             ):
-                
-                text = new_text.text
-
                 assistant_response += text
                 logging.info(f"Yielding token: {text}")
-                if text:
+                if not text.strip() == "" :
                     yield text
 
         except Exception as e:
@@ -1083,13 +897,7 @@ async def store_error_message(
         db.commit()
 
         logging.info(f"Stored error message for conversation {conversation_id}")
-        global _loaded_model, _current_tokenizer
-        if _loaded_model is not None:
-            _loaded_model = None
-            logging.info("Cleared model cache after error message storage")
-        if _current_tokenizer is not None:
-            _current_tokenizer = None
-            logging.info("Cleared tokenizer cache after error message storage")
+        ModelManager.cleanup()
         return {
             "message": "Error message stored successfully",
             "error_message_id": error_message.id,
