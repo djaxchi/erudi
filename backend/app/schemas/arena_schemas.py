@@ -7,7 +7,6 @@ class ArenaQueryPayload(BaseModel):
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_new_tokens: Optional[int] = None
-    quantize: Optional[bool] = None
     custom_prompt: Optional[str] = None
     language: Optional[str] = None       
     n_relevant_msgs_to_get: Optional[int] = None
