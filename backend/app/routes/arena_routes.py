@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.Llm import Llm
-from app.utils.inference_utils import ModelManager, get_prompting_strategy, get_relevant_texts_from_kb
+from app.utils.inference_utils import ModelManager, get_prompting_strategy, get_relevant_texts_from_kb, build_system_prompt
 
 router = APIRouter(prefix="/arena", tags=["arena"])
 
@@ -36,24 +36,27 @@ async def query_arena(
     strategy = get_prompting_strategy(param_size)
     logging.info(f"Using prompting strategy for {param_size}B model: {strategy}")
 
-    sys_prompt = ""
     custom_prompt = ""
     kb_prompt = ""
 
-    if llm.is_attached_to_kb:
+    if llm.is_attached_to_kb and strategy["use_kb_context"]:
         try:
-            relevant_texts = get_relevant_texts_from_kb(payload.question, llm, db)
+            relevant_texts = get_relevant_texts_from_kb(payload.question, llm, db, kb_top_k=strategy["kb_top_k"])
             if relevant_texts:
                 kb_prompt = "Relevant context from Knowledge Base:\n" + "\n".join(relevant_texts)
         except Exception as e:
             logging.exception("Failed to retrieve Knowledge Base context")
             raise HTTPException(status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}")
     
-    
-    # System prompt: defines the assistant's identity (goes at the beginning)
-    if strategy["use_system_prompt"]:
-        sys_prompt = f"""You are {llm.name}, a concise and helpful assistant; answer directly in the user's tone without repeating context or mentioning instructions."""
-    
+    # System prompt: defines the assistant's identity based on model size category
+    size_category = strategy.get("system_prompt_size_category", "medium")
+    sys_prompt = build_system_prompt(
+        model_name=llm.name,
+        size_category=size_category,
+        long_term_memory=None,
+        starred_messages=None
+    )
+
     # Custom prompt: task-specific instructions (will be added to current question)
     if strategy["use_custom_prompt"] and payload.custom_prompt:
         custom_prompt = f"\nAdditional instructions: {payload.custom_prompt}"

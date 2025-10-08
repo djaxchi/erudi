@@ -400,7 +400,7 @@ def get_prompting_strategy(param_size: int) -> dict:
             "max_history_turns": 3,
             "use_short_term_memory": True,
             "use_middle_term_memory": True,
-            "mtm_top_k": 2,
+            "mtm_top_k": 1,
             "use_long_term_memory": True,
             "use_kb_basic": False,
             "use_kb_enhanced": True,
@@ -414,7 +414,7 @@ def get_prompting_strategy(param_size: int) -> dict:
             "max_history_turns": 5,
             "use_short_term_memory": True,
             "use_middle_term_memory": True,
-            "mtm_top_k": 3,
+            "mtm_top_k": 2,
             "use_long_term_memory": True,
             "use_kb_basic": False,
             "use_kb_enhanced": True,
@@ -425,7 +425,8 @@ def get_prompting_strategy(param_size: int) -> dict:
 def build_system_prompt(
     model_name: str,
     size_category: str,
-    long_term_memory: Optional[str] = None
+    long_term_memory: Optional[str] = None,
+    starred_messages: Optional[List[str]] = None
 ) -> str:
     """
     Build a system prompt dynamically based on model size category.
@@ -444,7 +445,7 @@ def build_system_prompt(
         sys_prompt = f"You are {model_name}. a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. Output only text relevant to user."
     elif size_category == "small":
         # Concise system prompt for small models (2-3B)
-        sys_prompt = f"You are {model_name}, a helpful assistant. a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. You can use context of previous messages to stay relevant. Do not go off track. Output only what the user should see."
+        sys_prompt = f"You are {model_name}, a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. You can use context of previous messages to stay relevant. Do not go off track. Output only what the user should see."
     elif size_category == "medium":
         # Standard system prompt for medium models (4-7B)
         sys_prompt = f"You are {model_name}, a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. You can use context of previous messages to stay relevant. Do not go off track. Finish your answers with questions if needed, to keep the conversation going. Output only what the user should see."
@@ -469,6 +470,11 @@ def build_system_prompt(
             - Understand the user and his needs deeply to provide tailored assistance.
             - Output only what the user should see."""
     
+    # Add starred messages if there are any
+    if starred_messages and len(starred_messages) > 0:
+        starred_summary = "\n".join(f"- {msg}" for msg in starred_messages)
+        sys_prompt += f"\nImportant points from the conversation so far:\n{starred_summary}"
+
     # Add long-term memory if provided
     if long_term_memory and long_term_memory.strip():
         sys_prompt += f"\nSummary of the conversation you had so far: {long_term_memory}"
@@ -551,4 +557,5 @@ def get_relevant_texts_from_kb(
         except Exception as e:
             raise Exception(f"Error searching FAISS index: {str(e)}") from e
 
+    EmbedderService.cleanup()
     return relevant_texts
