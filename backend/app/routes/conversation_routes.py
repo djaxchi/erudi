@@ -236,7 +236,6 @@ def retrieve_context(
     llm: Llm,
     db: Session,
     strategy: dict,
-    top_k: int = 3,
     n_last_turns: int = 1,
     model_type: str = "mistral",
 ) -> dict :
@@ -250,7 +249,6 @@ def retrieve_context(
         llm (Llm): The LLM model object.
         db (Session): Database session.
         strategy (dict): Prompting strategy configuration based on model size.
-        top_k (int): Number of semantically relevant turns to retrieve.
         n_last_turns (int): Number of last turns to include.
         model_type (str): The type of model to use for prompt engineering.
     Returns:
@@ -361,8 +359,7 @@ def retrieve_context(
 
     # Long-term memory (Conversation summary) - only if strategy allows
     summary_threshold = n_last_turns * 2 * 2 
-    if (strategy["use_long_term_memory"] and 
-        len(conversation_history) > summary_threshold):
+    if (strategy["use_long_term_memory"] and len(conversation_history) > summary_threshold):
         cached_summary, need_regenerate = get_cached_summary(
             conversation_id, current_message_count
         )
@@ -383,6 +380,7 @@ def retrieve_context(
             context_lines.append("")
             context["long_term_memory"] = long_term_memory
 
+
     n_recent = n_last_turns * 2
     if len(conversation_history) >= n_recent + 4:
         semantic_history = conversation_history[:-n_recent]
@@ -391,7 +389,7 @@ def retrieve_context(
 
     # Middle-term memory (Semantic context) - only if strategy allows
     if strategy["use_middle_term_memory"] and len(semantic_history) >= 2:
-        n_to_retrieve = top_k if len(semantic_history) >= 2*top_k else int(len(semantic_history)/2)
+        n_to_retrieve = strategy["mtm_top_k"] if len(semantic_history) >= 2*strategy["mtm_top_k"] else int(len(semantic_history)/2)
         embedder = EmbedderService.get_embedder()
         query_emb = embedder.encode(query, convert_to_tensor=True)
         messages = [msg[1] for msg in semantic_history]
@@ -656,7 +654,7 @@ async def query_and_respond(
     model_type = llm.type
 
     # Get prompting strategy based on model size
-    param_size = llm.param_size if hasattr(llm, 'param_size') and llm.param_size else 2
+    param_size = llm.param_size
     strategy = get_prompting_strategy(param_size)
     logging.info(f"Using prompting strategy for {param_size}B model: {strategy}")
 
@@ -679,7 +677,6 @@ async def query_and_respond(
             llm=llm,
             db=db,
             strategy=strategy,
-            top_k=payload.n_relevent_msgs_to_get or 3,
             n_last_turns=payload.n_last_turns_to_get or strategy["max_history_turns"],
             model_type=model_type,
         )
@@ -712,16 +709,22 @@ async def query_and_respond(
     
     custom_prompt = ""
     kb_prompt = ""
+    mtm_prompt = ""
     
     # System prompt: defines the assistant's identity based on model size category
     size_category = strategy.get("system_prompt_size_category", "medium")
     sys_prompt = build_system_prompt(
         model_name=llm.name,
         size_category=size_category,
-        long_term_memory=long_term_memory if long_term_memory and long_term_memory != "" else None
+        long_term_memory=long_term_memory if long_term_memory and long_term_memory != "" else None,
+        starred_messages=messages_starred if messages_starred and len(messages_starred) > 0 else None,
     )
     
     logging.info(f"Using system prompt for size category '{size_category}': {sys_prompt[:100]}...")
+    
+    # Relevant previous messages
+    if middle_term_memory and len(middle_term_memory) > 0:
+        mtm_prompt = "\nThese previous messages could be useful:\n" + "\n".join(middle_term_memory)
     
     # Custom prompt: task-specific instructions (will be added to current question)
     if strategy["use_custom_prompt"] and payload.custom_prompt:
@@ -768,6 +771,9 @@ async def query_and_respond(
     # Order: KB context (if any) -> Custom instructions (if any) -> Question
     question_with_context = ""
     
+    if mtm_prompt:
+        question_with_context += mtm_prompt + "\n\n"
+
     if kb_prompt:
         question_with_context += kb_prompt + "\n\n"
     
@@ -815,8 +821,7 @@ async def query_and_respond(
             ):
                 assistant_response += text
                 logging.info(f"Yielding token: {text}")
-                if not text.strip() == "" :
-                    yield text
+                yield text
 
         except Exception as e:
             logging.exception("Streaming failed")
