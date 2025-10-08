@@ -664,9 +664,9 @@ async def generate_title(
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
     try:
-        system_title_generation_prompt = f"""You are a very-short-title generator. You only return the title for the given message."""
+        system_title_generation_prompt = f"""You are a very-short-title generator. You only return the title for the given message. Respond in maximum 3-4 words. No punctuation, no quotes, no formatting, no special characters, no hashtags, no emojis, no newline characters. No introduction, no explanation. Just the title. If the message is empty or not suitable for a title, respond with 'New Conversation'."""
         
-        user_title_generation_prompt = f"""Create a 2-to-5-word title for:
+        user_title_generation_prompt = f"""Create a 2-to-4-word title for:
 {payload.question}"""
         # Merge system prompt into user message for models that don't support system role
         merged_title_prompt = f"{system_title_generation_prompt}\n\n{user_title_generation_prompt}"
@@ -677,8 +677,8 @@ async def generate_title(
         prompt_tokens = _current_tokenizer.apply_chat_template(full_title_generation_prompt, add_generation_prompt=True)
         logits_processors = build_logits_processors(prompt=prompt_tokens, repetition_penalty=0.0, min_new_tokens = 2, patience = 2, eos_ids = list(_current_tokenizer.eos_token_ids))
         sampler = mlx_lm.sample_utils.make_sampler(
-            0.05,
-            0.3,
+            0.01,
+            0.2,
             min_p=0.0,
             top_k=64,
             xtc_special_tokens=_current_tokenizer.encode("\n") + list(_current_tokenizer.eos_token_ids)
@@ -696,7 +696,7 @@ async def generate_title(
                 _loaded_model,
                 _current_tokenizer,
                 prompt_tokens,
-                max_tokens=12,
+                max_tokens=8,
                 sampler=sampler,
                 prompt_cache=None,
                 logits_processors=logits_processors,
@@ -782,7 +782,7 @@ async def generate_title(
                 words.remove(":")
                 words.remove("`")
             words = [re.sub(r"<.*?>", "", word) for word in words if word]
-            final_title = " ".join(words[:6]) if len(words) >= 6 else " ".join(words)
+            final_title = " ".join(words[:4]) if len(words) >= 4 else " ".join(words)
             
             # Force lowercase except for first letter
             if final_title and len(final_title) > 0:
