@@ -88,7 +88,7 @@ def build_system_prompt(
     
     if size_category == "tiny":
         # Minimal system prompt for tiny models (<2B)
-        sys_prompt = f"You are {model_name}. a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. Output only what the user should see."
+        sys_prompt = f"You are {model_name}. a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. Output only text relevant to user."
     elif size_category == "small":
         # Concise system prompt for small models (2-3B)
         sys_prompt = f"You are {model_name}, a helpful assistant. a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. You can use context of previous messages to stay relevant. Do not go off track. Output only what the user should see."
