@@ -5,7 +5,15 @@ import { Link, useLocation } from "react-router-dom";
 /**
  * Sidebar with icons that highlight based on the current route.
  */
-export default function Sidebar({ disabled = false, onToggleSidebar, showCollapsible = false, collapsed = false }) {
+export default function Sidebar({ 
+  disabled = false, 
+  onToggleSidebar, 
+  showCollapsible = false, 
+  collapsed = false,
+  showBrainCollapsible = false,
+  onToggleBrainSidebar,
+  brainCollapsed = false
+}) {
   const [isHovering, setIsHovering] = useState(false);
   const location = useLocation();
   const isModelsActive =
@@ -18,7 +26,7 @@ export default function Sidebar({ disabled = false, onToggleSidebar, showCollaps
 
   return (
     <div
-      className={`w-[4.8%] bg-[#121212] flex flex-col items-center transition-opacity duration-200 ${
+      className={`w-14 sm:w-16 md:w-14 lg:w-16 xl:w-14 2xl:w-16 bg-[#121212] flex flex-col items-center transition-opacity duration-200 ${
         disabled ? "opacity-50 pointer-events-none select-none" : ""
       }`}
     >
@@ -47,6 +55,37 @@ export default function Sidebar({ disabled = false, onToggleSidebar, showCollaps
         >
           {isHovering ? (
             collapsed ? (
+              <PanelLeftOpen
+                className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
+                  isChatActive ? "text-green-400" : "text-gray-400"
+                }`}
+              />
+            ) : (
+              <PanelLeftClose
+                className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
+                  isChatActive ? "text-green-400" : "text-gray-400"
+                }`}
+              />
+            )
+          ) : (
+            <MessageSquare
+              className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
+                isChatActive ? "text-green-400" : "text-gray-400"
+              }`}
+            />
+          )}
+        </button>
+      ) : showBrainCollapsible ? (
+        <button
+          onClick={onToggleBrainSidebar}
+          onMouseEnter={() => setIsHovering(true)}
+          onMouseLeave={() => setIsHovering(false)}
+          className={`w-full flex justify-center items-center py-4 border-l-4 ${
+            isChatActive ? "border-green-500" : "border-transparent"
+          }`}
+        >
+          {isHovering ? (
+            brainCollapsed ? (
               <PanelLeftOpen
                 className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
                   isChatActive ? "text-green-400" : "text-gray-400"
