@@ -1,132 +1,14 @@
 from datetime import datetime
 import logging
-from ..schemas.arena_schemas import ArenaQueryPayload
+from app.schemas.arena_schemas import ArenaQueryPayload
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    TextIteratorStreamer,
-)
-import torch, re, threading
-from ..database import get_db
-from ..models.Llm import Llm
-from ..prompting.builder import build_conv_prompt
-import os
-from dotenv import load_dotenv
-load_dotenv()
-CACHE_DIR = os.getenv("CACHE_DIR")
-from sentence_transformers import SentenceTransformer
-import faiss
-from ..utils.file_processor import chunk_by_tokens
-from ..models.KnowledgeBase import KnowledgeBase
-from ..models.VectorStore import VectorStore
-from typing import List
+from app.database import get_db
+from app.models.Llm import Llm
+from app.utils.inference_utils import ModelManager, get_prompting_strategy, get_relevant_texts_from_kb, build_system_prompt
 
 router = APIRouter(prefix="/arena", tags=["arena"])
-
-
-MISTRAL_RE = re.compile(
-    r"(?:<s>|</s>|\[/?INST\]|\<\|/?(?:assistant|user|system|end)\|\>)"
-)
-
-GEMMA_RE = re.compile(
-    r"(?:<bos>|</s>|<eos>|"
-    r"<start_of_turn>(?:\s*(?:user|model|assistant|system))?|"
-    r"<end_of_turn>)"
-)
-
-def get_relevant_texts_if_kb(query:str, llm:Llm, db: Session) -> List[str]:
-    kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == llm.kb_id).first()
-
-    if not os.path.exists(kb.index_path):
-        raise HTTPException(
-            status_code=404,
-            detail=f"Knowledge Base index not found for LLM {llm.id}"
-        )
-    try:
-        faiss_index = faiss.read_index(kb.index_path)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to read FAISS index for Knowledge Base {kb.id}: {str(e)}"
-        )
-    if not faiss_index:
-        raise HTTPException(
-            status_code=404,
-            detail=f"FAISS index not found for Knowledge Base {kb.id}"
-        )
-    
-    # Get the VectorStore for this KB
-    vector_store = db.query(VectorStore).filter(VectorStore.kb_id == kb.id).first()
-    if not vector_store:
-        raise HTTPException(
-            status_code=404,
-            detail=f"VectorStore not found for Knowledge Base {kb.id}"
-        )
-    
-    get_embedder()
-    chunks = chunk_by_tokens(text=query)
-    relevant_texts = []
-    if not chunks or len(chunks) < 1:
-        raise HTTPException(
-            status_code=400,
-            detail="No valid text chunks found in the query."
-        )
-    else:
-        for chunk in chunks:
-            if not chunk.strip():
-                continue
-            try:
-                query_emb = embedder.encode(chunk, convert_to_tensor=True)
-            except Exception as e:
-                logging.error(f"Error embedding chunk: {e}")
-                continue
-            if query_emb is None or query_emb.numel() == 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Error embedding chunk."
-                )
-            try:
-                _, idxs = faiss_index.search(query_emb.cpu().numpy().reshape(1, -1), k=3)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Error searching FAISS index: {str(e)}"
-                )
-            for idx in idxs[0]:  # idxs is 2D array, take first row
-                if idx < 0:
-                    continue
-                try:
-                    # Get text from vectors_data JSON using FAISS ID as key
-                    faiss_id_str = str(idx)
-                    if faiss_id_str in vector_store.vectors_data:
-                        relevant_texts.append(vector_store.vectors_data[faiss_id_str])
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"Error fetching vector text: {e}"
-                    )
-    return relevant_texts
-
-def get_embedder():
-        global embedder
-        if embedder is None:
-            logging.info("Loading the Embedder")
-            os.makedirs(CACHE_DIR, exist_ok=True)
-            embedder = SentenceTransformer(
-                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                cache_folder=CACHE_DIR
-            )
-            logging.info("Embedder loaded")
-        return embedder
-
-# Globals to cache model/tokenizer
-embedder = None
-_loaded_model = None
-_current_tokenizer = None
-_loaded_model_id = None
 
 @router.post("/{llm_id}/query")
 async def query_arena(
@@ -139,14 +21,7 @@ async def query_arena(
     - llm_id: ID du modèle
     - payload: { question, temperature?, topP?, maxNewTokens?, customPrompt? }
     """
-    question = payload.question
-    temperature = payload.temperature or 0.7
-    top_p = payload.top_p or 0.95
-    max_new_tokens = payload.max_new_tokens or 200
-    custom_prompt = payload.custom_prompt or ""
-    lang = payload.language or "fr"
-
-    if not question:
+    if not payload.question:
         raise HTTPException(status_code=400, detail="Missing 'question'")
         
     logging.info(f"Querying LLM {llm_id} from DB")
@@ -156,122 +31,100 @@ async def query_arena(
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
 
-    is_gemma = llm.type == "gemma"
+    # Get prompting strategy based on model size
+    param_size = llm.param_size if hasattr(llm, 'param_size') and llm.param_size else 2
+    strategy = get_prompting_strategy(param_size)
+    logging.info(f"Using prompting strategy for {param_size}B model: {strategy}")
 
-    global _loaded_model, _current_tokenizer, _loaded_model_id
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    custom_prompt = ""
+    kb_prompt = ""
+
+    if llm.is_attached_to_kb and strategy["use_kb_context"]:
+        try:
+            relevant_texts = get_relevant_texts_from_kb(payload.question, llm, db, kb_top_k=strategy["kb_top_k"])
+            if relevant_texts:
+                kb_prompt = "Relevant context from Knowledge Base:\n" + "\n".join(relevant_texts)
+        except Exception as e:
+            logging.exception("Failed to retrieve Knowledge Base context")
+            raise HTTPException(status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}")
     
-    try:
-        if _loaded_model_id != llm.id or _loaded_model is None:
-            start = datetime.now()
-            logging.info(f"Loading model {llm.id} from {llm.link}")
+    # System prompt: defines the assistant's identity based on model size category
+    size_category = strategy.get("system_prompt_size_category", "medium")
+    sys_prompt = build_system_prompt(
+        model_name=llm.name,
+        size_category=size_category,
+        long_term_memory=None,
+        starred_messages=None
+    )
 
-            _loaded_model = AutoModelForCausalLM.from_pretrained(
-                llm.link,
-                local_files_only=True,
-                torch_dtype=torch.float16,
-                quantization_config=None,
-                low_cpu_mem_usage=True,
-                attn_implementation=None,
-            )
-            
-            _current_tokenizer = AutoTokenizer.from_pretrained(
-                llm.link, 
-                local_files_only=True,
-                use_fast=True
-            )
-            
-            _loaded_model_id = llm.id
-            _loaded_model.eval()
-            _loaded_model.to(device)
-            logging.info(f"Model {llm.id} loaded in {datetime.now() - start} seconds")
-        else:
-            logging.info(f"Model {llm.id} already loaded")
+    # Custom prompt: task-specific instructions (will be added to current question)
+    if strategy["use_custom_prompt"] and payload.custom_prompt:
+        custom_prompt = f"\nAdditional instructions: {payload.custom_prompt}"
+
+    final_prompt = []
+    
+    # Add current question with custom prompt and KB context fused into it
+    current_question = payload.question
+    
+    # Build the current question with relevant context
+    # Order: KB context (if any) -> Custom instructions (if any) -> Question
+    question_with_context = ""
+    
+    if kb_prompt and kb_prompt != "":
+        question_with_context += kb_prompt + "\n\n"
+    
+    if custom_prompt and custom_prompt != "":
+        question_with_context += custom_prompt + "\n\n"
+    
+    question_with_context += payload.question
+    current_question = question_with_context
+    
+    if len(final_prompt) == 0:
+        # No history: merge system prompt into the first (and only) user message
+        if sys_prompt:
+            current_question = f"{sys_prompt}\n\n{current_question}"
+    else:
+        # Has history: prepend system prompt to first message in final_prompt
+        if sys_prompt:
+            final_prompt[0]["content"] = f"{sys_prompt}\n\n{final_prompt[0]['content']}"
+    
+    final_prompt.append({"role": "user", "content": current_question})
+    logging.info("Final prompt to model:\n%s", final_prompt)
+
+    # Model Loading
+    try:
+        model, tokenizer = ModelManager.get_model_and_tokenizer(llm)
     except Exception as e:
         logging.exception("Failed to load model or tokenizer")
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
-    context = None
-
-    if llm.is_attached_to_kb:
-        
-        try:
-            relevant_texts = get_relevant_texts_if_kb(question, llm, db)
-            if not relevant_texts:
-                raise HTTPException(status_code=404, detail="No relevant texts found")
-            context = "\n\nAlso: You are attached to a Knowledge Base. Here is context you need to know for this query:\n" + "\n".join(relevant_texts)
-        except Exception as e:
-            logging.exception("Failed to retrieve Knowledge Base context")
-            raise HTTPException(status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}")
-        
-    prompt_text = build_conv_prompt(
-        question=question,
-        language=lang,
-        max_tokens=max_new_tokens,
-        model_type=llm.type,
-        custom_sys_prompt=custom_prompt,
-        context=context if context else None,
-    )
-    logging.info("Final prompt to model:\n%s", prompt_text)
-
-    input_ids = _current_tokenizer.encode(prompt_text, return_tensors="pt").to(device)
-
-    if is_gemma:
-        eos_token_ids = [1, 106]
-    elif llm.type == "mistral":
-        eos_token_ids = [4, 2]
-
-    streamer = TextIteratorStreamer(
-        _current_tokenizer, skip_prompt=True, skip_special_tokens=True
-    )
-
-    def run_generation():
-        with torch.no_grad():
-            generation_config = {
-                "input_ids": input_ids,
-                "streamer": streamer,
-                "max_new_tokens": max_new_tokens,
-                "temperature": temperature,
-                "top_p": top_p,
-                "top_k": 64,
-                "eos_token_id": eos_token_ids,
-                "pad_token_id": 0 if is_gemma else None,
-                "num_beams": 1,
-                "do_sample": True,
-            }
-
-            try:
-                _loaded_model.generate(**generation_config)
-            except Exception as e:
-                logging.exception("Generation failed")
-                streamer.put(e)
-
-    gen_thread = threading.Thread(target=run_generation)
-    gen_thread.start()
-
-    async def event_stream():
-        
+    async def response_token_stream():
         assistant_response = ""
+        start = datetime.now()
+        logging.info(f"Generating response from MLX model for prompt: {payload.question}")
         try:
-            for new_text in streamer:          
-                if llm.type == "mistral":
-                    cleaned = MISTRAL_RE.sub("", new_text)
-                elif llm.type == "gemma":
-                    cleaned = GEMMA_RE.sub("", new_text)
-                else:
-                    cleaned = new_text
-                    
-                assistant_response += cleaned
-                logging.info(f"Yielding token: {cleaned}")
-                if cleaned:
-                    yield cleaned
+            for new_text in ModelManager.generate_stream(
+                model=model,
+                tokenizer=tokenizer,
+                prompt = final_prompt,
+                max_tokens=payload.max_new_tokens or 1024,
+                temperature=payload.temperature or 0.1,
+                top_p=payload.top_p or 0.5,
+                repetition_penalty=1.2,
+                repetition_context_size=payload.max_new_tokens or 1024,
+                min_new_tokens=5,
+                patience=7
+            ):
+                
+                assistant_response += new_text
+                logging.info(f"Yielding token: {new_text}")
+                if new_text:
+                    yield new_text
 
         except Exception as e:
             logging.exception("Streaming failed")
             raise HTTPException(status_code=500, detail="Streaming failed")
         finally:
-            gen_thread.join()
-            
             logging.info("Generation thread finished")
-
-    return StreamingResponse(event_stream(), media_type="text/plain")
+    
+    return StreamingResponse(response_token_stream(), media_type="text/plain")

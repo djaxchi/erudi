@@ -3,7 +3,6 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import QuestionInput from "../components/QuestionInput";
-import { ask } from "../services/conversationService";
 import HeaderBar from "../components/HeaderBar";
 import { Copy, Check, Star } from "lucide-react";
 import TypingIndicator from "../components/TypingIndicator";
@@ -29,8 +28,9 @@ export default function ConversationPage() {
   const [settings, setSettings] = useState({
     temperature: 0.2,
     topP: 0.5,
-    maxTokens: 3074
-  })
+    maxTokens: 1024,
+    quantize: false,
+  });
   const [collapsed, setCollapsed] = useState(false);
   const [firstReplyPending, setFirstReplyPending] = useState(false);
 
@@ -59,7 +59,7 @@ export default function ConversationPage() {
           }
         }
       });
-  }, [id, conversations]);
+  }, []);
 
   const handleModelChange = async (modelName) => {
     setCurrentModel(modelName);
@@ -73,6 +73,25 @@ export default function ConversationPage() {
     });
     // // Optionally, refresh conversations state here
     // fetchMessagesAndConversations();
+  };
+
+  // Function to save conversation parameters
+  const saveConversationParameters = async (newSettings, newCustomPrompt) => {
+    try {
+      await fetch(`http://127.0.0.1:8000/conversations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          temperature: newSettings.temperature,
+          top_p: newSettings.topP,
+          max_tokens: newSettings.maxTokens,
+          quantize: newSettings.quantize,
+          custom_prompt: newCustomPrompt || customPrompt,
+        }),
+      });
+    } catch (error) {
+      console.error("Failed to save conversation parameters:", error);
+    }
   };
 
   const fetchMessagesAndConversations = useCallback(async () => {
@@ -97,8 +116,13 @@ export default function ConversationPage() {
       console.error("Fetch error:", err);
     }
   }, [id]);
-  const handleAsk = useCallback(
-    async (question) => {
+
+  const handleAskWithParams = useCallback(
+    async (question, explicitSettings = null, explicitCustomPrompt = null) => {
+      const settingsToUse = explicitSettings || settings;
+      const customPromptToUse =
+        explicitCustomPrompt !== null ? explicitCustomPrompt : customPrompt;
+
       setLoading(true);
       
       const isFirstMessage = messages.length === 0;
@@ -125,12 +149,15 @@ export default function ConversationPage() {
       try {
         if (isFirstMessage) {
           try {
-            const titleRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/generate_title`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ question }),
-            });
-            
+            const titleRes = await fetch(
+              `http://127.0.0.1:8000/conversations/${id}/generate_title`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ question }),
+              }
+            );
+
             if (titleRes.ok) {
               const reader = titleRes.body.getReader();
               const decoder = new TextDecoder("utf-8");
@@ -161,18 +188,22 @@ export default function ConversationPage() {
           }
         }
 
-        const responseRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/query`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            question,
-            temperature: settings.temperature,
-            top_p: settings.topP,
-            max_new_tokens: settings.maxTokens,
-            custom_prompt: customPrompt,
-          }),
-        });
-        
+        const responseRes = await fetch(
+          `http://127.0.0.1:8000/conversations/${id}/query`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question,
+              temperature: settingsToUse.temperature,
+              top_p: settingsToUse.topP,
+              max_new_tokens: settingsToUse.maxTokens,
+              quantize: settingsToUse.quantize,
+              custom_prompt: customPromptToUse,
+            }),
+          }
+        );
+
         if (responseRes.ok) {
           const reader = responseRes.body.getReader();
           const decoder = new TextDecoder("utf-8");
@@ -257,25 +288,86 @@ export default function ConversationPage() {
       
       setLoading(false);
     },
-    [id, settings, customPrompt, fetchMessagesAndConversations, messages.length]
+    [id, fetchMessagesAndConversations, messages.length]
   );
 
+  const handleAsk = useCallback(
+    async (question) => {
+      return handleAskWithParams(question, settings, customPrompt);
+    },
+    [handleAskWithParams, settings, customPrompt]
+  );
+
+  // Load conversation data when ID changes
   useEffect(() => {
-    const run = async () => {
+    if (!id) return;
+
+    const loadConversationData = async () => {
       try {
-        const convRes = await fetch(`http://127.0.0.1:8000/conversations`);
+        const [convRes, msgRes, convDetailRes] = await Promise.all([
+          fetch("http://127.0.0.1:8000/conversations"),
+          fetch(`http://127.0.0.1:8000/conversations/${id}/fetch_messages`),
+          fetch(`http://127.0.0.1:8000/conversations/${id}`),
+        ]);
+
+        // Load conversations
         const convs = await convRes.json();
         convs.sort(
-          (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
+          (a, b) =>
+            new Date(b.last_message_time) - new Date(a.last_message_time)
         );
         setConversations(convs);
+
+        // Load messages
+        const msgs = await msgRes.json();
+        const starredMap = {};
+        msgs.forEach((m) => {
+          if (m.starred) starredMap[m.id] = true;
+        });
+        setStarredIds(starredMap);
+        setMessages(msgs);
+
+        // Load conversation parameters
+        if (convDetailRes.ok) {
+          const conversation = await convDetailRes.json();
+          setSettings({
+            temperature: conversation.temperature,
+            topP: conversation.top_p,
+            maxTokens: conversation.max_tokens,
+            quantize: conversation.quantize || false,
+          });
+          setCustomPrompt(conversation.custom_prompt || "");
+
+          // Set current model
+          if (models.length > 0) {
+            const model = models.find((m) => m.id === conversation.llm_id);
+            if (model) setCurrentModel(model.name);
+          }
+        }
       } catch (err) {
         console.error("Fetch error (conversations):", err);
       }
 
       if (location.state && location.state.initialQuestion && !initialHandled) {
         setInitialHandled(true);
-        await handleAsk(location.state.initialQuestion);
+
+        const settingsToUse = location.state.initialSettings || settings;
+        const customPromptToUse =
+          location.state.initialCustomPrompt || customPrompt;
+
+        if (location.state.initialSettings) {
+          setSettings(location.state.initialSettings);
+        }
+
+        if (location.state.initialCustomPrompt) {
+          setCustomPrompt(location.state.initialCustomPrompt);
+        }
+
+        await handleAskWithParams(
+          location.state.initialQuestion,
+          settingsToUse,
+          customPromptToUse
+        );
         navigate(location.pathname, { replace: true, state: {} });
       } else if (!location.state || !location.state.initialQuestion) {
         try {
@@ -373,7 +465,11 @@ export default function ConversationPage() {
             initialTemperature={settings.temperature}
             initialTopP={settings.topP}
             initialMaxTokens={settings.maxTokens}
-            onApply={(newSettings) => setSettings(newSettings)}
+            initialQuantize={settings.quantize}
+            onApply={(newSettings) => {
+              setSettings(newSettings);
+              saveConversationParameters(newSettings, customPrompt);
+            }}
             onCustomizePrompt={() => setShowPromptModal(true)}
             disabled={loading}
             models={models}

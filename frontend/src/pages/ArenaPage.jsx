@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS = {
   temperature: 0.2,
   topP: 0.5,
   maxTokens: 512,
+  quantize: false,
   customPrompt: "",
 };
 
@@ -22,6 +23,7 @@ function makePanel(id, modelName = "", models = []) {
     temperature: DEFAULT_SETTINGS.temperature,
     topP: DEFAULT_SETTINGS.topP,
     maxTokens: DEFAULT_SETTINGS.maxTokens,
+    quantize: DEFAULT_SETTINGS.quantize,
     customPrompt: DEFAULT_SETTINGS.customPrompt,
     messages: [],
     showPromptModal: false,
@@ -150,6 +152,7 @@ export default function ArenaPage() {
         temperature: panel.temperature,
         topP: panel.topP,
         maxNewTokens: panel.maxTokens,
+        quantize: panel.quantize,
         customPrompt: panel.customPrompt,
         onStreamChunk: (chunk) => {
           buffersRef.current[panel.id].push(chunk);
@@ -233,6 +236,7 @@ export default function ArenaPage() {
             initialTemperature={panel.temperature}
             initialTopP={panel.topP}
             initialMaxTokens={panel.maxTokens}
+            initialQuantize={panel.quantize}
             onApply={(s) => handleSettingsChange(panel.id, s)}
             onCustomizePrompt={() => handleCustomizePrompt(panel.id, true)}
             disabled={loading}

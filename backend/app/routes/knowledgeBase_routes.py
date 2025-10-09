@@ -1,10 +1,8 @@
 from datetime import datetime
 from typing import Any
-import shutil
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from ..database import SessionLocal, get_db
+from ..database import get_db
 
 import os
 os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")  # Accelerate/vecLib (macOS)
@@ -19,39 +17,23 @@ from ..models.KnowledgeBase import KnowledgeBase
 from ..models.VectorStore import VectorStore
 from ..models.Llm import Llm
 from ..models.KBJob import KBJobModel
+from app.utils.inference_utils import EmbedderService
 from ..utils.file_processor import prepare_for_knowledge_base, chunk_by_tokens
 
 import logging
 from typing import List
 import faiss
 faiss.omp_set_num_threads(1)
-import torch
 import numpy as np
 
-from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 load_dotenv()
-CACHE_DIR = os.getenv("CACHE_DIR")
 INDEXES_DIR = os.getenv("INDEXES_DIR", "")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/knowledge_base")
-
-embedder = None
-
-def get_embedder():
-    global embedder
-    if embedder is None:
-        logging.info("Loading the Embedder")
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        embedder = SentenceTransformer(
-            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-            cache_folder=CACHE_DIR
-        )
-        logging.info("Embedder loaded")
-    return embedder
 
 @router.get("/{llm_id}/status")
 def get_kbAttach_status(llm_id: int, db: Session = Depends(get_db)):
@@ -180,7 +162,9 @@ def create_knowledge_base(
             local=1, 
             link=base_llm.link,
             type=base_llm.type,
-            is_attached_to_kb=1
+            is_attached_to_kb=1,
+            param_size=base_llm.param_size,  # Copy parameter size from base model
+            quantized=base_llm.quantized,  # Copy quantized flag from base model
         )
         db.add(new_llm)
         db.flush()  # To get new_llm.id
@@ -230,9 +214,7 @@ def create_knowledge_base(
         db.close()
 
 def populate_vector_store(start_counter: int, vectors_data: dict, texts: List[str], index: Any) -> tuple[Any, dict]:
-    global embedder
-    if embedder is None:
-        embedder = get_embedder()
+    embedder = EmbedderService.get_embedder()
 
     for text in texts:
         if not text.strip():
@@ -265,10 +247,7 @@ def populate_vector_store(start_counter: int, vectors_data: dict, texts: List[st
             logging.info(f"Vector added to index with FAISS ID: {start_counter}")
             start_counter += 1
 
-    del embedder
-    embedder = None
-    if torch.backends.mps.is_available():
-        torch.mps.empty_cache()
+    EmbedderService.cleanup()
     return (index, vectors_data)
 
 def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[str], db: Session) -> Llm:
