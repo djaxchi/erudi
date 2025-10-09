@@ -384,8 +384,8 @@ export default function ConversationPage() {
       }
     };
 
-    run();
-  }, [id, location.state, handleAsk, navigate, location.pathname, initialHandled]);
+    loadConversationData();
+  }, [id, location.state, handleAskWithParams, navigate, location.pathname, initialHandled]);
 
   useEffect(() => {
     if (scrollRef.current) {
