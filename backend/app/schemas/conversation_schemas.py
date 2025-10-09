@@ -44,7 +44,7 @@ class ConversationQuery(BaseModel):
     language: Optional[str] = None         
     temperature: Optional[float] = None
     top_p: Optional[float] = None
-    max_new_tokens: Optional[int] = None 
+    max_new_tokens: Optional[int] = None
     custom_prompt: Optional[str] = None
     n_relevent_msgs_to_get: Optional[int] = None
     n_last_turns_to_get: Optional[int] = None

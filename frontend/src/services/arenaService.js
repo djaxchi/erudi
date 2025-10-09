@@ -6,6 +6,7 @@ export async function askArena({
   temperature,
   topP,
   maxNewTokens,
+  quantize,
   customPrompt,
   onStreamChunk,
 }) {
@@ -19,6 +20,7 @@ export async function askArena({
       temperature: temperature,
       top_p: topP,
       max_new_tokens: maxNewTokens,
+      quantize: quantize,
       custom_prompt: customPrompt,
     }),
   });

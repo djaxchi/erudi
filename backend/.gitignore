@@ -213,7 +213,6 @@ override.tf.json
 terraform.rc
 
 # App-specific files
-data/
 *.db
 *.sqlite
 *.sqlite3
@@ -223,6 +222,7 @@ data/models/
 data/training_datasets/
 data/indexes/
 data/models_cache/
+data/db/
 
 # Logs and temporary files
 *.log

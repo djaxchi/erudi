@@ -10,7 +10,7 @@ import threading
 import shutil
 import logging
 import asyncio
-import gc
+import mlx_lm
 from datetime import datetime
 from threading import Lock
 from typing import Callable, Optional, List, Tuple
@@ -33,8 +33,33 @@ logger.setLevel(logging.INFO)
 HF_TOKEN = os.getenv("HF_TOKEN", "")
 FILES_TO_EXCLUDE = ["consolidated.safetensors"]
 
+# Mapping of original model links to MLX-quantized versions
+# Format: "original/repo": "mlx-community/quantized-repo"
+MLX_MODEL_MAPPING = {
+    "mistralai/Mistral-7B-Instruct-v0.3": "mlx-community/Mistral-7B-Instruct-v0.3-4bit",
+    "mistralai/Mistral-7B-v0.3": "mlx-community/Mistral-7B-v0.3-4bit",
+    "google/gemma-2-2b-it": "mlx-community/gemma-2-2b-it-4bit",
+    "google/gemma-3-4b-it": "mlx-community/gemma-3-4b-it-4bit",
+}
 
-class DownloadJob:
+
+def get_mlx_model_link(original_link: str) -> str:
+    """
+    Convert an original model link to its MLX-quantized version if available.
+    
+    Args:
+        original_link (str): Original Hugging Face model link
+        
+    Returns:
+        str: MLX-quantized model link if mapping exists, otherwise original link
+    """
+    mlx_link = MLX_MODEL_MAPPING.get(original_link, original_link)
+    if mlx_link != original_link:
+        logger.info(f"Using MLX-quantized model: {original_link} -> {mlx_link}")
+    return mlx_link
+
+
+class DownloadTracker:
     """
     Tracks download progress across multiple files and estimates ETA.
 
@@ -105,7 +130,7 @@ class DownloadJob:
         logger.info("ETA monitoring complete")
 
 
-def make_callback(job: DownloadJob) -> Callback:
+def make_callback(job: DownloadTracker) -> Callback:
     """
     Create an fsspec Callback to update DownloadJob on each transfer chunk.
 
@@ -123,7 +148,7 @@ def make_callback(job: DownloadJob) -> Callback:
     return Callback(size=job.total_bytes, hooks={"transfer-chunk": after_chunk})
 
 
-def update_db_with_progress(job: DownloadJob, job_id: int, model_id: int) -> None:
+def update_db_with_progress(job: DownloadTracker, job_id: int, model_id: int) -> None:
     """
     Periodically update DownloadJobModel row in the database.
 
@@ -194,38 +219,71 @@ async def download_files_concurrent(
         coros.append(loop.run_in_executor(None, fs.get_file, remote, dest, callback))
     await asyncio.gather(*coros)
 
+def convert_hf_mlx(hf_dir: str, mlx_dir: str):
+    """Convert Hugging Face model to MLX format."""
+    try:
+        logger.info(f"Starting conversion from HF to MLX")
+        start = datetime.now()
+        if os.path.exists(mlx_dir):
+            shutil.rmtree(mlx_dir, ignore_errors=True)
+        mlx_lm.convert(
+            hf_dir,
+            mlx_path=mlx_dir,
+            quantize=True,
+            q_bits=4
+        )
+        logger.info(f"Model converted to mlx in {datetime.now() - start}")
+    except:
+        raise
+
 
 async def download_llm(
     model_link: str,
     model_id: int,
-    save_dir: str,
+    temp_save_dir: str,
+    final_save_dir: str,
     job_id: Optional[int] = None
 ) -> str:
     """
     Download a Hugging Face repo with progress tracking and optional DB updates.
 
     Args:
-        model_link (str): Hugging Face repo ID.
+        model_link (str): Hugging Face repo ID (could be original or MLX-quantized).
         model_id (int): Database ID of the LLM model.
-        save_dir (str): Base directory for downloads.
+        temp_save_dir (str): Temporary directory for full-precision model.
+        final_save_dir (str): Final directory for mlx quantized model.
         job_id (Optional[int]): DownloadJobModel ID to update.
 
     Returns:
         str: Final local path containing downloaded files.
     """
+    # Check if model is already quantized from database
+    session = SessionLocal()
+    llm = session.query(Llm).get(model_id)
+    is_prequantized = llm.quantized == 1 if llm else False
+    session.close()
+    
+    # The link stored in DB is already the MLX link for pre-quantized models
+    actual_download_link = model_link
+    
     # Prepare local path
-    os.makedirs(save_dir, exist_ok=True)
-    logger.info(f"Starting download for {model_link} → {save_dir}")
+    os.makedirs(temp_save_dir, exist_ok=True)
+    os.makedirs(final_save_dir, exist_ok=True)
+    logger.info(f"Starting download for {model_link} → {temp_save_dir}")
+    if is_prequantized:
+        logger.info(f"Model is pre-quantized (MLX), downloading directly: {actual_download_link}")
+    else:
+        logger.info(f"Model will be quantized locally after download")
 
     # Initialize HF API & filesystem
     api = HfApi(token=HF_TOKEN)
     fs = HfFileSystem(token=HF_TOKEN)
 
     # Initialize tracking
-    job = DownloadJob()
+    job = DownloadTracker()
 
     # Gather file sizes and compute total
-    info = api.repo_info(model_link, files_metadata=True)
+    info = api.repo_info(actual_download_link, files_metadata=True)
     file_sizes = {
         s.rfilename: s.size
         for s in info.siblings
@@ -250,22 +308,39 @@ async def download_llm(
     eta_task = asyncio.create_task(job.monitor_eta(interval=5.0))
 
     # Split tasks into misc and shard files
-    all_files = [f for f in api.list_repo_files(model_link) if f in file_sizes]
+    all_files = [f for f in api.list_repo_files(actual_download_link) if f in file_sizes]
     misc = [f for f in all_files if not f.endswith(".safetensors")]
     shards = [f for f in all_files if f.endswith(".safetensors")]
 
     # Download misc sequentially
     for path in misc:
-        await asyncio.to_thread(fs.get_file, f"{model_link}/{path}", os.path.join(save_dir, path), callback)
+        await asyncio.to_thread(fs.get_file, f"{actual_download_link}/{path}", os.path.join(temp_save_dir, path), callback)
         logger.info(f"Downloaded {path}")
 
     # Download shards concurrently
-    shard_tasks = [(model_link, path) for path in shards]
-    await download_files_concurrent(fs, callback, shard_tasks, save_dir)
+    shard_tasks = [(actual_download_link, path) for path in shards]
+    await download_files_concurrent(fs, callback, shard_tasks, temp_save_dir)
     logger.info("All shards downloaded")
 
+    # If pre-quantized (MLX), just move files; otherwise convert locally
+    try:
+        if is_prequantized:
+            # Already MLX-quantized, just move to final directory
+            logger.info("Using pre-quantized MLX model, moving files directly")
+            if os.path.exists(final_save_dir):
+                shutil.rmtree(final_save_dir, ignore_errors=True)
+            shutil.move(temp_save_dir, final_save_dir)
+        else:
+            # Need to convert to MLX format and quantize locally
+            logger.info("Converting model to MLX format with local quantization")
+            await asyncio.to_thread(convert_hf_mlx, temp_save_dir, final_save_dir)
+            shutil.rmtree(temp_save_dir, ignore_errors=True)
+    except Exception as e:
+        logger.error(f"Failed to process model: {e}")
+        raise
+    
     # Wait for ETA monitor to finish
     await eta_task
     logger.info("Download complete")
 
-    return save_dir
+    return temp_save_dir

@@ -6,7 +6,6 @@ import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import Tooltip from "../components/Tooltip";
-import { ask } from "../services/conversationService";
 import ErrorModal from "../components/modals/ErrorModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";
@@ -28,6 +27,7 @@ export default function ChatPage() {
     temperature: 0.2,
     topP: 0.5,
     maxTokens: 1024,
+    quantize: false,
   });
   const [customPrompt, setCustomPrompt] = useState("");
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -133,6 +133,7 @@ export default function ChatPage() {
             temperature: settings.temperature,
             top_p: settings.topP,
             max_tokens: settings.maxTokens,
+            quantize: settings.quantize,
             custom_prompt: customPrompt,
           }),
         });
@@ -192,6 +193,8 @@ export default function ChatPage() {
         ? "Controls word variety. Lower = predictable, higher = diverse."
         : id === "prompt"
         ? "Customize system instructions that guide AI behavior."
+        : id === "quantize"
+        ? "Lower memory usage: faster inference but may reduce response quality."
         : "";
     return (
       <Tooltip content={text} side={side} width="w-64">
@@ -292,28 +295,29 @@ export default function ChatPage() {
 
               <div className="relative z-10 p-5">
                 <style>{`
-                  .hb-scope input.hb-range { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; outline: none; }
-                  .hb-scope input.hb-range::-webkit-slider-thumb {
-                    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; border: 0; cursor: pointer;
-                    background: radial-gradient(circle at 30% 30%, #ffffff, #d9e4dd 60%, #b7c6c0 100%);
-                    box-shadow: 0 2px 6px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.4), inset 0 1px 2px rgba(255,255,255,0.7);
-                    transition: transform .25s ease, box-shadow .25s ease;
-                  }
-                  .hb-scope input.hb-range:hover::-webkit-slider-thumb { transform: scale(1.07); }
-                  .hb-scope input.hb-range:active::-webkit-slider-thumb { transform: scale(.9); }
-                  .hb-scope input.hb-range:focus-visible::-webkit-slider-thumb {
-                    box-shadow: 0 0 0 4px rgba(37,192,138,0.35), 0 2px 6px rgba(0,0,0,0.55), inset 0 1px 2px rgba(255,255,255,0.8);
-                  }
-                  .hb-scope input.hb-range::-moz-range-track { height: 6px; background: rgba(255,255,255,0.06); border-radius: 999px; }
-                  .hb-scope input.hb-range::-moz-range-thumb {
-                    width: 18px; height: 18px; border-radius: 50%; border: 0; cursor: pointer;
-                    background: radial-gradient(circle at 30% 30%, #ffffff, #d9e4dd 60%, #b7c6c0 100%);
-                    box-shadow: 0 2px 6px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.4), inset 0 1px 2px rgba(255,255,255,0.7);
-                  }
-                  .hb-scope input.hb-range:focus-visible::-moz-range-thumb {
-                    box-shadow: 0 0 0 4px rgba(37,192,138,0.35), 0 2px 6px rgba(0,0,0,0.55), inset 0 1px 2px rgba(255,255,255,0.8);
-                  }
-                `}</style>
+        .hb-scope input.hb-range { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; outline: none; }
+        .hb-scope input.hb-range::-webkit-slider-thumb {
+          -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; border: 0; cursor: pointer;
+          background: radial-gradient(circle at 30% 30%, #ffffff, #d9e4dd 60%, #b7c6c0 100%);
+          box-shadow: 0 2px 6px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.4), inset 0 1px 2px rgba(255,255,255,0.7);
+          transition: transform .25s ease, box-shadow .25s ease;
+        }
+        .hb-scope input.hb-range:hover::-webkit-slider-thumb { transform: scale(1.07); }
+        .hb-scope input.hb-range:active::-webkit-slider-thumb { transform: scale(.9); }
+        .hb-scope input.hb-range:focus-visible::-webkit-slider-thumb {
+          box-shadow: 0 0 0 4px rgba(37,192,138,0.35), 0 2px 6px rgba(0,0,0,0.55), inset 0 1px 2px rgba(255,255,255,0.8);
+        }
+        .hb-scope input.hb-range::-moz-range-track { height: 6px; background: rgba(255,255,255,0.06); border-radius: 999px; }
+        .hb-scope input.hb-range::-moz-range-thumb {
+          width: 18px; height: 18px; border-radius: 50%; border: 0; cursor: pointer;
+          background: radial-gradient(circle at 30% 30%, #ffffff, #d9e4dd 60%, #b7c6c0 100%);
+          box-shadow: 0 2px 6px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.4), inset 0 1px 2px rgba(255,255,255,0.7);
+        }
+        .hb-scope input.hb-range:focus-visible::-moz-range-thumb {
+          box-shadow: 0 0 0 4px rgba(37,192,138,0.35), 0 2px 6px rgba(0,0,0,0.55), inset 0 1px 2px rgba(255,255,255,0.8);
+        }
+      `}</style>
+
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 flex-wrap min-w-0">
                     <h3 className="text-[1.15rem] font-semibold tracking-tight text-[#F2F7F4] truncate">
@@ -457,29 +461,63 @@ export default function ChatPage() {
 
                         <div className="flex flex-col justify-center gap-6">
                           <div>
-                            <div className="flex items-center gap-1.5 mb-2">
-                              <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
-                                Max Response Length
-                              </span>
-                            </div>
+                            <div className="grid grid-cols-2 items-start justify-items-start gap-x-6 gap-y-2 mb-2">
+                              <div>
+                                <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
+                                  Max Tokens
+                                </span>
+                              </div>
+                              {/* <div className="flex items-center gap-2">
+                                <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
+                                  Low-Memory
+                                </span>
+                                <TooltipIcon id="quantize" side="bottom-left" />
+                              </div> */}
 
-                            <div className="inline-flex items-center rounded-md bg-white/10 border border-white/20 shadow p-0 m-0">
-                              <input
-                                type="number"
-                                min="1"
-                                max="2000"
-                                value={settings.maxTokens}
-                                onChange={(e) =>
-                                  setSettings((prev) => ({
-                                    ...prev,
-                                    maxTokens: parseInt(
-                                      e.target.value || "0",
-                                      10
-                                    ),
-                                  }))
-                                }
-                                className="bg-transparent border-0 outline-none w-28 text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              />
+                              {/* Controls row */}
+                              <div className="inline-flex items-center rounded-md bg-white/10 border border-white/20 shadow p-0 m-0 w-fit justify-self-start">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="2000"
+                                  value={settings.maxTokens}
+                                  onChange={(e) =>
+                                    setSettings((prev) => ({
+                                      ...prev,
+                                      maxTokens: parseInt(
+                                        e.target.value || "0",
+                                        10
+                                      ),
+                                    }))
+                                  }
+                                  className="bg-transparent border-0 outline-none w-28 text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                              </div>
+
+                              {/* <div className="justify-self-start">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSettings((prev) => ({
+                                      ...prev,
+                                      quantize: !prev.quantize,
+                                    }))
+                                  }
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                    settings.quantize
+                                      ? "bg-emerald-600 hover:bg-emerald-700"
+                                      : "bg-white/20 hover:bg-white/30"
+                                  }`}
+                                >
+                                  <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                      settings.quantize
+                                        ? "translate-x-6"
+                                        : "translate-x-1"
+                                    }`}
+                                  />
+                                </button>
+                              </div> */}
                             </div>
                           </div>
 

@@ -14,6 +14,7 @@ class LLMResponse(LLMBase):
     type: Optional[str] = None
     description: Optional[str] = None
     model_metadata: Optional[str] = None
+    quantized: Optional[int] = 0  # 0 = not quantized, 1 = pre-quantized
 
     class Config:
         from_attributes = True
