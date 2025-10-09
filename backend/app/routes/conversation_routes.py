@@ -523,9 +523,10 @@ async def generate_title(
                 tokenizer=tokenizer,
                 prompt=full_title_generation_prompt,
                 temperature=0.01,
-                top_p=0.2,
+                top_p=0.5,
                 max_tokens=8,
                 repetition_penalty=None,
+                repetition_context_size=None,
                 min_new_tokens=2,
                 patience=2,
             ):
@@ -682,18 +683,6 @@ async def query_and_respond(
         )
         context_str, long_term_memory, middle_term_memory, kb_context = context["context_str"], context["long_term_memory"], context["middle_term_memory"], context["kb_context"],
 
-        messages_starred = []
-        if full_msgs_history:
-            for msg in full_msgs_history:
-                msg_starred_object = (
-                    db.query(Message)
-                    .filter(Message.content == msg[1], Message.starred == True)
-                    .first()
-                )
-                if msg_starred_object:
-                    messages_starred.append(msg_starred_object.content)
-            if len(messages_starred) == 0:
-                messages_starred = None
     except Exception as e:
         logging.exception("Failed to retrieve context")
         raise HTTPException(
@@ -706,21 +695,10 @@ async def query_and_respond(
     # - Custom prompt: task-specific instructions (goes with current question)
     # - KB context: relevant knowledge (goes with current question)
     # - Long-term memory: conversation summary (goes at the beginning)
-    
+
     custom_prompt = ""
     kb_prompt = ""
     mtm_prompt = ""
-    
-    # System prompt: defines the assistant's identity based on model size category
-    size_category = strategy.get("system_prompt_size_category", "medium")
-    sys_prompt = build_system_prompt(
-        model_name=llm.name,
-        size_category=size_category,
-        long_term_memory=long_term_memory if long_term_memory and long_term_memory != "" else None,
-        starred_messages=messages_starred if messages_starred and len(messages_starred) > 0 else None,
-    )
-    
-    logging.info(f"Using system prompt for size category '{size_category}': {sys_prompt[:100]}...")
     
     # Relevant previous messages
     if middle_term_memory and len(middle_term_memory) > 0:
@@ -783,6 +761,35 @@ async def query_and_respond(
     question_with_context += payload.question
     current_question = question_with_context
     
+    messages_starred = []
+    if full_msgs_history and strategy["use_starred_messages"]:
+        for msg in full_msgs_history:
+            msg_starred_object = (
+                db.query(Message)
+                .filter(Message.content == msg[1], Message.starred == True)
+                .first()
+            )
+            if msg_starred_object and (msg_starred_object.content not in messages_starred) and (msg_starred_object.content not in list(f["content"] for f in final_prompt)): 
+                messages_starred.append(msg_starred_object.content)
+        if len(messages_starred) == 0:
+            messages_starred = None
+        else:
+            messages_starred = messages_starred[-strategy.get("starred_messages_top_k", 1):]
+            logging.info(f"Using {len(messages_starred)} starred message(s) for context")
+            logging.info(f"Starred messages: {messages_starred}")
+
+    # System prompt: defines the assistant's identity based on model size category
+    size_category = strategy.get("system_prompt_size_category", "medium")
+    sys_prompt = build_system_prompt(
+        model_name=llm.name,
+        size_category=size_category,
+        long_term_memory=long_term_memory if long_term_memory and long_term_memory != "" else None,
+        starred_messages=messages_starred if messages_starred and len(messages_starred) > 0 else None,
+    )
+    
+    logging.info(f"Using system prompt for size category '{size_category}': {sys_prompt[:100]}...")
+    
+
     if len(final_prompt) == 0:
         # No history: merge system prompt into the first (and only) user message
         if sys_prompt:

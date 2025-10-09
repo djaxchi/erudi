@@ -363,6 +363,8 @@ def get_prompting_strategy(param_size: int) -> dict:
             "use_kb_basic": False,
             "use_kb_enhanced": False,
             "kb_top_k": 0,
+            "use_starred_messages": False,
+            "starred_messages_top_k": 0,
         }
     elif param_size <= 4:  #Sami
         # Lightweight strategy for small models (2-3B)
@@ -377,6 +379,8 @@ def get_prompting_strategy(param_size: int) -> dict:
             "use_kb_basic": True,
             "use_kb_enhanced": False,
             "kb_top_k": 1,
+            "use_starred_messages": True,
+            "starred_messages_top_k": 1,
         }
     elif param_size < 8: #Youssef C
         # Medium strategy for 4-7B models
@@ -391,6 +395,8 @@ def get_prompting_strategy(param_size: int) -> dict:
             "use_kb_basic": True,
             "use_kb_enhanced": False,
             "kb_top_k": 1,
+            "use_starred_messages": True,
+            "starred_messages_top_k": 2,
         }
     elif param_size <= 16: #Djalil
         # Full strategy for 8-15B models
@@ -405,6 +411,8 @@ def get_prompting_strategy(param_size: int) -> dict:
             "use_kb_basic": False,
             "use_kb_enhanced": True,
             "kb_top_k": 2,
+            "use_starred_messages": True,
+            "starred_messages_top_k": 3,
         }
     else:
         # Maximum strategy for large models (16B+)
@@ -419,8 +427,10 @@ def get_prompting_strategy(param_size: int) -> dict:
             "use_kb_basic": False,
             "use_kb_enhanced": True,
             "kb_top_k": 3,
+            "use_starred_messages": True,
+            "starred_messages_top_k": 5,
         }
- 
+
 
 def build_system_prompt(
     model_name: str,
@@ -473,15 +483,15 @@ def build_system_prompt(
     # Add starred messages if there are any
     if starred_messages and len(starred_messages) > 0:
         starred_summary = "\n".join(f"- {msg}" for msg in starred_messages)
-        sys_prompt += f"\nImportant points from the conversation so far:\n{starred_summary}"
+        sys_prompt += f"\nImportant points from the conversation so far:\n{starred_summary}\n"
 
     # Add long-term memory if provided
     if long_term_memory and long_term_memory.strip():
-        sys_prompt += f"\nSummary of the conversation you had so far: {long_term_memory}"
+        sys_prompt += f"\nSummary of the conversation you had so far: {long_term_memory}\n"
     
     return sys_prompt
 
-    
+
 def get_relevant_texts_from_kb(
     query: str,
     llm: Llm,
