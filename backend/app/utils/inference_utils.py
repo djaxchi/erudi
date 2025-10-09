@@ -349,8 +349,8 @@ def get_prompting_strategy(param_size: int) -> dict:
     Returns:
         Dictionary containing strategy configuration flags.
     """
-    
-    if param_size < 2:
+
+    if param_size <= 2:  # Youssef L
         # Ultra-lightweight strategy for tiny models (<2B)
         return {
             "system_prompt_size_category": "tiny",
@@ -364,7 +364,7 @@ def get_prompting_strategy(param_size: int) -> dict:
             "use_kb_enhanced": False,
             "kb_top_k": 0,
         }
-    elif param_size < 4:
+    elif param_size <= 4:  #Sami
         # Lightweight strategy for small models (2-3B)
         return {
             "system_prompt_size_category": "small",
@@ -378,7 +378,7 @@ def get_prompting_strategy(param_size: int) -> dict:
             "use_kb_enhanced": False,
             "kb_top_k": 1,
         }
-    elif param_size < 8:
+    elif param_size < 8: #Youssef C
         # Medium strategy for 4-7B models
         return {
             "system_prompt_size_category": "medium",
@@ -392,7 +392,7 @@ def get_prompting_strategy(param_size: int) -> dict:
             "use_kb_enhanced": False,
             "kb_top_k": 1,
         }
-    elif param_size < 16:
+    elif param_size <= 16: #Djalil
         # Full strategy for 8-15B models
         return {
             "system_prompt_size_category": "large",
