@@ -13,6 +13,7 @@ import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { API_BASE_URL } from "../config/api";
 import logoErudi from "../../assets/erudi.png";
 
+
 export default function LandingPage() {
   const { open } = useDownloadModal();
   const navigate = useNavigate();
@@ -27,10 +28,7 @@ export default function LandingPage() {
   const [selectedModelInfo, setSelectedModelInfo] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [deleteConfirmation, setDeleteConfirmation] = useState({
-    show: false,
-    model: null,
-  });
+  const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
   const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
   const localModelsRef = useRef(null);
 
@@ -180,15 +178,12 @@ export default function LandingPage() {
     setShowLoadingPopup(false);
   };
 
-  const handleLocalModelRefresh = () => {
+  const handleMainPageRefresh = async () => {
+    // Refresh both the main page and sidebar local models
+    await reloadLocalModels();
     if (localModelsRef.current) {
       localModelsRef.current.reloadLocalModels();
     }
-  };
-
-  const handleMainPageRefresh = async () => {
-    // This function refreshes the main page local models when called from ModelCollapsibleSection
-    await reloadLocalModels();
   };
 
   const reloadLocalModels = async () => {
@@ -196,49 +191,13 @@ export default function LandingPage() {
     try {
       const url = `${API_BASE_URL}/main_window/llms/local`;
       const res = await fetch(url);
-      if (res.ok) {
-        const localData = await res.json();
-        const parseMetadata = (metadataString) => {
-          if (!metadataString) return {};
-          try {
-            const lines = metadataString.split("\n");
-            const metadata = {};
-            lines.forEach((line) => {
-              const trimmedLine = line.trim();
-              if (trimmedLine.includes(":")) {
-                const [key, ...valueParts] = trimmedLine.split(":");
-                const value = valueParts.join(":").trim();
-                const cleanKey = key.trim().toLowerCase().replace(/\s+/g, "_");
-                metadata[cleanKey] = value;
-              }
-            });
-            return metadata;
-          } catch (error) {
-            return {};
-          }
-        };
-        
-        const transformedLocalModels = localData.map((model) => {
-          const metadata = parseMetadata(model.model_metadata);
-          return {
-            id: model.id,
-            name: model.name,
-            size: metadata.size || "Unknown",
-            parameters: metadata.parameters || "Unknown",
-            lastUpdate: metadata.last_modified || "Unknown",
-            isOnline: false,
-            description: model.description,
-            metadata: metadata,
-            rawMetadata: model.model_metadata,
-          };
-        });
-        setLocalModels(transformedLocalModels);
-      }
+      if (res.ok) setLocalModels(await res.json());
       else
         setErrorMessage(
           "Failed to fetch local models. Please try again and contact the Erudi team for support."
         );
     } catch (err) {
+      console.error("Failed to fetch local models:", err);
       setErrorMessage(
         "Failed to fetch local models. Please try again and contact the Erudi team for support."
       );
@@ -251,9 +210,9 @@ export default function LandingPage() {
   const scrollToExplore = () => {
     const exploreSection = document.getElementById("explore-models");
     if (exploreSection) {
-      exploreSection.scrollIntoView({ behavior: "smooth" });
+      exploreSection.scrollIntoView({ behavior: 'smooth' });
     } else {
-      console.warn("Explore models section not found");
+      console.error('explore-models section not found');
     }
   };
 

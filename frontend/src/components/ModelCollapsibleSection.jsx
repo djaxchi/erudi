@@ -4,22 +4,19 @@ import React, {
   useEffect,
   forwardRef,
   useImperativeHandle,
-  useRef,
 } from "react";
 import Tooltip from "./Tooltip";
 import {
   ChevronDown,
   ChevronRight,
-  Cog,
   RefreshCcw,
-  Plus,
   X,
   HelpCircle,
   Trash2,
 } from "lucide-react";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
+import { API_BASE_URL } from "../config/api";
 
-const API_BASE_URL = "http://127.0.0.1:8000";
 
 const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh }, ref) => {
   const [openSection, setOpenSection] = useState(true);
