@@ -186,8 +186,6 @@ async def delete_all_data():
     finally:
         db.close()
 
-app = FastAPI()
-
 async def startup_populate_database():
     
     db: Session = SessionLocal()
@@ -531,14 +529,18 @@ async def startup_populate_database():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Before yield comes the startup code
+    print("__________________________________ Starting up... __________________________________")
     await createTables()
     #await delete_all_data()
     await startup_populate_database()
     ModelManager.start_cleanup_task()
     yield
+    print("__________________________________ Shutting down... __________________________________")
     # Shutdown code can go here if needed
     ModelManager.stop_cleanup_task()
     ModelManager.cleanup()
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
