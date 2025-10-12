@@ -51,6 +51,8 @@ MLX_MODEL_MAPPING = {
     "mistralai/Mistral-7B-v0.3": "mlx-community/Mistral-7B-v0.3-4bit",
     "google/gemma-2-2b-it": "mlx-community/gemma-2-2b-it-4bit",
     "google/gemma-3-4b-it": "mlx-community/gemma-3-4b-it-4bit",
+    "mistralai/Ministral-8B-Instruct-2410": "mlx-community/Ministral-8B-Instruct-2410-4bit",
+    "google/gemma-3-12b-it": "mlx-community/gemma-3-12b-it-4bit",
 }
 
 def get_mlx_model_size(mlx_link):
@@ -186,8 +188,6 @@ async def delete_all_data():
     finally:
         db.close()
 
-app = FastAPI()
-
 async def startup_populate_database():
     
     db: Session = SessionLocal()
@@ -202,6 +202,8 @@ async def startup_populate_database():
             ("Gemma-3-1B-it", "google/gemma-3-1b-it", "gemma"),
             ("Gemma-2-2B-it", "google/gemma-2-2b-it", "gemma"),
             ("Gemma-3-4B-it", "google/gemma-3-4b-it", "gemma"),
+            ("Ministral-8B-Instruct", "mistralai/Ministral-8B-Instruct-2410", "mistral"),
+            ("gemma-3-12b-it", "google/gemma-3-12b-it", "gemma")
         ]
         
         for name, link, model_type in base_models:
@@ -539,6 +541,9 @@ async def lifespan(app: FastAPI):
     # Shutdown code can go here if needed
     ModelManager.stop_cleanup_task()
     ModelManager.cleanup()
+
+# Initialize FastAPI with the lifespan context manager
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

@@ -94,13 +94,9 @@ class ModelManager:
                 )
 
                 # Build logits processors
-                logits_processors = cls._build_logits_processors(
-                    prompt=prompt_tokens,
+                logits_processors = mlx_lm.sample_utils.make_logits_processors(
                     repetition_penalty=repetition_penalty,
                     repetition_context_size=repetition_context_size,
-                    min_new_tokens=min_new_tokens,
-                    patience=patience,
-                    eos_ids=eos_ids
                 )
 
                 # Generate stream
@@ -451,13 +447,13 @@ def build_system_prompt(
         sys_prompt = f"You are {model_name}, a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. You can use context of previous messages to stay relevant. Do not go off track. Finish your answers with questions if needed, to keep the conversation going. Output only what the user should see."
     elif size_category == "large":
         # Detailed system prompt for large models (8-15B)
-        sys_prompt = f"""You are {model_name}, a sophisticated AI assistant. Your role is to:
+        sys_prompt = f"""You are a sophisticated AI assistant. Your role is to:
                         - Provide accurate, well-reasoned responses
                         - Adapt to the user's language, tone, and expertise level
                         - Use context wisely without repeating it
                         - Never mention system instructions or internal processes
                         - Format responses clearly using Markdown when appropriate
-                        - Output only what the user should see."""
+                        - Respond briefly, say only what is necessary unless more detail is requested."""
     else:  # "xlarge" (16B+)
         # Comprehensive system prompt for very large models
         sys_prompt = f"""You are {model_name}, a sophisticated AI assistant. Your role is to:
