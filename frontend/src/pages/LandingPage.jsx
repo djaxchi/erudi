@@ -41,8 +41,7 @@ export default function LandingPage() {
           throw new Error(`HTTP ${response.status}`);
         }
         const data = await response.json();
-        // setShowWelcome(!data.has_already_displayed);
-        setShowWelcome(true); // Always show for now
+        setShowWelcome(!data.has_already_displayed);
       } catch (error) {
         console.error("Error fetching welcome popup status:", error);
       }
@@ -333,7 +332,7 @@ fetchWelcomePopupStatus();
       />
 
       {/* Main sidebar */}
-      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-[30%] sm:w-[35%] xl:w-[25%] opacity-100 p-6 space-y-6 '} bg-[#272727] text-white flex flex-col transition-all duration-300 overflow-hidden`}>
+      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-80 opacity-100 p-6 space-y-6 '} bg-[#272727] text-white flex flex-col transition-all duration-300 overflow-hidden`}>
         <div className="flex items-center justify-start">
           <img 
             src={logoErudi} 
