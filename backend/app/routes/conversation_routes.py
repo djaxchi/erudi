@@ -823,8 +823,6 @@ async def query_and_respond(
                 top_p=payload.top_p,
                 repetition_penalty=1.2,
                 repetition_context_size=payload.max_new_tokens or 1024,
-                min_new_tokens=5,
-                patience=7,
             ):
                 assistant_response += text
                 # logging.info(f"Yielding token: {text}")

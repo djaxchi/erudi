@@ -405,7 +405,7 @@ def build_system_prompt(
         sys_prompt = f"You are {model_name}. a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. Output only text relevant to user."
     elif size_category == "small":
         # Concise system prompt for small models (2-3B)
-        sys_prompt = f"You are {model_name}, a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. You can use context of previous messages to stay relevant. Do not go off track. Output only what the user should see."
+            sys_prompt = f"You are {model_name}, a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. You can use context of previous messages to stay relevant. Do not go off track. Always write your responses in Markdown (use headings, bullet lists, tables, and code blocks when appropriate). Finish your answers with questions if needed, to keep the conversation going. Output only what the user should see."
     elif size_category == "medium":
         # Standard system prompt for medium models (4-7B)
         sys_prompt = f"You are {model_name}, a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. You can use context of previous messages to stay relevant. Do not go off track. Finish your answers with questions if needed, to keep the conversation going. Output only what the user should see."

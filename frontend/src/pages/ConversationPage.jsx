@@ -6,6 +6,7 @@ import QuestionInput from "../components/QuestionInput";
 import HeaderBar from "../components/HeaderBar";
 import { Copy, Check, Star } from "lucide-react";
 import TypingIndicator from "../components/TypingIndicator";
+import MarkdownRenderer from "../components/MarkdownRenderer";
 
 export default function ConversationPage() {
   const { id } = useParams();
@@ -531,14 +532,22 @@ export default function ConversationPage() {
               return (
                 <div key={msg.id} className={`group flex flex-col mb-2 ${alignmentClass}`}>  
                   <div
-                    className={`break-words w-fit max-w-[75%] p-4 rounded-2xl whitespace-pre-wrap overflow-wrap break-word ${bubbleClass}`}
+                    className={`break-words w-fit max-w-[75%] p-4 rounded-2xl overflow-wrap break-word ${bubbleClass}`}
                   >
                     {showTypingIndicator ? (
                       <div className="flex items-start pt-1">
                         <TypingIndicator size={8} colorClass="bg-gray-400" className="-mt-1" />
                       </div>
                     ) : (
-                      getDisplayContent(msg.content)
+                      isUser || msg.content.includes('[ERROR_MESSAGE_SYSTEM]') ? (
+                        // Keep user messages and error messages as plain text
+                        <pre className="whitespace-pre-wrap font-sans">
+                          {getDisplayContent(msg.content)}
+                        </pre>
+                      ) : (
+                        // Assistant normal messages: render markdown
+                        <MarkdownRenderer content={msg.content} />
+                      )
                     )}
                   </div>
                   <div className="flex mt-1 space-x-2 opacity-0 group-hover:opacity-100">
