@@ -104,7 +104,9 @@ class ModelManager:
                 )
 
                 # Generate stream
-                for new_text in mlx_lm.stream_generate(
+                text = ""
+                logging.info("=" * 10)
+                for response in mlx_lm.stream_generate(
                     model,
                     tokenizer,
                     prompt_tokens,
@@ -113,9 +115,21 @@ class ModelManager:
                     logits_processors=logits_processors if logits_processors != [] else None,
                     prompt_cache=None
                 ):  
-                    if new_text:
+                    if response:
                         # logging.debug(f"Yielding new chunk:\n{new_text.__repr__()}")
-                        yield new_text.text
+                        logging.info(f"Yielding token: {response.text.replace('\n', '\\n').replace('\t', '\\t')}")
+                        text += response.text
+                        yield response.text
+
+                logging.info("=" * 10)
+
+                if len(text) == 0:
+                    logging.info("No text generated for this prompt")
+                
+                logging.info(f"Generation: {response.generation_tokens} tokens")
+                logging.info(f"{response.generation_tps:.3f} tokens-per-sec")
+                logging.info(f"Peak memory: {response.peak_memory:.3f} GB")
+
                 cls._last_used = datetime.now()  # Update last use time
             except Exception as e:
                 logging.exception("Generation failed")
