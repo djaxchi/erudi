@@ -93,7 +93,7 @@ async def query_arena(
 
     # Model Loading
     try:
-        model, tokenizer = ModelManager.get_model_and_tokenizer(llm)
+        model, tokenizer = ModelManager.get_model(llm)
     except Exception as e:
         logging.exception("Failed to load model or tokenizer")
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
@@ -112,8 +112,6 @@ async def query_arena(
                 top_p=payload.top_p or 0.5,
                 repetition_penalty=1.2,
                 repetition_context_size=payload.max_new_tokens or 1024,
-                min_new_tokens=5,
-                patience=7
             ):
                 
                 assistant_response += new_text
