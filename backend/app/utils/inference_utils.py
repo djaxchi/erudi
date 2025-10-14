@@ -82,7 +82,6 @@ class ModelManager:
             try:
                 # Tokenize prompt
                 prompt_tokens = tokenizer.apply_chat_template(prompt, add_generation_prompt=True)
-                eos_ids = list(tokenizer.eos_token_ids)
 
                 # Create sampler
                 sampler = mlx_lm.sample_utils.make_sampler(
@@ -90,18 +89,13 @@ class ModelManager:
                     top_p,
                     min_p=min_p,
                     top_k=top_k,
-                    xtc_special_tokens=tokenizer.encode("\n") + eos_ids
-                )
+                ) # Rayan - Ne pas remettre xtc_special_tokens car ce n'est pas consommé, cf https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/sample_utils.py
 
                 # Build logits processors
                 logits_processors = cls._build_logits_processors(
-                    prompt=prompt_tokens,
                     repetition_penalty=repetition_penalty,
                     repetition_context_size=repetition_context_size,
-                    min_new_tokens=min_new_tokens,
-                    patience=patience,
-                    eos_ids=eos_ids
-                )
+                ) # Rayan - Les autres processors (min_new_tokens, "\n"-spam) ont été retirés de cls._build_logits_processors, garder cette implémentation pour separation of concerns
 
                 # Generate stream
                 text = ""
@@ -136,71 +130,20 @@ class ModelManager:
                 raise Exception(f"Generation error: {str(e)}")
     
     @classmethod
-    def _build_logits_processors(cls, prompt: List, repetition_penalty: Optional[float] = None, repetition_context_size: Optional[int] = 1024, min_new_tokens: Optional[int] = 5, patience: Optional[int] = 7, eos_ids: List[int] = None) -> List[Callable]:
+    def _build_logits_processors(
+        cls,
+        repetition_penalty: Optional[float] = None,
+        repetition_context_size: Optional[int] = 1024,
+    ) -> List[Callable]:
         """Build a list of logit processors for controlling text generation.
         
         Args:
-            prompt: The input prompt tokens.
             repetition_penalty: Penalty factor for token repetition.
             repetition_context_size: Number of past tokens to consider for repetition.
-            min_new_tokens: Minimum number of new tokens to generate.
-            patience: Number of identical tokens before allowing EOS.
-            eos_ids: List of end-of-sequence token IDs.
         
         Returns:
             List of logit processor functions.
         """
-        prompt_len = len(prompt)
-        logging.info(f"Computed prompt length: {prompt_len} tokens")
-
-        # --- robust min-new-tokens processor ---
-        def min_new_tokens_processor(min_new_tokens: int = 5, prompt_len: int = prompt_len, eos_ids=None, patience: int = 5):
-            """
-            Forbid EOS until at least `min_new_tokens` have been generated AFTER the prompt.
-            If the model is stuck repeating the same token `patience` times, allow EOS to break out.
-            """
-            if eos_ids is None:
-                local_eos_ids = []
-            else:
-                local_eos_ids = eos_ids
-
-            def processor(tokens, logits):
-                # tokens is an mx.array of the full sequence (prompt + generated)
-                try:
-                    tokens_len = int(tokens.size)  # preferred for mx.array
-                except Exception:
-                    try:
-                        tokens_len = len(tokens)
-                    except Exception:
-                        print(f"Failed to compute tokens length, got type {type(tokens)}")
-                        tokens_len = 0
-
-                generated = tokens_len - prompt_len
-                # forbid EOS until we reach the minimum generated tokens
-                if generated < min_new_tokens:
-                    for eid in local_eos_ids:
-                        if eid is None:
-                            continue
-                        # safety: ensure index in vocab range
-                        if 0 <= eid < logits.shape[-1]:
-                            logits[:, eid] = -1e9 # => Smallest prob possible close to 0 to make it impossible to sample EOS
-
-                # simple stuck-detection: if last `patience` tokens are identical, allow EOS to escape
-                # (prevents infinite loops where the model just repeats one token)
-                if generated >= 1 and generated >= patience:
-                    try:
-                        # tokens.tolist() -> list of ints
-                        last = tokens.tolist()[-patience:]
-                        if len(last) == patience and all(x == last[0] for x in last):
-                            # do nothing -> EOS allowed (we do not re-apply -1e9)
-                            pass
-                    except Exception:
-                        # if tolist() fails for some reason, ignore
-                        pass
-
-                return logits
-
-            return processor
 
         # --- Build logits_processors (keep repetition_penalty) and append our min_new_tokens processor ---
         logits_processors = []
@@ -209,8 +152,6 @@ class ModelManager:
                 repetition_penalty=repetition_penalty,
                 repetition_context_size=repetition_context_size,
             )
-        if min_new_tokens is not None and min_new_tokens > 0:
-            logits_processors.append(min_new_tokens_processor(min_new_tokens=min_new_tokens, prompt_len=prompt_len, eos_ids=eos_ids, patience=patience))
 
         return logits_processors
 
@@ -364,22 +305,22 @@ def get_prompting_strategy(param_size: int) -> dict:
         Dictionary containing strategy configuration flags.
     """
 
-    if param_size <= 2:  # Youssef L
-        # Ultra-lightweight strategy for tiny models (<2B)
+    if param_size <= 2:  # Rayan
+        # Ultra-lightweight strategy for tiny models (1-2B)
         return {
             "system_prompt_size_category": "tiny",
             "use_custom_prompt": True,
-            "max_history_turns": 1,
+            "max_history_turns": 3,
             "use_short_term_memory": True,
-            "use_middle_term_memory": False,
-            "mtm_top_k": 0,
+            "use_middle_term_memory": True,
+            "mtm_top_k": 2,
             "use_long_term_memory": False,
-            "use_kb_basic": False,
+            "use_kb_basic": True,
             "use_kb_enhanced": False,
-            "kb_top_k": 0,
+            "kb_top_k": 1,
         }
     elif param_size <= 4:  #Sami
-        # Lightweight strategy for small models (2-3B)
+        # Lightweight strategy for small models (3-4B)
         return {
             "system_prompt_size_category": "small",
             "use_custom_prompt": True,
@@ -456,7 +397,7 @@ def build_system_prompt(
     
     if size_category == "tiny":
         # Minimal system prompt for tiny models (<2B)
-        sys_prompt = f"You are {model_name}. a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. Output only text relevant to user."
+        sys_prompt = f"Tu es un assistant concis et utile. Répond toujours dans la même langue que la question de l’utilisateur. Ne donne que le contenu pertinent - sans commentaires ni répétition des consignes."
     elif size_category == "small":
         # Concise system prompt for small models (2-3B)
         sys_prompt = f"You are {model_name}, a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. You can use context of previous messages to stay relevant. Do not go off track. Output only what the user should see."
