@@ -1,20 +1,20 @@
 {
   "sessions": [
     {
-      "timestamp": "2025-10-11T13:23:24.327820",
+      "timestamp": "2025-10-12T16:10:57.429181",
       "theme": "Learning/History Facts",
       "conversations": [
         {
           "turn": 1,
           "user": "Who was the first person to walk on the moon and when?",
           "baseline": {
-            "response": "Neil Armstrong was the first person to walk on the moon, on July 20, 1969.",
+            "response": "Neil Armstrong was the first person to walk on the moon, and he did so on July 20, 1969.",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
-              "system_prompt_category": "large",
-              "temperature": 0.2,
-              "top_p": 0.5
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
             },
             "memory": {
               "long_term": false,
@@ -23,7 +23,7 @@
             }
           },
           "experimental": {
-            "response": "Neil Armstrong was the first person to walk on the moon, on July 20, 1969.",
+            "response": "Neil Armstrong was the first person to walk on the moon, and he did so on July 20, 1969.",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
@@ -51,13 +51,13 @@
           "turn": 2,
           "user": "What were the main causes of World War I?",
           "baseline": {
-            "response": "The main causes of World War I were militarism, alliances, imperialism, and nationalism \u2013 often summarized as MAIN.",
+            "response": "The main causes of World War I were a complex mix, but generally include:\n\n*   **Militarism:** A widespread build-up and glorification of military power.\n*   **Alliances:** Complex web of treaties obligated nations to defend each other. (Triple Alliance & Triple Entente)\n*   **Imperialism:** Competition for colonies fueled tensions between European powers.\n*   **Nationalism:** Intense patriotism, especially in the Balkans, created instability.\n\n\n\nThe assassination of Archduke Franz Ferdinand was the spark that ignited these existing pressures into full conflict.",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
-              "system_prompt_category": "large",
-              "temperature": 0.2,
-              "top_p": 0.5
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
             },
             "memory": {
               "long_term": false,
@@ -66,7 +66,7 @@
             }
           },
           "experimental": {
-            "response": "The main causes of World War I were militarism, alliances, imperialism, and nationalism \u2013 often summarized as MAIN.",
+            "response": "The main causes of World War I were complex and interwoven, but generally include:\n\n*   **Militarism:** An arms race among European powers fostered a climate ripe for conflict.\n*   **Alliances:** A system of treaties obligated nations to defend one another, escalating localized disputes into widespread war.\n*   **Imperialism:** Competition for colonies created tensions between major world powers.\n*   **Nationalism:** Intense national pride contributed to rivalries and desires for independence, particularly in the Balkans.\n\n\n\nThese factors combined with an immediate trigger \u2013 the assassination of Archduke Franz Ferdinand - led to declarations of war beginning in 1914.",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
@@ -94,13 +94,13 @@
           "turn": 3,
           "user": "Explain the theory of evolution by natural selection",
           "baseline": {
-            "response": "The theory of evolution by natural selection, primarily developed by Charles Darwin and Alfred Russel Wallace, posits that species change over time due to advantageous traits becoming more prevalent in a population. These traits arise randomly through genetic variation; individuals with characteristics better suited to their environment are more likely to survive and reproduce, passing those beneficial traits on to subsequent generations. Over long periods, this process can lead to significant changes within a species \u2013 ultimately leading to new ones.",
+            "response": "The theory of evolution by natural selection, primarily developed by Charles Darwin and Alfred Russel Wallace, posits that species change over time through a process driven by:\n\n1.  **Variation:** Individuals within a population show variations in their traits (physical characteristics, abilities). These differences arise randomly due to genetic mutations.\n\n2.  **Inheritance**: Offspring tend to inherit these traits from their parents.\n\n3.  **Selection**: Organisms with traits better suited (\"fitter\") for their environment are more likely to survive and reproduce successfully. They pass those advantageous traits onto the next generation at higher rates.\n\n4. **Time:** Over extended periods, this gradual accumulation of favorable adaptations can lead to significant changes in populations \u2013 ultimately resulting in new species.",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
-              "system_prompt_category": "large",
-              "temperature": 0.2,
-              "top_p": 0.5
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
             },
             "memory": {
               "long_term": false,
@@ -109,7 +109,7 @@
             }
           },
           "experimental": {
-            "response": "The theory of evolution by natural selection, primarily developed by Charles Darwin and Alfred Russel Wallace, posits that species change over time due to inherited traits. Individuals with advantageous variations are more likely to survive and reproduce, passing those beneficial characteristics onto subsequent generations. Over many years, this leads to populations adapting and changing\u2014evolving.",
+            "response": "The theory of evolution by natural selection, primarily developed by Charles Darwin and Alfred Russel Wallace, proposes that species change over time through a process driven by:\n\n1.  **Variation:** Within any population, individuals exhibit variations in their traits (physical characteristics, abilities, etc.).\n2.  **Inheritance**: Offspring tend to inherit these varied traits from their parents.\n3. **Selection:** Individuals with advantageous traits are more likely to survive and reproduce successfully (\"survival of the fittest\"). \n4. **Time:** Over many generations, these beneficial traits become more common within a population as less suited organisms die off or fail to breed, leading to gradual changes in the species.",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
@@ -137,13 +137,13 @@
           "turn": 4,
           "user": "What was the Cold War about?",
           "baseline": {
-            "response": "The Cold War was a geopolitical struggle between the United States and the Soviet Union, along with their respective allies. It primarily involved ideological conflict \u2013 capitalism versus communism \u2013 alongside proxy wars and an arms race, without direct military engagement between the two superpowers themselves.",
+            "response": "The Cold War (roughly 1947-1991) was a geopolitical struggle between the United States and its allies (the West, promoting democracy & capitalism), and the Soviet Union and their satellite states (the East, supporting communism).\n\nIt wasn't direct military conflict but rather:\n\n*   **Ideological Conflict:** Clash of capitalist vs. communist ideologies.\n*   **Proxy Wars**: Conflicts like Korea and Vietnam where US/USSR backed opposing sides.\n*   **Arms Race**: Intense competition to develop superior weapons\u2014particularly nuclear ones.\n* **Space race**: Competition showcasing technological superiority through space exploration.\n\n\n\nUltimately it ended with the collapse of the Soviet Union in 2024.",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
-              "system_prompt_category": "large",
-              "temperature": 0.2,
-              "top_p": 0.5
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
             },
             "memory": {
               "long_term": false,
@@ -152,7 +152,7 @@
             }
           },
           "experimental": {
-            "response": "The Cold War was a geopolitical struggle between the United States and the Soviet Union, along with their respective allies. It primarily involved ideological conflict \u2013 capitalism versus communism - and an arms race, without direct military engagement between the two superpowers.",
+            "response": "The Cold War (roughly 1947-1991) was a geopolitical struggle between the United States and its allies, representing democratic capitalism, versus the Soviet Union and their communist satellite states.\n\nIt wasn't a direct military conflict but involved:\n\n*   **Ideological rivalry:** A clash of political ideologies \u2013 democracy vs. communism.\n*   **Proxy wars:** Conflicts where opposing sides supported different factions within other countries (e.g., Korea, Vietnam).\n*   **Arms race**: Intense competition to develop superior weaponry, including nuclear arms.\n* **Geopolitical maneuvering**: Efforts by both superpowers to expand influence globally through diplomacy, economic aid, and covert operations.",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
@@ -180,13 +180,148 @@
           "turn": 5,
           "user": "Tell me about the Renaissance period",
           "baseline": {
-            "response": "The Renaissance, meaning \"rebirth,\" was a transformative period in European history following the Middle Ages. It marked a renewed interest in classical art, literature, and philosophy alongside significant advancements in science, exploration, and artistic expression\u2014fundamentally shifting Western thought and culture.",
+            "response": "The Renaissance (roughly 1300-1600) was a transformative period in European history following the Middle Ages, marked by:\n\n*   **Renewed Interest in Classical Art & Learning**: A revival of interest in Greek and Roman culture.\n*   **Humanism:** Focused on human potential and achievement, shifting focus from solely religious matters.\n* **Artistic Flourishing**: Major advancements in art with figures like Leonardo da Vinci, Michelangelo, and Raphael producing iconic works.\n*  **Scientific Advancements**: Growing emphasis on observation, experimentation, and mathematical reasoning led to breakthroughs in astronomy, anatomy, etc.\n\n\n\nIt generally began in Italy before spreading throughout Europe.",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "experimental": {
+            "response": "The Renaissance (roughly 1300-1600) was a transformative period in European history marking a transition from the Middle Ages to modernity. It\u2019s characterized by:\n\n*   **Revival of classical art and learning:** A renewed interest in ancient Greek & Roman culture fueled artistic, literary, and philosophical innovation.\n*   **Humanism**: An emphasis on human potential and achievements, shifting focus away solely from religious dogma.\n* **Artistic Flourishing**: Significant advancements occurred in painting, sculpture, architecture \u2013 think Leonardo da Vinci, Michelangelo, Raphael.\n\n\n\nIt began in Italy and spread throughout Europe, profoundly impacting Western civilization.",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
               "system_prompt_category": "large",
-              "temperature": 0.2,
-              "top_p": 0.5
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "generation_params": {
+            "max_tokens": 1024,
+            "repetition_penalty": 1.2,
+            "repetition_context_size": 1024,
+            "min_new_tokens": 5,
+            "patience": 7,
+            "top_k": 64,
+            "min_p": 0.0
+          }
+        },
+        {
+          "turn": 6,
+          "user": "Is that what led to what happened yesterday?",
+          "baseline": {
+            "response": "Yesterday was October 24, 1929 \u2013 the day of the Wall Street Crash. Yes, what led to that crash builds on a lot of factors connected with World War I and its aftermath:\n\n*   **WWI Debt & Reparations**: Germany's war debt (imposed by the Treaty of Versailles) crippled their economy while creating financial instability across Europe.\n* **Economic Boom:** The roaring twenties saw rapid economic growth in America fuelled by speculative investments, particularly in the stock market.\n* **Overproduction & Uneven Distribution of Wealth**: Production outstripped demand, and wealth wasn\u2019s evenly distributed\u2014creating an unsustainable bubble.\n\n\n\nThe sudden drop began yesterday but is linked very closely to post-war economics after WWI",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "experimental": {
+            "response": "You're referencing current events, and asking if the factors that led to World War I are relevant today. While history doesn\u2019t repeat itself exactly, some parallels can be drawn:\n\n*   **Geopolitical competition:** Major global powers currently vie for influence \u2013 similar to pre-WWI dynamics.\n* **Nationalism**: Strong national identities continue shaping international relations.\n\n\n\nHowever, significant differences exist in alliances, military technology, and overall geopolitical landscape - making a direct comparison inaccurate.",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "large",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "generation_params": {
+            "max_tokens": 1024,
+            "repetition_penalty": 1.2,
+            "repetition_context_size": 1024,
+            "min_new_tokens": 5,
+            "patience": 7,
+            "top_k": 64,
+            "min_p": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-10-12T16:54:06.781185",
+      "theme": "Code",
+      "conversations": [
+        {
+          "turn": 1,
+          "user": "Write a Python function to calculate fibonacci numbers recursively",
+          "baseline": {
+            "response": "```python\ndef fibonacci_recursive(n):\n  \"\"\"Calculates the nth Fibonacci number recursively.\n\n  Args:\n    n: The index of the desired Fibonacci number (starting from 0).\n\n  Returns:\n    The nth Fibonacci number.\n  \"\"\"\n  if n <= 1:\n    return n\n  else:\n    return fibonacci_recursive(n-1) + fibonacci_recursive(n-2)\n```",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": false,
+              "short_term": false
+            }
+          },
+          "experimental": {
+            "response": "```python\ndef fibonacci_recursive(n):\n  \"\"\"Calculates the nth Fibonacci number recursively.\n\n  Args:\n    n: The index of the desired Fibonacci number (non-negative integer).\n\n  Returns:\n    The nth Fibonacci number.\n  \"\"\"\n  if n <= 1:\n    return n\n  else:\n    return fibonacci_recursive(n - 1) + fibonacci_recursive(n - 2)\n```",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "large",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": false,
+              "short_term": false
+            }
+          },
+          "generation_params": {
+            "max_tokens": 1024,
+            "repetition_penalty": 1.2,
+            "repetition_context_size": 1024,
+            "min_new_tokens": 5,
+            "patience": 7,
+            "top_k": 64,
+            "min_p": 0.0
+          }
+        },
+        {
+          "turn": 2,
+          "user": "Now optimize it with memoization",
+          "baseline": {
+            "response": "```python\ndef fibonacci_memoization(n, memo={}):\n  \"\"\"Calculates the nth Fibonacci number using memoization.\n\n  Args:\n    n: The index of the desired Fibonacci number (starting from 0).\n    memo: A dictionary to store previously calculated Fibonacci numbers. Defaults to an empty dictionary.\n\n  Returns:\n    The nth Fibonacci number.\n  \"\"\"\n  if n in memo:\n    return memo[n]\n  if n <= 1:\n    return n\n  else:\n    result = fibonacci_memoization(n-1, memo) + fibonacci_memoization(n-2, memo)\n    memo[n] = result\n    return result\n```",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
             },
             "memory": {
               "long_term": false,
@@ -195,7 +330,7 @@
             }
           },
           "experimental": {
-            "response": "The Renaissance, meaning \"rebirth,\" was a transformative period in European history following the Middle Ages. It marked a renewed interest in classical art, literature, and philosophy, alongside significant advancements in science, exploration, and artistic expression.",
+            "response": "```python\ndef fibonacci_memoization(n, memo={}):\n  \"\"\"Calculates the nth Fibonacci number using memoization.\n\n  Args:\n    n: The index of the desired Fibonacci number (non-negative integer).\n    memo: A dictionary to store previously computed values. Defaults to an empty dict.\n\n  Returns:\n    The nth Fibonacci number.\n  \"\"\"\n  if n in memo:\n    return memo[n]\n  if n <= 1:\n    return n\n\n  memo[n] = fibonacci_memoization(n - 1, memo) + fibonacci_memoization(n - 2, memo)\n  return memo[n]\n```",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
@@ -218,36 +353,128 @@
             "top_k": 64,
             "min_p": 0.0
           }
-        }
-      ]
-    },
-    {
-      "timestamp": "2025-10-11T00:38:51.511774",
-      "theme": "Code",
-      "conversations": [
+        },
         {
-          "turn": 1,
-          "user": "Write a Python function to calculate fibonacci numbers recursively",
+          "turn": 3,
+          "user": "Can you convert it to an iterative version?",
           "baseline": {
-            "response": "Okay, I need to write a Python function that calculates Fibonacci numbers recursively. Hmm, let me think about how the Fibonacci sequence works first. The series starts with 0 and 1, right? Each subsequent number is the sum of the two preceding ones.\n\nSo, for example:\n- F(0) = 0\n- F(1) = 1\n- F(n) = F(n-1) + F(n-2)\n\nNow, since this is a recursive approach, each call will depend on smaller instances until it hits the base cases. That makes sense because recursion breaks down problems into simpler subproblems.\n\nWait, should I handle negative indices or just stick to non-negative? Well, considering typical use cases, maybe we'll assume n is non-negative here. So our base cases are when n is 0 or 1.\n\nLet's outline the steps:\n1. Define the function, probably called fib, which takes an integer n.\n2. If n is 0, return 0.\n3. If n is 1, return 1.\n4. Otherwise, call fib again with n-1 and add the result to the value from n-2.\n\nBut wait, in some definitions, especially if starting the count differently, but no\u2014the standard definition uses F(0)=0, F(1)=1 as the initial terms. So I don't need to worry about shifting indexes too much unless specified otherwise.\n\nTesting edge cases: What if someone calls fib(-1)? Oh, well, according to the problem statement, perhaps it's beyond what needs to be handled, so maybe we can proceed without handling negatives unless required.\n\nAnother thought: Using recursion directly might cause stack overflow issues for large n due to maximum recursion depth limits in Python. But the user didn't specify constraints on n, so perhaps it's acceptable for now.\n\nPutting it all together:\n\nDefine fib(n):\n    if n == 0 \u2192 return 0\n    elif n == 1 \u2192 return 1\n    else \u2192 return fib(n-1) + fib(n-2)\n\nYes, that seems straightforward. Let me test this logic manually.\n\nFor n=2: fib(2) = fib(1)+fib(0) =1+0=1 \u2714\ufe0f\n\nn=3: fib(3)=fib(2)+fib(1)=1+1=2 \u2714\ufe0f\n\nGood, matches expected values.\n\nWhat about n=5? It should compute correctly by breaking down step-by-step.\n\nThis should work for any positive integer n (excluding very large numbers where recursion depth would be a problem).\n\nI think this covers everything needed. Now, writing the code accordingly.\n</think>\n\nTo calculate Fibonacci numbers using recursion in Python, you define a function `fib` that handles the base cases directly and then relies on itself for larger inputs. This method efficiently breaks down the problem into smaller subproblems until reaching known results.\n\n**Step-by-Step Explanation:**\n1. **Base Cases**: \n   - When `n` is 0, return 0.\n   - When `n` is 1, return 1.\n   \n2. **Recursive Case**:\n   - For other values of `n`, the function returns the sum of `fib(n-1)` and `fib(n-2)`. \n\nThis approach ensures each calculation builds upon previous computations, leveraging the properties of the Fibonacci sequence.\n\n```python\ndef fib(n):\n    if n == 0:\n        return 0\n    elif n == 1:\n        return 1\n    else:\n        return fib(n - 1) + fib(n - 2)\n```\n\n**Example Usage:**\n\nCalculate the 10th Fibonacci number:\n\n```python\nprint(fib(10))  # Output: 55\n```\n\nThe function successfully computes Fibonacci numbers using its recursive nature.",
+            "response": "```python\ndef fibonacci_iterative(n):\n  \"\"\"Calculates the nth Fibonacci number iteratively.\n\n  Args:\n    n: The index of the desired Fibonacci number (starting from 0).\n\n  Returns:\n    The nth Fibonacci number.\n  \"\"\"\n  if n <= 1:\n    return n\n  a, b = 0, 1\n  for _ in range(2, n + 1):\n      a, b = b, a + b\n  return b\n```",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
-              "system_prompt_category": "large"
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": false,
+              "short_term": true
             }
           },
           "experimental": {
-            "response": "Alright, I need to write a Python function that calculates Fibonacci numbers recursively. Let me think about how the Fibonacci sequence works.\n\nThe Fibonacci sequence starts with 0 and 1, right? Each subsequent number is the sum of the two preceding ones. So it goes 0, 1, 1, 2, 3, 5, etc., if we start from index 0 or maybe 1 depends on convention.\n\nWait, sometimes people define F(0) = 0 and F(1)=1. That's probably what I should use here because many recursive definitions do that.\n\nNow, for recursion, each call needs to break down the problem into smaller subproblems. The base cases are when n is 0 or 1; those would return 0 and 1 respectively.\n\nFor other values of n greater than 1, the function can be defined as F(n) = F(n-1) + F(n-2). But since in recursive functions you don't want to recompute the same values repeatedly (which could cause inefficiency), perhaps memoization isn't needed unless specified otherwise.\n\nBut wait, the user just asked for a recursive function without mentioning efficiency, so perhaps a simple implementation suffices, even though it won't be optimal due to repeated calculations.\n\nI'll structure the function fib_recursive(n) where:\n\n- If n == 0: return 0\n- If n == 1: return 1\n\nElse, compute fib(n-1) + fib(n-2).\n\nSo the code might look like this:\n\ndef fib_recursive(n):\n    if n <= 1:\n        return n\n    else:\n        return fib_recursive(n - 1) + fib_recursive(n - 2)\n\nHmm, but let me test some examples to make sure.\n\nIf n=0 \u2192 returns 0 \u2705\nn=1 \u2192 returns 1 \u2705\nn=2 \u2192 calls fib(1)+fib(0) = 1+0=1 \u2705\nn=3 \u2192 fib(2)+fib(1) = 1+1=2 \u2705\nn=4 \u2192 fib(3)+fib(2)=2+1=3 \u2705\nThis seems correct.\n\nHowever, for larger n, say n=10, will it handle efficiently? Well, without memoization, yes, it becomes exponentially slow. For example, calculating fib(20) using this method would require O(2^n) operations which is not feasible beyond small n. But since the question didn\u2019t specify handling large numbers efficiently, it\u2019s acceptable.\n\nAlternatively, to optimize, one could implement memoization via decorators or dictionaries to store computed results, avoiding redundant work.\n\nBut sticking to the basic recursive approach, the initial version is straightforward and meets the requirements.\n</think>\n\nTo calculate Fibonacci numbers recursively, we can utilize the definition where each number is the sum of the two preceding ones. Here's an implementation:\n\n```python\ndef fib_recursive(n):\n    if n <= 1:\n        return n\n    else:\n        return fib_recursive(n - 1) + fib_recursive(n - 2)\n```\n\n**Example usage:**\n\n```python\n# Calculate 7th Fibonacci number (if starting count at 0)\nresult = fib_recursive(6)\nprint(\"Fibonacci of 6:\", result)  # Outputs: 8\n```\n\n**Key points:**\n- **Base Cases:** When `n` is 0 or 1.\n- **Recursive Case:** For `n > 1`, splits the problem into finding `f(n-1)` and `f(n-2)`.\n- **Efficiency Note:** This pure recursive approach has exponential time complexity due to repeated calculations. Implementing memoization would improve performance for larger inputs.\n\n**Optimization with Memoization Example Using LRU Cache (using functools):**\n\n```python\nfrom functools import lru_cache\n\n@lru_cache(maxsize=None)\ndef optimized_fib(n):\n    if n <= 1:\n        return n\n    else:\n        return optimized_fib(n - 1) + optimized_fib(n - 2)\n\n# Usage:\nresult = optimized_fib(100)\nprint(result)\n```\n\nThis optimization caches results, making the function efficient even for large values of `n`.",
+            "response": "```python\ndef fibonacci_iterative(n):\n  \"\"\"Calculates the nth Fibonacci number iteratively.\n\n  Args:\n    n: The index of the desired Fibonacci number (non-negative integer).\n\n  Returns:\n    The nth Fibonacci number.\n  \"\"\"\n  if n <= 1:\n    return n\n\n  a, b = 0, 1\n  for _ in range(2, n + 1):\n      a, b = b, a + b\n  return b\n```",
             "config": {
-              "max_history_turns": 4,
-              "mtm_top_k": 2,
-              "system_prompt_category": "large"
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "large",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": false,
+              "short_term": true
             }
           },
           "generation_params": {
             "max_tokens": 1024,
-            "temperature": 0.7,
-            "top_p": 0.9,
+            "repetition_penalty": 1.2,
+            "repetition_context_size": 1024,
+            "min_new_tokens": 5,
+            "patience": 7,
+            "top_k": 64,
+            "min_p": 0.0
+          }
+        },
+        {
+          "turn": 4,
+          "user": "Add error handling for negative numbers",
+          "baseline": {
+            "response": "```python\ndef fibonacci_iterative(n):\n  \"\"\"Calculates the nth Fibonacci number iteratively.\n\n  Args:\n    n: The index of the desired Fibonacci number (starting from 0).\n\n  Returns:\n    The nth Fibonacci number, or raises a ValueError if n is negative.\n  Raises:\n      ValueError: If n is less than zero.\n  \"\"\"\n  if n < 0:\n    raise ValueError(\"Input must be non-negative\")\n  if n <= 1:\n    return n\n  a, b = 0, 1\n  for _ in range(2, n + 1):\n      a, b = b, a + b\n  return b\n```",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": false,
+              "short_term": true
+            }
+          },
+          "experimental": {
+            "response": "```python\ndef fibonacci_iterative(n):\n  \"\"\"Calculates the nth Fibonacci number iteratively.\n\n  Args:\n    n: The index of the desired Fibonacci number (non-negative integer).\n\n  Returns:\n    The nth Fibonacci number, or raises ValueError if n is negative.\n  \"\"\"\n  if n < 0:\n      raise ValueError(\"Input must be a non-negative integer.\")\n  if n <= 1:\n    return n\n\n  a, b = 0, 1\n  for _ in range(2, n + 1):\n      a, b = b, a + b\n  return b\n```",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "large",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": false,
+              "short_term": true
+            }
+          },
+          "generation_params": {
+            "max_tokens": 1024,
+            "repetition_penalty": 1.2,
+            "repetition_context_size": 1024,
+            "min_new_tokens": 5,
+            "patience": 7,
+            "top_k": 64,
+            "min_p": 0.0
+          }
+        },
+        {
+          "turn": 5,
+          "user": "Write unit tests for all three versions",
+          "baseline": {
+            "response": "```python\nimport unittest\n\ndef fibonacci_recursive(n):\n  \"\"\"Calculates the nth Fibonacci number recursively.\"\"\"\n  if n <= 1:\n    return n\n  else:\n    return fibonacci_recursive(n-1) + fibonacci_recursive(n-2)\n\n\ndef fibonacci_memoization(n, memo={}):\n  \"\"\"Calculates the nth Fibonacci number using memoization.\"\"\"\n  if n in memo:\n    return memo[n]\n  if n <= 1:\n    return n\n  else:\n    result = fibonacci_memoization(n-1, memo) + fibonacci_memoization(n-2, memo)\n    memo[n] = result\n    return result\n\n\n\ndef fibonacci_iterative(n):\n   \"\"\"Calculates the nth Fibonacci number iteratively.\n\n   Args:\n     n: The index of the desired Fibonacci number (starting from 0).\n\n   Returns:\n     The nth Fibonacci number, or raises a ValueError if n is negative.\n   Raises:\n       ValueError: If n is less than zero.\n   \"\"\"\n   if n < 0:\n      raise ValueError(\"Input must be non-negative\")\n   if n <= 1:\n      return n\n   a, b = 0, 1\n   for _ in range(2, n + 1):\n        a, b = b, a+b\n   return b\n\n\n\n\nclass TestFibonacciFunctions(unittest.TestCase):\n\n    def test_fibonacci_recursive(self):\n        self.assertEqual(fibonacci_recursive(0), 0)\n        self.assertEqual(fibonacci_recursive(1), 1)\n        self.assertEqual(fibonacci_recursive(5), 5)\n        self.assertEqual(fibonacci_recursive(10), 55)\n\n    def test_fibonacci_memoization(self):\n        self.assertEqual(fibonacci_memoization(0), 0)\n        self.assertEqual(fibonacci_memoization(1), 1)\n        self.assertEqual(fibonacci_memoization(5), 5)\n        self.assertEqual(fibonacci_memoization(10), 55)\n\n    def test_fibonacci_iterative(self):\n         self.assertEqual(fibonacci_iterative(0), 0)\n         self.assertEqual(fibonacci_iterative(1), 1)\n         self.assertEqual(fibonacci_iterative(5), 5)\n         self.assertEqual(fibonacci_iterative(10), 55)\n\n         with self.assertRaises(ValueError):\n            fibonacci_iterative(-1) # Tests for error handling\n\n\n\nif __name__ == '__main__':\n    unittest.main()\n```",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "experimental": {
+            "response": "```python\nimport unittest\n\ndef fibonacci_recursive(n):\n  \"\"\"Calculates the nth Fibonacci number recursively.\"\"\"\n  if n <= 1:\n    return n\n  else:\n    return fibonacci_recursive(n - 1) + fibonacci_recursive(n - 2)\n\n\ndef fibonacci_memoization(n, memo={}):\n  \"\"\"Calculates the nth Fibonacci number using memoization.\"\"\"\n  if n in memo:\n      return memo[n]\n  if n <= 1:\n        return n\n\n  memo[n] = fibonacci_memoization(n-1, memo) + fibonacci_memoization(n-2, memo)\n  return memo[n]\n\n\n\ndef fibonacci_iterative(n):\n  \"\"\"Calculates the nth Fibonacci number iteratively. Handles negative input with ValueError.\"\"\"\n  if n < 0:\n      raise ValueError(\"Input must be a non-negative integer.\")\n  if n <= 1:\n      return n\n\n  a, b = 0, 1\n  for _ in range(2, n+1):\n      a, b = b, a+b\n  return b\n\n\n\n\nclass TestFibonacciFunctions(unittest.TestCase):\n\n    def test_fibonacci_recursive_base_cases(self):\n        self.assertEqual(fibonacci_recursive(0), 0)\n        self.assertEqual(fibonacci_recursive(1), 1)\n\n    def test_fibonacci_recursive_positive_numbers(self):\n        self.assertEqual(fibonacci_recursive(5), 5)\n        self.assertEqual(fibonacci_recursive(10), 55)\n\n    def test_fibonacci_memoization_base_cases(self):\n          self.assertEqual(fibonacci_memoization(0), 0)\n          self.assertEqual(fibonacci_memoization(1), 1)\n\n    def test_fibonacci_memoization_positive_numbers(self):\n         self.assertEqual(fibonacci_memoization(5), 5)\n         self.assertEqual(fibonacci_memoization(10), 55)\n    \n    def test_fibonacci_iterative_base_cases(self):\n        self.assertEqual(fibonacci_iterative(0), 0)\n        self.assertEqual(fibonacci_iterative(1), 1)\n\n    def test_fibonacci_iterative_positive_numbers(self):\n        self.assertEqual(fibonacci_iterative(5), 5)\n        self.assertEqual(fibonacci_iterative(10), 55)\n\n    def test_fibonacci_iterative_error_handling(self):\n       with self.assertRaises(ValueError):\n            fibonacci_iterative(-1) # Negative input should raise an error\n\n\n\nif __name__ == '__main__':\n    unittest.main()\n```",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "large",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "generation_params": {
+            "max_tokens": 1024,
             "repetition_penalty": 1.2,
             "repetition_context_size": 1024,
             "min_new_tokens": 5,
@@ -740,20 +967,20 @@
       ]
     },
     {
-      "timestamp": "2025-10-11T13:30:42.470036",
+      "timestamp": "2025-10-12T17:22:32.549058",
       "theme": "custom",
       "conversations": [
         {
           "turn": 1,
           "user": "hey, whats up?",
           "baseline": {
-            "response": "Not much, just assisting users. What's up with you?",
+            "response": "Hello! Not much, just here to assist you. How can I help?",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
-              "system_prompt_category": "large",
-              "temperature": 0.2,
-              "top_p": 0.5
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
             },
             "memory": {
               "long_term": false,
@@ -762,7 +989,7 @@
             }
           },
           "experimental": {
-            "response": "Not much, just here to assist. What can I do for you today?",
+            "response": "Hello! How are you today?",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
@@ -788,15 +1015,15 @@
         },
         {
           "turn": 2,
-          "user": "give me a pasta recipe",
+          "user": "tell me about gaza",
           "baseline": {
-            "response": "Here's a simple Lemon Garlic Pasta recipe:\n\n**Yields:** 2-3 servings\n**Prep time:** 5 minutes\n**Cook time:** 15 minutes\n\n**Ingredients:**\n\n*   8 oz pasta (spaghetti, linguine, or fettuccine work well)\n*   \u00bc cup olive oil\n*   4 cloves garlic, minced\n*   Zest and juice of 1 lemon\n*   \u00bd teaspoon red pepper flakes (optional)\n*   Salt and black pepper to taste\n*   Fresh parsley, chopped for garnish\n*   Grated Parmesan cheese, for serving *(Optional)*\n\n**Instructions:**\n\n1.  Cook pasta according to package directions until al dente. Reserve about \u00bd cup of the starchy cooking water before draining.\n2.  While pasta cooks, heat olive oil in a large skillet over medium heat. Add garlic and cook until fragrant, about 1 minute. Be careful not to burn it!\n3.  Stir in lemon zest, lemon juice, and red pepper flakes (if using). Season with salt and pepper.\n4.  Add drained pasta to the skillet and toss to coat. If needed, add reserved pasta water, one tablespoon at a time, until desired consistency is reached.\n5. Garnish with fresh parsley and serve immediately with parmesan cheese if you like.\n\n\n\nEnjoy!",
+            "response": "Sure, Gaza is a narrow coastal strip along the Mediterranean Sea, located in Palestine. It's bordered by Israel to the north and east and Egypt to the south.\n\nGaza City is its largest city and capital of the Palestinian government-in-exile (the Palestinian Authority) since 1967. The Strip has been administered by various powers throughout history:\n- Biblical period: As part of Judea\n- Roman Empire (32 BCE - 4th century CE): Known as Philistia or the Land of Ashkelon\n- Islamic Period: Ruled by different Arab dynasties\n\nIn modern times:\n\n1. **British Mandate for Palestine**: Gaza was under British control from 1920 until the end of World War II.\n2. **After Partition and Subsequent Conflicts**:\n    - Israeli invasion in November 1948 during the First Arab-Israeli War resulted in numerous settlements being emptied of their Palestinian inhabitants into neighboring countries.\n    - Subsequent conflicts have left Gaza with high levels of poverty and dependence on external assistance. Key events include the Six-Day War (1967), Operations 'Defensive Shield' (2002) and Operation Cast Lead (2008).\n\nDespite it being one of the most densely populated places on Earth, Gazans face significant challenges due to ongoing conflict and blockades imposed by Israel over extended periods.\n\nWould you like more specific information about certain aspects?",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
-              "system_prompt_category": "large",
-              "temperature": 0.2,
-              "top_p": 0.5
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
             },
             "memory": {
               "long_term": false,
@@ -805,7 +1032,7 @@
             }
           },
           "experimental": {
-            "response": "Here's a simple yet delicious pasta recipe:\n\n**Aglio e Olio (Garlic and Oil)**\n\n*   1 pound spaghetti\n*   6 cloves garlic, thinly sliced\n*   1/4 cup olive oil\n*   Red pepper flakes to taste\n*   Salt & black pepper\n*   Fresh parsley, chopped (for garnish)\n \nCook the pasta according to package directions. While it cooks, heat olive oil over medium-low heat. Add garlic and red pepper flakes; cook until fragrant but not browned. Drain pasta, reserving some starchy water. Toss with sauce adding pasta water as needed for desired consistency. Season with salt and pepper. Garnish with parsley.\n\n\n\nWould you like another option?",
+            "response": "Gaza is a coastal enclave located on the Mediterranean Sea in Palestine, approximately 40 kilometers (25 miles) south of Jerusalem and Israel's border. It has been under Israeli blockade since 1987, with significant impact on daily life due to access restrictions.\n\nKey points about Gaza:\n- **Cities**: The primary city is Gaza City.\n- **Population**: As of recent estimates, it hosts around two million Palestinians.\n- **Governance**: The Hamas movement is often described as governing the Strip independently from the Palestinian Authority.\n- **Economy**: Due to the blockade, trade is heavily restricted, leading to economic hardship for many residents.\n- **Conflict History**: Gaza has experienced several major military conflicts with Israel including Operation Cast Lead in 2008\u20132009, Pillar of Defense in 2012, Operation Protective Edge in 2014, and periodic skirmishes involving rocket firing by various groups within the strip.\n\nFor more detailed or specific information you might need, feel free to ask!",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
@@ -831,15 +1058,15 @@
         },
         {
           "turn": 3,
-          "user": "summarize",
+          "user": "is that what happened one month ago?",
           "baseline": {
-            "response": "Cook pasta, saut\u00e9 garlic and lemon in olive oil with optional red pepper flakes. Toss cooked pasta into the sauce, adding reserved water to adjust consistency. Garnish with parsley and parmesan (optional).",
+            "response": "Gaza Strip has not been under Israeli control for only one month; the conflict and issues in Gaza have a much longer history. If you're asking about specific events from within the last month, those would depend on what's occurred closer to October 2025.\n\nAre there any particular recent developments or conflicts in Gaza that you'd like me to highlight?",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
-              "system_prompt_category": "large",
-              "temperature": 0.2,
-              "top_p": 0.5
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
             },
             "memory": {
               "long_term": false,
@@ -848,7 +1075,7 @@
             }
           },
           "experimental": {
-            "response": "This recipe, Aglio e Olio, is a simple Italian pasta dish featuring spaghetti tossed in olive oil and garlic with red pepper flakes for heat.",
+            "response": "The conflicts and rocket fire you're referring to have occurred regularly in the recent past but not just one month ago. The last large-scale conflict, Operation Protective Edge (2014), lasted for 50 days from July until August of that year.\n\nDo you have a specific event or timeline that I can provide further details on?",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
@@ -874,15 +1101,15 @@
         },
         {
           "turn": 4,
-          "user": "who are you?",
+          "user": "I think israel is a criminal state, what do you think of israel?",
           "baseline": {
-            "response": "I'm a large language model, created by Google.",
+            "response": "I don't have personal beliefs or opinions, but I can certainly provide information on various aspects of Israel based on my knowledge base.\n\nIsrael has played a significant role in Middle Eastern politics since its establishment as an independent state in 1948. Here are some key points:\n\n**History**:\n- Founded by Jewish leaders following World War II and the Holocaust.\n- The British Mandate for Palestine ended in 1947 when the United Nations Partition Plan was approved by the General Assembly proposing partitioning the land into two states\u2014one Arab and one Jewish\u2014and Jerusalem under international control.\n\n**Controversies**:\nThere's broad debate over numerous issues related to Israeli actions:\n- **West Bank and Gaza Strip**: Key areas subject to ongoing conflicts with Palestinians regarding boundaries and governance.\n- **Checkpoints, Barriers**, and Settlements: Israel maintains checkpoints throughout West Bank that critics argue restrict Palestinian movement while settlers live within these territories, which is often seen as a violation of international law.\n- **Palestinian Right to Self-Determination**: Many criticize what they see as obstacles placed in their way towards independence due to military occupation and policies.\n\nOn the other hand:\n\n- **Technological and Scientific Advances:**Israel has made strides in technology, medicine, and science, contributing significantly to global progress.\n- **Immigration Policy (Law of Return):** Israel offers citizenship and residency rights to Jews worldwide, but faces criticism from non-Jews who view this policy discriminatory.\n\nUltimately, interpretations vary greatly depending on cultural backgrounds and political affiliations. If you'd like more detailed insights on specific topics related to Israel, such as human rights, economic development, healthcare advancements, etc., just let me know!",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
-              "system_prompt_category": "large",
-              "temperature": 0.2,
-              "top_p": 0.5
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
             },
             "memory": {
               "long_term": false,
@@ -891,7 +1118,7 @@
             }
           },
           "experimental": {
-            "response": "I'm a large language model, trained by Google.",
+            "response": "My role is to provide objective information and assist with inquiries without expressing personal opinions or biases. Israel, like any other country, faces complex geopolitical issues that have historically been the subject of intense debate.\n\nIf you'd like more context on specific policies, historical events, or current developments in relation to Israel's actions, I can certainly help clarify those aspects for you.",
             "config": {
               "max_history_turns": 3,
               "mtm_top_k": 1,
@@ -902,6 +1129,307 @@
             "memory": {
               "long_term": false,
               "middle_term": false,
+              "short_term": true
+            }
+          },
+          "generation_params": {
+            "max_tokens": 1024,
+            "repetition_penalty": 1.2,
+            "repetition_context_size": 1024,
+            "min_new_tokens": 5,
+            "patience": 7,
+            "top_k": 64,
+            "min_p": 0.0
+          }
+        },
+        {
+          "turn": 5,
+          "user": "do you think palestine is right?",
+          "baseline": {
+            "response": "Understanding the perspective of Palestinians often involves delving into historical, political, and legal aspects. Here\u2019s a concise rundown:\n\n**Historical Perspective**:\n- **1947 Partition Plan**: The United Nations proposed dividing Palestine between an Arab state and one for Jews.\n- Many Palestinian exiles claim displacement in 1948 due to what is known as the \"Nakba\" (catastrophe), which many Jews see differently.\n\n**Political Arguments**:\nPalestinians assert that they have rights under international law:\n   - Right to self-determination\n   - Accessibility to basic services like water, healthcare, and education\n\nIsraelis maintain their position based on international agreements post-World War II:\n\n**Legal Considerations**:\nDisputes center around interpretations of UN resolutions, particularly Resolution 233 from 1950, encouraging resettlement and reconstruction efforts but generally supporting more detailed peace plans by specific actors such as Egypt and Israel during Camp David accords or Quartet.\n\nWould you like a breakdown regarding specific points like the Oslo Accords or more information about current geopolitics within these areas?",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "experimental": {
+            "response": "My role is to provide balanced and objective information. Instead of directly answering a polarizing question about who might be \"right\" in an ongoing conflict, it's more productive to discuss the nuances of the situation.\n\nBoth Palestinians and Israelis have valid claims and grievances stemming from decades-long historical tensions:\n\n### Palestinian Perspectives:\n- **Occupation**: There are widespread allegations that Gaza and the West Bank remain under Israeli occupation since 1967.\n- **Human Rights Issues**: Alleged violations by both parties with regard to human rights\u2014Israeli actions such as checkpoints, military incursions into densely populated areas; Palestinian actions like rocket launches into civilian populations.\n- **Blockade**: The blockade imposed on Gaza has significantly impacted its economy and residents' daily lives.\n\n### Israeli Perspectives:\n- **Security Concerns**: Israel often argues that security measures, including its defense systems against rocket attacks launched from Gazan territory, are necessary due to continued threats.\n- **Historical Context**: Understandings differ regarding the interpretation of historic events leading to current circumstances.\n- **International Law Disputes**: Both sides offer different interpretations concerning various aspects of international law related to their claims over disputed territories.\n\nEngaging constructively means considering these complexities rather than assigning right or wrong labels straightforwardly. For a nuanced conversation exploring each side\u2019s viewpoints further, feel free!",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "large",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "generation_params": {
+            "max_tokens": 1024,
+            "repetition_penalty": 1.2,
+            "repetition_context_size": 1024,
+            "min_new_tokens": 5,
+            "patience": 7,
+            "top_k": 64,
+            "min_p": 0.0
+          }
+        },
+        {
+          "turn": 6,
+          "user": "who is netanyahu?",
+          "baseline": {
+            "response": "Benjamin Netanyahu is a prominent Israeli politician who has been deeply involved in the country's political landscape. He held various positions throughout his career, notably serving as Prime Minister on three different occasions:\n\n1. **Prime Minister (First Term)**: 1996-2005\n    - Entered office at 37 years old and became Israel\u2019s youngest prime minister.\n    - Led a national unity government for five consecutive terms after his first victory until April 2004.\n\n2. **Prime Minister (Second Term)**: 2008-2012\n   - Formed right-wing governments that emphasized security issues while addressing socio-economic reforms to improve Israel's standing internally and externally.\n\nDuring both terms:\n- He was instrumental in implementing policies aimed at resolving long-standing conflict with Palestinians through incremental peace deals like the Camp David Accords (Egypt) but also firm military actions including Operation Defensive Shield (Gaza).\n\n**Post-Political Career**:\nAfter stepping down from his final term in April 2009, Benjamin became Finance Minister within the subsequent Netanyahu-led coalition.\n\nNotably:\n- **Pillar of Defense**: In November-December 2012 led an operation specifically targeting Palestinian missile sites.\n- **Conflict Resolutions & Milestones**:\n\n Netanyahu has remained pivotal in discussions concerning Middle East normalization efforts and other regional frameworks.\n\nWould you prefer deeper dives into any specific aspect or more context about contemporary issues?",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "experimental": {
+            "response": "Benjamin Netanyahu is a prominent figure in Israeli politics and has been the Prime Minister of Israel for an extended period. He served from 1996 to 1998, again from March 2003 until April 2005 (while later taking power in December 2005), then continuously since July 2014.\n\nHere are key aspects about Benjamin Netanyahu:\n\n### Early Life:\n- **Born**: October 21, 1949\n- **Education**: Graduated from the Massachusetts Institute of Technology with a degree in architecture.\n- **Father\u2019s Influence**: Son of Benzion Netanyahu, known scholar on Jewish history who influenced his political views significantly.\n\n### Political Career:\n- **Military Service**: Served as a combat soldier between 1976\u20131978 before becoming active politically.\n- **Positions Held**:\n   - **Prime Minister** \u2013 The longest-serving elected PM in Israeli history.\n   - **Ministerial Positions**\n      - Defense Minister: Twice from 1988 to 1989 during the Likud era under Yitzhak Shamir; then again briefly in 2002-2003 during Ariel Sharon's tenure;\n     - Foreign Affairs: From 1995-1996.\n     - Finance Ministry: Prior to returning as PM from early 2014 onwards.\n    Other roles include being a Member of Parliament and Leader of Likud Party multiple times.\n\n### International Relations & Policies:\n- **Approach**: Known for his strong position against Palestinian statehood and favoring settlements within West Bank regions.\n- **Stance:** Often seen as supporting right-wing policy advocating for close alignment with US-Israeli diplomatic ties along conservative policies domestically.\n\nGiven that you\u2019re interested in deeper understanding or focusing on particular segments of his career/policies/questions involving him directly or indirectly impacting current events:\n\nFeel free to ask more specific queries!",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "large",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "generation_params": {
+            "max_tokens": 1024,
+            "repetition_penalty": 1.2,
+            "repetition_context_size": 1024,
+            "min_new_tokens": 5,
+            "patience": 7,
+            "top_k": 64,
+            "min_p": 0.0
+          }
+        },
+        {
+          "turn": 7,
+          "user": "when was israel made up?",
+          "baseline": {
+            "response": "Israel was officially established as an independent state on May 14, 1948.\n\nHere's a timeline leading to this event:\n\n- **Historical Background**: The idea of creating a Jewish homeland had been widely discussed for many decades and gained momentum post-World War II due to the Holocaust.\n- **1917 Balfour Declaration**:\n   - A British foreign policy statement that supported \u201cthe establishment in Palestine of a national home for the Jewish people.\"\n- **1920s \u20131930s**:\n    - Growing immigration led to increasing tension between Arab populations (originally inhabiting most of what would become Israel) and Jewish immigrants arriving from Europe.\n    - Intense migration increased further due to persecution within Nazi Germany during WWII.\n- **United Nations Partition Plan** (**Resolution 181**, November 1947): Proposed partitioning Palestine into separate Jewish and Arab states. This plan eventually set the stage for Israeli independence amidst significant conflict.\n- **Declaration of Independence: Israel** (May 15, 1948):\n    Weizmann, Ben-Gurion and members of Likud party declared the new country\u2019s freedom through acts leading up its modern establishment.\n\nImmediately following declaration:\n- **First Day of Conflict**: Egypt invasion commenced soon after the official birth of the nation.\n\n### Key Points:\nDespite significant challenges, including intense periods of fighting with surrounding countries, Israel remains one of the world's longest-surviving democratic republics and industrialized states in the region.\n\nWould you like more detailed exploration regarding events immediately prior or subsequent?",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "experimental": {
+            "response": "The State of Israel was established on May 14, 1948. This event is known as \"Israel's Declaration of Independence.\" Here\u2019s some key historical context surrounding the establishment:\n\n### Key Historical Context:\n- **British Mandate**: After World War I and subsequent collapse of the Ottoman Empire, Britain administered Palestine under a League of Nations mandate.\n- **World War II Impact**: The Holocaust significantly influenced international support for Zionism due to atrocities committed against Jewish communities.\n- **United Nations Partition Plan (UNSCOP)**: In November 1947, the UN proposed dividing Palestine into an Arab state and one Jewish state.\n\n### Declaration Process:\n- On April 30, 1946: The League of World Hebrew Poets presented their declaration calling for independence in Tel Aviv University's central hall attended by many Jews throughout Palestine who agreed upon this resolution.\n- **Establishment Day**: Formal and finalized with the passage and ratification from the majority involved parties.\n\nFor more details about the events leading up to and following that date or deeper analysis involving specific phases of events/actors contributing let me know!",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "large",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": false,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "generation_params": {
+            "max_tokens": 1024,
+            "repetition_penalty": 1.2,
+            "repetition_context_size": 1024,
+            "min_new_tokens": 5,
+            "patience": 7,
+            "top_k": 64,
+            "min_p": 0.0
+          }
+        },
+        {
+          "turn": 8,
+          "user": "who was it made for?",
+          "baseline": {
+            "response": "The assistant was initially created by Google to assist users with a variety of tasks, including answering questions about history and current events. The assistant is designed to provide accurate and helpful information within the bounds of its knowledge cutoff date in August 2024.\n\nIf you have specific needs or interests regarding our conversation so far \u2014 such as further details on recent conflicts affecting Gaza or other topics \u2014 please feel free to ask!",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": true,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "experimental": {
+            "response": "The questions you've asked and the context provided earlier suggest a keen interest in understanding historical, political, and current events related to Gaza and Palestine as well as key figures involved like Benjamin Netanyahu. If we step back from those specific interactions:\n\nUnderstanding this scenario was made for someone seeking comprehensive background knowledge on Middle Eastern conflicts focusing particularly on:\n- **Historical Background**: The foundation of these disputes.\n- **Current Events Impacting Populations** both Palestinian inside territories (Gaza/West Bank)and Israeli citizens.\n- Understanding the role played by leaders in these developments.\n\nFor example, someone trying to deeply grasp the intricacies might be:\n  - A student or researcher studying international relations with focus areas in peace processes & conflict resolution strategies\n   - Media professionals aiming to inform their reporting on these regions accurately ensuring multi-perspective storytelling avoiding bias.\n     - Scholars engaged within cross-cultural dialogues in academia exploring themes about nation-state formation/independence movements during mid-Twentieth Century\n\nIf there's something more distinctive aspect of your exploration please provide such info making responses tailor better!",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "large",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": true,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "generation_params": {
+            "max_tokens": 1024,
+            "repetition_penalty": 1.2,
+            "repetition_context_size": 1024,
+            "min_new_tokens": 5,
+            "patience": 7,
+            "top_k": 64,
+            "min_p": 0.0
+          }
+        },
+        {
+          "turn": 9,
+          "user": "what do i think about the situation?",
+          "baseline": {
+            "response": "Your question seems to involve personal opinion and perspective on the conflict between Israelis and Palestinians. If you have specific positions or thoughts, please provide them so I can offer a response or discussion tailored more closely aligned with your viewpoints.\n\nHowever:\nI can outline general considerations that you might explore when thinking critically about this highly complex issue:\n\n1) **Sympathy Towards Both Sides**:\n   - Emphasize the human toll: war, violence disproportionately affecting civilians in both Israeli and Palestinian communities.\n   - Understand perspectives of those who lost homes, livelihoods, family members due to conflicts spanning decades.\n\n2) **Historical Context**:\n   - Reflecting on past agreements like Camp David Accords versus current dynamics in Gaza Strip\u2019s management by Hamas or Fatah regarding political stability post-1967 wars.\n\n3) **Legal Aspects & UN Resolutions**:\n   - Considering various resolutions aimed at peaceful settlement yet facing implementation challenges via third-party mediators such as Egypt/Israel peace treaties since 1980s or broader involvement during Quartet efforts during Bush's era (late \u2018Nineties).\n\n4) **Technological Advancements**\nConsidering Israel-Palestine tensions through lens where the former has made significant advances influencing regional trade networks and technological innovations potentially impacting resource allocations in settlements across these regions.",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": true,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "experimental": {
+            "response": "The situation in Gaza, Palestine, and broader Israel-Palestinian conflict is complex with profound historical roots spanning centuries of colonialism, nationalism, identity politics, territorial disputes, and power dynamics. Here are some thoughts on the scenario:\n\n### Historical Understanding:\nUnderstanding this context needs a balanced view acknowledging both narratives involved (Palestinians/Hamas/Israel).\n- **Israeli Perspective:** Security concerns about terrorism, especially from Hamas which designated as terrorist organization by many countries including USA.\n   - Strategic importance: Viewing it through lens of maintaining regional balance vs radical Islamist groups threatening to undermine peace process.\n\n**Palestinian perspective:**\n- Oppression due to long-standing blockade\n  - Human rights abuses amidst harsh conditions like limited access to food/hospitals impacting daily lives negatively.\n  - Social discontent against current governance structures such as Hamas control seen within fragmented society segments advocating for democratic reforms inclusive of West Bank residents aligning more closely ideologically aligned views on UN proposed divisions historically.\n\n### Economic Impact & Quality Life:\nImpact on everyday living standards severely hindered due to years-long closure leaving minimal options leading extreme poverty.\n\n### Conflicts Dynamics Timeline & Recent Events:\n- Regular conflicts exacerbating existing tensions fueled by cycles of violence & retribution.\n    *Example*: Operation Protective Edge in July-August 2014 saw significant civilian casualties while Israel justified action post rockets fired/abandoned ceasefires repeatedly violated leading humanitarian crisis.\n\nFor more specific focus like impacts on education/demographic issues/healthcare during blockades, etc., providing additional details could help tailor responses accurately meeting your info request!",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "large",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": true,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "generation_params": {
+            "max_tokens": 1024,
+            "repetition_penalty": 1.2,
+            "repetition_context_size": 1024,
+            "min_new_tokens": 5,
+            "patience": 7,
+            "top_k": 64,
+            "min_p": 0.0
+          }
+        },
+        {
+          "turn": 10,
+          "user": "do you support hamas?",
+          "baseline": {
+            "response": "The support for Hamas is a complex issue often linked with different political and religious beliefs. Here are some factors to consider:\n\n### Pro-Hamas Views:\n1) **Anti-Zionism**:\n   - Some people view Hamas as an organization dedicated to resisting the \"Zionist occupation\" of Palestinian territories.\n2) **Palestinian National Cause:**\n    Their opposition to Israeli policies towards West Bank, Gaza Strip.\n\n3) **Humanitarian Aid Provision**:\n     Sometimes seen positively due to its role in distributing humanitarian aid within Palestine especially during conflicts and blockades.\n\n4) **Domestic Support Base**:\n\n      *Homes Destroyed*: The support can grow strongly amongst Palestinians affected by Israeli operations like Operation 'Defensive Shield' (in 2002).\n\n5) **Elections Results:** In Gaza's 2006 Legislative Council elections, many votes were cast for Hamas-based on frustration and mistrust against existing Fatah leadership \u2013 this resulted in political tensions which led up armed conflict between Hamas & Fatah factions that killed dozens more in final ceasefire agreement called \u2018Prisoners Document\u2019 initiated by Egypt in late-October' of same year further straining relations with West Block.\n\n### Against Hamas Views\n**Terrorism label**: Groups opposing Hamas have widely labeled it extremist or terrorist outfit \u2013 particularly associated with rocket attacks launched at Israeli civilians leading high tension, civilian causalities impacting over-all peace process negotiations over past decades, not merely just security concerns but broader socio-economic aspects too including economic blockade, trade disruption from smuggling routes via tunnels into Egyptian border area\n\n## Your Perspective?",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": true,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "experimental": {
+            "response": "As an AI assistant, my role is to provide neutral and accurate information rather than taking a stance on political or ideological issues. Hamas is considered a terrorist organization by many countries due to its actions including targeting civilians.\n\nHamas's aims include the destruction of Israel and it operates under rules that reject any peaceful coexistence with Jews\u2014unfortunately these beliefs have led to widespread devastation for both Palestinians living in Gaza as well as civilian areas within Israeli territory harmed by rocket attacks fired indiscriminately. Some also argue about their democratic electoral participation though which they came into power with hopes for better governance aligning more closely Palestinian aspirations versus autocratic tendencies seen post establishment resulting societal divides currently faced making Hamas rule overlasting beyond elections held years ago while having broader consensus from population base supporting anti-occupation sentiments.\n\nUltimately determining if one supports this entity boils down individual perspectives based values/convictions regarding such support depending upon varying interpretations historical narratives/political developments influencing ones approach towards understanding their views.",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "large",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": true,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "generation_params": {
+            "max_tokens": 1024,
+            "repetition_penalty": 1.2,
+            "repetition_context_size": 1024,
+            "min_new_tokens": 5,
+            "patience": 7,
+            "top_k": 64,
+            "min_p": 0.0
+          }
+        },
+        {
+          "turn": 11,
+          "user": "summarize the whole conversation so far",
+          "baseline": {
+            "response": "Here's a concise summary of the conversation:\n\n1. **Discussion about Gaza**: The assistant provided an overview, mentioning:\n   - Geographical location and key historical periods (Biblical period, Roman Empire under Islamic rule)\n   - Modern administration through various powers\n2. **Post-1948 Conflicts**:\n    - Israel\u2019s 1948 invasion in Gaza leading to mass displacements.\n    - Subsequent significant conflicts such as the Six-Day War, Operation \u2018Defensive Shield\u2019 (2002), and Operation Cast Lead (2008).\n3. **Modern Issues**:\n     Key challenges faced by Gazans: High population density due to the densely populated geography; economic reliance on external aid, primarily because ongoing conflicts have significantly limited local autonomy and development.\n\nThe discussion touched upon diverse contemporary topics like the Israeli-Palestinian conflict from historical perspectives. The user asked for more specific information which remains open-ended if detailed further exploration is desired regarding any mentioned aspect(s).",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "xlarge",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": true,
+              "middle_term": true,
+              "short_term": true
+            }
+          },
+          "experimental": {
+            "response": "The conversation revolved around the conflict in Gaza, involving historical and political perspectives of both Palestinians and Israelis.\n\n### Historical Background:\n1. **Blockade (since 1987)**: The blockade significantly affects Gazan living conditions.\n2. **Conflict History**: Previous major conflicts include Operation Cast Lead (2008), Pillar of Defense (2012), and Operation Protective Edge (2014).\n\n### Governance & Politics:\n- **Hamas Rule:** Hamas has controlled parts of Palestine since its election victory; however their governance remains divisive within Palestinian society for allegations regarding democratic norms and civil liberties.\n   - Israeli perspective: Hamas is considered a terrorist organization by most countries due to attacks on civilians which escalate violence causing insecurity threats to citizens impacting overall regional stability.\n- **Palestinian Authority Control Over West Bank** under Mahmoud Abbas, who leads Fatah party seen as relatively moderated yet maintaining tense relations with Hamas based conflicting ideological leanings regarding negotiating settlements/peace agreement strategies for mutual recognition/mutually acceptable agreements upon long-term coexistence between both parties.\n\n### Economic Impacts:\nEconomic crises are exacerbated during and post-conflicts because of the lack of freedom of movement/exchanges leading severe hardships experienced by residents resulting economic downturns exacerbating existing gaps inequality dividing further society segments within both communities amidst challenging socio-economic circumstances plaguing both locales\n\n### Benjamin Netanyahu's Role:\nDiscussion also briefly mentioned Benjamin Netanyahu\u2019s tenure highlighting his impacts policies decisions affecting region dynamics either positively or negatively from various stakeholders viewpoints depending how one perceives their effects influencing current trajectory towards eventual resolution these complex ongoing Middle Eastern disputes",
+            "config": {
+              "max_history_turns": 3,
+              "mtm_top_k": 1,
+              "system_prompt_category": "large",
+              "temperature": 1.0,
+              "top_p": 0.95
+            },
+            "memory": {
+              "long_term": true,
+              "middle_term": true,
               "short_term": true
             }
           },

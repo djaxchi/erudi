@@ -26,8 +26,8 @@ export default function ConversationPage() {
   const [models, setModels] = useState([]);
   const [currentModel, setCurrentModel] = useState("");
   const [settings, setSettings] = useState({
-    temperature: 0.2,
-    topP: 0.5,
+    temperature: 1.0,
+    topP: 0.95,
     maxTokens: 1024,
     quantize: false,
   });

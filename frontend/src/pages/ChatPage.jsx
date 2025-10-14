@@ -24,8 +24,8 @@ export default function ChatPage() {
 
   // Parameters state
   const [settings, setSettings] = useState({
-    temperature: 0.2,
-    topP: 0.5,
+    temperature: 1,
+    topP: 0.95,
     maxTokens: 1024,
     quantize: false,
   });

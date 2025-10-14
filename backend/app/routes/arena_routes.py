@@ -93,7 +93,7 @@ async def query_arena(
 
     # Model Loading
     try:
-        model, tokenizer = ModelManager.get_model_and_tokenizer(llm)
+        model, tokenizer = ModelManager.get_model(llm)
     except Exception as e:
         logging.exception("Failed to load model or tokenizer")
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")

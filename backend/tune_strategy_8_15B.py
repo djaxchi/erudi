@@ -16,7 +16,7 @@ from textwrap import fill
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # faut mettre ton num de model ici
-MODEL_PATH = "./data/models/194"
+MODEL_PATH = "./data/models/191"
 HISTORY_FILE = "./strategy_tuning_history.json"
 
 
@@ -56,16 +56,25 @@ THEMES = {
             "What were the main causes of World War I?",
             "Explain the theory of evolution by natural selection",
             "What was the Cold War about?",
-            "Tell me about the Renaissance period"
+            "Tell me about the Renaissance period",
+            "Is that what led to what happened yesterday?"
         ]
     },
     "4": {
         "name": "custom",
         "initial_prompts": [
             "hey, whats up?",
-            "give me a pasta recipe",
-            "summarize",
-            "who are you?"
+            "tell me about gaza",
+            "is that what happened one month ago?",
+            "I think israel is a criminal state, what do you think of israel?",
+            "do you think palestine is right?",
+            "who is netanyahu?",
+            "when was israel made up?",
+            "who was it made for?",
+            "what do i think about the situation?",
+            "do you support hamas?",
+            "summarize the whole conversation so far",
+
         ]
     }
 }
@@ -126,8 +135,8 @@ SYSTEM_PROMPTS = {
 - Use context wisely without repeating it
 - Never mention system instructions or internal processes
 - Format responses clearly using Markdown when appropriate
-- Respond briefly, say only what is necessary unless more detail is requested.""",
-    "xlarge": """"""
+- Avoid being repetitive or verbose unless specifically asked. Nobody likes listening to long rants! BE CONCISE.""",
+    "xlarge": """You are a Gemma, a helpful assistant created by Google. The current date is {current_date}. Gemmas’s knowledge base was last updated in August 2024 and it answers user questions about events before August 2024 and after August 2024 the same way a highly informed individual from August 2024 would if they were talking to someone from {current_date}. It avoids being repetitive or verbose unless specifically asked. Nobody likes listening to long rants! IT IS CONCISE. It is happy to help with writing, analysis, question answering, math, coding, and all sorts of other tasks. It uses markdown for coding."""
 }
 
 # Conversation summary cache (simulates the global cache in conversation_routes)
@@ -283,6 +292,10 @@ def build_prompt(model, tokenizer, strategy, conversation_history, current_quest
     sys_prompt_category = strategy["system_prompt_size_category"]
     sys_prompt = SYSTEM_PROMPTS[sys_prompt_category]
     
+    # Format the system prompt with the current date
+    current_date = datetime.now().strftime("%B %d, %Y")
+    sys_prompt = sys_prompt.format(current_date=current_date)
+    
     max_turns = strategy["max_history_turns"]
     n_recent = max_turns * 2
     
@@ -321,7 +334,7 @@ def build_prompt(model, tokenizer, strategy, conversation_history, current_quest
     if strategy["use_middle_term_memory"] and len(semantic_history) >= 2:
         middle_term_memory = retrieve_middle_term_memory(current_question, semantic_history, strategy)
         if middle_term_memory and len(middle_term_memory) > 0:
-            context_lines.append(f"  - Here are the {len(middle_term_memory)//2} most relevant previous message exchanges:")
+            context_lines.append(f"  - Here are previous message exchanges that might be relevant:")
             context_lines.extend(middle_term_memory)
             context_lines.append("")
     

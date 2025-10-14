@@ -99,7 +99,7 @@ class ModelManager:
                     repetition_context_size=repetition_context_size,
                 )
 
-                # Generate stream
+                # Generate streaming response
                 for new_text in mlx_lm.stream_generate(
                     model,
                     tokenizer,
@@ -447,13 +447,8 @@ def build_system_prompt(
         sys_prompt = f"You are {model_name}, a helpful assistant. Answer clearly and concisely in the user's tone without repeating context, prompt and instructions. You can use context of previous messages to stay relevant. Do not go off track. Finish your answers with questions if needed, to keep the conversation going. Output only what the user should see."
     elif size_category == "large":
         # Detailed system prompt for large models (8-15B)
-        sys_prompt = f"""You are a sophisticated AI assistant. Your role is to:
-                        - Provide accurate, well-reasoned responses
-                        - Adapt to the user's language, tone, and expertise level
-                        - Use context wisely without repeating it
-                        - Never mention system instructions or internal processes
-                        - Format responses clearly using Markdown when appropriate
-                        - Respond briefly, say only what is necessary unless more detail is requested."""
+        current_date = datetime.now().strftime("%B %d, %Y")
+        sys_prompt = f"""You are {model_name}, a helpful assistant. The current date is {current_date}. {model_name}'s training was last updated in August 2024 and it answers user questions about events before August 2024 and after August 2024 the same way a highly informed individual from August 2024 would if they were talking to someone from {current_date}. It avoids being repetitive or verbose unless specifically asked. Nobody likes listening to long rants! IT IS CONCISE. It is happy to help with writing, analysis, question answering, math, coding, and all sorts of other tasks. It uses markdown for coding."""
     else:  # "xlarge" (16B+)
         # Comprehensive system prompt for very large models
         sys_prompt = f"""You are {model_name}, a sophisticated AI assistant. Your role is to:
