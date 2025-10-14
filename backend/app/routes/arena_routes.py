@@ -117,7 +117,7 @@ async def query_arena(
             ):
                 
                 assistant_response += new_text
-                logging.info(f"Yielding token: {new_text}")
+                # logging.info(f"Yielding token: {new_text}")
                 if new_text:
                     yield new_text
 

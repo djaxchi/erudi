@@ -531,7 +531,7 @@ async def generate_title(
                 patience=2,
             ):
                 text = new_text
-                logging.info(f"Received title token: {text}")
+                # logging.info(f"Received title token: {text}")
                 if (
                     model_type == "mistral"
                     and text.strip() == ""
@@ -821,7 +821,7 @@ async def query_and_respond(
                 patience=7
             ):
                 assistant_response += text
-                logging.info(f"Yielding token: {text}")
+                # logging.info(f"Yielding token: {text}")
                 yield text
 
         except Exception as e:
