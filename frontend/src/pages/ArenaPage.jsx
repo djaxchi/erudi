@@ -6,6 +6,7 @@ import { askArena } from "../services/arenaService.js";
 import { Trash, Plus } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
+import MarkdownRenderer from "../components/MarkdownRenderer";
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
@@ -278,18 +279,28 @@ export default function ArenaPage() {
             }
           `}
         </style>
-        {panel.messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`rounded-xl px-4 py-2 my-1 max-w-[90%] whitespace-pre-line ${
-              msg.role === "user"
-                ? "bg-emerald-900/40 text-white self-end"
-                : "text-white self-start"
-            }`}
-          >
-            {msg.content}
-          </div>
-        ))}
+        {panel.messages.map((msg, idx) => {
+          const isUser = msg.role === "user";
+          const isError = typeof msg.content === "string" && msg.content.includes("[Erreur]");
+          return (
+            <div
+              key={idx}
+              className={`rounded-xl px-4 py-2 my-1 max-w-[90%] ${
+                isUser
+                  ? "bg-emerald-900/40 text-white self-end"
+                  : isError
+                  ? "text-red-400 self-start"
+                  : "text-white self-start"
+              }`}
+            >
+              {isUser || isError ? (
+                <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+              ) : (
+                <MarkdownRenderer content={msg.content} />
+              )}
+            </div>
+          );
+        })}
       </div>
     </GradientBox>
   );
