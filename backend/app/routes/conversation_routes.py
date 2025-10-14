@@ -79,11 +79,10 @@ async def get_all_conversations(db: Session = Depends(get_db)):
     """
     try:
         conversations = db.query(Conversation).all()
-        # Use model_validate for serialization (from_orm deprecated)
-        # return [ConversationResponse.model_validate(conv) for conv in conversations]
         return conversations
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
@@ -500,7 +499,12 @@ async def generate_title(
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
     try:
-        system_title_generation_prompt = f"""You are a very-short-title generator. You only return the title for the given message. Respond in maximum 3-4 words. No punctuation, no quotes, no formatting, no special characters, no hashtags, no emojis, no newline characters. No introduction, no explanation. Just the title. If the message is empty or not suitable for a title, respond with 'New Conversation'."""
+        system_title_generation_prompt = f"""You are a very-short-title generator. You only return the title for the given message. Respond in maximum 3-4 words. No punctuation, no quotes, no formatting, no special characters, no hashtags, no emojis, no newline characters. No introduction, no explanation. Just the title. If the message is empty or not suitable for a title, respond with 'New Conversation'.
+Examples:
+    User: Write the fullstack app for a Chatbot that uses Claude API from scratch. Dev everything.
+    Assistant: Chatbot Fullstack App
+    User: Hey what's up?
+    Assistant: Casual Conversation"""
         
         user_title_generation_prompt = f"""Create a 2-to-4-word title for:
 {payload.question}"""
@@ -523,25 +527,16 @@ async def generate_title(
                 model=model,
                 tokenizer=tokenizer,
                 prompt=full_title_generation_prompt,
-                temperature=0.01,
-                top_p=0.2,
-                max_tokens=8,
+                temperature=1.0,
+                top_p=0.95,
+                max_tokens=12,
                 repetition_penalty=None,
-                min_new_tokens=2,
-                patience=2,
             ):
                 text = new_text
-                # logging.info(f"Received title token: {text}")
+                logging.info(f"Received title token: {text}")
                 if (
                     model_type == "mistral"
                     and text.strip() == ""
-                    or "<" in text
-                    or ">" in text
-                    or "INST" in text
-                    or "/" in text
-                    or "[" in text
-                    or "|" in text
-                    or "end" in text
                     or "assistant" in text
                     or "system" in text
                     or "user" in text
@@ -549,8 +544,6 @@ async def generate_title(
                     or "Your very short title" in text
                     or "Examples:" in text
                     or "Create a 2-to-5-word title for:" in text
-                ) or (
-                    model_type == "gemma"
                     and text.strip() == ""
                     or "<start_of" in text
                     or "bos" in text
@@ -611,12 +604,8 @@ async def generate_title(
                 words.remove(":")
                 words.remove("`")
             words = [re.sub(r"<.*?>", "", word) for word in words if word]
-            final_title = " ".join(words[:4]) if len(words) >= 4 else " ".join(words)
+            final_title = " ".join(words)
             
-            # Force lowercase except for first letter
-            if final_title and len(final_title) > 0:
-                final_title = final_title[0].upper() + final_title[1:].lower()
-
             conversation.name = final_title if (final_title and final_title.strip() != "") else "New Conversation"
             db.add(conversation)
             db.commit()
@@ -821,7 +810,7 @@ async def query_and_respond(
                 patience=7
             ):
                 assistant_response += text
-                # logging.info(f"Yielding token: {text}")
+                logging.info(f"Yielding token: {text}")
                 yield text
 
         except Exception as e:

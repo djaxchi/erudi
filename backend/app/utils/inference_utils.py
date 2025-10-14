@@ -313,7 +313,7 @@ def get_prompting_strategy(param_size: int) -> dict:
             "max_history_turns": 3,
             "use_short_term_memory": True,
             "use_middle_term_memory": True,
-            "mtm_top_k": 2,
+            "mtm_top_k": 1,
             "use_long_term_memory": False,
             "use_kb_basic": True,
             "use_kb_enhanced": False,
