@@ -16,11 +16,11 @@ from app.models.Conversation import Conversation
 from app.models.Llm import Llm
 from app.models.Message import Message
 from app.utils.inference_utils import (
-    EmbedderService, 
-    ModelManager, 
-    get_prompting_strategy, 
+    EmbedderService,
+    ModelManager,
+    get_prompting_strategy,
     get_relevant_texts_from_kb,
-    build_system_prompt
+    build_system_prompt,
 )
 from app.schemas.conversation_schemas import (
     ConversationCreate,
@@ -30,13 +30,6 @@ from app.schemas.conversation_schemas import (
     ConversationUpdate,
     ConversationWithMessagesResponse,
 )
-
-os.environ.setdefault("VECLIB_MAXIMUM_THREADS","1")
-os.environ.setdefault("OMP_NUM_THREADS","1")
-os.environ.setdefault("OPENBLAS_NUM_THREADS","1")
-os.environ.setdefault("MKL_NUM_THREADS","1")
-os.environ.setdefault("NUMEXPR_NUM_THREADS","1")
-faiss.omp_set_num_threads(1)
 
 _conversation_summary_cache = {}
 
@@ -80,10 +73,11 @@ async def get_all_conversations(db: Session = Depends(get_db)):
     try:
         conversations = db.query(Conversation).all()
         # Use model_validate for serialization (from_orm deprecated)
-        # return [ConversationResponse.model_validate(conv) for conv in conversations]
+        # return [ConversationResponse.model_validate(conv) for conv in conversations]
         return conversations
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
@@ -116,7 +110,7 @@ async def create_conversation(
         temperature=payload.temperature,
         top_p=payload.top_p,
         max_tokens=payload.max_tokens,
-        custom_prompt=payload.custom_prompt
+        custom_prompt=payload.custom_prompt,
     )
     try:
         db.add(conversation)
@@ -178,7 +172,10 @@ async def update_conversation(
         conversation.llm_id = payload.llm_id
         updated = True
 
-    if payload.temperature is not None and payload.temperature != conversation.temperature:
+    if (
+        payload.temperature is not None
+        and payload.temperature != conversation.temperature
+    ):
         conversation.temperature = payload.temperature
         updated = True
 
@@ -190,7 +187,10 @@ async def update_conversation(
         conversation.max_tokens = payload.max_tokens
         updated = True
 
-    if payload.custom_prompt is not None and payload.custom_prompt != conversation.custom_prompt:
+    if (
+        payload.custom_prompt is not None
+        and payload.custom_prompt != conversation.custom_prompt
+    ):
         conversation.custom_prompt = payload.custom_prompt
         updated = True
 
@@ -239,7 +239,7 @@ def retrieve_context(
     strategy: dict,
     n_last_turns: int = 1,
     model_type: str = "mistral",
-) -> dict :
+) -> dict:
     """
     Retrieve relevant context from the conversation history based on semantic similarity and recency.
     Uses SentenceTransformer for embeddings and FAISS for similarity search.
@@ -322,7 +322,7 @@ def retrieve_context(
         # THIS IS TO FIX IN ORDER TO KEEP ALL OF TRHE CONTEXT, BY CHUNKS AND NOT BY TRUNCKING AFTER 4000 CHAR
         if len(conv_text) > 4000:
             conv_text = conv_text[:4000] + "..."
-        
+
         summary_sys_prompt = f"""You are a conversation summarizer. Create a concise summary of the key topics, decisions, and important information discussed in this conversation. Keep it under 100 words. No formatting needed, only a few phrases."""
         summary_user_prompt = f"""Summarize this conversation:
 
@@ -333,7 +333,7 @@ def retrieve_context(
         try:
             # Merge system prompt into user message for models that don't support system role
             merged_summary_prompt = f"{summary_sys_prompt}\n\n{summary_user_prompt}"
-        
+
             logging.info("======= Generating conversation summary... =======")
             summary = ""
 
@@ -342,8 +342,8 @@ def retrieve_context(
                 tokenizer=tokenizer,
                 prompt=merged_summary_prompt,
                 max_tokens=150,
-                temperature=0.1,
-                top_p=0.5,
+                temperature=1,
+                top_p=0.2,
                 repetition_penalty=1.3,
                 repetition_context_size=150,
             ):
@@ -359,8 +359,11 @@ def retrieve_context(
     current_message_count = len(conversation_history)
 
     # Long-term memory (Conversation summary) - only if strategy allows
-    summary_threshold = n_last_turns * 2 * 2 
-    if (strategy["use_long_term_memory"] and len(conversation_history) > summary_threshold):
+    summary_threshold = n_last_turns * 2 * 2
+    if (
+        strategy["use_long_term_memory"]
+        and len(conversation_history) > summary_threshold
+    ):
         cached_summary, need_regenerate = get_cached_summary(
             conversation_id, current_message_count
         )
@@ -369,9 +372,13 @@ def retrieve_context(
             logging.info(
                 f"Generating new conversation summary for {len(conversation_history)} messages"
             )
-            long_term_memory = generate_conversation_summary(conversation_history, model_type=model_type)
+            long_term_memory = generate_conversation_summary(
+                conversation_history, model_type=model_type
+            )
             if long_term_memory:
-                cache_summary(conversation_id, long_term_memory, current_message_count + 1)
+                cache_summary(
+                    conversation_id, long_term_memory, current_message_count + 1
+                )
         else:
             long_term_memory = cached_summary
 
@@ -381,7 +388,6 @@ def retrieve_context(
             context_lines.append("")
             context["long_term_memory"] = long_term_memory
 
-
     n_recent = n_last_turns * 2
     if len(conversation_history) >= n_recent + 4:
         semantic_history = conversation_history[:-n_recent]
@@ -390,7 +396,11 @@ def retrieve_context(
 
     # Middle-term memory (Semantic context) - only if strategy allows
     if strategy["use_middle_term_memory"] and len(semantic_history) >= 2:
-        n_to_retrieve = strategy["mtm_top_k"] if len(semantic_history) >= 2*strategy["mtm_top_k"] else int(len(semantic_history)/2)
+        n_to_retrieve = (
+            strategy["mtm_top_k"]
+            if len(semantic_history) >= 2 * strategy["mtm_top_k"]
+            else int(len(semantic_history) / 2)
+        )
         embedder = EmbedderService.get_embedder()
         query_emb = embedder.encode(query, convert_to_tensor=True)
         messages = [msg[1] for msg in semantic_history]
@@ -398,9 +408,7 @@ def retrieve_context(
         EmbedderService.cleanup()
         index = faiss.IndexFlatL2(len(msg_embs[0]))
         index.add(np.array(msg_embs))
-        _, idxs = index.search(
-            np.array([query_emb.cpu().numpy()]), k=n_to_retrieve
-        )
+        _, idxs = index.search(np.array([query_emb.cpu().numpy()]), k=n_to_retrieve)
 
         used = set()
         semantic_lines = []
@@ -430,23 +438,27 @@ def retrieve_context(
             context["middle_term_memory"] = semantic_lines
 
     # Knowledge Base Context - only if strategy allows and LLM is attached to KB
-    if llm.is_attached_to_kb and (strategy["use_kb_basic"] or strategy["use_kb_enhanced"]):
+    if llm.is_attached_to_kb and (
+        strategy["use_kb_basic"] or strategy["use_kb_enhanced"]
+    ):
         try:
             # Use enhanced KB retrieval with more chunks if strategy allows
             kb_top_k = strategy["kb_top_k"]
             kb_context = get_relevant_texts_from_kb(
                 query=query, llm=llm, db=db, kb_top_k=kb_top_k
             )
-            
+
             if not kb_context:
                 logging.info("No relevant texts found in Knowledge Base")
             else:
                 context_prefix = "\n\nAlso: You are attached to a Knowledge Base."
                 if strategy["use_kb_enhanced"]:
-                    context_prefix += " Here is detailed context you need to know for this query:\n"
+                    context_prefix += (
+                        " Here is detailed context you need to know for this query:\n"
+                    )
                 else:
                     context_prefix += " Here is basic context for this query:\n"
-                
+
                 context_lines.append(context_prefix + "\n".join(kb_context))
                 context["kb_context"] = kb_context
 
@@ -455,21 +467,28 @@ def retrieve_context(
             raise HTTPException(
                 status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}"
             )
-    
 
     # Short-term memory (Recent messages) - only if strategy allows
     if strategy["use_short_term_memory"]:
-        recent = conversation_history[-n_recent:] if len(conversation_history) >= n_recent else conversation_history
+        recent = (
+            conversation_history[-n_recent:]
+            if len(conversation_history) >= n_recent
+            else conversation_history
+        )
         if recent:
-            context_lines.append(f"  - Here are the {len(recent)} most recent messages:")
+            context_lines.append(
+                f"  - Here are the {len(recent)} most recent messages:"
+            )
             for sender, msg in recent:
                 role = "[user]" if sender == "user" else "[assistant]"
                 context_lines.append(f"{role}: {msg}")
 
-    if context_lines and len(context_lines)>0:
-        context["context_str"] = "Here is context about the conversation you had so far:\n\n" + "\n".join(context_lines)
-    
-    
+    if context_lines and len(context_lines) > 0:
+        context["context_str"] = (
+            "Here is context about the conversation you had so far:\n\n"
+            + "\n".join(context_lines)
+        )
+
     return context
 
 
@@ -500,128 +519,92 @@ async def generate_title(
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
     try:
-        system_title_generation_prompt = f"""You are a very-short-title generator. You only return the title for the given message. Respond in maximum 3-4 words. No punctuation, no quotes, no formatting, no special characters, no hashtags, no emojis, no newline characters. No introduction, no explanation. Just the title. If the message is empty or not suitable for a title, respond with 'New Conversation'."""
-        
-        user_title_generation_prompt = f"""Create a 2-to-4-word title for:
-{payload.question}"""
-        # Merge system prompt into user message for models that don't support system role
-        merged_title_prompt = f"{system_title_generation_prompt}\n\n{user_title_generation_prompt}"
-        full_title_generation_prompt = [
-            {"role": "user", "content": merged_title_prompt}
-        ]
-        logging.info("Title generation prompt: %s", full_title_generation_prompt)
-    
+        # For Mistral we avoid system role because its chat template requires strict user/assistant alternation.
+        # We embed the instructions + user query into a single user message.
+        if model_type == "mistral":
+            merged_title_prompt = (
+                "You are a TITLE generator. Produce ONLY a very short title (2–4 words maximum).\n"
+                "Rules: only the title text; Title Case; no question mark; no quotes; no emojis; no hashtags; no code; no trailing punctuation; never answer the question; if empty/URL/noise => output nothing.\n"
+                f"User message: {payload.question}\n"
+                "Do not answer the question, only create a relevant title. Do NOT add quotes around the title.\n"
+                "Examples (user question -> title):\n"
+                "give me pizza recipe -> Pizza Recipe\n"
+                "google founding team members -> Google Founding Team\n"
+                "what's the capital of japan -> Japan Capital\n"
+                "female of the pig ->  Pig Female Name\n"
+            )
+            full_title_generation_prompt = [{"role": "user", "content": merged_title_prompt}]
+            logging.info(
+                "[TitleGen] conversation_id=%s model_type=%s (mistral merged)\n%s",
+                conversation_id,
+                model_type,
+                merged_title_prompt[:400],
+            )
+        else:
+            system_title_generation_prompt = (
+                "You are a very-short-title generator. Return ONLY a concise title. "
+                "No punctuation (except apostrophes in possessives), no quotes, no hashtags, no emojis, no trailing filler words. "
+                "Capitalize important words. The title shouldn't be a question.\n"
+                "Do not answer the question, only create a relevant title.\n"
+                "If the message is empty or meaningless, return nothing.\n"
+                "Examples (user question -> title):\n"
+                "give me pizza recipe -> Pizza Recipe\n"
+                "google founding team members -> Google Founding Team\n"
+                "what's the capital of japan -> Japan Capital\n"
+                "female of the pig -> Pig Female Name\n"
+                "Format: just the title, nothing else."
+            )
+            user_title_generation_prompt = f"""Create a 2-to-4-word title for:\n{payload.question}"""
+            merged_title_prompt = f"{system_title_generation_prompt}\n\n{user_title_generation_prompt}"
+            full_title_generation_prompt = [{"role": "user", "content": merged_title_prompt}]
+            logging.info(
+                "[TitleGen] conversation_id=%s model_type=%s (merged prompt)\n%s",
+                conversation_id,
+                model_type,
+                merged_title_prompt[:400],
+            )
+        logging.debug("[TitleGen] full messages payload: %s", full_title_generation_prompt)
+
     except Exception as e:
         logging.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
 
-
     async def title_stream():
         generated_title = ""
         try:
+            # Early return if user content is empty or whitespace
+            if not payload.question or payload.question.strip() == "":
+                conversation.name = "New Conversation"
+                db.add(conversation)
+                db.commit()
+                return
+            # Adjust generation hyperparams for Mistral to reduce drift into full answers.
+            # Preprocessing-only control via generation params (no downstream filtering)
+            temp = 0.5 if model_type == "mistral" else 1.0
+            nucleus = 0.9 if model_type == "mistral" else 0.95
+            max_tok = 12 if model_type == "mistral" else 12
             for new_text in ModelManager.generate_stream(
                 model=model,
                 tokenizer=tokenizer,
                 prompt=full_title_generation_prompt,
-                temperature=0.01,
-                top_p=0.2,
-                max_tokens=8,
-                repetition_penalty=None,
-                min_new_tokens=2,
-                patience=2,
+                temperature=temp,
+                top_p=nucleus,
+                max_tokens=max_tok,
+                repetition_penalty=1.2,
             ):
-                text = new_text
-                logging.info(f"Received title token: {text}")
-                if (
-                    model_type == "mistral"
-                    and text.strip() == ""
-                    or "<" in text
-                    or ">" in text
-                    or "INST" in text
-                    or "/" in text
-                    or "[" in text
-                    or "|" in text
-                    or "end" in text
-                    or "assistant" in text
-                    or "system" in text
-                    or "user" in text
-                    or "title" in text
-                    or "Your very short title" in text
-                    or "Examples:" in text
-                    or "Create a 2-to-5-word title for:" in text
-                ) or (
-                    model_type == "gemma"
-                    and text.strip() == ""
-                    or "<start_of" in text
-                    or "bos" in text
-                    or "eos" in text
-                    or ">" in text
-                    or "<" in text
-                    or "<end_of" in text
-                    or "_turn>" in text
-                    or "assistant" in text
-                    or "system" in text
-                    or "user" in text
-                    or "title" in text
-                    or "Your very short title" in text
-                    or "Examples:" in text
-                    or "Create a 2-to-5-word title for:" in text
-                ):
-                    continue
-                cleaned_token = text[0].upper() + text[1:]
-                generated_title += cleaned_token
-                logging.info(f"Yielding title token: {cleaned_token}")
-                yield cleaned_token
+                logging.info(f"[TitleGen Stream] token: {new_text}")
+                generated_title += new_text
+                yield new_text
         except Exception as e:
+            # Do not raise after partial streaming; just log and fallback.
             logging.exception("Title streaming failed")
-            raise HTTPException(status_code=500, detail="Title streaming failed")
         finally:
-            
-            words = generated_title.strip().split()
-            if (
-                '"' in words
-                or "'" in words
-                or "“" in words
-                or "”" in words
-                or "‘" in words
-                or "’" in words
-                or "«" in words
-                or "»" in words
-                or "title" in words
-                or "your" in words
-                or "here's" in words
-                or "Okay" in words
-                or "," in words
-                or ":" in words
-                or "`" in words
-            ):
-                words.remove('"')
-                words.remove("'")
-                words.remove("“")
-                words.remove("”")
-                words.remove("‘")
-                words.remove("’")
-                words.remove("«")
-                words.remove("»")
-                words.remove("title")
-                words.remove("your")
-                words.remove("here's")
-                words.remove("Okay")
-                words.remove(",")
-                words.remove(":")
-                words.remove("`")
-            words = [re.sub(r"<.*?>", "", word) for word in words if word]
-            final_title = " ".join(words[:4]) if len(words) >= 4 else " ".join(words)
-            
-            # Force lowercase except for first letter
-            if final_title and len(final_title) > 0:
-                final_title = final_title[0].upper() + final_title[1:].lower()
-
-            conversation.name = final_title if (final_title and final_title.strip() != "") else "New Conversation"
+            final_title = generated_title if generated_title is not None else ""
+            # Save exactly what was streamed (no downstream post-processing)
+            conversation.name = final_title if final_title != "" else "New Conversation"
             db.add(conversation)
             db.commit()
-            logging.info("Title generated and saved: %s", conversation.name)
-
+            logging.info("Title generated and saved: %s", conversation.name) 
     return StreamingResponse(title_stream(), media_type="text/plain")
 
 
@@ -662,7 +645,7 @@ async def query_and_respond(
     # Context Fetching
     try:
         full_msgs_history = get_conversation_history(db, conversation_id)
-        if full_msgs_history[-1][0] == "user" :
+        if full_msgs_history[-1][0] == "user":
             full_msgs_history.pop(-1)
         if not full_msgs_history or full_msgs_history == []:
             logging.info(
@@ -681,7 +664,12 @@ async def query_and_respond(
             n_last_turns=payload.n_last_turns_to_get or strategy["max_history_turns"],
             model_type=model_type,
         )
-        context_str, long_term_memory, middle_term_memory, kb_context = context["context_str"], context["long_term_memory"], context["middle_term_memory"], context["kb_context"],
+        context_str, long_term_memory, middle_term_memory, kb_context = (
+            context["context_str"],
+            context["long_term_memory"],
+            context["middle_term_memory"],
+            context["kb_context"],
+        )
 
         messages_starred = []
         if full_msgs_history:
@@ -707,83 +695,99 @@ async def query_and_respond(
     # - Custom prompt: task-specific instructions (goes with current question)
     # - KB context: relevant knowledge (goes with current question)
     # - Long-term memory: conversation summary (goes at the beginning)
-    
+
     custom_prompt = ""
     kb_prompt = ""
     mtm_prompt = ""
-    
+
     # System prompt: defines the assistant's identity based on model size category
     size_category = strategy.get("system_prompt_size_category", "medium")
     sys_prompt = build_system_prompt(
         model_name=llm.name,
         size_category=size_category,
-        long_term_memory=long_term_memory if long_term_memory and long_term_memory != "" else None,
-        starred_messages=messages_starred if messages_starred and len(messages_starred) > 0 else None,
+        long_term_memory=(
+            long_term_memory if long_term_memory and long_term_memory != "" else None
+        ),
+        starred_messages=(
+            messages_starred if messages_starred and len(messages_starred) > 0 else None
+        ),
     )
-    
-    logging.info(f"Using system prompt for size category '{size_category}': {sys_prompt[:100]}...")
-    
+
+    logging.info(
+        f"Using system prompt for size category '{size_category}': {sys_prompt[:100]}..."
+    )
+
     # Relevant previous messages
     if middle_term_memory and len(middle_term_memory) > 0:
-        mtm_prompt = "\nThese previous messages could be useful:\n" + "\n".join(middle_term_memory)
-    
+        mtm_prompt = "\nThese previous messages could be useful:\n" + "\n".join(
+            middle_term_memory
+        )
+
     # Custom prompt: task-specific instructions (will be added to current question)
     if strategy["use_custom_prompt"] and payload.custom_prompt:
         custom_prompt = f"\nAdditional instructions: {payload.custom_prompt}"
-    
+
     # KB context: relevant knowledge for the current query (will be added to current question)
     if kb_context and kb_context != "":
         kb_prompt = f"\nRelevant context from Knowledge Base:\n" + "\n".join(kb_context)
-    
+
     final_prompt = []
-    
+
     # Build conversation history - limited by strategy
     if len(full_msgs_history or []) > 0:
         # Use strategy's max_history_turns instead of hardcoded value
         # max_history_turns = number of conversation turns (each turn = user + assistant)
         max_turns = strategy["max_history_turns"]
-        
+
         # Calculate how many messages to include (each turn = 2 messages)
         max_messages = max_turns * 2
-        
+
         # Start from the last max_messages in history
         if len(full_msgs_history) > max_messages:
             start_idx = len(full_msgs_history) - max_messages
         else:
             start_idx = 0
-        
+
         # Ensure we start on a user message (even index)
         if start_idx % 2 != 0:
             start_idx += 1
-            
-        logging.info(f"Including {max_turns} conversation turn(s) starting from index {start_idx}")
-        logging.info(f"Total history length: {len(full_msgs_history)}, including from index {start_idx}")
-        
+
+        logging.info(
+            f"Including {max_turns} conversation turn(s) starting from index {start_idx}"
+        )
+        logging.info(
+            f"Total history length: {len(full_msgs_history)}, including from index {start_idx}"
+        )
+
         for i in range(start_idx, len(full_msgs_history), 2):
             if i < len(full_msgs_history):
-                final_prompt.append({"role": "user", "content": full_msgs_history[i][1]})
-            if i+1 < len(full_msgs_history):
-                final_prompt.append({"role": "assistant", "content": full_msgs_history[i+1][1]})
-    
+                final_prompt.append(
+                    {"role": "user", "content": full_msgs_history[i][1]}
+                )
+            if i + 1 < len(full_msgs_history):
+                final_prompt.append(
+                    {"role": "assistant", "content": full_msgs_history[i + 1][1]}
+                )
+
     # Add current question with custom prompt and KB context fused into it
     current_question = payload.question
-    
+
     # Build the current question with relevant context
     # Order: KB context (if any) -> Custom instructions (if any) -> Question
     question_with_context = ""
-    
+
     if mtm_prompt:
         question_with_context += mtm_prompt + "\n\n"
 
     if kb_prompt:
         question_with_context += kb_prompt + "\n\n"
-    
+
     if custom_prompt:
         question_with_context += custom_prompt + "\n\n"
-    
+
     question_with_context += payload.question
     current_question = question_with_context
-    
+
     if len(final_prompt) == 0:
         # No history: merge system prompt into the first (and only) user message
         if sys_prompt:
@@ -792,7 +796,7 @@ async def query_and_respond(
         # Has history: prepend system prompt to first message in final_prompt
         if sys_prompt:
             final_prompt[0]["content"] = f"{sys_prompt}\n\n{final_prompt[0]['content']}"
-    
+
     final_prompt.append({"role": "user", "content": current_question})
     logging.info("Final prompt to model:\n%s", final_prompt)
 
@@ -806,7 +810,9 @@ async def query_and_respond(
     async def assistant_response_token_stream():
         assistant_response = ""
         start = datetime.now()
-        logging.info(f"Generating response from MLX model for prompt: {payload.question}")
+        logging.info(
+            f"Generating response from MLX model for prompt: {payload.question}"
+        )
         try:
             for text in ModelManager.generate_stream(
                 model=model,
@@ -818,7 +824,7 @@ async def query_and_respond(
                 repetition_penalty=1.2,
                 repetition_context_size=payload.max_new_tokens or 1024,
                 min_new_tokens=5,
-                patience=7
+                patience=7,
             ):
                 assistant_response += text
                 logging.info(f"Yielding token: {text}")
@@ -843,7 +849,7 @@ async def query_and_respond(
             logging.info(f"Response generated in {datetime.now() - start} seconds")
 
             logging.info("Generation finished")
-    
+
     return StreamingResponse(assistant_response_token_stream(), media_type="text/plain")
 
 
@@ -944,7 +950,7 @@ async def star_message(
 async def unstar_message(
     message: str = Body(..., embed=True),
     db: Session = Depends(get_db),
-): 
+):
     """Unstar a message in the conversation."""
 
     message = db.query(Message).filter(Message.content == message).first()

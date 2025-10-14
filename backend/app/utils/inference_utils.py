@@ -94,14 +94,10 @@ class ModelManager:
                 )
 
                 # Build logits processors
-                logits_processors = cls._build_logits_processors(
-                    prompt=prompt_tokens,
-                    repetition_penalty=repetition_penalty,
-                    repetition_context_size=repetition_context_size,
-                    min_new_tokens=min_new_tokens,
-                    patience=patience,
-                    eos_ids=eos_ids
-                )
+                logits_processors = mlx_lm.sample_utils.make_logits_processors(
+                repetition_penalty=repetition_penalty,
+                repetition_context_size=repetition_context_size,
+            )
 
                 # Generate stream
                 for new_text in mlx_lm.stream_generate(
