@@ -527,8 +527,6 @@ async def generate_title(
                 top_p=0.2,
                 max_tokens=8,
                 repetition_penalty=None,
-                min_new_tokens=2,
-                patience=2,
             ):
                 text = new_text
                 # logging.info(f"Received title token: {text}")
@@ -817,8 +815,6 @@ async def query_and_respond(
                 top_p=payload.top_p,
                 repetition_penalty=1.2,
                 repetition_context_size=payload.max_new_tokens or 1024,
-                min_new_tokens=5,
-                patience=7
             ):
                 assistant_response += text
                 # logging.info(f"Yielding token: {text}")
