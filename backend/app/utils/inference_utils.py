@@ -10,7 +10,7 @@ import numpy as np
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 from datetime import datetime, timedelta
-from typing import Optional, Tuple, Any, List, Callable
+from typing import Optional, Set, Tuple, Any, List, Callable, Dict, Union, Iterable
 
 from sqlalchemy.orm import Session
 
@@ -90,7 +90,7 @@ class ModelManager:
                     top_p,
                     min_p=min_p,
                     top_k=top_k,
-                    xtc_special_tokens=tokenizer.encode("\n") + eos_ids
+                    xtc_probability=0.0,
                 )
 
                 # Build logits processors
@@ -100,11 +100,22 @@ class ModelManager:
                     repetition_context_size=repetition_context_size,
                     min_new_tokens=min_new_tokens,
                     patience=patience,
-                    eos_ids=eos_ids
+                    eos_ids=eos_ids,
+                    token_newline_map={
+                        "1": tokenizer.encode("\n"),
+                        "2": tokenizer.encode("\n\n"),
+                        "3": tokenizer.encode("\n\n\n"),
+                        "4": tokenizer.encode("\n\n\n\n"),
+                        "5": tokenizer.encode("\n\n\n\n\n"),
+                        "6": tokenizer.encode("\n\n\n\n\n\n"),
+                    },
+                    whitespace_token_ids=[tokenizer.encode(" "), tokenizer.encode("\t")]
                 )
 
                 # Generate stream
-                for new_text in mlx_lm.stream_generate(
+                text = ""
+                logging.info("=" * 10)
+                for response in mlx_lm.stream_generate(
                     model,
                     tokenizer,
                     prompt_tokens,
@@ -113,16 +124,38 @@ class ModelManager:
                     logits_processors=logits_processors if logits_processors != [] else None,
                     prompt_cache=None
                 ):  
-                    if new_text:
+                    if response:
                         # logging.debug(f"Yielding new chunk:\n{new_text.__repr__()}")
-                        yield new_text.text
+                        logging.info(f"Yielding token: {response.text.replace('\n', '\\n')}")
+                        text += response.text
+                        yield response.text
+
+                logging.info("=" * 10)
+
+                if len(text) == 0:
+                    logging.info("No text generated for this prompt")
+                
+                logging.info(f"Generation: {response.generation_tokens} tokens")
+                logging.info(f"{response.generation_tps:.3f} tokens-per-sec")
+                logging.info(f"Peak memory: {response.peak_memory:.3f} GB")
+
                 cls._last_used = datetime.now()  # Update last use time
             except Exception as e:
                 logging.exception("Generation failed")
                 raise Exception(f"Generation error: {str(e)}")
     
     @classmethod
-    def _build_logits_processors(cls, prompt: List, repetition_penalty: Optional[float] = None, repetition_context_size: Optional[int] = 1024, min_new_tokens: Optional[int] = 5, patience: Optional[int] = 7, eos_ids: List[int] = None) -> List[Callable]:
+    def _build_logits_processors(
+        cls,
+        prompt: List,
+        repetition_penalty: Optional[float] = None,
+        repetition_context_size: Optional[int] = 1024,
+        min_new_tokens: Optional[int] = 5,
+        patience: Optional[int] = 7,
+        eos_ids: List[int] = None,
+        token_newline_map: Dict[Union[int, str], Union[int, Iterable[int]]] = {},
+        whitespace_token_ids: List[int] = []
+    ) -> List[Callable]:
         """Build a list of logit processors for controlling text generation.
         
         Args:
@@ -132,7 +165,9 @@ class ModelManager:
             min_new_tokens: Minimum number of new tokens to generate.
             patience: Number of identical tokens before allowing EOS.
             eos_ids: List of end-of-sequence token IDs.
-        
+            token_newline_map: Mapping of token IDs to number of newlines they encode (e.g. {"1": [id1, id2], "2": id3, ...}).
+            whitespace_token_ids: List of whitespace (" " and "\t") token IDs.
+
         Returns:
             List of logit processor functions.
         """
@@ -140,7 +175,7 @@ class ModelManager:
         logging.info(f"Computed prompt length: {prompt_len} tokens")
 
         # --- robust min-new-tokens processor ---
-        def min_new_tokens_processor(min_new_tokens: int = 5, prompt_len: int = prompt_len, eos_ids=None, patience: int = 5):
+        def _min_new_tokens_processor(min_new_tokens: int = 5, prompt_len: int = prompt_len, eos_ids=None, patience: int = 5):
             """
             Forbid EOS until at least `min_new_tokens` have been generated AFTER the prompt.
             If the model is stuck repeating the same token `patience` times, allow EOS to break out.
@@ -150,7 +185,7 @@ class ModelManager:
             else:
                 local_eos_ids = eos_ids
 
-            def processor(tokens, logits):
+            def _processor(tokens, logits):
                 # tokens is an mx.array of the full sequence (prompt + generated)
                 try:
                     tokens_len = int(tokens.size)  # preferred for mx.array
@@ -186,7 +221,177 @@ class ModelManager:
 
                 return logits
 
-            return processor
+            return _processor
+
+        # --- robust anti-'\n' spamming processor ---
+        def _make_newline_eos_processor(
+            max_consecutive_newlines: int = 4,
+            lookback_tokens: int = 15,
+            eos_ids: Optional[Iterable[int]] = None
+        ):
+            # Validate and normalize token_newline_map into token_id -> newline_count
+            token_newline_counts: Dict[int, int] = {}
+            for k, v in token_newline_map.items():
+                try:
+                    count = int(k)
+                except Exception:
+                    logging.warning("Invalid key in token_newline_map (expected int-like): %r", k)
+                    continue
+                if isinstance(v, (list, tuple, set)):
+                    for vid in v:
+                        try:
+                            token_newline_counts[int(vid)] = count
+                        except Exception:
+                            logging.debug("Skipping invalid token id in list: %r", vid)
+                else:
+                    try:
+                        token_newline_counts[int(v)] = count
+                    except Exception:
+                        logging.debug("Skipping invalid token id value: %r", v)
+
+            if not token_newline_counts:
+                raise ValueError("token_newline_map resulted in empty token->newline mapping")
+
+            # Normalize whitespace_token_ids into a set of ints for fast checks
+            whitespace_set: Set[int] = set()
+            try:
+                for w in whitespace_token_ids:
+                    try:
+                        whitespace_set.add(int(w))
+                    except Exception:
+                        logging.debug("Skipping invalid whitespace token id: %r", w)
+            except Exception:
+                whitespace_set = set()
+
+            local_eos_list = list(eos_ids) if eos_ids is not None else []
+            eos_boost_value = 1e9
+
+            # helper: normalize generated_ids to list-of-sequences for a given batch_size
+            def _normalize_seqs_for_batch(generated_ids: Any, batch_size: int) -> List[List[int]]:
+                # Case: 2D array-like with shape[0] == batch_size
+                try:
+                    if hasattr(generated_ids, "ndim") and getattr(generated_ids, "ndim") == 2 and generated_ids.shape[0] == batch_size:
+                        return [list(map(int, generated_ids[i])) for i in range(batch_size)]
+                except Exception:
+                    pass
+                # Case: list/tuple of sequences and len == batch_size
+                try:
+                    if hasattr(generated_ids, "__len__") and len(generated_ids) == batch_size:
+                        seqs = []
+                        is_batch = True
+                        for el in generated_ids:
+                            if isinstance(el, (list, tuple, np.ndarray)):
+                                seqs.append([int(x) for x in el])
+                            else:
+                                is_batch = False
+                                break
+                        if is_batch:
+                            return seqs
+                except Exception:
+                    pass
+                # Fallback: single sequence -> replicate for each batch entry
+                try:
+                    single = [int(x) for x in generated_ids]
+                    return [single[:] for _ in range(batch_size)]
+                except Exception:
+                    return [[] for _ in range(batch_size)]
+
+            def _processor(generated_tokens: Any, logits: Any):
+                """
+                generated_tokens: sequence (or batch of sequences) of token ids (history up to now)
+                logits: 1D (vocab,) or 2D (batch, vocab) logits-like object
+                """
+                if logits is None:
+                    return logits
+
+                # determine logits ndim / batch size
+                try:
+                    logits_ndim = getattr(logits, "ndim", None)
+                    if logits_ndim is None:
+                        arr = np.asarray(logits)
+                        logits = arr
+                        logits_ndim = arr.ndim
+                except Exception:
+                    arr = np.asarray(logits)
+                    logits = arr
+                    logits_ndim = arr.ndim
+
+                if logits_ndim == 1:
+                    batch_size = 1
+                else:
+                    batch_size = int(logits.shape[0])
+
+                seqs = _normalize_seqs_for_batch(generated_tokens, batch_size)
+
+                # Evaluate trailing newline counts efficiently using token_newline_counts
+                triggers = [False] * batch_size
+                for i, seq in enumerate(seqs):
+                    total_newlines = 0
+                    # scan backwards, stop when encountering a token that breaks the newline streak
+                    # or when lookback limit reached or threshold met
+                    j = len(seq) - 1
+                    tokens_scanned = 0
+                    while j >= 0 and tokens_scanned < lookback_tokens and total_newlines < max_consecutive_newlines:
+                        tok = int(seq[j])
+                        # tokens that explicitly encode newlines
+                        count = token_newline_counts.get(tok, 0)
+                        if count > 0:
+                            total_newlines += count
+                            tokens_scanned += 1
+                            j -= 1
+                            continue
+                        # token encodes zero newlines: if it's a whitespace token (precomputed), ignore it and continue
+                        if tok in whitespace_set:
+                            tokens_scanned += 1
+                            j -= 1
+                            continue
+                        # not whitespace and no newlines -> streak broken
+                        break
+                    if total_newlines >= max_consecutive_newlines:
+                        triggers[i] = True
+
+                if not any(triggers):
+                    return logits  # nothing to do
+
+                # Apply forcing: set non-EOS logits to block_value and EOS logits to eos_boost_value
+                def _force_row(row):
+                    # try in-place
+                    try:
+                        row[...] = -1e9
+                        for eid in local_eos_list:
+                            eid_i = int(eid)
+                            if 0 <= eid_i < row.shape[-1]:
+                                row[eid_i] = eos_boost_value
+                        return row
+                    except Exception:
+                        arr = np.array(row, dtype=np.float32)
+                        arr[...] = -1e9
+                        for eid in local_eos_list:
+                            eid_i = int(eid)
+                            if 0 <= eid_i < arr.shape[-1]:
+                                arr[eid_i] = eos_boost_value
+                        return arr
+
+                if logits_ndim == 1:
+                    if triggers[0]:
+                        logits = _force_row(logits)
+                    return logits
+
+                # logits 2D: apply per-row
+                try:
+                    for i in range(batch_size):
+                        if triggers[i]:
+                            # try in-place assign row
+                            logits[i] = _force_row(logits[i])
+                except Exception:
+                    logits = np.array(logits, dtype=np.float32)
+                    for i in range(batch_size):
+                        if triggers[i]:
+                            logits[i] = _force_row(logits[i])
+
+                return logits
+
+            return _processor
 
         # --- Build logits_processors (keep repetition_penalty) and append our min_new_tokens processor ---
         logits_processors = []
@@ -196,8 +401,9 @@ class ModelManager:
                 repetition_context_size=repetition_context_size,
             )
         if min_new_tokens is not None and min_new_tokens > 0:
-            logits_processors.append(min_new_tokens_processor(min_new_tokens=min_new_tokens, prompt_len=prompt_len, eos_ids=eos_ids, patience=patience))
+            logits_processors.append(_min_new_tokens_processor(min_new_tokens=min_new_tokens, prompt_len=prompt_len, eos_ids=eos_ids, patience=patience))
 
+        logits_processors.append(_make_newline_eos_processor(eos_ids=eos_ids))
         return logits_processors
 
     @classmethod
@@ -350,7 +556,7 @@ def get_prompting_strategy(param_size: int) -> dict:
         Dictionary containing strategy configuration flags.
     """
 
-    if param_size <= 2:  # Youssef L
+    if param_size <= 2:  # Rayan
         # Ultra-lightweight strategy for tiny models (<2B)
         return {
             "system_prompt_size_category": "tiny",

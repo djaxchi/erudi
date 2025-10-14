@@ -186,8 +186,6 @@ async def delete_all_data():
     finally:
         db.close()
 
-app = FastAPI()
-
 async def startup_populate_database():
     
     db: Session = SessionLocal()
@@ -531,14 +529,28 @@ async def startup_populate_database():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Before yield comes the startup code
+    print("="*40)
+    print("Starting Erudi backend...")
+    print("="*40)
     await createTables()
     #await delete_all_data()
     await startup_populate_database()
     ModelManager.start_cleanup_task()
+    print("="*40)
+    print("Started Erudi backend...")
+    print("="*40)
     yield
+    print("="*40)
+    print("Closing Erudi backend...")
+    print("="*40)
     # Shutdown code can go here if needed
     ModelManager.stop_cleanup_task()
     ModelManager.cleanup()
+    print("="*40)
+    print("Closed Erudi backend...")
+    print("="*40)
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
