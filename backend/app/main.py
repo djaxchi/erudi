@@ -51,7 +51,9 @@ MLX_MODEL_MAPPING = {
     "mistralai/Mistral-7B-v0.3": "mlx-community/Mistral-7B-v0.3-4bit",
     "google/gemma-2-2b-it": "mlx-community/gemma-2-2b-it-4bit",
     "google/gemma-3-4b-it": "mlx-community/gemma-3-4b-it-4bit",
-
+    "mistralai/Ministral-8B-Instruct-2410": "mlx-community/Ministral-8B-Instruct-2410-4bit",
+    "google/gemma-3-12b-it": "mlx-community/gemma-3-12b-it-4bit",
+    "mistralai/Mistral-Nemo-Instruct-2407": "mlx-community/Mistral-Nemo-Instruct-2407-4bit"
 }
 
 def get_mlx_model_size(mlx_link):
@@ -196,11 +198,13 @@ async def startup_populate_database():
 
         # Populate the database with some base models with metadata
         base_models = [
-            ("Mistral-7B", "mistralai/Mistral-7B-Instruct-v0.3", "mistral"),
-            ("Mistral-7B-v0.3", "mistralai/Mistral-7B-v0.3", "mistral"),
             ("Gemma-1B", "google/gemma-3-1b-it", "gemma"),
             ("Gemma-2B", "google/gemma-2-2b-it", "gemma"),
             ("Gemma-4B", "google/gemma-3-4b-it", "gemma"),
+            ("Mistral-7B", "mistralai/Mistral-7B-Instruct-v0.3", "mistral"),
+            ("Ministral-8B", "mistralai/Ministral-8B-Instruct-2410", "mistral"),
+            ("Gemma-12B", "google/gemma-3-12b-it", "gemma"),
+            ("Mistral-Nemo-12B", "mistralai/Mistral-Nemo-Instruct-2407", "mistral"),
         ]
         
         for name, link, model_type in base_models:
@@ -269,97 +273,139 @@ async def startup_populate_database():
                     db.add(base_model)
                     print(f"Added base model {name} (quantized={is_quantized}) with size estimate: {size_estimate}")
 
-        LIMIT_MODELS = 100  # Limit the number of models to fetch and add
+        # Define base models to search for derivatives
+        base_model_searches = [
+            ("Mistral-7B v0.3", "mistral", 7.0),
+            ("Gemma 1B", "gemma", 1.0),
+            ("Gemma 2B", "gemma", 2.0),
+            ("Gemma 4B", "gemma", 4.0),
+            ("Ministral-8B", "mistral", 8.0),
+            ("Gemma 12B", "gemma", 12.0),
+            ("Mistral-Nemo-12B", "mistral", 12.0)
+        ]
+        
+        TOP_MODELS_PER_BASE = 30  # Top 30 derived models per base model
         
         SKIP_IDS = [
             "mistral-7b-instruct-v0.3",
             "mistral-7b-v0.3",
             "gemma-3-1b-it",
             "gemma-2-2b-it",
-            "gemma-3-4b-it"
+            "gemma-3-4b-it",
+            "ministral-8b-instruct-2410",
+            "gemma-3-12b-it",
+            "mistral-nemo-instruct-2407"
         ]
         SKIP_TERMS = [
             "gguf","gptq","bnb","4bit","8bit","f16","awq",
             "q4","q5","q6", "q8", "fp8","fp16","fp4","sqft", 'quantized',
             "quant", "quantized", "quantization", "lora", "knut",
             "sft", "int4", "int8", "int16", "int32", "int64",
-            "peft", "test"
+            "peft", "test", "untrained", "checkpoint", "tmp", "temp",
+            "debug", "draft", "experiment", "eval", "benchmark", "pt", "onnx","abliterated","E2B"
         ]
-        # Populate with some Mistral-7B variant community models
-        for i,m in enumerate(api.list_models(search="Mistral-7B v0.3", sort="downloads", direction=-1)):
-            if i >= LIMIT_MODELS:
-                break
-            # Skip models that are not relevant (e.g. quantized versions of the same base model, as we already natively quantize) or already exist
-            mid = m.modelId.lower()
-            mname = mid.split("/")[-1].lower()
-            # skip exact matches or any unwanted substring
-            if mname in SKIP_IDS or any(term in mid for term in SKIP_TERMS):
-                continue
-
-            exists = db.query(Llm).filter_by(link=m.modelId).first()
-            if exists:
-                continue
-
-            # Get size estimate for community model
-            size_estimate = get_model_size_estimate(m.modelId.split("/")[-1], m.modelId)
+        
+        # Interesting tags to prioritize
+        INTERESTING_TAGS = [
+            "instruction-tuned", "chat", "conversational", "assistant",
+            "code", "math", "reasoning", "multilingual", "translation",
+            "summarization", "question-answering", "creative-writing",
+            "roleplay", "medical", "legal", "science", "education",
+            "storytelling", "dialogue", "text-generation"
+        ]
+        
+        # Require minimum quality indicators
+        MIN_DOWNLOADS = 50  # Minimum downloads to consider
+        MIN_LIKES = 5  # Minimum likes to consider
+        
+        def is_quality_model(model_info):
+            """Check if a model meets quality criteria"""
+            # Check downloads and likes
+            if model_info.downloads < MIN_DOWNLOADS:
+                return False
+            if model_info.likes < MIN_LIKES:
+                return False
             
-            # Extract parameter count from model name
-            param_str = get_parameter_count_from_name(m.modelId.split("/")[-1], m.modelId)
-            if "B" in param_str:
-                param_size = float(param_str.replace("B", ""))
-            elif "M" in param_str:
-                param_size = float(param_str.replace("M", "")) / 1000
-            else:
-                param_size = 4.0  # Default fallback
-
-            llm_entry = Llm(
-                name=m.modelId.split("/")[-1],  
-                local=0,
-                link=m.modelId,
-                type="mistral" if "mistral" in m.modelId.lower() else "gemma",
-                quantized=0,  # Community models are not pre-quantized
-                model_metadata=format_model_info_metadata(m, size_estimate, quantized=False),
-                param_size=param_size
-            )
-            db.add(llm_entry)
-
-        for i, m in enumerate(api.list_models(search="Gemma 1B", sort="downloads", direction=-1)):
-            if i >= LIMIT_MODELS:
-                break
-            mid = m.modelId.lower()
-            mname = mid.split("/")[-1].lower()
-            # skip exact matches or any unwanted substring
-            if mname in SKIP_IDS or any(term in mid for term in SKIP_TERMS):
-                continue
-
-            exists = db.query(Llm).filter_by(link=m.modelId).first()
-            if exists:
-                continue
-
-            # Get size estimate for community model
-            size_estimate = get_model_size_estimate(m.modelId.split("/")[-1], m.modelId)
+            # Check for interesting tags
+            if model_info.tags:
+                has_interesting_tag = any(
+                    tag in INTERESTING_TAGS 
+                    for tag in model_info.tags
+                )
+                if has_interesting_tag:
+                    return True
             
-            # Extract parameter count from model name
-            param_str = get_parameter_count_from_name(m.modelId.split("/")[-1], m.modelId)
-            if "B" in param_str:
-                param_size = float(param_str.replace("B", ""))
-            elif "M" in param_str:
-                param_size = float(param_str.replace("M", "")) / 1000
-            else:
-                param_size = 1.0  # Default fallback for Gemma (usually smaller)
+            # Check model card content for quality indicators
+            model_name_lower = model_info.modelId.lower()
+            quality_keywords = [
+                "instruct", "chat", "assistant", "tuned", "fine-tuned",
+                "trained", "optimized", "enhanced", "improved"
+            ]
+            
+            if any(keyword in model_name_lower for keyword in quality_keywords):
+                return True
+            
+            return False
+        
+        # Fetch top derived models for each base model
+        for search_term, model_type, default_param_size in base_model_searches:
+            print(f"Fetching top {TOP_MODELS_PER_BASE} quality derived models for {search_term}...")
+            added_count = 0
+            checked_count = 0
+            
+            for m in api.list_models(search=search_term, sort="downloads", direction=-1):
+                if added_count >= TOP_MODELS_PER_BASE:
+                    break
+                
+                checked_count += 1
+                if checked_count > 200:  # Limit search depth to avoid infinite loops
+                    print(f"  Searched {checked_count} models, stopping search for {search_term}")
+                    break
+                    
+                # Skip models that are not relevant
+                mid = m.modelId.lower()
+                mname = mid.split("/")[-1].lower()
+                
+                # Skip exact matches or any unwanted substring
+                if mname in SKIP_IDS or any(term in mid for term in SKIP_TERMS):
+                    continue
 
-            llm_entry = Llm(
-                name=m.modelId.split("/")[-1],  
-                local=0,
-                link=m.modelId,
-                type="mistral" if "mistral" in m.modelId.lower() else "gemma",
-                quantized=0,  # Community models are not pre-quantized
-                model_metadata=format_model_info_metadata(m, size_estimate, quantized=False),
-                param_size=param_size
-            )
-            db.add(llm_entry)
+                # Check if model already exists
+                exists = db.query(Llm).filter_by(link=m.modelId).first()
+                if exists:
+                    continue
+                
+                # Quality check
+                if not is_quality_model(m):
+                    continue
+
+                # Get size estimate for community model
+                size_estimate = get_model_size_estimate(m.modelId.split("/")[-1], m.modelId)
+                
+                # Extract parameter count from model name
+                param_str = get_parameter_count_from_name(m.modelId.split("/")[-1], m.modelId)
+                if "B" in param_str:
+                    param_size = float(param_str.replace("B", ""))
+                elif "M" in param_str:
+                    param_size = float(param_str.replace("M", "")) / 1000
+                else:
+                    param_size = default_param_size  # Use default based on base model
+
+                llm_entry = Llm(
+                    name=m.modelId.split("/")[-1],  
+                    local=0,
+                    link=m.modelId,
+                    type=model_type,
+                    quantized=0,  # Community models are not pre-quantized
+                    model_metadata=format_model_info_metadata(m, size_estimate, quantized=False),
+                    param_size=param_size
+                )
+                db.add(llm_entry)
+                added_count += 1
+                print(f"  Added {m.modelId.split('/')[-1]} ({added_count}/{TOP_MODELS_PER_BASE}) - {m.downloads} downloads, {m.likes} likes")
         
         db.commit()
+        print(f"Finished populating database with base models and their top quality derivatives.")
 
 
         # Check the DownloadJobs to delete running-but-unfinished jobs (in case of server crash)

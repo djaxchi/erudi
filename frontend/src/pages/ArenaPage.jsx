@@ -10,8 +10,8 @@ import MarkdownRenderer from "../components/MarkdownRenderer";
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
-  temperature: 0.2,
-  topP: 0.5,
+  temperature: 1.0,
+  topP: 0.95,
   maxTokens: 512,
   quantize: false,
   customPrompt: "",

@@ -150,45 +150,48 @@ export default function ConversationPage() {
       setMessages((prev) => [...prev, userMessage, assistantMessage]);
 
       try {
+        // Start title generation in parallel (don't await) so it doesn't block streaming
         if (isFirstMessage) {
-          try {
-            const titleRes = await fetch(
-              `http://127.0.0.1:8000/conversations/${id}/generate_title`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ question }),
+          (async () => {
+            try {
+              const titleRes = await fetch(
+                `http://127.0.0.1:8000/conversations/${id}/generate_title`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ question }),
+                }
+              );
+
+              if (titleRes.ok) {
+                const reader = titleRes.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+                let fullTitle = "";
+
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+
+                  const chunk = decoder.decode(value, { stream: true });
+                  fullTitle += chunk;
+                  
+                  setCurrentTitle(prev => {
+                    const newTitle = prev + chunk;
+                    setConversations(prevConvs => 
+                      prevConvs.map(conv => 
+                        conv.id === Number(id) 
+                          ? { ...conv, name: newTitle.trim() || "New Conversation" }
+                          : conv
+                      )
+                    );
+                    return newTitle;
+                  });
+                }
               }
-            );
-
-            if (titleRes.ok) {
-              const reader = titleRes.body.getReader();
-              const decoder = new TextDecoder("utf-8");
-              let fullTitle = "";
-
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                const chunk = decoder.decode(value, { stream: true });
-                fullTitle += chunk;
-                
-                setCurrentTitle(prev => {
-                  const newTitle = prev + chunk;
-                  setConversations(prevConvs => 
-                    prevConvs.map(conv => 
-                      conv.id === Number(id) 
-                        ? { ...conv, name: newTitle.trim() || "New Conversation" }
-                        : conv
-                    )
-                  );
-                  return newTitle;
-                });
-              }
+            } catch (err) {
+              console.error("Title generation failed:", err);
             }
-          } catch (err) {
-            console.error("Title generation failed:", err);
-          }
+          })();
         }
 
         const responseRes = await fetch(
@@ -556,8 +559,15 @@ export default function ConversationPage() {
                     className={`break-words w-fit max-w-[75%] p-4 rounded-2xl overflow-wrap break-word ${bubbleClass}`}
                   >
                     {showTypingIndicator ? (
-                      <div className="flex items-start pt-1">
-                        <TypingIndicator size={8} colorClass="bg-gray-400" className="-mt-1" />
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-start pt-1">
+                          <TypingIndicator size={8} colorClass="bg-gray-400" className="-mt-1" />
+                        </div>
+                        {firstReplyPending && (
+                          <div className="text-xs text-gray-400 italic mt-1">
+                            First response may take a bit longer while loading the model into memory...
+                          </div>
+                        )}
                       </div>
                     ) : (
                       isUser || msg.content.includes('[ERROR_MESSAGE_SYSTEM]') ? (
