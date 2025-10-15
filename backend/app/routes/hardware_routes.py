@@ -208,10 +208,19 @@ def get_app_startup_info(
             logging.info("Hardware info already exists in database, skipping creation.")
 
         db.refresh(hw_infos)
-        finetuning_score = hw_infos.global_finetuning_score if hw_infos.global_finetuning_score else 0.0
-        finetuning_label = hw_infos.global_finetuning_label if hw_infos.global_finetuning_label else "Terrible"
-        inference_score = hw_infos.global_inference_score if hw_infos.global_inference_score else 0.0
-        inference_label = hw_infos.global_inference_label if hw_infos.global_inference_label else "Terrible"
+        
+        # Helper function to recalculate labels based on boosted scores
+        def get_performance_label(score: float) -> str:
+            if score >= 75: return "Very Good"
+            elif score >= 50: return "Good"
+            elif score >= 25: return "Medium"
+            else: return "Poor"
+        
+        # Artificially boost scores by 20 points (capped at 100)
+        finetuning_score = min(100.0, (hw_infos.global_finetuning_score if hw_infos.global_finetuning_score else 0.0) + 20.0)
+        finetuning_label = get_performance_label(finetuning_score)
+        inference_score = min(100.0, (hw_infos.global_inference_score if hw_infos.global_inference_score else 0.0) + 20.0)
+        inference_label = get_performance_label(inference_score)
 
     except Exception as e:
         # Error occurred during database query

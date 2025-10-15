@@ -51,6 +51,7 @@ MLX_MODEL_MAPPING = {
     "mistralai/Mistral-7B-v0.3": "mlx-community/Mistral-7B-v0.3-4bit",
     "google/gemma-2-2b-it": "mlx-community/gemma-2-2b-it-4bit",
     "google/gemma-3-4b-it": "mlx-community/gemma-3-4b-it-4bit",
+
 }
 
 def get_mlx_model_size(mlx_link):
@@ -195,11 +196,11 @@ async def startup_populate_database():
 
         # Populate the database with some base models with metadata
         base_models = [
-            ("Mistral-7B-Instruct-v0.3", "mistralai/Mistral-7B-Instruct-v0.3", "mistral"),
+            ("Mistral-7B", "mistralai/Mistral-7B-Instruct-v0.3", "mistral"),
             ("Mistral-7B-v0.3", "mistralai/Mistral-7B-v0.3", "mistral"),
-            ("Gemma-3-1B-it", "google/gemma-3-1b-it", "gemma"),
-            ("Gemma-2-2B-it", "google/gemma-2-2b-it", "gemma"),
-            ("Gemma-3-4B-it", "google/gemma-3-4b-it", "gemma"),
+            ("Gemma-1B", "google/gemma-3-1b-it", "gemma"),
+            ("Gemma-2B", "google/gemma-2-2b-it", "gemma"),
+            ("Gemma-4B", "google/gemma-3-4b-it", "gemma"),
         ]
         
         for name, link, model_type in base_models:

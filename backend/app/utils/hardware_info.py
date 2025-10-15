@@ -821,16 +821,10 @@ def get_hardware_eval_for_apple_silicon() -> Dict[str, Any]:
         
         # Performance labels
         def get_performance_label(score: float) -> str:
-            if score >= 90: return "Amazing"
-            elif score >= 80: return "Excellent"
-            elif score >= 70: return "Very High"
-            elif score >= 60: return "High"
+            if score >= 75: return "Very Good"
             elif score >= 50: return "Good"
-            elif score >= 40: return "Medium"
-            elif score >= 30: return "Fair"
-            elif score >= 20: return "Poor"
-            elif score >= 10: return "Very Poor"
-            else: return "Terrible"
+            elif score >= 25: return "Medium"
+            else: return "Poor"
         
         # Individual component scores for detailed analysis
         gpu_only_score = 100 * min(gpu_compute_score, 1.0)
