@@ -230,11 +230,13 @@ fetchWelcomePopupStatus();
 
   // Derived data from fetched models
   const baseModelNames = [
-    "Mistral-7B",
-    "Mistral-7B-v0.3", 
     "Gemma-1B",
     "Gemma-2B",
-    "Gemma-4B"
+    "Gemma-4B",
+    "Mistral-7B",
+    "Ministral-8B",
+    "Gemma-12B",
+    "Mistral-Nemo-12B"
   ];
   
   const baseModels = remoteModels.filter(model => 
@@ -245,7 +247,63 @@ fetchWelcomePopupStatus();
     !baseModelNames.includes(model.name)
   );
   
-  const modelsForYou = baseModels.slice(0, 6); // First 6 base models
+  // Filter models based on hardware inference score
+  const getRecommendedModels = () => {
+    if (!hardwareInfo) return baseModels.slice(0, 3);
+    
+    const inferenceScore = hardwareInfo.global_inference_score || 0;
+    
+    // Helper function to extract parameter size from model name (e.g., "7B" -> 7)
+    const getParamSize = (modelName) => {
+      const match = modelName.match(/(\d+)B/i);
+      return match ? parseInt(match[1]) : 0;
+    };
+    
+    let recommendedModels = [];
+    
+    if (inferenceScore >= 75) {
+      // Very Good: Show the best large models (12B, 8B, 7B)
+      recommendedModels = baseModels
+        .filter(model => {
+          const size = getParamSize(model.name);
+          return size >= 7 && size <= 12;
+        })
+        .sort((a, b) => getParamSize(b.name) - getParamSize(a.name)) // Largest first
+        .slice(0, 3);
+    } else if (inferenceScore >= 50) {
+      // Good: Show medium-large models (8B, 7B, 4B)
+      recommendedModels = baseModels
+        .filter(model => {
+          const size = getParamSize(model.name);
+          return size >= 4 && size <= 8;
+        })
+        .sort((a, b) => getParamSize(b.name) - getParamSize(a.name)) // Largest first
+        .slice(0, 3);
+    } else if (inferenceScore >= 25) {
+      // Medium: Show small-medium models (7B, 4B, 2B)
+      recommendedModels = baseModels
+        .filter(model => {
+          const size = getParamSize(model.name);
+          return size >= 2 && size <= 7;
+        })
+        .sort((a, b) => getParamSize(b.name) - getParamSize(a.name)) // Largest first
+        .slice(0, 3);
+    } else {
+      // Poor: Show only the smallest models (4B, 2B, 1B)
+      recommendedModels = baseModels
+        .filter(model => {
+          const size = getParamSize(model.name);
+          return size >= 1 && size <= 4;
+        })
+        .sort((a, b) => getParamSize(b.name) - getParamSize(a.name)) // Largest first
+        .slice(0, 3);
+    }
+    
+    // Ensure we have some models, fallback to first 3 base models
+    return recommendedModels.length > 0 ? recommendedModels : baseModels.slice(0, 3);
+  };
+  
+  const modelsForYou = getRecommendedModels();
 
   // Search functionality
   const filterModels = (models, query) => {
