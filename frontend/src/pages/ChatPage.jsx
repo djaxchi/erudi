@@ -467,13 +467,6 @@ export default function ChatPage() {
                                   Max Tokens
                                 </span>
                               </div>
-                              {/* <div className="flex items-center gap-2">
-                                <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
-                                  Low-Memory
-                                </span>
-                                <TooltipIcon id="quantize" side="bottom-left" />
-                              </div> */}
-
                               {/* Controls row */}
                               <div className="inline-flex items-center rounded-md bg-white/10 border border-white/20 shadow p-0 m-0 w-fit justify-self-start">
                                 <input
@@ -494,30 +487,6 @@ export default function ChatPage() {
                                 />
                               </div>
 
-                              {/* <div className="justify-self-start">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setSettings((prev) => ({
-                                      ...prev,
-                                      quantize: !prev.quantize,
-                                    }))
-                                  }
-                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                    settings.quantize
-                                      ? "bg-emerald-600 hover:bg-emerald-700"
-                                      : "bg-white/20 hover:bg-white/30"
-                                  }`}
-                                >
-                                  <span
-                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                      settings.quantize
-                                        ? "translate-x-6"
-                                        : "translate-x-1"
-                                    }`}
-                                  />
-                                </button>
-                              </div> */}
                             </div>
                           </div>
 

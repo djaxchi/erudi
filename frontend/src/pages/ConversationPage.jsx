@@ -4,6 +4,7 @@ import Sidebar from "../components/Sidebar";
 import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import QuestionInput from "../components/QuestionInput";
 import HeaderBar from "../components/HeaderBar";
+import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import { Copy, Check, Star } from "lucide-react";
 import TypingIndicator from "../components/TypingIndicator";
 import MarkdownRenderer from "../components/MarkdownRenderer";
@@ -34,6 +35,7 @@ export default function ConversationPage() {
   });
   const [collapsed, setCollapsed] = useState(false);
   const [firstReplyPending, setFirstReplyPending] = useState(false);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
 
   const toggleSidebar = () => {
     setCollapsed((prev) => !prev);
@@ -388,14 +390,59 @@ export default function ConversationPage() {
     loadConversationData();
   }, [id, location.state, handleAskWithParams, navigate, location.pathname, initialHandled]);
 
+  // Detect when user manually scrolls
   useEffect(() => {
-    if (scrollRef.current) {
+    const scrollContainer = scrollRef.current;
+    if (!scrollContainer) return;
+
+    let scrollTimeout;
+    let lastScrollTop = scrollContainer.scrollTop;
+    
+    const handleScroll = () => {
+      const currentScrollTop = scrollContainer.scrollTop;
+      
+      // If user scrolled up (not down), immediately stop auto-scrolling
+      if (currentScrollTop < lastScrollTop) {
+        setUserScrolledUp(true);
+      }
+      
+      lastScrollTop = currentScrollTop;
+      
+      // Clear any pending timeout
+      clearTimeout(scrollTimeout);
+      
+      // Wait a bit before checking position to avoid false positives during auto-scroll
+      scrollTimeout = setTimeout(() => {
+        const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+        const isAtBottom = scrollHeight - scrollTop - clientHeight < 100; // Increased threshold to 100px
+        
+        // Only mark as scrolled up if user is significantly away from bottom
+        if (!isAtBottom) {
+          setUserScrolledUp(true);
+        } else {
+          setUserScrolledUp(false);
+        }
+      }, 100); // Small delay to debounce
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll);
+    return () => {
+      clearTimeout(scrollTimeout);
+      scrollContainer.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  // Auto-scroll only when streaming is done or user hasn't scrolled up
+  useEffect(() => {
+    // Only auto-scroll if user hasn't manually scrolled up
+    // OR if loading just finished (scroll once to final position)
+    if (scrollRef.current && !userScrolledUp) {
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
         behavior: "smooth",
       });
     }
-  }, [messages]);
+  }, [messages, userScrolledUp]);
 
   const handleConversationClick = (newId) =>
     navigate(`/main_window/conversations/${newId}`);
@@ -440,23 +487,25 @@ export default function ConversationPage() {
       />
 
       <aside className={`relative bg-[#272727] text-white transition-all duration-300 ease-in-out ${
-        collapsed ? "w-0 p-0" : "w-80 p-6 space-y-6"
+        collapsed ? "w-0 p-0" : "w-80 p-6 flex flex-col"
       }`}>
         {!collapsed && (
           <>
-            <h1 className="text-3xl font-bold">History</h1>
+            <h1 className="text-3xl font-bold mb-6 flex-shrink-0">History</h1>
             {/*<ChatCollapsibleSection title="Hot Chats"
               disabled={loading}
             />} coming in next version*/}
-            <ChatCollapsibleSection
-              title="Previous Chats"
-              items={conversations}
-              selectedId={Number(id)}
-              onSelect={handleConversationClick}
-              onRename={handleRename}
-              onDelete={handleDelete}
-              disabled={loading}
-            />
+            <div className="flex-1 mb-4 overflow-hidden">
+              <ChatCollapsibleSection
+                title="Previous Chats"
+                items={conversations}
+                selectedId={Number(id)}
+                onSelect={handleConversationClick}
+                onRename={handleRename}
+                onDelete={handleDelete}
+                disabled={loading}
+              />
+            </div>
           </>
         )}
       </aside>
@@ -479,34 +528,6 @@ export default function ConversationPage() {
           />
         </div>
         
-        {showPromptModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
-            <div className="bg-white rounded-lg shadow-lg w-11/12 max-w-md p-6 relative z-[10000]">
-              <h2 className="text-xl font-semibold mb-4">Personnaliser le prompt</h2>
-              <textarea
-                className="w-full h-40 border rounded p-2 mb-4"
-                value={customPrompt}
-                onChange={(e) => setCustomPrompt(e.target.value)}
-              />
-              <div className="flex justify-end space-x-2">
-                <button
-                  onClick={() => setShowPromptModal(false)}
-                  className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={() => {
-                    setShowPromptModal(false);
-                  }}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700"
-                >
-                  Enregistrer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto px-10 pt-10 pb-4"
@@ -596,6 +617,15 @@ export default function ConversationPage() {
           </div>
         </div>
       </main>
+
+      {/* Customize Prompt Modal */}
+      <CustomizePromptModal
+        isOpen={showPromptModal}
+        onClose={() => setShowPromptModal(false)}
+        customPrompt={customPrompt}
+        onSave={(newPrompt) => setCustomPrompt(newPrompt)}
+        title="Customize System Prompt"
+      />
     </div>
   );
 }

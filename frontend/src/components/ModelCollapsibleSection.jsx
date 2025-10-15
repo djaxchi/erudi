@@ -123,13 +123,17 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
   const confirmDelete = async () => {
     if (!deleteConfirmation.model) return;
     
+    // Store model reference and close modal immediately to prevent double-clicks
+    const modelToDelete = deleteConfirmation.model;
+    setDeleteConfirmation({ show: false, model: null });
+    
     try {
-      const response = await fetch(`${API_BASE_URL}/main_window/llms/${deleteConfirmation.model.id}`, {
+      const response = await fetch(`${API_BASE_URL}/main_window/llms/${modelToDelete.id}`, {
         method: 'DELETE',
       });
       
       if (response.ok) {
-        setSuccessMessage(`Model ${deleteConfirmation.model.name} has been successfully deleted.`);
+        setSuccessMessage(`Model ${modelToDelete.name} has been successfully deleted.`);
         // Reload models in this component
         await reloadLocalModels();
         // Also refresh the main page local models
@@ -142,8 +146,6 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
     } catch (error) {
       console.error("Failed to delete model:", error);
       setErrorMessage("Failed to delete the model. Please try again and contact the Erudi team for support.");
-    } finally {
-      setDeleteConfirmation({ show: false, model: null });
     }
   };
 
@@ -166,10 +168,10 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
 
   return (
     <>
-      <div className="text-gray-200 w-full">
+      <div className={`text-gray-200 w-full flex flex-col ${title === "Remote Models" ? "h-full" : ""}`}>
         {/* Section header */}
         <div
-          className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30 transition-colors"
+          className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30 transition-colors flex-shrink-0"
           onClick={() => setOpenSection((prev) => !prev)}
         >
           <div className="flex items-center gap-3">
@@ -192,11 +194,11 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
         </div>
 
         {/* Collapsible content */}
-        <div className={`grid transition-all duration-300 ease-in-out ${openSection ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
-          <div className="overflow-hidden">
+        <div className={`grid transition-all duration-300 ease-in-out ${title === "Remote Models" ? "flex-1 min-h-0" : ""} ${openSection ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+          <div className="overflow-hidden flex flex-col">
             {/* Search bar for Remote Models only */}
             {hasSearch && title !== "Local Models" && openSection && (
-              <div className="px-4 py-1 pb-3">
+              <div className="px-4 py-1 pb-3 flex-shrink-0">
                 <div className="relative rounded-2xl bg-[#1a1a1a]/60 border-[0.2px] border-white/10">
                   <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
                   <input
@@ -212,7 +214,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
                   
 
             {/* Models list */}
-            <div className="pl-12 pr-4 pb-2 max-h-[40vh] overflow-y-auto custom-scroll">
+            <div className={`pl-4 pr-4 overflow-y-auto custom-scroll ${title === "Remote Models" ? "flex-1 min-h-0" : "max-h-[40vh]"}`}>
               {loading ? (
                 <div className="flex items-center gap-2 py-2 text-gray-400">
                   <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
@@ -224,7 +226,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
                     title === "Local Models" ? (
                       <div
                         key={m.id}
-                        className="flex items-center justify-between py-1.5 group hover:bg-gray-700/20 rounded px-2 -ml-2 transition-colors"
+                        className="flex items-center justify-between py-1.5 group hover:bg-gray-700/20 rounded px-2 transition-colors"
                       >
                         <span className="flex-1 text-gray-300 text-sm truncate pr-2">{m.name}</span>
                         <button
@@ -238,7 +240,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
                     ) : (
                       <div
                         key={m.id}
-                        className="py-1.5 px-2 -ml-2 text-sm text-gray-400 cursor-pointer hover:text-gray-200 hover:bg-gray-700/20 rounded transition-colors truncate"
+                        className="py-1.5 px-2 text-sm text-gray-400 cursor-pointer hover:text-gray-200 hover:bg-gray-700/20 rounded transition-colors truncate"
                         onClick={() => handleModelClick(m)}
                       >
                         {m.name}

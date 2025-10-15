@@ -32,6 +32,32 @@ export default function LandingPage() {
   const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
   const localModelsRef = useRef(null);
 
+  // Helper function to parse model metadata
+  const parseMetadata = (metadataString) => {
+    if (!metadataString) return {};
+    
+    try {
+      const lines = metadataString.split('\n');
+      const metadata = {};
+      
+      lines.forEach(line => {
+        const trimmedLine = line.trim();
+        if (trimmedLine.includes(':')) {
+          const [key, ...valueParts] = trimmedLine.split(':');
+          const value = valueParts.join(':').trim();
+          
+          // Clean up the key
+          const cleanKey = key.trim().toLowerCase().replace(/\s+/g, '_');
+          metadata[cleanKey] = value;
+        }
+      });
+      
+      return metadata;
+    } catch (error) {
+      return {};
+    }
+  };
+
   useEffect(() => {
     // To know if it should spawn the welcome popup
     const fetchWelcomePopupStatus = async () => {
@@ -65,31 +91,6 @@ export default function LandingPage() {
       }
     };
 fetchWelcomePopupStatus();
-  // Helper function to parse model metadata
-  const parseMetadata = (metadataString) => {
-    if (!metadataString) return {};
-    
-    try {
-      const lines = metadataString.split('\n');
-      const metadata = {};
-      
-      lines.forEach(line => {
-        const trimmedLine = line.trim();
-        if (trimmedLine.includes(':')) {
-          const [key, ...valueParts] = trimmedLine.split(':');
-          const value = valueParts.join(':').trim();
-          
-          // Clean up the key
-          const cleanKey = key.trim().toLowerCase().replace(/\s+/g, '_');
-          metadata[cleanKey] = value;
-        }
-      });
-      
-      return metadata;
-    } catch (error) {
-      return {};
-    }
-  };
 
   // Fetch models from backend
   const fetchModels = async () => {
@@ -185,11 +186,29 @@ fetchWelcomePopupStatus();
     try {
       const url = `${API_BASE_URL}/main_window/llms/local`;
       const res = await fetch(url);
-      if (res.ok) setLocalModels(await res.json());
-      else
+      if (res.ok) {
+        const localData = await res.json();
+        // Transform API data to match our UI format (same as fetchModels)
+        const transformedLocalModels = localData.map(model => {
+          const metadata = parseMetadata(model.model_metadata);
+          return {
+            id: model.id,
+            name: model.name,
+            size: metadata.size || "Unknown",
+            parameters: metadata.parameters || "Unknown", 
+            lastUpdate: metadata.last_modified || "Unknown",
+            isOnline: false,
+            description: model.description,
+            metadata: metadata,
+            rawMetadata: model.model_metadata
+          };
+        });
+        setLocalModels(transformedLocalModels);
+      } else {
         setErrorMessage(
           "Failed to fetch local models. Please try again and contact the Erudi team for support."
         );
+      }
     } catch (err) {
       setErrorMessage(
         "Failed to fetch local models. Please try again and contact the Erudi team for support."
@@ -291,13 +310,17 @@ fetchWelcomePopupStatus();
   const confirmDelete = async () => {
     if (!deleteConfirmation.model) return;
     
+    // Store model reference and close modal immediately to prevent double-clicks
+    const modelToDelete = deleteConfirmation.model;
+    setDeleteConfirmation({ show: false, model: null });
+    
     try {
-      const response = await fetch(`${API_BASE_URL}/main_window/llms/${deleteConfirmation.model.id}`, {
+      const response = await fetch(`${API_BASE_URL}/main_window/llms/${modelToDelete.id}`, {
         method: 'DELETE',
       });
       
       if (response.ok) {
-        setSuccessMessage(`Model ${deleteConfirmation.model.name} has been successfully deleted.`);
+        setSuccessMessage(`Model ${modelToDelete.name} has been successfully deleted.`);
         // Reload local models on both main page and sidebar
         await reloadLocalModels();
         if (localModelsRef.current) {
@@ -309,8 +332,6 @@ fetchWelcomePopupStatus();
     } catch (error) {
       console.error("Failed to delete model:", error);
       setErrorMessage("Failed to delete the model. Please try again and contact the Erudi team for support.");
-    } finally {
-      setDeleteConfirmation({ show: false, model: null });
     }
   };
 
@@ -332,8 +353,8 @@ fetchWelcomePopupStatus();
       />
 
       {/* Main sidebar */}
-      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-80 opacity-100 p-6 space-y-6 '} bg-[#272727] text-white flex flex-col transition-all duration-300 overflow-hidden`}>
-        <div className="flex items-center justify-start">
+      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-80 opacity-100 p-6'} bg-[#272727] text-white flex flex-col transition-all duration-300 overflow-hidden`}>
+        <div className="flex items-center justify-start mb-6 flex-shrink-0">
           <img 
             src={logoErudi} 
             alt="Erudi" 
@@ -344,17 +365,21 @@ fetchWelcomePopupStatus();
             onLoad={() => console.log('Logo loaded successfully')}
           />
         </div>
-        <ModelCollapsibleSection 
-          title="Local Models" 
-          ref={localModelsRef}
-          onLocalModelRefresh={handleMainPageRefresh}
-        />
-        <ModelCollapsibleSection
-          title="Remote Models"
-         hasSearch={true}
-         onDownload={handleDownload}
-         onLocalModelRefresh={handleMainPageRefresh}
-        />
+        <div className="mb-6 flex-shrink-0">
+          <ModelCollapsibleSection 
+            title="Local Models" 
+            ref={localModelsRef}
+            onLocalModelRefresh={handleMainPageRefresh}
+          />
+        </div>
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <ModelCollapsibleSection
+            title="Remote Models"
+           hasSearch={true}
+           onDownload={handleDownload}
+           onLocalModelRefresh={handleMainPageRefresh}
+          />
+        </div>
       </aside>
 
       {/* Main content */}

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Brain, MessageSquare, Swords, BookOpen, PanelLeftClose, PanelLeftOpen, Bug } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { useDownloadModal } from "../contexts/DownloadModalContext";
 
 /**
  * Sidebar with icons that highlight based on the current route.
@@ -16,6 +17,7 @@ export default function Sidebar({
 }) {
   const [isHovering, setIsHovering] = useState(false);
   const [isBrainHovering, setIsBrainHovering] = useState(false);
+  const { isDownloading } = useDownloadModal();
   const location = useLocation();
   const isModelsActive =
     location.pathname === "/main_window/models" ||
@@ -27,7 +29,7 @@ export default function Sidebar({
 
   return (
     <div
-      className={`w-[4.8%] bg-[#121212] flex flex-col items-center transition-opacity duration-200 ${
+      className={`w-[4.8%] bg-[#121212] mt-0 flex flex-col items-center transition-opacity duration-200 ${
         disabled ? "opacity-50 pointer-events-none select-none" : ""
       }`}
     >
@@ -36,7 +38,7 @@ export default function Sidebar({
           onClick={onToggleBrainSidebar}
           onMouseEnter={() => setIsBrainHovering(true)}
           onMouseLeave={() => setIsBrainHovering(false)}
-          className={`w-full flex justify-center items-center py-4 border-l-4 ${
+          className={`w-full flex justify-center items-center py-6 border-l-4 ${
             isModelsActive ? "border-green-500" : "border-transparent"
           }`}
         >
@@ -65,7 +67,7 @@ export default function Sidebar({
       ) : (
         <Link
           to="/main_window/models"
-          className={`w-full flex justify-center items-center py-4 border-l-4 ${
+          className={`w-full flex justify-center items-center py-6 border-l-4 ${
             isModelsActive ? "border-green-500" : "border-transparent"
           }`}
         >
@@ -82,7 +84,7 @@ export default function Sidebar({
           onClick={onToggleSidebar}
           onMouseEnter={() => setIsHovering(true)}
           onMouseLeave={() => setIsHovering(false)}
-          className={`w-full flex justify-center items-center py-4 border-l-4 ${
+          className={`w-full flex justify-center items-center py-6 border-l-4 ${
             isChatActive ? "border-green-500" : "border-transparent"
           }`}
         >
@@ -111,7 +113,7 @@ export default function Sidebar({
       ) : (
         <Link
           to="/main_window/chat"
-          className={`w-full flex justify-center items-center py-4 border-l-4 ${
+          className={`w-full flex justify-center items-center py-6 border-l-4 ${
             isChatActive ? "border-green-500" : "border-transparent"
           }`}
         >
@@ -124,7 +126,7 @@ export default function Sidebar({
       )}
       <Link
         to="/main_window/arena"
-        className={`w-full flex justify-center items-center py-4 border-l-4 ${
+        className={`w-full flex justify-center items-center py-6 border-l-4 ${
           isArenaActive ? "border-green-500" : "border-transparent"
         }`}
       >
@@ -136,7 +138,7 @@ export default function Sidebar({
       </Link>
       <Link
         to="/main_window/attach_knowledge_base"
-        className={`w-full flex justify-center items-center py-4 border-l-4 ${
+        className={`w-full flex justify-center items-center py-6 border-l-4 ${
           isKnowledgeBaseActive ? "border-green-500" : "border-transparent"
         }`}
       >
@@ -149,14 +151,16 @@ export default function Sidebar({
 
       {/* Bug Report Button - Bottom of sidebar */}
       <div className="flex-1" />
-      <button
-        onClick={() => window.open('https://erudi.app/contact', '_blank')}
-        className="w-full flex justify-center items-center py-4 border-l-4 border-transparent mb-4"
-      >
-        <Bug
-          className="w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 text-gray-400 hover:text-red-400"
-        />
-      </button>
+      {!isDownloading && (
+        <button
+          onClick={() => window.open('https://erudi.app/contact', '_blank')}
+          className="w-full flex justify-center items-center py-4 border-l-4 border-transparent mb-4"
+        >
+          <Bug
+            className="w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 text-gray-400 hover:text-red-400"
+          />
+        </button>
+      )}
 
       
     </div>

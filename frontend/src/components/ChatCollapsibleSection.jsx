@@ -146,10 +146,10 @@ export default function ChatCollapsibleSection({
 
   return (
     <div
-      className={`text-gray-200 h-full ${disabled ? "pointer-events-none opacity-50 select-none" : ""}`}
+      className={`text-gray-200 h-full flex flex-col ${disabled ? "pointer-events-none opacity-50 select-none" : ""}`}
     >
       <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
+        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30 flex-shrink-0"
         onClick={() => setOpen(!open)}
       >
         <div className="flex items-center gap-2">
@@ -188,8 +188,8 @@ export default function ChatCollapsibleSection({
         </div>
       </div>
 
-      <div className={`grid transition-all duration-300 ease-in-out ${open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'} `}>
-        <div className="px-4 py-2 max-h-[88%] overflow-y-auto overflow-x-visible custom-scroll">
+      <div className={`grid transition-all duration-300 ease-in-out flex-1 min-h-0 ${open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'} `}>
+        <div className="px-4 py-2 overflow-y-auto overflow-x-visible custom-scroll">
           {renderItems()}
         </div>
       </div>
