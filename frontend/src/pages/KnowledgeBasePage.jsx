@@ -221,10 +221,10 @@ export default function KnowledgeBasePage() {
     <div className="flex h-screen bg-[#071b18]">
       <Sidebar />
       
-      <main className="flex-1 p-4 md:p-8 space-y-8 overflow-auto custom-scroll">
+      <main className="flex-1 p-4 md:p-6 lg:p-8 flex flex-col gap-4 md:gap-6 overflow-hidden">
         {/* Top Section: Hardware + Model Library */}
-        <div className="flex flex-col lg:flex-row 2xl:h-[40%] gap-8">
-          <div className="relative rounded-2xl overflow-hidden shadow-xl flex-1 min-w-[340px] border border-[#385B4F] border-[0.3px]">
+        <div className="flex flex-col lg:flex-row gap-4 md:gap-6 flex-1 min-h-0">
+          <div className="relative rounded-2xl overflow-hidden shadow-xl flex-1 min-w-[340px] border border-[#385B4F] border-[0.3px] bg-[rgba(22,40,36,0.45)] flex flex-col">
             <div className="absolute inset-0 opacity-[11%] pointer-events-none"
                 style={{
                     background:
@@ -232,13 +232,14 @@ export default function KnowledgeBasePage() {
                 }}
             />
             <div className="absolute inset-0 mix-blend-overlay pointer-events-none" />
-            <div className="relative z-10 px-3 py-1.5 sm:px-4 sm:py-2 md:px-6 md:py-2.5 lg:py-3 space-y-3 sm:space-y-4">
+            <div className="relative z-10 px-4 py-3 sm:px-6 sm:py-4 md:px-8 md:py-5 flex flex-col h-full overflow-hidden">
                 
                 {/* Title */}
-                <h2 className="text-white text-xl md:text-2xl font-bold">Knowledge Base</h2>
+                <h2 className="text-white text-xl sm:text-2xl md:text-3xl font-bold mb-3 md:mb-4 flex-shrink-0">Knowledge Base</h2>
                 
-                {/* Knowledge Base description */}
-                <p className="text-gray-300 text-xs md:text-sm leading-relaxed">
+                {/* Knowledge Base description - scrollable */}
+                <div className="flex-1 overflow-y-auto custom-scroll pr-2">
+                  <p className="text-gray-300 text-sm sm:text-base md:text-lg leading-relaxed">
                     A Knowledge Base lets you teach your AI about your specific documents, files, and information without changing the AI model itself.
                     <br/><br/> 
                     Think of it like giving your AI a personal library to reference when answering questions. Upload your PDFs, documents, notes, or any text files, and your AI will use them to give more accurate and relevant answers about your specific topics.
@@ -247,23 +248,27 @@ export default function KnowledgeBasePage() {
                     <br/><br/>
                     Use Knowledge Bases for: company documents, research papers, manuals, personal notes, or any information you want your AI to reference when chatting with you.
                 </p>
+                </div>
 
-                <InfoRow
-                    label="Chat Capabilities Rating :"
-                    isHeader={true}
-                    {...(getRatingBulletOrIcon(hw.global_inference_label).type === 'bullet'
-                        ? { bullet: getRatingBulletOrIcon(hw.global_inference_label).value }
-                        : { icon: getRatingBulletOrIcon(hw.global_inference_label).value })}
-                >
-                    <div className="flex items-center gap-2">
-                        <span>{hw.global_inference_label || "Poor"}</span>
-                        {hw.global_inference_score && (
-                            <span className="text-xs text-gray-400 bg-gray-800/50 px-2 py-0.5 rounded-full border border-gray-600/30">
-                                {hw.global_inference_score}
-                            </span>
-                        )}
-                    </div>
-                </InfoRow>
+                {/* Rating - fixed at bottom */}
+                <div className="flex-shrink-0 mt-3 md:mt-4">
+                  <InfoRow
+                      label="Chat Capabilities Rating :"
+                      isHeader={true}
+                      {...(getRatingBulletOrIcon(hw.global_inference_label).type === 'bullet'
+                          ? { bullet: getRatingBulletOrIcon(hw.global_inference_label).value }
+                          : { icon: getRatingBulletOrIcon(hw.global_inference_label).value })}
+                  >
+                      <div className="flex items-center gap-2">
+                          <span>{hw.global_inference_label || "Poor"}</span>
+                          {hw.global_inference_score && (
+                              <span className="text-xs text-gray-400 bg-gray-800/50 px-2 py-0.5 rounded-full border border-gray-600/30">
+                                  {hw.global_inference_score}
+                              </span>
+                          )}
+                      </div>
+                  </InfoRow>
+                </div>
             </div>
         </div>
           
@@ -278,25 +283,25 @@ export default function KnowledgeBasePage() {
         </div>
 
         {/* Bottom Section: Dataset */}
-        <div className="flex flex-col gap-8">
-          <div className="bg-[#2B2B2B] rounded-2xl p-8 text-white flex flex-row gap-6 shadow-lg">
-            <div className="flex flex-col gap-4 w-[44%]">
-              <div className="flex flex-col w-full">
+        <div className="flex flex-col flex-1 min-h-0">
+          <div className="bg-[#2B2B2B] rounded-2xl p-4 md:p-6 lg:p-8 text-white flex flex-col lg:flex-row gap-4 md:gap-6 shadow-lg h-full overflow-hidden">
+            <div className="flex flex-col gap-3 md:gap-4 w-full lg:w-[44%] overflow-hidden">
+              <div className="flex flex-col w-full h-full overflow-hidden">
                 {/* Title */}
-                <h3 className="text-white text-lg font-semibold mb-4 text-center">
+                <h3 className="text-white text-lg sm:text-xl md:text-2xl font-semibold mb-3 md:mb-4 text-center flex-shrink-0">
                   Tell your assistant what you would use it for!
                 </h3>
                 
                 {/* Description input */}
                 <textarea 
-                  className="w-full h-40 bg-[#1A1A1A] text-white rounded-lg p-4 resize-none border border-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-400/60 focus:border-emerald-400/60 transition-all placeholder-gray-400"
+                  className="w-full flex-1 bg-[#1A1A1A] text-white rounded-lg p-3 md:p-4 resize-none border border-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-400/60 focus:border-emerald-400/60 transition-all placeholder-gray-400 text-sm sm:text-base"
                   placeholder="Write a description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                 />
               </div>
               
-              <div className="flex flex-col items-center gap-4">
+              <div className="flex flex-col items-center gap-3 flex-shrink-0">
                 {isValidated ? (
                   <div className="w-full text-center"> 
                     <div className="text-emerald-400 text-sm">
@@ -308,7 +313,7 @@ export default function KnowledgeBasePage() {
                   </div>
                 ) : (
                   <button 
-                    className="py-2 sm:py-3 px-6 sm:px-8 rounded-full bg-emerald-500 text-white font-semibold shadow-lg hover:bg-emerald-400 transition disabled:opacity-50 text-xs sm:text-sm"
+                    className="py-2 md:py-3 px-6 md:px-8 rounded-full bg-emerald-500 text-white font-semibold shadow-lg hover:bg-emerald-400 transition disabled:opacity-50 text-sm sm:text-base"
                     onClick={() => {
                       console.log('Button clicked!');
                       submitTrainForm();
@@ -324,7 +329,7 @@ export default function KnowledgeBasePage() {
               </div>
             </div>
 
-            <div className="w-[56%] h-[100%]">
+            <div className="w-full lg:w-[56%] h-full overflow-hidden">
               <DragDropArea onFilesAdded={addDroppedFiles} />
             </div>
           </div>

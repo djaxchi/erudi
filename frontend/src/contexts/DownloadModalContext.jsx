@@ -187,7 +187,8 @@ export function DownloadModalProvider({ children }) {
   return (
     <DownloadModalContext.Provider value={{ 
       open,
-      isTraining: isFineTuning && isDownloading
+      isTraining: isFineTuning && isDownloading,
+      isDownloading
     }}>
       {children}
 

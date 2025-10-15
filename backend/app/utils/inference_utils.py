@@ -108,7 +108,8 @@ class ModelManager:
                 ):  
                     if response:
                         # logging.debug(f"Yielding new chunk:\n{new_text.__repr__()}")
-                        logging.info(f"Yielding token: {response.text.replace('\n', '\\n').replace('\t', '\\t')}")
+                        token_repr = response.text.replace('\n', '\\n').replace('\t', '\\t')
+                        logging.info(f"Yielding token: {token_repr}")
                         text += response.text
                         yield response.text
 
