@@ -5,6 +5,54 @@ import logoErudi from "../../img/logoerudifinal.png";
 export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading }) {
     if (!isOpen) return null;
 
+    // Helper function to get color based on label
+    const getColorForLabel = (label) => {
+        switch (label) {
+            case 'Very Good':
+                return 'bg-emerald-700/30 text-white';
+            case 'Good':
+                return 'bg-green-600/30 text-white';
+            case 'Medium':
+                return 'bg-yellow-600/30 text-white';
+            case 'Poor':
+                return 'bg-red-600/30 text-white';
+            default:
+                return 'bg-gray-600/30 text-white';
+        }
+    };
+
+    // Helper function to get dynamic recommendations
+    const getRecommendations = (inferenceScore, finetuningScore) => {
+        const avgScore = (inferenceScore + finetuningScore) / 2;
+        
+        if (avgScore >= 75) {
+            return {
+                title: "Excellent Hardware! 🚀",
+                description: "Your system can handle any model from 1B to 12B parameters with ease. We recommend trying the power of Mistral 8B or Gemma 12B for the best experience. We're also working on adding support for much larger models—stay tuned!"
+            };
+        } else if (avgScore >= 50) {
+            return {
+                title: "Great Performance! ✨",
+                description: "Your hardware supports models from 1B to 12B parameters. You'll get smooth performance with Mistral 8B and Gemma 12B. Perfect for experiencing the full capabilities of modern AI!"
+            };
+        } else if (avgScore >= 25) {
+            return {
+                title: "Good Setup 👍",
+                description: "You may experience some delays with larger models like Mistral 7B, but you're well-equipped for models like Gemma 4B and smaller. These will provide excellent results with smooth performance."
+            };
+        } else {
+            return {
+                title: "Optimized for Smaller Models 💡",
+                description: "We recommend starting with our optimized smaller models like Gemma 1B, 2B, or 4B. These models are specifically tuned to deliver real, impressive results even on limited hardware. You can still experiment with larger models, but performance may vary."
+            };
+        }
+    };
+
+    const recommendations = hardwareInfo ? getRecommendations(
+        hardwareInfo.global_inference_score,
+        hardwareInfo.global_finetuning_score
+    ) : null;
+
     return (
         <div 
             className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
@@ -92,11 +140,7 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                                                         <span className="text-lg sm:text-xl font-bold text-white">
                                                             {Math.round(hardwareInfo.global_inference_score)}%
                                                         </span>
-                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                                            hardwareInfo.global_inference_score >= 70 ? 'bg-[#00B574]/80 text-white' :
-                                                            hardwareInfo.global_inference_score >= 50 ? 'bg-yellow-900/80 text-yellow-300' :
-                                                            'bg-red-900/80 text-red-300'
-                                                        }`}>
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getColorForLabel(hardwareInfo.global_inference_label)}`}>
                                                             {hardwareInfo.global_inference_label || 'Unknown'}
                                                         </span>
                                                     </div>
@@ -110,11 +154,7 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                                                         <span className="text-lg sm:text-xl font-bold text-white">
                                                             {Math.round(hardwareInfo.global_finetuning_score)}%
                                                         </span>
-                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                                            hardwareInfo.global_finetuning_score >= 70 ? 'bg-[#00B574] text-white' :
-                                                            hardwareInfo.global_finetuning_score >= 50 ? 'bg-yellow-600 text-white' :
-                                                            'bg-red-900/80 text-red-300'
-                                                        }`}>
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getColorForLabel(hardwareInfo.global_finetuning_label)}`}>
                                                             {hardwareInfo.global_finetuning_label || 'Unknown'}
                                                         </span>
                                                     </div>
@@ -122,23 +162,20 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                                             </div>
                                         </div>
 
-                                        {/* Summary */}
-                                        <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
-                                            <div className="flex items-start gap-3">
-                                                <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5 text-[#E3712B] transition-colors cursor-help mt-0.5" />
-                                                <div className="flex-1 min-w-0">
-                                                    <h4 className="text-[#E3712B] font-semibold mb-2 flex items-center gap-0">Summary</h4>
-                                                    <p className="text-gray-300 text-sm leading-relaxed">
-                                                        {(hardwareInfo.global_inference_score >= 70 && hardwareInfo.global_finetuning_score >= 70) 
-                                                            ? 'Good overall performance, you should get fluid experience on most models'
-                                                            : (hardwareInfo.global_inference_score >= 50 || hardwareInfo.global_finetuning_score >= 50)
-                                                            ? 'Good overall performance, some finetuning operations may be slower'
-                                                            : 'Limited performance. It will do the trick on smaller models but you may experience some lag with larger ones.'
-                                                        }
-                                                    </p>
+                                        {/* Recommendations Summary */}
+                                        {recommendations && (
+                                            <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
+                                                <div className="flex items-start gap-3">
+                                                    <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5 text-orange-300 transition-colors cursor-help mt-0.5" />
+                                                    <div className="flex-1 min-w-0">
+                                                        <h4 className="text-orange-300 font-semibold mb-2">{recommendations.title}</h4>
+                                                        <p className="text-gray-300 text-sm leading-relaxed">
+                                                            {recommendations.description}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
+                                        )}
                                     </div>
                                 ) : null}
                             </div>

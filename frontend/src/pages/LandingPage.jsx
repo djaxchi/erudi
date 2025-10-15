@@ -230,11 +230,11 @@ fetchWelcomePopupStatus();
 
   // Derived data from fetched models
   const baseModelNames = [
-    "Mistral-7B-Instruct-v0.3",
+    "Mistral-7B",
     "Mistral-7B-v0.3", 
-    "Gemma-3-1B-it",
-    "Gemma-2-2B-it",
-    "Gemma-3-4B-it"
+    "Gemma-1B",
+    "Gemma-2B",
+    "Gemma-4B"
   ];
   
   const baseModels = remoteModels.filter(model => 
@@ -358,7 +358,8 @@ fetchWelcomePopupStatus();
           <img 
             src={logoErudi} 
             alt="Erudi" 
-            className="h-[40px] ml-2 w-auto" 
+            className="h-[40px] ml-2 w-auto cursor-pointer hover:opacity-80 transition-opacity" 
+            onClick={() => setShowWelcome(true)}
             onError={(e) => {
               console.error('Failed to load logo:', e.target.src);
             }}
