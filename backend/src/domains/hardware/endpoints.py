@@ -1,15 +1,19 @@
-import logging
-from app.database import get_db
-from app.entities.StaticHardwareInfos import StaticHardwareInfo
-from backend.app.hardware.services import get_hardware_eval_for_apple_silicon
-from fastapi import APIRouter, Depends
+from src.database.core import get_db
+from fastapi import Depends
 from sqlalchemy.orm import Session
-from backend.app.hardware.schemas import HardwareTrainingInfo, HardwareAppStartupInfo, DetailedHardwareInfo
 
-router = APIRouter(tags=["hardware"])
+from src.entities.StaticHardwareInfos import StaticHardwareInfo
+from src.utils.hardware_info  import get_hardware_eval_for_apple_silicon
+from src.core.logging import logger
+from src.core.api import hardware_router as router
 
+from src.domains.hardware.schemas import (
+    HardwareTrainingInfo,
+    HardwareAppStartupInfo,
+    DetailedHardwareInfo
+)
 
-@router.get("/hardware/training", response_model=HardwareTrainingInfo)
+@router.get("/training_info", response_model=HardwareTrainingInfo)
 def get_hardware_training_info(
     db: Session = Depends(get_db)
 ):
@@ -119,7 +123,7 @@ def get_hardware_training_info(
         memory_score=memory_score
     )
 
-@router.get("/hardware/app_startup", response_model=HardwareAppStartupInfo)
+@router.get("/app_startup", response_model=HardwareAppStartupInfo)
 def get_app_startup_info(
     db: Session = Depends(get_db)
 ):
@@ -133,11 +137,11 @@ def get_app_startup_info(
 
             try:
                 # Get Apple Silicon hardware evaluation
-                logging.info("Evaluating Apple Silicon hardware...")
+                logger.info("Evaluating Apple Silicon hardware...")
                 hw = get_hardware_eval_for_apple_silicon()
-                logging.info("Hardware evaluation completed successfully.")
+                logger.info("Hardware evaluation completed successfully.")
             except Exception as e:
-                logging.warning(f"Hardware evaluation failed: {e}. Using fallback values.")
+                logger.warning(f"Hardware evaluation failed: {e}. Using fallback values.")
                 hw = {
                     "chip_model": "Unknown",
                     "cpu_model": "Unknown CPU",
@@ -202,10 +206,10 @@ def get_app_startup_info(
             )
             db.add(persist_hw_infos)
             db.commit()
-            logging.info("Hardware info persisted to database.")
+            logger.info("Hardware info persisted to database.")
         
         else:
-            logging.info("Hardware info already exists in database, skipping creation.")
+            logger.info("Hardware info already exists in database, skipping creation.")
 
         db.refresh(hw_infos)
         
@@ -224,7 +228,7 @@ def get_app_startup_info(
 
     except Exception as e:
         # Error occurred during database query
-        logging.error(f"Error retrieving hardware info: {e}")
+        logger.error(f"Error retrieving hardware info: {e}")
         finetuning_score = 0.0
         finetuning_label = f"Terrible"
         inference_score = 0.0
@@ -241,7 +245,7 @@ def get_app_startup_info(
     )
 
 
-@router.get("/hardware/detailed", response_model=DetailedHardwareInfo)
+@router.get("/detailed", response_model=DetailedHardwareInfo)
 def get_detailed_hardware_info(
     db: Session = Depends(get_db)
 ):

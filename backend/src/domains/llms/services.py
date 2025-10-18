@@ -3,60 +3,39 @@ Utility for downloading LLM repositories from Hugging Face with progress
 tracking and database updates.
 """
 
-# Standard library imports
-import os
-import time
-import threading
-import shutil
-import logging
-import asyncio
-import mlx_lm
+import os, time, threading, shutil, asyncio
 from datetime import datetime
 from threading import Lock
-from typing import Callable, Optional, List, Tuple
+from typing import Optional, List, Tuple
 
-# Third-party imports
-import torch  # type: ignore
-from huggingface_hub import HfApi, HfFileSystem  # type: ignore
-from fsspec.callbacks import Callback  # type: ignore
+from huggingface_hub import HfApi, HfFileSystem
+from fsspec.callbacks import Callback
 
-# Local application imports
-from ..database import SessionLocal
-from ..entities.DownloadJob import DownloadJobModel
-from ..entities.Llm import Llm
+from src.database.core import SessionLocal
+from src.entities.DownloadJob import DownloadJobModel
+from src.entities.Llm import Llm
 
-# Configure logger
-logger = logging.getLogger("uvicorn.error")
-logger.setLevel(logging.INFO)
+from backend.src.core.vars import HF_TOKEN, LLM_Engine
+from src.core.logging import logger
 
 # Environment setup
-HF_TOKEN = os.getenv("HF_TOKEN", "")
 FILES_TO_EXCLUDE = ["consolidated.safetensors"]
 
-# Mapping of original model links to MLX-quantized versions
-# Format: "original/repo": "mlx-community/quantized-repo"
-MLX_MODEL_MAPPING = {
-    "mistralai/Mistral-7B-Instruct-v0.3": "mlx-community/Mistral-7B-Instruct-v0.3-4bit",
-    "mistralai/Mistral-7B-v0.3": "mlx-community/Mistral-7B-v0.3-4bit",
-    "google/gemma-2-2b-it": "mlx-community/gemma-2-2b-it-4bit",
-    "google/gemma-3-4b-it": "mlx-community/gemma-3-4b-it-4bit",
-}
 
-
-def get_mlx_model_link(original_link: str) -> str:
+def get_quantized_model_link(original_link: str) -> str:
     """
-    Convert an original model link to its MLX-quantized version if available.
+    Convert an original model link to its quantized version in the right backend if available.
     
     Args:
         original_link (str): Original Hugging Face model link
         
     Returns:
-        str: MLX-quantized model link if mapping exists, otherwise original link
+        str: quantized model link if mapping exists, otherwise original link
     """
-    mlx_link = MLX_MODEL_MAPPING.get(original_link, original_link)
-    if mlx_link != original_link:
-        logger.info(f"Using MLX-quantized model: {original_link} -> {mlx_link}")
-    return mlx_link
+    quantized_link = LLM_Engine.MODEL_MAPPING.get(original_link, original_link)
+    if quantized_link != original_link:
+        logger.info(f"Using quantized model: {original_link} -> {quantized_link}")
+    return quantized_link
 
 
 class DownloadTracker:
@@ -305,18 +284,17 @@ async def download_llm(
     await download_files_concurrent(fs, callback, shard_tasks, temp_save_dir)
     logger.info("All shards downloaded")
 
-    # If pre-quantized (MLX), just move files; otherwise convert locally
+    # If pre-quantized, just move files; otherwise convert locally
     try:
         if is_prequantized:
-            # Already MLX-quantized, just move to final directory
-            logger.info("Using pre-quantized MLX model, moving files directly")
+            # Already quantized in the right format, just move to final directory
+            logger.info("Using pre-quantized model, moving files directly")
             if os.path.exists(final_save_dir):
                 shutil.rmtree(final_save_dir, ignore_errors=True)
             shutil.move(temp_save_dir, final_save_dir)
         else:
-            # Need to convert to MLX format and quantize locally
-            logger.info("Converting model to MLX format with local quantization")
-            await asyncio.to_thread(convert_hf_mlx, temp_save_dir, final_save_dir)
+            # Need to convert to right format and quantize locally
+            await asyncio.to_thread(LLM_Engine.quant_and_save_from_hf_format, temp_save_dir, final_save_dir)
             shutil.rmtree(temp_save_dir, ignore_errors=True)
     except Exception as e:
         logger.error(f"Failed to process model: {e}")

@@ -118,7 +118,7 @@ platform_utils.py # OS detection, data_dir helpers, symlink/fallback
 Ne pas oublier de prendre en compte mac-x86 en plus de mac-arm64
 
 ## next-steps
-=> faire un engine awq pour cuda et benchmark contre bnb (taille disk, tok/sec, memoire, vibe-check qual réponses, cmb de bits possibles en quantiz)
+=> faire un engine awq pour cuda et benchmark contre bnb (taille disk, tok/sec, memoire, vibe-check qual réponses, cmb de bits possibles en quantiz, facilité, agnosticité)
 => faire un engine llamacpp, cad :
     - Fork et mettre en submodule dans backend/llamacpp/fork/
     - Clean le fork pour alléger

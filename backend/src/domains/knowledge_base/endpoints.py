@@ -1,39 +1,35 @@
+import os, faiss, numpy
 from datetime import datetime
-from typing import Any
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlalchemy.orm import Session
-from ..database import get_db
+from typing import Any, List
 
-import os
+from fastapi import BackgroundTasks, Depends, HTTPException
+from sqlalchemy.orm import Session
+from src.database.core import get_db
+from src.core.api import knowledge_base_router as router
+
+from src.entities.KnowledgeBase import KnowledgeBase
+from src.entities.VectorStore import VectorStore
+from src.entities.Llm import Llm
+from src.entities.KBJob import KBJobModel
+
+from src.utils.inference_utils import EmbedderService
+from src.utils.file_processor import prepare_for_knowledge_base, chunk_by_tokens
+from src.domains.knowledge_base.schemas import (
+    KnowledgeBaseCreate,
+    KnowledgeBaseResponse
+)
+
+from src.core.logging import logger
+from backend.src.core.vars import (
+    INDEXES_DIR
+)
+
+faiss.omp_set_num_threads(1)
 os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")  # Accelerate/vecLib (macOS)
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
-
-
-from .schemas import KnowledgeBaseCreate, KnowledgeBaseResponse
-from ..entities.KnowledgeBase import KnowledgeBase
-from ..entities.VectorStore import VectorStore
-from ..entities.Llm import Llm
-from ..entities.KBJob import KBJobModel
-from app.utils.inference_utils import EmbedderService
-from ..utils.file_processor import prepare_for_knowledge_base, chunk_by_tokens
-
-import logging
-from typing import List
-import faiss
-faiss.omp_set_num_threads(1)
-import numpy as np
-
-from dotenv import load_dotenv
-load_dotenv()
-INDEXES_DIR = os.getenv("INDEXES_DIR", "")
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/knowledge_base")
 
 @router.get("/{llm_id}/status")
 def get_kbAttach_status(llm_id: int, db: Session = Depends(get_db)):
@@ -80,54 +76,54 @@ def create_knowledge_base(
     """
     Attach a new knowledge base to an assistant.
     """
-    logging.info(f"🚀 Received payload: {payload}")
+    logger.info(f"🚀 Received payload: {payload}")
     
     if not payload.paths or not isinstance(payload.paths, list):
         raise HTTPException(
             status_code=400,
             detail="Paths must be a non-empty list."
         )
-    logging.info(f"Received paths: {payload.paths}")
+    logger.info(f"Received paths: {payload.paths}")
     if not payload.selectedModel:
         raise HTTPException(
             status_code=400,
             detail="Selected model ID is required."
         )
-    logging.info(f"Selected model ID: {payload.selectedModel}")
+    logger.info(f"Selected model ID: {payload.selectedModel}")
     if not payload.modelName:
         raise HTTPException(
             status_code=400,
             detail="Model name is required."
         )
-    logging.info(f"Model name: {payload.modelName}")
+    logger.info(f"Model name: {payload.modelName}")
 
     try: 
         # Fetch base LLM
         base_llm = db.query(Llm).filter(Llm.id == payload.selectedModel).filter(Llm.local == 1).first()
         if not base_llm:
             error_msg = f"Llm with ID {payload.selectedModel} not found"
-            logging.error(error_msg)
+            logger.error(error_msg)
             raise HTTPException(status_code=404, detail=error_msg)
     except Exception as e:
-        logging.error(f"Error fetching base LLM: {e}")
+        logger.error(f"Error fetching base LLM: {e}")
         raise HTTPException(status_code=500, detail="Error fetching base LLM.")
 
     try :
         texts = prepare_for_knowledge_base(payload.paths)
         if not texts:
-            logging.error("No valid text files found in the provided paths.")
+            logger.error("No valid text files found in the provided paths.")
             raise HTTPException(status_code=400, detail="No valid text files found.")
     except Exception as e:
-        logging.error(f"Error processing files: {e}")
+        logger.error(f"Error processing files: {e}")
         raise HTTPException(status_code=500, detail="Error processing files.")
     
     if not payload.description:
         payload.description = ""
-    logging.info(f"Description: {payload.description}")
+    logger.info(f"Description: {payload.description}")
 
     if not os.path.exists(INDEXES_DIR):
         os.makedirs(INDEXES_DIR)
-        logging.info(f"Created INDEXES_DIR at {INDEXES_DIR}")
+        logger.info(f"Created INDEXES_DIR at {INDEXES_DIR}")
 
     try:
 
@@ -152,7 +148,7 @@ def create_knowledge_base(
                 )
             
             else:
-                logging.error(f"KnowledgeBase with ID {base_llm.kb_id} not found")
+                logger.error(f"KnowledgeBase with ID {base_llm.kb_id} not found")
                 raise HTTPException(status_code=404, detail=f"LLM : {base_llm.name} seems to have a Knowledge Base attached, but the KB was not found.")
         
         # Create new LLM
@@ -194,7 +190,7 @@ def create_knowledge_base(
         )
         db.add(kb_job)
         db.commit()
-        logging.info(f"Knowledge Base job created with ID: {kb_job.id}")
+        logger.info(f"Knowledge Base job created with ID: {kb_job.id}")
 
         background_tasks.add_task(init_new_kb_assistant, kb_job.id, new_llm.id, kb.id, vector_store.id, texts, db)
 
@@ -205,7 +201,7 @@ def create_knowledge_base(
     
     except Exception as e:
         error_msg = f"Error creating KB Assistant:\n{str(e)}"
-        logging.error(error_msg)
+        logger.error(error_msg)
         raise HTTPException(
             status_code=500,
             detail=error_msg
@@ -220,31 +216,31 @@ def populate_vector_store(start_counter: int, vectors_data: dict, texts: List[st
         if not text.strip():
             continue
         
-        logging.info(f"chunking text: {len(text)} characters")
+        logger.info(f"chunking text: {len(text)} characters")
         chunks = chunk_by_tokens(text=text)
         if not chunks:
-            logging.error(f"Error chunking text from {text}")
+            logger.error(f"Error chunking text from {text}")
             continue
-        logging.info(f"Chunks created: {len(chunks)} for text: {len(text)} characters")
+        logger.info(f"Chunks created: {len(chunks)} for text: {len(text)} characters")
         
         for chunk in chunks:
             if not chunk.strip():
                 continue
-            logging.info(f"Encoding chunk: {chunk[:50]}...")
+            logger.info(f"Encoding chunk: {chunk[:50]}...")
             embeddings = embedder.encode(chunk, show_progress_bar=False, convert_to_tensor=True)
             if embeddings is None or len(embeddings) == 0:
-                logging.error(f"Error encoding chunk: {chunk[:50]}")
+                logger.error(f"Error encoding chunk: {chunk[:50]}")
                 continue
-            logging.info(f"Chunk encoded: {embeddings.shape}")
+            logger.info(f"Chunk encoded: {embeddings.shape}")
             
             # Store in vectors_data JSON and add to FAISS index
             vectors_data[str(start_counter)] = chunk
             try:
                 index.add_with_ids(embeddings.cpu().numpy().reshape(1, -1), [start_counter])
             except Exception as e:
-                logging.error(f"Error adding vector to index: {e}")
+                logger.error(f"Error adding vector to index: {e}")
                 continue
-            logging.info(f"Vector added to index with FAISS ID: {start_counter}")
+            logger.info(f"Vector added to index with FAISS ID: {start_counter}")
             start_counter += 1
 
     EmbedderService.cleanup()
@@ -254,63 +250,63 @@ def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[st
     try:
         kb_job = db.query(KBJobModel).filter(KBJobModel.id == kb_job_id).first()
         if not kb_job:
-            logging.error(f"KBJob with ID {kb_job_id} not found")
+            logger.error(f"KBJob with ID {kb_job_id} not found")
             db.close()
             raise HTTPException(status_code=404, detail="KBJob not found")
         kb_job.status = "running"
         kb_job.updated_at = datetime.now()
         db.commit()
     except Exception as e:
-        logging.error(f"Error fetching KBJob: {e}")
+        logger.error(f"Error fetching KBJob: {e}")
         try:
             db.close()
         except Exception as e:
-            logging.error(f"Error rolling back DB session: {e}")
+            logger.error(f"Error rolling back DB session: {e}")
             raise HTTPException(status_code=500, detail=f"Error closing DB session : {e}")
         raise HTTPException(status_code=404, detail=f"Error manipulating DB session : {e}")
 
     try:
         llm = db.query(Llm).filter(Llm.id == kb_job.base_llm_id).first()
         if not llm:
-            logging.error(f"LLM with ID {kb_job.base_llm_id} not found")
+            logger.error(f"LLM with ID {kb_job.base_llm_id} not found")
             db.close()
             raise HTTPException(status_code=404, detail="LLM not found")
     except Exception as e:
-        logging.error(f"Error fetching LLM: {e}")
+        logger.error(f"Error fetching LLM: {e}")
         try:
             db.close()
         except Exception as e:
-            logging.error(f"Error rolling back DB session: {e}")
+            logger.error(f"Error rolling back DB session: {e}")
             raise HTTPException(status_code=500, detail=f"Error closing DB session : {e}")
         raise HTTPException(status_code=404, detail=f"Error manipulating DB session : {e}")
 
     try:
         kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
         if not kb:
-            logging.error(f"Knowledge Base with ID {kb_id} not found")
+            logger.error(f"Knowledge Base with ID {kb_id} not found")
             db.close()
             raise HTTPException(status_code=404, detail="Knowledge Base not found")
     except Exception as e:
-        logging.error(f"Error fetching Knowledge Base: {e}")
+        logger.error(f"Error fetching Knowledge Base: {e}")
         try:
             db.close()
         except Exception as e:
-            logging.error(f"Error rolling back DB session: {e}")
+            logger.error(f"Error rolling back DB session: {e}")
             raise HTTPException(status_code=500, detail=f"Error closing DB session : {e}")
         raise HTTPException(status_code=404, detail=f"Error manipulating DB session : {e}")
 
     try:
         vector_store = db.query(VectorStore).filter(VectorStore.kb_id == kb_id).first()
         if not vector_store:
-            logging.error(f"VectorStore associated to KB {kb_id} not found")
+            logger.error(f"VectorStore associated to KB {kb_id} not found")
             db.close()
             raise HTTPException(status_code=404, detail="VectorStore not found")
     except Exception as e:
-        logging.error(f"Error fetching VectorStore: {e}")
+        logger.error(f"Error fetching VectorStore: {e}")
         try:
             db.close()
         except Exception as e:
-            logging.error(f"Error rolling back DB session: {e}")
+            logger.error(f"Error rolling back DB session: {e}")
             raise HTTPException(status_code=500, detail=f"Error closing DB session : {e}")
         raise HTTPException(status_code=404, detail=f"Error manipulating DB session : {e}")
 
@@ -318,7 +314,7 @@ def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[st
     try:
         initial_index = faiss.read_index(kb.index_path)
     except:
-        logging.error(f"Error reading initial index")
+        logger.error(f"Error reading initial index")
         raise HTTPException(status_code=404, detail=f"Index attached to LLM {llm.id} could not be read from disk")
     
     base_vectors_data = vector_store.vectors_data
@@ -333,7 +329,7 @@ def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[st
         try:
             faiss.write_index(index, kb.index_path)
         except Exception as e2:
-            logging.error(f"Error writing index for KB {kb.id}: {e2}")
+            logger.error(f"Error writing index for KB {kb.id}: {e2}")
             raise
 
         vector_store.vectors_data = new_vectors_data
@@ -341,7 +337,7 @@ def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[st
         kb_job.updated_at = datetime.now()
         db.commit()
     except Exception as e:
-        logging.error(f"Error during KB update for LLM {llm.id}: {e}")
+        logger.error(f"Error during KB update for LLM {llm.id}: {e}")
         kb_job.status = "failed"
         kb_job.updated_at = datetime.now()
         vector_store.vectors_data = base_vectors_data
@@ -350,7 +346,7 @@ def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[st
         try:
             faiss.write_index(initial_index, kb.index_path)
         except Exception as e2:
-            logging.error(f"Error writing index for KB {kb.id}: {e2}")
+            logger.error(f"Error writing index for KB {kb.id}: {e2}")
             raise HTTPException(status_code=404, detail=f"Error writing index for KB {kb.id}: {e2}")
         
     finally:
@@ -363,75 +359,75 @@ def init_new_kb_assistant(kb_job_id: int, new_llm_id: int, kb_id: int, vector_st
     try:
         kb_job = db.query(KBJobModel).filter(KBJobModel.id == kb_job_id).first()
         if not kb_job:
-            logging.error(f"KBJob with ID {kb_job_id} not found")
+            logger.error(f"KBJob with ID {kb_job_id} not found")
             db.close()
             raise HTTPException(status_code=404, detail="KBJob not found")
         kb_job.status = "running"
         kb_job.updated_at = datetime.now()
         db.commit()
     except Exception as e:
-        logging.error(f"Error fetching KBJob: {e}")
+        logger.error(f"Error fetching KBJob: {e}")
         try:
             db.close()
         except Exception as e:
-            logging.error(f"Error rolling back DB session: {e}")
+            logger.error(f"Error rolling back DB session: {e}")
             raise HTTPException(status_code=500, detail=f"Error closing DB session : {e}")
         raise HTTPException(status_code=404, detail=f"Error manipulating DB session : {e}")
 
     try:
         new_llm = db.query(Llm).filter(Llm.id == new_llm_id).first()
         if not new_llm:
-            logging.error(f"New LLM with ID {new_llm_id} not found")
+            logger.error(f"New LLM with ID {new_llm_id} not found")
             db.close()
             raise HTTPException(status_code=404, detail="New LLM not found")
     except Exception as e:
-        logging.error(f"Error fetching New LLM: {e}")
+        logger.error(f"Error fetching New LLM: {e}")
         try:
             db.close()
         except Exception as e:
-            logging.error(f"Error rolling back DB session: {e}")
+            logger.error(f"Error rolling back DB session: {e}")
             raise HTTPException(status_code=500, detail=f"Error closing DB session : {e}")
         raise HTTPException(status_code=404, detail=f"Error manipulating DB session : {e}")
 
     try:
         kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
         if not kb:
-            logging.error(f"Knowledge Base with ID {kb_id} not found")
+            logger.error(f"Knowledge Base with ID {kb_id} not found")
             db.close()
             raise HTTPException(status_code=404, detail="Knowledge Base not found")
     except Exception as e:
-        logging.error(f"Error fetching Knowledge Base: {e}")
+        logger.error(f"Error fetching Knowledge Base: {e}")
         try:
             db.close()
         except Exception as e:
-            logging.error(f"Error rolling back DB session: {e}")
+            logger.error(f"Error rolling back DB session: {e}")
             raise HTTPException(status_code=500, detail=f"Error closing DB session : {e}")
         raise HTTPException(status_code=404, detail=f"Error manipulating DB session : {e}")
 
     try:
         vector_store = db.query(VectorStore).filter(VectorStore.id == vector_store_id).first()
         if not vector_store:
-            logging.error(f"VectorStore with ID {vector_store_id} not found")
+            logger.error(f"VectorStore with ID {vector_store_id} not found")
             db.close()
             raise HTTPException(status_code=404, detail="VectorStore not found")
     except Exception as e:
-        logging.error(f"Error fetching VectorStore: {e}")
+        logger.error(f"Error fetching VectorStore: {e}")
         try:
             db.close()
         except Exception as e:
-            logging.error(f"Error rolling back DB session: {e}")
+            logger.error(f"Error rolling back DB session: {e}")
             raise HTTPException(status_code=500, detail=f"Error closing DB session : {e}")
         raise HTTPException(status_code=404, detail=f"Error manipulating DB session : {e}")
 
     try:
-        logging.info(f"Creating Index for Knowledge Base {kb.id} with {len(texts)} texts")
+        logger.info(f"Creating Index for Knowledge Base {kb.id} with {len(texts)} texts")
         try:
             index = faiss.IndexFlatL2(384)
             index = faiss.IndexIDMap(index)
         except Exception as e:
-            logging.error(f"Error creating FAISS index: {e}")
+            logger.error(f"Error creating FAISS index: {e}")
             raise
-        logging.info(f"Index created with dimension: {index.d}")
+        logger.info(f"Index created with dimension: {index.d}")
 
         # Prepare vectors data JSON for the VectorStore
         vectors_data = {}
@@ -439,31 +435,31 @@ def init_new_kb_assistant(kb_job_id: int, new_llm_id: int, kb_id: int, vector_st
 
         vector_store.vectors_data = vectors_data
         db.commit()
-        logging.info(f"VectorStore created with ID: {vector_store.id}, containing {len(vectors_data)} vectors")
+        logger.info(f"VectorStore created with ID: {vector_store.id}, containing {len(vectors_data)} vectors")
 
-        logging.info(f"Storing index to {INDEXES_DIR}/{kb.id}.index")
+        logger.info(f"Storing index to {INDEXES_DIR}/{kb.id}.index")
         try:
             faiss.write_index(index, os.path.join(INDEXES_DIR, f"{kb.id}.index"))
             kb.index_path = os.path.join(INDEXES_DIR, f"{kb.id}.index")
             db.commit()
-            logging.info(f"FAISS index written to disk at {kb.index_path}")
+            logger.info(f"FAISS index written to disk at {kb.index_path}")
         except:
-            logging.error(f"Error writing FAISS index to disk at {kb.index_path}")
+            logger.error(f"Error writing FAISS index to disk at {kb.index_path}")
             raise
 
-        logging.info(f"Storing Knowledge Base index at {kb.index_path}")
+        logger.info(f"Storing Knowledge Base index at {kb.index_path}")
 
         # ========= VERIFS BEFORE COMMIT =========
         if os.path.exists(kb.index_path):
-            logging.info(f"✅ FAISS index file exists at {kb.index_path}")
+            logger.info(f"✅ FAISS index file exists at {kb.index_path}")
             try:
                 test_index = faiss.read_index(kb.index_path)
-                logging.info(f"✅ FAISS index verification: {test_index.ntotal} vectors, dimension {test_index.d}")
+                logger.info(f"✅ FAISS index verification: {test_index.ntotal} vectors, dimension {test_index.d}")
             except Exception as e:
-                logging.error(f"❌ FAISS index verification failed: {e}")
+                logger.error(f"❌ FAISS index verification failed: {e}")
                 raise
         else:
-            logging.error(f"❌ FAISS index file not found at {kb.index_path}")
+            logger.error(f"❌ FAISS index file not found at {kb.index_path}")
             raise
         
         try:
@@ -471,29 +467,29 @@ def init_new_kb_assistant(kb_job_id: int, new_llm_id: int, kb_id: int, vector_st
             db.refresh(new_llm)
             db.refresh(vector_store)
             db.flush()
-            logging.info(f"✅ Database verification:")
-            logging.info(f"   - KB ID: {kb.id}")
-            logging.info(f"   - LLM ID: {new_llm.id}, kb_id: {new_llm.kb_id}")
-            logging.info(f"   - VectorStore ID: {vector_store.id}, vectors count: {len(vector_store.vectors_data)}")
+            logger.info(f"✅ Database verification:")
+            logger.info(f"   - KB ID: {kb.id}")
+            logger.info(f"   - LLM ID: {new_llm.id}, kb_id: {new_llm.kb_id}")
+            logger.info(f"   - VectorStore ID: {vector_store.id}, vectors count: {len(vector_store.vectors_data)}")
         except Exception as e:
-            logging.error(f"❌ Database verification failed: {e}")
+            logger.error(f"❌ Database verification failed: {e}")
             raise
 
         try:
-            logging.info("Starting minimal search test...")
+            logger.info("Starting minimal search test...")
             
             test_index = faiss.read_index(kb.index_path)
-            logging.info(f"✅ Index reload successful: {test_index.ntotal} vectors")
+            logger.info(f"✅ Index reload successful: {test_index.ntotal} vectors")
             
             if test_index.ntotal > 0:
-                first_vector = np.zeros((1, test_index.d), dtype='float32')
+                first_vector = numpy.zeros((1, test_index.d), dtype='float32')
                 D, I = test_index.search(first_vector, 1)
-                logging.info(f"✅ Basic search successful: found ID {I[0][0]}")
+                logger.info(f"✅ Basic search successful: found ID {I[0][0]}")
             else:
-                logging.warning("⚠️ Index is empty")
+                logger.warning("⚠️ Index is empty")
                 
         except Exception as e:
-            logging.error(f"❌ Search test failed: {e}")
+            logger.error(f"❌ Search test failed: {e}")
             raise
         
         kb_job.status = "completed"
@@ -519,13 +515,13 @@ def init_new_kb_assistant(kb_job_id: int, new_llm_id: int, kb_id: int, vector_st
 
             status = "failed"
             error_msg = f"Error creating KB Assistant:\n{str(e)}"
-            logging.error(error_msg)
+            logger.error(error_msg)
             kb_job.status = status
             kb_job.error_message = error_msg
             kb_job.updated_at = datetime.utcnow()
             db.commit()
         except Exception as ex:
-            logging.error(f"Error updating KBJob status: {ex}")
+            logger.error(f"Error updating KBJob status: {ex}")
 
     finally:
         db.close()

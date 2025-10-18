@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
-from app.entities.StartupVariables import StartupVariables
-from app.database import get_db
+from fastapi import Depends, HTTPException
+from src.core.api import startup_router as router
+
+from src.database import get_db
 from sqlalchemy.orm import Session
 
-router = APIRouter(prefix="/main_window", tags=["main_window"])
+from src.entities.StartupVariables import StartupVariables
 
-@router.get("/main_window/welcome-popup")
+@router.get("/welcome-popup")
 async def get_welcome_popup_status(
     db: Session = Depends(get_db)
 ):

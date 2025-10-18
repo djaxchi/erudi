@@ -7,7 +7,6 @@ export default function HeaderBar({
   initialTemperature = 0.2,
   initialTopP = 0.2,
   initialMaxTokens = 1024,
-  initialQuantize = false,
   onApply,
   onCustomizePrompt,
   disabled = false,
@@ -19,7 +18,6 @@ export default function HeaderBar({
   const [temperature, setTemperature] = useState(initialTemperature);
   const [topP, setTopP] = useState(initialTopP);
   const [maxTokens, setMaxTokens] = useState(initialMaxTokens);
-  const [quantize, setQuantize] = useState(initialQuantize);
 
   // Sync internal state with props when they change
   useEffect(() => {
@@ -33,10 +31,6 @@ export default function HeaderBar({
   useEffect(() => {
     setMaxTokens(initialMaxTokens);
   }, [initialMaxTokens]);
-
-  useEffect(() => {
-    setQuantize(initialQuantize);
-  }, [initialQuantize]);
 
   const rootRef = useRef(null);
   const selectRef = useRef(null);
@@ -86,7 +80,7 @@ export default function HeaderBar({
   const isNarrow = isSm || isXs;
 
   const handleApply = () => {
-    onApply?.({ temperature, topP, maxTokens, quantize });
+    onApply?.({ temperature, topP, maxTokens });
     setIsOpen(false);
   };
 
@@ -98,8 +92,6 @@ export default function HeaderBar({
         ? "Controls word variety. Lower = predictable, higher = diverse."
         : id === "prompt"
         ? "Customize system instructions that guide AI behavior."
-        : id === "quantize"
-        ? "Lower memory usage: faster inference but may reduce response quality."
         : "";
     const widthClass = isXs ? "w-40" : isSm ? "w-52" : "w-64";
     const iconSize = isXs ? "w-3 h-3" : isSm ? "w-3.5 h-3.5" : "w-4 h-4";

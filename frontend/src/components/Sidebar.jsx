@@ -66,7 +66,7 @@ export default function Sidebar({
         </button>
       ) : (
         <Link
-          to="/main_window/models"
+          to="/erudi/models"
           className={`w-full flex justify-center items-center py-6 border-l-4 ${
             isModelsActive ? "border-green-500" : "border-transparent"
           }`}
@@ -112,7 +112,7 @@ export default function Sidebar({
         </button>
       ) : (
         <Link
-          to="/main_window/chat"
+          to="/erudi/chat"
           className={`w-full flex justify-center items-center py-6 border-l-4 ${
             isChatActive ? "border-green-500" : "border-transparent"
           }`}
@@ -125,7 +125,7 @@ export default function Sidebar({
         </Link>
       )}
       <Link
-        to="/main_window/arena"
+        to="/erudi/arena"
         className={`w-full flex justify-center items-center py-6 border-l-4 ${
           isArenaActive ? "border-green-500" : "border-transparent"
         }`}
@@ -137,7 +137,7 @@ export default function Sidebar({
         />
       </Link>
       <Link
-        to="/main_window/attach_knowledge_base"
+        to="/erudi/attach_knowledge_base"
         className={`w-full flex justify-center items-center py-6 border-l-4 ${
           isKnowledgeBaseActive ? "border-green-500" : "border-transparent"
         }`}

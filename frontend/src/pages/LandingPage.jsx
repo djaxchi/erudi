@@ -11,8 +11,7 @@ import HardwareLoadingPopup from "../components/LoadingPopup";
 import { RefreshCcw, Search, MonitorCheck, SearchCode, Blocks, Star, Users } from "lucide-react";
 import WelcomeModal from "../components/modals/WelcomeModal";
 import logoErudi from "../img/logoerudifinal.png";
-
-const API_BASE_URL = "http://127.0.0.1:8000";
+import { API_BASE_URL } from "../config/api";
 
 export default function LandingPage() {
   const { open } = useDownloadModal();
@@ -62,7 +61,7 @@ export default function LandingPage() {
     // To know if it should spawn the welcome popup
     const fetchWelcomePopupStatus = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/main_window/welcome-popup`);
+        const response = await fetch(`${API_BASE_URL}/startup/welcome-popup`);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -97,7 +96,7 @@ fetchWelcomePopupStatus();
       setModelsLoading(true);
       try {
         // Fetch local models
-        const localResponse = await fetch(`${API_BASE_URL}/main_window/llms/local`);
+        const localResponse = await fetch(`${API_BASE_URL}/llms/local`);
         if (localResponse.ok) {
           const localData = await localResponse.json();
           // Transform API data to match our UI format
@@ -119,7 +118,7 @@ fetchWelcomePopupStatus();
         }
 
         // Fetch remote models
-        const remoteResponse = await fetch(`${API_BASE_URL}/main_window/llms/remote`);
+        const remoteResponse = await fetch(`${API_BASE_URL}/llms/remote`);
         if (remoteResponse.ok) {
           const remoteData = await remoteResponse.json();
           // Transform API data to match our UI format
@@ -184,7 +183,7 @@ fetchWelcomePopupStatus();
   const reloadLocalModels = async () => {
     setModelsLoading(true);
     try {
-      const url = `${API_BASE_URL}/main_window/llms/local`;
+      const url = `${API_BASE_URL}/llms/local`;
       const res = await fetch(url);
       if (res.ok) {
         const localData = await res.json();
@@ -353,12 +352,12 @@ fetchWelcomePopupStatus();
 
   const handleChat = (model) => {
     // Navigate to chat page with model parameter
-    navigate(`/main_window/chat?model=${encodeURIComponent(model.name)}`);
+    navigate(`/erudi/chat?model=${encodeURIComponent(model.name)}`);
   };
 
   const handleKnowledgeBase = (model) => {
     // Navigate to knowledge base page with model parameter
-    navigate(`/main_window/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
+    navigate(`/erudi/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
   };
 
   const handleDelete = (model) => {
@@ -373,7 +372,7 @@ fetchWelcomePopupStatus();
     setDeleteConfirmation({ show: false, model: null });
     
     try {
-      const response = await fetch(`${API_BASE_URL}/main_window/llms/${modelToDelete.id}`, {
+      const response = await fetch(`${API_BASE_URL}/llms/${modelToDelete.id}`, {
         method: 'DELETE',
       });
       

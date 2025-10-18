@@ -4,7 +4,7 @@
 import os, shutil, datetime
 
 from src.core.logging import logger
-from src.core.config import (
+from backend.src.core.vars import (
     HF_TOKEN
 )
 

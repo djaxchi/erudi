@@ -9,6 +9,7 @@ import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import { DownloadModalProvider } from "./contexts/DownloadModalContext";
 import { KnowledgeBaseProvider } from "./contexts/KnowledgeBaseContext";
 import LoadingScreen from "./components/LoadingScreen";
+import { API_BASE_URL } from "./config/api";
 
 export default function App() {
   const [isBackendReady, setIsBackendReady] = useState(false);
@@ -17,7 +18,7 @@ export default function App() {
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        const response = await fetch('http://127.0.0.1:8000/main_window/health', {
+        const response = await fetch(`${API_BASE_URL}/health`, {
           method: 'GET',
         });
         
@@ -41,15 +42,15 @@ export default function App() {
         <KnowledgeBaseProvider>
           <Router>
             <Routes>
-              <Route path="/" element={<Navigate to="/main_window/models" replace />} />
-              <Route path="/main_window" element={<Navigate to="/main_window/models" replace />} />
-              <Route path="*" element={<Navigate to="/main_window/models" replace />} />
-              <Route path="/main_window/chat" element={<ChatPage />} />
-              <Route path="/main_window/models" element={<LandingPage />} />
-              <Route path="/main_window/conversations/:id" element={<ConversationPage />} />
-              <Route path="/main_window/new-training" element={<TrainingPage />} />
-              <Route path="/main_window/arena" element={<ArenaPage />} />
-              <Route path="/main_window/attach_knowledge_base" element={<KnowledgeBasePage />} />
+              <Route path="/" element={<Navigate to="/erudi/models" replace />} />
+              <Route path="/erudi" element={<Navigate to="/erudi/models" replace />} />
+              <Route path="*" element={<Navigate to="/erudi/models" replace />} />
+              <Route path="/erudi/chat" element={<ChatPage />} />
+              <Route path="/erudi/models" element={<LandingPage />} />
+              <Route path="/erudi/conversations/:id" element={<ConversationPage />} />
+              <Route path="/erudi/new-training" element={<TrainingPage />} />
+              <Route path="/erudi/arena" element={<ArenaPage />} />
+              <Route path="/erudi/attach_knowledge_base" element={<KnowledgeBasePage />} />
             </Routes>
           </Router>
         </KnowledgeBaseProvider>
