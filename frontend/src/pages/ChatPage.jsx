@@ -27,7 +27,6 @@ export default function ChatPage() {
     temperature: 1.0,
     topP: 0.95,
     maxTokens: 1024,
-    quantize: false,
   });
   const [customPrompt, setCustomPrompt] = useState("");
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -54,7 +53,7 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/main_window/llms/local")
+    fetch("http://127.0.0.1:8000/erudi/llms/local")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
@@ -73,7 +72,7 @@ export default function ChatPage() {
   useEffect(() => {
     const fetchConversations = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/conversations");
+        const res = await fetch("http://127.0.0.1:8000/erudi/conversations");
         const data = await res.json();
         const sorted = data.sort(
           (a, b) =>
@@ -113,7 +112,7 @@ export default function ChatPage() {
   }, [searchParams, models]); // Re-run when searchParams or models change
 
   const handleConversationClick = (id) => {
-    navigate(`/main_window/conversation/${id}`);
+    navigate(`/erudi/conversation/${id}`);
   };
 
   const handleAsk = useCallback(
@@ -125,7 +124,7 @@ export default function ChatPage() {
       }
       try {
         // 1. Create a new conversation with the specified parameters
-        const res = await fetch("http://127.0.0.1:8000/conversations", {
+        const res = await fetch("http://127.0.0.1:8000/erudi/conversations/", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -133,7 +132,6 @@ export default function ChatPage() {
             temperature: settings.temperature,
             top_p: settings.topP,
             max_tokens: settings.maxTokens,
-            quantize: settings.quantize,
             custom_prompt: customPrompt,
           }),
         });
@@ -141,7 +139,7 @@ export default function ChatPage() {
         const conversation = await res.json();
 
         // 2. Redirect to ConversationPage and pass the question AND parameters
-        navigate(`/main_window/conversations/${conversation.id}`, {
+        navigate(`/erudi/conversations/${conversation.id}`, {
           state: {
             initialQuestion: question,
             initialSettings: settings,
@@ -170,7 +168,7 @@ export default function ChatPage() {
 
   const handleRefreshConversations = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/conversations");
+      const res = await fetch("http://127.0.0.1:8000/erudi/conversations/");
       const data = await res.json();
       const sorted = data.sort(
         (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
@@ -193,8 +191,6 @@ export default function ChatPage() {
         ? "Controls word variety. Lower = predictable, higher = diverse."
         : id === "prompt"
         ? "Customize system instructions that guide AI behavior."
-        : id === "quantize"
-        ? "Lower memory usage: faster inference but may reduce response quality."
         : "";
     return (
       <Tooltip content={text} side={side} width="w-64">

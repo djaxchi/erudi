@@ -1,0 +1,75 @@
+from pydantic import BaseModel
+from datetime import datetime
+from typing import List, Optional
+
+class MessageBase(BaseModel):
+    sender: str
+    content: str
+
+class MessageCreate(MessageBase):
+    pass
+
+class MessageResponse(MessageBase):
+    id: int
+    conversation_id: int
+    timestamp: datetime
+    starred: bool
+
+    class Config:
+        from_attributes = True
+
+class ConversationBase(BaseModel):
+    llm_id: int
+
+class ConversationCreate(ConversationBase):
+    temperature: Optional[float] = 0.2
+    top_p: Optional[float] = 0.5
+    max_tokens: Optional[int] = 1024
+    custom_prompt: Optional[str] = ""
+
+class ConversationUpdate(ConversationBase):
+    """Schéma utilisé pour les mises à jour partielles (PATCH)."""
+
+    llm_id: Optional[int] = None
+    name: Optional[str] = None
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_tokens: Optional[int] = None
+    custom_prompt: Optional[str] = None
+
+class ConversationResponse(ConversationBase):
+    id: int
+    created_at: datetime
+    last_message_time: datetime
+    name: str
+    temperature: float
+    top_p: float
+    max_tokens: int
+    custom_prompt: str
+
+
+    class Config:
+        from_attributes = True
+
+class ConversationWithMessagesResponse(ConversationResponse):
+    messages: List[MessageResponse]
+
+class ConversationQuery(BaseModel):
+    question: str 
+    language: Optional[str] = None         
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    max_new_tokens: Optional[int] = None
+    custom_prompt: Optional[str] = None
+    n_relevent_msgs_to_get: Optional[int] = None
+    n_last_turns_to_get: Optional[int] = None
+
+class ConversationQueryResponse(BaseModel):
+    id: int
+    link: str
+    
+    class Config:
+        from_attributes = True
+
+class ConversationDeleteBulk(BaseModel):
+    conversation_ids: List[int]
