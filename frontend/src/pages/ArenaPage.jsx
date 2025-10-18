@@ -7,13 +7,13 @@ import { Trash, Plus } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import MarkdownRenderer from "../components/MarkdownRenderer";
+import API_BASE_URL from "../config/api.js"
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
   temperature: 1.0,
   topP: 0.95,
   maxTokens: 512,
-  quantize: false,
   customPrompt: "",
 };
 
@@ -24,7 +24,6 @@ function makePanel(id, modelName = "", models = []) {
     temperature: DEFAULT_SETTINGS.temperature,
     topP: DEFAULT_SETTINGS.topP,
     maxTokens: DEFAULT_SETTINGS.maxTokens,
-    quantize: DEFAULT_SETTINGS.quantize,
     customPrompt: DEFAULT_SETTINGS.customPrompt,
     messages: [],
     showPromptModal: false,
@@ -51,7 +50,7 @@ export default function ArenaPage() {
   }, []);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/main_window/llms/local")
+    fetch(`${API_BASE_URL}/llms/local`)
       .then((res) => res.json())
       .then((data) => {
         setModels(data);
@@ -153,7 +152,6 @@ export default function ArenaPage() {
         temperature: panel.temperature,
         topP: panel.topP,
         maxNewTokens: panel.maxTokens,
-        quantize: panel.quantize,
         customPrompt: panel.customPrompt,
         onStreamChunk: (chunk) => {
           buffersRef.current[panel.id].push(chunk);
@@ -237,7 +235,6 @@ export default function ArenaPage() {
             initialTemperature={panel.temperature}
             initialTopP={panel.topP}
             initialMaxTokens={panel.maxTokens}
-            initialQuantize={panel.quantize}
             onApply={(s) => handleSettingsChange(panel.id, s)}
             onCustomizePrompt={() => handleCustomizePrompt(panel.id, true)}
             disabled={loading}

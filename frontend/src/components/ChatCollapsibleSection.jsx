@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ErrorModal from "./modals/ErrorModal";
+import API_BASE_URL from "../config/api.js"
 
 export default function ChatCollapsibleSection({
   title,
@@ -32,7 +33,7 @@ export default function ChatCollapsibleSection({
 
   const renameConversation = async (id, name) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/conversations/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/conversations/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -50,7 +51,7 @@ export default function ChatCollapsibleSection({
 
   const deleteConversation = async (id) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/conversations/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/conversations/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
@@ -84,7 +85,7 @@ export default function ChatCollapsibleSection({
             onClick={() => {
               if (!isEditing) {
                 onSelect?.(conv.id);
-                navigate(`/conversations/${conv.id}`);
+                navigate(`erudi/conversations/${conv.id}`);
               }
             }}
             className={`relative group py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${
@@ -182,7 +183,7 @@ export default function ChatCollapsibleSection({
             className="w-6 h-6 hover:opacity-70 hover:bg-gray-600/30 rounded-full p-1 -m-1 cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
-              navigate('/main_window/chat');
+              navigate('/erudi/chat');
             }}
           />
         </div>

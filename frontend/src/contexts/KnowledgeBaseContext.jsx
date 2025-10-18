@@ -9,9 +9,9 @@ import React, {
 import ReactDOM from 'react-dom'
 import SpinnerDots from '../components/Spinner'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { API_BASE_URL } from '../config/api'
 
 const KnowledgeBaseContext = createContext()
-const API_BASE = 'http://127.0.0.1:8000'
 
 export function KnowledgeBaseProvider({ children }) {
   const [task, setTask] = useState(null)
@@ -48,7 +48,7 @@ export function KnowledgeBaseProvider({ children }) {
 
     try {
       // Start the knowledge base creation API call
-      const response = await fetch(`${API_BASE}/knowledge_base/create`, {
+      const response = await fetch(`${API_BASE_URL}/knowledge_base/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -91,7 +91,7 @@ export function KnowledgeBaseProvider({ children }) {
 
   const checkCreationStatus = useCallback(async (assistantId) => {
     try {
-      const res = await fetch(`${API_BASE}/knowledge_base/${assistantId}/status`)
+      const res = await fetch(`${API_BASE_URL}/knowledge_base/${assistantId}/status`)
       if (!res.ok) throw new Error(`Server responded with ${res.status}: ${res.statusText}`)
       const data = await res.json()
       

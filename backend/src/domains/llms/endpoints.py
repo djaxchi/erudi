@@ -1,57 +1,42 @@
-import asyncio
-from datetime import datetime
-import os
-from collections import defaultdict
-import shutil
-import asyncio
+import asyncio, os, shutil, asyncio
+from typing import List
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ..database import SessionLocal, get_db
-from ..entities.Llm import Llm
-from ..llms.schemas import LLMCreate, LLMResponse
-from ..entities.DownloadJob import DownloadJobModel
-from ..schemas import DownloadJobResponse
+from src.database.core import get_db, SessionLocal
 
-from ..llms.services import download_llm
-import logging
+from src.entities.Llm import Llm
+from src.entities.DownloadJob import DownloadJobModel
+from src.domains.llms.schemas import LLMCreate, LLMResponse, DownloadJobResponse
+from src.domains.llms.services import download_llm
 
-from typing import List
+from src.core.logging import logger
+from src.core.api import download_llm_router as router
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Capture the main asyncio event loop at import
-MAIN_LOOP = asyncio.get_event_loop()
-
-# Shared status queues per llm_id
-_status_queues: dict[int, asyncio.Queue[str]] = defaultdict(lambda: asyncio.Queue())
-
-@router.get("/llms", response_model=List[LLMResponse])
+@router.get("/", response_model=List[LLMResponse])
 async def get_all_llms(db: Session = Depends(get_db)):
     llms = db.query(Llm).all()
     return llms
 
-@router.get("/llms/local", response_model=List[LLMResponse])
+@router.get("/local", response_model=List[LLMResponse])
 async def get_local_llms(db: Session = Depends(get_db)):
     llms = db.query(Llm).filter(Llm.local == 1).all()
     return llms
 
-@router.get("/llms/remote", response_model=List[LLMResponse])
+@router.get("/remote", response_model=List[LLMResponse])
 async def get_remote_llms(db: Session = Depends(get_db)):
     llms = db.query(Llm).filter(Llm.local == 0).all()
     return llms
 
-@router.get("/llms/{llm_id}", response_model=LLMResponse)
+@router.get("/{llm_id}", response_model=LLMResponse)
 async def get_llm_by_id(llm_id: int, db: Session = Depends(get_db)):
     llm = db.query(Llm).filter(Llm.id == llm_id).first()
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     return llm
 
-@router.put("/llms/{llm_id}", response_model=LLMResponse)
+@router.put("/{llm_id}", response_model=LLMResponse)
 async def update_llm(llm_id: int, llm: LLMCreate, db: Session = Depends(get_db)):
     db_llm = db.query(Llm).filter(Llm.id == llm_id).first()
     if not db_llm:
@@ -62,7 +47,7 @@ async def update_llm(llm_id: int, llm: LLMCreate, db: Session = Depends(get_db))
     db.refresh(db_llm)
     return db_llm
 
-@router.delete("/llms/{llm_id}")
+@router.delete("/{llm_id}")
 async def delete_llm(llm_id: int, db: Session = Depends(get_db)):
     db_llm = db.query(Llm).filter(Llm.id == llm_id).first()
     if not db_llm:
@@ -75,14 +60,14 @@ async def delete_llm(llm_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "LLM deleted successfully"}
 
-@router.get("/llms/search", response_model=List[LLMResponse])
+@router.get("/search", response_model=List[LLMResponse])
 async def search_llms(name: str, db: Session = Depends(get_db)):
     llms = db.query(Llm).filter(Llm.name.ilike(f"%{name}%")).all()
     return llms
 
 
 @router.post(
-    "/llms/{llm_id}/download",
+    "/{llm_id}/download",
     response_model=DownloadJobResponse,
     status_code=200,
 )

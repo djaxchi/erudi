@@ -2,7 +2,7 @@ from fastapi import FastAPI, APIRouter
 from contextlib import asynccontextmanager
 from src.database.seed import createTables, startup_populate_database
 from src.core.exceptions import AppBaseException, app_base_exception_handler
-from src.core.config import LLM_Engine
+from backend.src.core.vars import LLM_Engine
 from src.core.logging import logger
 
 download_llm_router = APIRouter(prefix="/llms", tags=["llms"])

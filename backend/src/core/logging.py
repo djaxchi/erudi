@@ -1,7 +1,7 @@
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
-from src.core.config import LOG_FILE, MAX_FILE_SIZE, BACKUP_COUNT
+from backend.src.core.vars import LOG_FILE, MAX_FILE_SIZE, BACKUP_COUNT
 
 # ----------------------------
 # Formatter

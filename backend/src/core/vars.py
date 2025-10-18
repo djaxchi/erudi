@@ -9,6 +9,7 @@ from src.engines.base_engine import BaseEngine
 
 load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN")
+INDEXES_DIR = os.getenv("INDEXES_DIR", "")
 
 LLM_Engine = BaseEngine.get_engine()
 

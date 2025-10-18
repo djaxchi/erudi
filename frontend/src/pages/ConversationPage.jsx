@@ -8,6 +8,7 @@ import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import { Copy, Check, Star } from "lucide-react";
 import TypingIndicator from "../components/TypingIndicator";
 import MarkdownRenderer from "../components/MarkdownRenderer";
+import API_BASE_URL from "../config/api.js"
 
 export default function ConversationPage() {
   const { id } = useParams();
@@ -31,7 +32,6 @@ export default function ConversationPage() {
     temperature: 0.2,
     topP: 0.5,
     maxTokens: 1024,
-    quantize: false,
   });
   const [collapsed, setCollapsed] = useState(false);
   const [firstReplyPending, setFirstReplyPending] = useState(false);
@@ -50,7 +50,7 @@ export default function ConversationPage() {
   };
 
   useEffect(() => {
-    fetch(`http://127.0.0.1:8000/main_window/llms/local`)
+    fetch(`${API_BASE_URL}/llms/local`)
       .then(res => res.json())
       .then(data => {
         setModels(data);
@@ -69,7 +69,7 @@ export default function ConversationPage() {
     const model = models.find(m => m.name === modelName);
     if (!model) return;
     // Call API to update conversation's llm_id
-    await fetch(`http://127.0.0.1:8000/conversations/${id}`, {
+    await fetch(`${API_BASE_URL}/conversations/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ llm_id: model.id }),
@@ -81,14 +81,13 @@ export default function ConversationPage() {
   // Function to save conversation parameters
   const saveConversationParameters = async (newSettings, newCustomPrompt) => {
     try {
-      await fetch(`http://127.0.0.1:8000/conversations/${id}`, {
+      await fetch(`${API_BASE_URL}/conversations/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           temperature: newSettings.temperature,
           top_p: newSettings.topP,
           max_tokens: newSettings.maxTokens,
-          quantize: newSettings.quantize,
           custom_prompt: newCustomPrompt || customPrompt,
         }),
       });
@@ -100,8 +99,8 @@ export default function ConversationPage() {
   const fetchMessagesAndConversations = useCallback(async () => {
     try {
       const [msgRes, convRes] = await Promise.all([
-        fetch(`http://127.0.0.1:8000/conversations/${id}/fetch_messages`),
-        fetch(`http://127.0.0.1:8000/conversations`),
+        fetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`),
+        fetch(`${API_BASE_URL}/conversations/`),
       ]);
       const msgs = await msgRes.json();
       // initialize starred state from backend
@@ -155,7 +154,7 @@ export default function ConversationPage() {
           (async () => {
             try {
               const titleRes = await fetch(
-                `http://127.0.0.1:8000/conversations/${id}/generate_title`,
+                `${API_BASE_URL}/conversations/${id}/generate_title`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -195,7 +194,7 @@ export default function ConversationPage() {
         }
 
         const responseRes = await fetch(
-          `http://127.0.0.1:8000/conversations/${id}/query`,
+          `${API_BASE_URL}/conversations/${id}/query`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -204,7 +203,6 @@ export default function ConversationPage() {
               temperature: settingsToUse.temperature,
               top_p: settingsToUse.topP,
               max_new_tokens: settingsToUse.maxTokens,
-              quantize: settingsToUse.quantize,
               custom_prompt: customPromptToUse,
             }),
           }
@@ -250,7 +248,7 @@ export default function ConversationPage() {
             );
             
             try {
-              await fetch(`http://127.0.0.1:8000/conversations/${id}/store_error_message`, {
+              await fetch(`${API_BASE_URL}/conversations/${id}/store_error_message`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
               });
@@ -262,7 +260,7 @@ export default function ConversationPage() {
           console.error("Server error during response generation:", responseRes.status);
           
           try {
-            await fetch(`http://127.0.0.1:8000/conversations/${id}/store_error_message`, {
+            await fetch(`${API_BASE_URL}/conversations/${id}/store_error_message`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
             });
@@ -311,9 +309,9 @@ export default function ConversationPage() {
     const loadConversationData = async () => {
       try {
         const [convRes, msgRes, convDetailRes] = await Promise.all([
-          fetch("http://127.0.0.1:8000/conversations"),
-          fetch(`http://127.0.0.1:8000/conversations/${id}/fetch_messages`),
-          fetch(`http://127.0.0.1:8000/conversations/${id}`),
+          fetch(`${API_BASE_URL}/conversations/`),
+          fetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`),
+          fetch(`${API_BASE_URL}/conversations/${id}`),
         ]);
 
         // Load conversations
@@ -340,7 +338,6 @@ export default function ConversationPage() {
             temperature: conversation.temperature,
             topP: conversation.top_p,
             maxTokens: conversation.max_tokens,
-            quantize: conversation.quantize || false,
           });
           setCustomPrompt(conversation.custom_prompt || "");
 
@@ -377,7 +374,7 @@ export default function ConversationPage() {
         navigate(location.pathname, { replace: true, state: {} });
       } else if (!location.state || !location.state.initialQuestion) {
         try {
-          const msgRes = await fetch(`http://127.0.0.1:8000/conversations/${id}/fetch_messages`);
+          const msgRes = await fetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`);
           const msgs = await msgRes.json();
           // initialize starred state on initial load
           const starredMap = {};
@@ -448,7 +445,7 @@ export default function ConversationPage() {
   }, [messages, userScrolledUp]);
 
   const handleConversationClick = (newId) =>
-    navigate(`/main_window/conversations/${newId}`);
+    navigate(`erudi/conversations/${newId}`);
 
   const handleRename = (cid, newName) =>
     setConversations((prev) =>
@@ -457,17 +454,17 @@ export default function ConversationPage() {
 
   const handleDelete = async (cid) => {
     setConversations((prev) => prev.filter((conv) => conv.id !== cid));
-    await fetch(`http://127.0.0.1:8000/conversations/${cid}`, { method: "DELETE" });
+    await fetch(`${API_BASE_URL}/conversations/${cid}`, { method: "DELETE" });
     await fetchMessagesAndConversations();
     if (cid === Number(id)) {
-      navigate("/main_window/chat");
+      navigate("/erudi/chat");
     }
   };
 
   // Toggle star state and send appropriate POST
   const toggleStar = async (msgId, content) => {
     const isStarred = starredIds[msgId];
-    const url = `http://127.0.0.1:8000/conversations/${isStarred ? 'unstar_message' : 'star_message'}`;
+    const url = `${API_BASE_URL}/conversations/${isStarred ? 'unstar_message' : 'star_message'}`;
     try {
       await fetch(url, {
         method: 'POST',
@@ -518,7 +515,6 @@ export default function ConversationPage() {
             initialTemperature={settings.temperature}
             initialTopP={settings.topP}
             initialMaxTokens={settings.maxTokens}
-            initialQuantize={settings.quantize}
             onApply={(newSettings) => {
               setSettings(newSettings);
               saveConversationParameters(newSettings, customPrompt);

@@ -10,9 +10,9 @@ import ReactDOM from 'react-dom'
 import ConfirmationModal from '../components/modals/ConfirmationModal'
 import SpinnerDots from '../components/Spinner'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
+import API_BASE_URL from "../config/api.js"
 
 const DownloadModalContext = createContext()
-const API_BASE = 'http://127.0.0.1:8000'
 
 // Helper function to format time with appropriate units
 const formatTimeLeft = (seconds) => {
@@ -69,8 +69,8 @@ export function DownloadModalProvider({ children }) {
   const checkDownloadStatus = useCallback(async (id, llmId = null) => {
     try {
       const endpoint = isFineTuning 
-        ? `${API_BASE}/training/${llmId}/status` 
-        : `${API_BASE}/main_window/downloads/${id}/status`
+        ? `${API_BASE_URL}/training/${llmId}/status` 
+        : `${API_BASE_URL}/llms/downloads/${id}/status`
       
       const res = await fetch(endpoint)
       if (!res.ok) throw new Error(`Server responded with ${res.status}: ${res.statusText}`)
@@ -120,7 +120,7 @@ export function DownloadModalProvider({ children }) {
     try {
       if (isFineTuning) {
         // Start the fine-tuning API call
-        const response = await fetch(`${API_BASE}/train`, {
+        const response = await fetch(`${API_BASE_URL}/train`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -148,7 +148,7 @@ export function DownloadModalProvider({ children }) {
         }, 2000)
       } else {
         const res = await fetch(
-          `${API_BASE}/main_window/llms/${model.id}/download`,
+          `${API_BASE_URL}/llms/${model.id}/download`,
           { method: 'POST' }
         )
         if (!res.ok) {

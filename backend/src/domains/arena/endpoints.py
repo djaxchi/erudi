@@ -9,7 +9,7 @@ from src.database.core import get_db
 
 from src.domains.arena.schemas import ArenaQueryPayload
 from src.entities.Llm import Llm
-from src.core.config import LLM_Engine
+from backend.src.core.vars import LLM_Engine
 from src.core.logging import logger
 from src.utils.inference_utils import (
     get_prompting_strategy,

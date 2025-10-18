@@ -14,8 +14,7 @@ import {
   Search,
 } from "lucide-react";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
-
-const API_BASE_URL = "http://127.0.0.1:8000";
+import { API_BASE_URL } from "../config/api";
 
 // Icon mapping for different section types
 const getIconForSection = (title) => {
@@ -65,8 +64,8 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
       try {
         const url =
           title === "Local Models"
-            ? `${API_BASE_URL}/main_window/llms/local`
-            : `${API_BASE_URL}/main_window/llms/remote`;
+            ? `${API_BASE_URL}/llms/local`
+            : `${API_BASE_URL}/llms/remote`;
         const res = await fetch(url);
         if (res.ok) {
           setModels(await res.json());
@@ -85,7 +84,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
   const reloadLocalModels = async () => {
     setLoading(true);
     try {
-      const url = `${API_BASE_URL}/main_window/llms/local`;
+      const url = `${API_BASE_URL}/llms/local`;
       const res = await fetch(url);
       if (res.ok) setModels(await res.json());
       else setErrorMessage("Failed to fetch local models. Please try again and contact the Erudi team for support.");
@@ -128,7 +127,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
     setDeleteConfirmation({ show: false, model: null });
     
     try {
-      const response = await fetch(`${API_BASE_URL}/main_window/llms/${modelToDelete.id}`, {
+      const response = await fetch(`${API_BASE_URL}/llms/${modelToDelete.id}`, {
         method: 'DELETE',
       });
       

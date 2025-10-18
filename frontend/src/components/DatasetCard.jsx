@@ -3,8 +3,7 @@ import DragDropArea from "./DragDropArea";
 import { Loader, X } from "lucide-react";
 import ErrorModal from "./modals/ErrorModal";
 import ComingSoonModal from "./modals/ComingSoonModal";
-
-const API_BASE = "http://localhost:8000";
+import API_BASE_URL from "../config/api.js"
 
 /* ─────────────── Recap small table ─────────────── */
 function RecapTable({ recap }) {
@@ -74,7 +73,7 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
   useEffect(() => {
     const fetchHardwareInfo = async () => {
       try {
-        const response = await fetch(`${API_BASE}/hardware/training`);
+        const response = await fetch(`${API_BASE_URL}/hardware/training_info`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.json();
@@ -161,7 +160,7 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
   /* Polling helpers */
   const checkTrainingStatus = async (id) => {
     try {
-      const res = await fetch(`${API_BASE}/training/${id}/status`);
+      const res = await fetch(`${API_BASE_URL}/training/${id}/status`);
       if (!res.ok) throw new Error(res.status);
       const d = await res.json();
       setTrainingStatus(d.status);

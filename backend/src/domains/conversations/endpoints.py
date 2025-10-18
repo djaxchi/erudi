@@ -1,6 +1,5 @@
 
 import numpy as np
-import logging
 from datetime import datetime
 from typing import List
 import faiss
@@ -15,7 +14,8 @@ from src.database.core import get_db
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
 from src.entities.Message import Message
-from src.core.config import LLM_Engine
+from backend.src.core.vars import LLM_Engine
+from src.core.logging import logger
 from src.utils.inference_utils import (
     EmbedderService,
     get_prompting_strategy,
@@ -97,7 +97,7 @@ async def get_conversation_by_id(conversation_id: int, db: Session = Depends(get
     return conversation
 
 
-@router.post("/conversations", response_model=ConversationResponse, status_code=201)
+@router.post("/", response_model=ConversationResponse, status_code=201)
 async def create_conversation(
     payload: ConversationCreate,
     db: Session = Depends(get_db),
@@ -125,7 +125,7 @@ async def create_conversation(
     return conversation
 
 
-@router.delete("/conversations/{conversation_id}")
+@router.delete("/{conversation_id}")
 async def delete_conversation(conversation_id: int, db: Session = Depends(get_db)):
     """
     Delete a conversation by its ID.
@@ -139,7 +139,7 @@ async def delete_conversation(conversation_id: int, db: Session = Depends(get_db
     global _conversation_summary_cache
     if conversation_id in _conversation_summary_cache:
         del _conversation_summary_cache[conversation_id]
-        logging.info(
+        logger.info(
             f"Cleared summary cache for deleted conversation {conversation_id}"
         )
 
@@ -148,7 +148,7 @@ async def delete_conversation(conversation_id: int, db: Session = Depends(get_db
     return {"message": "Conversation deleted successfully"}
 
 
-@router.patch("/conversations/{conversation_id}", response_model=ConversationResponse)
+@router.patch("/{conversation_id}", response_model=ConversationResponse)
 async def update_conversation(
     conversation_id: int,
     payload: ConversationUpdate,
@@ -226,7 +226,7 @@ def get_conversation_history(db: Session, conversation_id: int) -> List[tuple]:
 
         return messages_to_be_returned
     except Exception as e:
-        logging.exception(f"Error retrieving conversation history: {e}")
+        logger.exception(f"Error retrieving conversation history: {e}")
         return []
 
 
@@ -279,12 +279,12 @@ def retrieve_context(
         cached_count = cache_entry["message_count"]
 
         if current_message_count >= cached_count * 2:
-            logging.info(
+            logger.info(
                 f"Summary cache expired for conversation {conversation_id}: {cached_count} -> {current_message_count} messages"
             )
             return None, True
 
-        logging.info(
+        logger.info(
             f"Using cached summary for conversation {conversation_id}: {cached_count} messages"
         )
         return cache_entry["summary"], False
@@ -297,7 +297,7 @@ def retrieve_context(
             "message_count": message_count,
             "generated_at": datetime.now(),
         }
-        logging.info(
+        logger.info(
             f"Cached summary for conversation {conversation_id} with {message_count} messages"
         )
 
@@ -334,7 +334,7 @@ def retrieve_context(
             # Merge system prompt into user message for models that don't support system role
             merged_summary_prompt = f"{summary_sys_prompt}\n\n{summary_user_prompt}"
 
-            logging.info("======= Generating conversation summary... =======")
+            logger.info("======= Generating conversation summary... =======")
             summary = ""
 
             for chunk in LLM_Engine.generate_stream(
@@ -352,7 +352,7 @@ def retrieve_context(
             return summary
 
         except Exception as e:
-            logging.exception(f"Summary generation failed: {e}")
+            logger.exception(f"Summary generation failed: {e}")
             return ""
 
     context_lines = []
@@ -369,7 +369,7 @@ def retrieve_context(
         )
 
         if need_regenerate:
-            logging.info(
+            logger.info(
                 f"Generating new conversation summary for {len(conversation_history)} messages"
             )
             long_term_memory = generate_conversation_summary(
@@ -449,7 +449,7 @@ def retrieve_context(
             )
 
             if not kb_context:
-                logging.info("No relevant texts found in Knowledge Base")
+                logger.info("No relevant texts found in Knowledge Base")
             else:
                 context_prefix = "\n\nAlso: You are attached to a Knowledge Base."
                 if strategy["use_kb_enhanced"]:
@@ -463,7 +463,7 @@ def retrieve_context(
                 context["kb_context"] = kb_context
 
         except Exception as e:
-            logging.exception("Failed to retrieve Knowledge Base context")
+            logger.exception("Failed to retrieve Knowledge Base context")
             raise HTTPException(
                 status_code=500, detail=f"Knowledge Base retrieval error: {str(e)}"
             )
@@ -492,7 +492,7 @@ def retrieve_context(
     return context
 
 
-@router.post("/conversations/{conversation_id}/generate_title")
+@router.post("/{conversation_id}/generate_title")
 async def generate_title(
     conversation_id: int,
     payload: ConversationQuery,
@@ -500,7 +500,7 @@ async def generate_title(
 ):
     """Generate a title for the conversation based on the first message."""
 
-    logging.info("Generating title for conversation %s", conversation_id)
+    logger.info("Generating title for conversation %s", conversation_id)
 
     conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -515,7 +515,7 @@ async def generate_title(
     try:
         model, tokenizer = LLM_Engine.get_model(llm)
     except Exception as e:
-        logging.exception("Failed to load model or tokenizer: %s", e)
+        logger.exception("Failed to load model or tokenizer: %s", e)
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
     try:
@@ -534,7 +534,7 @@ async def generate_title(
                 "female of the pig ->  Pig Female Name\n"
             )
             full_title_generation_prompt = [{"role": "user", "content": merged_title_prompt}]
-            logging.info(
+            logger.info(
                 "[TitleGen] conversation_id=%s model_type=%s (mistral merged)\n%s",
                 conversation_id,
                 model_type,
@@ -557,16 +557,16 @@ async def generate_title(
             user_title_generation_prompt = f"""Create a 2-to-4-word title for:\n{payload.question}"""
             merged_title_prompt = f"{system_title_generation_prompt}\n\n{user_title_generation_prompt}"
             full_title_generation_prompt = [{"role": "user", "content": merged_title_prompt}]
-            logging.info(
+            logger.info(
                 "[TitleGen] conversation_id=%s model_type=%s (merged prompt)\n%s",
                 conversation_id,
                 model_type,
                 merged_title_prompt[:400],
             )
-        logging.debug("[TitleGen] full messages payload: %s", full_title_generation_prompt)
+        logger.debug("[TitleGen] full messages payload: %s", full_title_generation_prompt)
 
     except Exception as e:
-        logging.exception("Failed to tokenize prompt")
+        logger.exception("Failed to tokenize prompt")
         raise HTTPException(status_code=500, detail=f"Tokenization error: {str(e)}")
 
     async def title_stream():
@@ -592,29 +592,29 @@ async def generate_title(
                 max_tokens=max_tok,
                 repetition_penalty=1.2,
             ):
-                logging.info(f"[TitleGen Stream] token: {new_text}")
+                logger.info(f"[TitleGen Stream] token: {new_text}")
                 generated_title += new_text
                 yield new_text
         except Exception as e:
             # Do not raise after partial streaming; just log and fallback.
-            logging.exception("Title streaming failed")
+            logger.exception("Title streaming failed")
         finally:
             final_title = generated_title if generated_title is not None else ""
             # Save exactly what was streamed (no downstream post-processing)
             conversation.name = final_title if final_title != "" else "New Conversation"
             db.add(conversation)
             db.commit()
-            logging.info("Title generated and saved: %s", conversation.name) 
+            logger.info("Title generated and saved: %s", conversation.name) 
     return StreamingResponse(title_stream(), media_type="text/plain")
 
 
-@router.post("/conversations/{conversation_id}/query")
+@router.post("/{conversation_id}/query")
 async def query_and_respond(
     conversation_id: int,
     payload: ConversationQuery,
     db: Session = Depends(get_db),
 ):
-    logging.info("Payload reçu : %s", payload.dict())
+    logger.info("Payload reçu : %s", payload.dict())
     user_prompt = payload.custom_prompt
     conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id).first()
@@ -640,7 +640,7 @@ async def query_and_respond(
     # Get prompting strategy based on model size
     param_size = llm.param_size
     strategy = get_prompting_strategy(param_size)
-    logging.info(f"Using prompting strategy for {param_size}B model: {strategy}")
+    logger.info(f"Using prompting strategy for {param_size}B model: {strategy}")
 
     # Context Fetching
     try:
@@ -648,11 +648,11 @@ async def query_and_respond(
         if full_msgs_history[-1][0] == "user":
             full_msgs_history.pop(-1)
         if not full_msgs_history or full_msgs_history == []:
-            logging.info(
+            logger.info(
                 "No previous messages in conversation, skipping context retrieval"
             )
 
-        logging.info(f"Retrieving context for conversation {conversation_id}")
+        logger.info(f"Retrieving context for conversation {conversation_id}")
         start = datetime.now()
         context = retrieve_context(
             payload.question,
@@ -684,7 +684,7 @@ async def query_and_respond(
             if len(messages_starred) == 0:
                 messages_starred = None
     except Exception as e:
-        logging.exception("Failed to retrieve context")
+        logger.exception("Failed to retrieve context")
         raise HTTPException(
             status_code=500, detail=f"Context retrieval error: {str(e)}"
         )
@@ -713,7 +713,7 @@ async def query_and_respond(
         ),
     )
 
-    logging.info(
+    logger.info(
         f"Using system prompt for size category '{size_category}': {sys_prompt[:100]}..."
     )
 
@@ -752,10 +752,10 @@ async def query_and_respond(
         if start_idx % 2 != 0:
             start_idx += 1
 
-        logging.info(
+        logger.info(
             f"Including {max_turns} conversation turn(s) starting from index {start_idx}"
         )
-        logging.info(
+        logger.info(
             f"Total history length: {len(full_msgs_history)}, including from index {start_idx}"
         )
 
@@ -798,19 +798,19 @@ async def query_and_respond(
             final_prompt[0]["content"] = f"{sys_prompt}\n\n{final_prompt[0]['content']}"
 
     final_prompt.append({"role": "user", "content": current_question})
-    logging.info("Final prompt to model:\n%s", final_prompt)
+    logger.info("Final prompt to model:\n%s", final_prompt)
 
     # Model Loading
     try:
         model, tokenizer = LLM_Engine.get_model(llm=llm)
     except Exception as e:
-        logging.exception("Failed to load model or tokenizer: %s", e)
+        logger.exception("Failed to load model or tokenizer: %s", e)
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
 
     async def assistant_response_token_stream():
         assistant_response = ""
         start = datetime.now()
-        logging.info(
+        logger.info(
             f"Generating response from MLX model for prompt: {payload.question}"
         )
         try:
@@ -825,11 +825,11 @@ async def query_and_respond(
                 repetition_context_size=payload.max_new_tokens or 1024,
             ):
                 assistant_response += text
-                # logging.info(f"Yielding token: {text}")
+                # logger.info(f"Yielding token: {text}")
                 yield text
 
         except Exception as e:
-            logging.exception("Streaming failed")
+            logger.exception("Streaming failed")
             error_msg = "[ERROR_MESSAGE_SYSTEM] Generation failed due to an error. Please try again or contact developer team."
             assistant_response = error_msg
             yield error_msg
@@ -844,14 +844,14 @@ async def query_and_respond(
             db.add(assistant_message)
             conversation.last_message_time = datetime.now()
             db.commit()
-            logging.info(f"Response generated in {datetime.now() - start} seconds")
+            logger.info(f"Response generated in {datetime.now() - start} seconds")
 
-            logging.info("Generation finished")
+            logger.info("Generation finished")
 
     return StreamingResponse(assistant_response_token_stream(), media_type="text/plain")
 
 
-@router.post("/conversations/delete_bulk")
+@router.post("/delete_bulk")
 async def delete_bulk(
     payload: ConversationDeleteBulk,
     db: Session = Depends(get_db),
@@ -864,7 +864,7 @@ async def delete_bulk(
         for conv_id in conversation_ids:
             if conv_id in _conversation_summary_cache:
                 del _conversation_summary_cache[conv_id]
-                logging.info(
+                logger.info(
                     f"Cleared summary cache for deleted conversation {conv_id}"
                 )
 
@@ -881,7 +881,7 @@ async def delete_bulk(
     return {"message": "Conversations deleted successfully"}
 
 
-@router.post("/conversations/{conversation_id}/store_error_message")
+@router.post("/{conversation_id}/store_error_message")
 async def store_error_message(
     conversation_id: int,
     db: Session = Depends(get_db),
@@ -906,7 +906,7 @@ async def store_error_message(
         conversation.last_message_time = datetime.now()
         db.commit()
 
-        logging.info(f"Stored error message for conversation {conversation_id}")
+        logger.info(f"Stored error message for conversation {conversation_id}")
         LLM_Engine.cleanup()
         return {
             "message": "Error message stored successfully",
@@ -914,7 +914,7 @@ async def store_error_message(
         }
     except Exception as e:
         db.rollback()
-        logging.exception(
+        logger.exception(
             f"Failed to store error message for conversation {conversation_id}"
         )
         raise HTTPException(
@@ -922,7 +922,7 @@ async def store_error_message(
         )
 
 
-@router.post("/conversations/star_message")
+@router.post("/star_message")
 async def star_message(
     message: str = Body(..., embed=True),
     db: Session = Depends(get_db),
@@ -936,15 +936,15 @@ async def star_message(
     message.starred = True
     try:
         db.commit()
-        logging.info(f"Message {message.id} starred successfully.")
+        logger.info(f"Message {message.id} starred successfully.")
         return {"state": "success", "message": "Message starred successfully"}
     except Exception as e:
         db.rollback()
-        logging.exception(f"Failed to star message.")
+        logger.exception(f"Failed to star message.")
         raise HTTPException(status_code=500, detail=f"Failed to star message: {str(e)}")
 
 
-@router.post("/conversations/unstar_message")
+@router.post("/unstar_message")
 async def unstar_message(
     message: str = Body(..., embed=True),
     db: Session = Depends(get_db),
@@ -958,11 +958,11 @@ async def unstar_message(
     message.starred = False
     try:
         db.commit()
-        logging.info(f"Message {message.id} unstarred successfully.")
+        logger.info(f"Message {message.id} unstarred successfully.")
         return {"state": "success", "message": "Message unstarred successfully"}
     except Exception as e:
         db.rollback()
-        logging.exception(f"Failed to unstar message.")
+        logger.exception(f"Failed to unstar message.")
         raise HTTPException(
             status_code=500, detail=f"Failed to unstar message: {str(e)}"
         )

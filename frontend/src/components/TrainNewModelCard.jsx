@@ -5,7 +5,7 @@ import GradientBox from "./GradientBox";
 
 export default function TrainNewModelCard() {
   const navigate = useNavigate();
-  const handleAttachKnowledgeBase = () => navigate("/main_window/attach_knowledge_base");
+  const handleAttachKnowledgeBase = () => navigate("/erudi/attach_knowledge_base");
 
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center">

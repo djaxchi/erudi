@@ -10,8 +10,7 @@ import DragDropArea from "../components/DragDropArea";
 import Dropdown from "../components/Dropdown";
 import { useKnowledgeBase } from "../contexts/KnowledgeBaseContext";
 import ErrorModal from "../components/modals/ErrorModal";
-
-const API_BASE = "http://127.0.0.1:8000";
+import API_BASE_URL from "../config/api.js"
 
 export default function KnowledgeBasePage() {
   const { open: openKnowledgeBase, isCreating, isStarting } = useKnowledgeBase();
@@ -147,7 +146,7 @@ export default function KnowledgeBasePage() {
   };
 
   const fetchModels = () => {
-    fetch(`${API_BASE}/main_window/llms/local`)
+    fetch(`${API_BASE_URL}/llms/local`)
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -163,7 +162,7 @@ export default function KnowledgeBasePage() {
   };
 
   useEffect(() => {
-    fetch(`${API_BASE}/hardware/app_startup`)
+    fetch(`${API_BASE_URL}/hardware/app_startup`)
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();

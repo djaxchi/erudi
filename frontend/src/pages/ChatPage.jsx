@@ -10,6 +10,7 @@ import ErrorModal from "../components/modals/ErrorModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";
 import logoErudi from "../img/logoerudifinal.png";
+import API_BASE_URL from "../config/api.js"
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -53,7 +54,7 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/erudi/llms/local")
+    fetch(`${API_BASE_URL}/llms/local`)
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
@@ -72,7 +73,7 @@ export default function ChatPage() {
   useEffect(() => {
     const fetchConversations = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/erudi/conversations");
+        const res = await fetch(`${API_BASE_URL}/conversations/`);
         const data = await res.json();
         const sorted = data.sort(
           (a, b) =>
@@ -124,7 +125,7 @@ export default function ChatPage() {
       }
       try {
         // 1. Create a new conversation with the specified parameters
-        const res = await fetch("http://127.0.0.1:8000/erudi/conversations/", {
+        const res = await fetch(`${API_BASE_URL}/conversations/`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -168,7 +169,7 @@ export default function ChatPage() {
 
   const handleRefreshConversations = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/erudi/conversations/");
+      const res = await fetch(`${API_BASE_URL}/conversations/`);
       const data = await res.json();
       const sorted = data.sort(
         (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
