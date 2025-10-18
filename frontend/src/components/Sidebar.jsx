@@ -20,12 +20,12 @@ export default function Sidebar({
   const { isDownloading } = useDownloadModal();
   const location = useLocation();
   const isModelsActive =
-    location.pathname === "/main_window/models" ||
-    location.pathname === "/main_window/new-training";
-  const isChatActive = location.pathname.startsWith("/main_window/chat") ||
-    location.pathname.startsWith("/main_window/conversations");
-  const isArenaActive = location.pathname === "/main_window/arena";
-  const isKnowledgeBaseActive = location.pathname === "/main_window/attach_knowledge_base";
+    location.pathname === "/erudi/models" ||
+    location.pathname === "/erudi/new-training";
+  const isChatActive = location.pathname.startsWith("/erudi/chat") ||
+    location.pathname.startsWith("/erudi/conversations");
+  const isArenaActive = location.pathname === "/erudi/arena";
+  const isKnowledgeBaseActive = location.pathname === "/erudi/attach_knowledge_base";
 
   return (
     <div

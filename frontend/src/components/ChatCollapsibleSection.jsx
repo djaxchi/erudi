@@ -84,7 +84,7 @@ export default function ChatCollapsibleSection({
             onClick={() => {
               if (!isEditing) {
                 onSelect?.(conv.id);
-                navigate(`/main_window/conversations/${conv.id}`);
+                navigate(`/conversations/${conv.id}`);
               }
             }}
             className={`relative group py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${
