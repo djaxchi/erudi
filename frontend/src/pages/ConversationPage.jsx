@@ -8,7 +8,7 @@ import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import { Copy, Check, Star } from "lucide-react";
 import TypingIndicator from "../components/TypingIndicator";
 import MarkdownRenderer from "../components/MarkdownRenderer";
-import API_BASE_URL from "../config/api.js"
+import { API_BASE_URL } from "../config/api.js"
 
 export default function ConversationPage() {
   const { id } = useParams();

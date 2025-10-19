@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Float
-from ..database import Base
+from src.database.core import Base
 from sqlalchemy.orm import relationship
 
 class Llm(Base):

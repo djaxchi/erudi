@@ -27,22 +27,12 @@ Design constraints & choices:
 - Singleton-ish: the class holds class attributes `_instance`, `_tokenizer`, `_model_id`.
 - Streaming generation uses transformers.TextIteratorStreamer executed in a background thread and read synchronously.
 """
-
-from __future__ import annotations
-
-import os
-import threading
-import asyncio
-import logging
-import shutil
-import subprocess
-import importlib.util
-import json
-import gc
+import threading, asyncio, json, gc
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional, Tuple, Generator, List
-from app.engines.base_engine import BaseEngine
+from src.engines.base_engine import BaseEngine
+from src.core.logging import logger
 
 """
 # Environment tuning for deterministic behavior (caller may already set these)
@@ -50,10 +40,7 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 """
-
-logger = logging.getLogger(__name__)
-
-class AWQTransformerEngine(BaseEngine):
+class CUDA_Engine(BaseEngine):
     """
     Engine implementing AWQ quantization + Transformers runtime for CUDA-capable machines.
 
@@ -244,7 +231,7 @@ class AWQTransformerEngine(BaseEngine):
         temperature: float = 1.0,
         top_p: float = 0.95,
         repetition_penalty: Optional[float] = None,
-        **kwargs
+        *args
     ) -> Generator[str, None, None]:
         """
         Synchronous generator that yields text chunks produced by Transformers + AWQ quantized model.
@@ -278,7 +265,7 @@ class AWQTransformerEngine(BaseEngine):
             logger.exception("transformers TextIteratorStreamer import failed: %s", e)
             # Fallback: run non-streaming generate and yield whole text
             try:
-                out = cls._sync_generate_full_text(model, tokenizer, prompt_text, max_tokens=max_tokens, temperature=temperature, top_p=top_p, **kwargs)
+                out = cls._sync_generate_full_text(model, tokenizer, prompt_text, max_tokens=max_tokens, temperature=temperature, top_p=top_p, *args)
                 yield out
                 return
             except Exception as exc:

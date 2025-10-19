@@ -1,12 +1,14 @@
 # TODO CLEANING OF THE WHOLE FILE
 
 
-import os, shutil, datetime
+import os, shutil
+from datetime import datetime
 
 from src.core.logging import logger
-from backend.src.core.vars import (
-    HF_TOKEN
+from src.core.vars import (
+    HF_API
 )
+from src.core import vars
 
 from sqlalchemy.orm import Session
 from src.database.core import (
@@ -71,31 +73,27 @@ async def delete_all_data() -> None :
 
 async def startup_populate_database():
 
-    from huggingface_hub import HfApi
-    hf_api = HfApi(token=HF_TOKEN)
-
     db: Session = SessionLocal()
     try:
-        add_base_models(db, hf_api)
-        add_derived_models(db, hf_api)
+        add_base_models(db, HF_API)
+        add_derived_models(db, HF_API)
         mark_unfinished_jobs_as_failed(db)
         initialize_hardware_info(db)
         initialize_startup_variables(db)
-        print("Startup database population completed successfully.")
+        logger.info("Startup database population completed successfully.")
     except Exception as e:
         logger.error(f"Error during startup population: {e}")
         db.rollback()
         raise
     finally:
         db.close()
-        del hf_api
 
 # ----------------------------
 # Sub-functions
 # ----------------------------
 
 # TODO FIX TO MAKE IT ENGINE-AGNOSTIC AS IT IS NOW IN ENGINE
-def add_base_models(db: Session, hf_api):
+def add_base_models(db: Session, HF_API):
     base_models = [
         ("Gemma-1B", "google/gemma-3-1b-it", "gemma"),
         ("Gemma-2B", "google/gemma-2-2b-it", "gemma"),
@@ -120,9 +118,9 @@ def add_base_models(db: Session, hf_api):
             continue
 
         try:
-            quant_link = MODEL_MAPPING.get(link)
+            quant_link = vars.LLM_Engine.MODEL_MAPPING.get(link)
             is_quantized = quant_link is not None
-            model_info = hf_api.model_info(link)
+            model_info = HF_API.model_info(link)
             size_estimate = get_disk_size_after_quant(quant_link) if is_quantized else get_model_size_estimate(name, link)
             actual_link = quant_link if is_quantized else link
 
@@ -136,11 +134,11 @@ def add_base_models(db: Session, hf_api):
                 param_size=param_size
             )
             db.add(llm)
-            print(f"Added base model {name} (quantized={is_quantized}) with metadata and size: {size_estimate}")
+            logger.info(f"Added base model {name} (quantized={is_quantized}) with metadata and size: {size_estimate}")
         except Exception as e:
             logger.warning(f"Error fetching metadata for {name}: {e}")
             # fallback
-            quant_link = MODEL_MAPPING.get(link)
+            quant_link = vars.LLM_Engine.MODEL_MAPPING.get(link)
             is_quantized = quant_link is not None
             size_estimate = get_disk_size_after_quant(quant_link) if is_quantized else get_model_size_estimate(name, link)
             actual_link = quant_link if is_quantized else link
@@ -156,7 +154,7 @@ def add_base_models(db: Session, hf_api):
                 param_size=param_size
             )
             db.add(llm)
-            print(f"Added base model {name} (quantized={is_quantized}) with size estimate: {size_estimate}")
+            logger.info(f"Added base model {name} (quantized={is_quantized}) with size estimate: {size_estimate}")
 
 def is_quality_model_from_hf_search(model_info):
     MIN_DOWNLOADS = 50
@@ -179,7 +177,7 @@ def is_quality_model_from_hf_search(model_info):
         return True
     return False
 
-def add_derived_models(db: Session, hf_api):
+def add_derived_models(db: Session, HF_API):
     base_model_searches = [
         ("Mistral-7B v0.3", "mistral", 7.0),
         ("Gemma 1B", "gemma", 1.0),
@@ -210,10 +208,10 @@ def add_derived_models(db: Session, hf_api):
     ]
 
     for search_term, model_type, default_param_size in base_model_searches:
-        print(f"Fetching top {TOP_MODELS_PER_BASE} quality derived models for {search_term}...")
+        logger.info(f"Fetching top {TOP_MODELS_PER_BASE} quality derived models for {search_term}...")
         added_count = 0
         checked_count = 0
-        for m in hf_api.list_models(search=search_term, sort="downloads", direction=-1):
+        for m in HF_API.list_models(search=search_term, sort="downloads", direction=-1):
             if added_count >= TOP_MODELS_PER_BASE:
                 break
             checked_count += 1
@@ -246,7 +244,7 @@ def add_derived_models(db: Session, hf_api):
             )
             db.add(llm_entry)
             added_count += 1
-            print(f"  Added {m.modelId.split('/')[-1]} ({added_count}/{TOP_MODELS_PER_BASE}) - {m.downloads} downloads, {m.likes} likes")
+            logger.info(f"  Added {m.modelId.split('/')[-1]} ({added_count}/{TOP_MODELS_PER_BASE}) - {m.downloads} downloads, {m.likes} likes")
         db.commit()
 
 def mark_unfinished_jobs_as_failed(db: Session):

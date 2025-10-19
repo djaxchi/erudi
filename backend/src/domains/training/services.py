@@ -3,6 +3,9 @@ from src.entities.TrainingJob import TrainingJob
 
 from src.core.logging import logger
 
+class TrainingProgressCallback():
+    pass # Just for compilation
+
 # from transformers import TrainerCallback
 # class TrainingProgressCallback(TrainerCallback):
 #     def __init__(self, training_job_id, db_factory):

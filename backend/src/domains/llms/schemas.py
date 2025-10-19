@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-import datetime
+from datetime import datetime
 
 class LLMBase(BaseModel):
     name: str

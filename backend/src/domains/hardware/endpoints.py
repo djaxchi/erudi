@@ -1,17 +1,18 @@
 from src.database.core import get_db
-from fastapi import Depends
+from fastapi import Depends, APIRouter
 from sqlalchemy.orm import Session
 
 from src.entities.StaticHardwareInfos import StaticHardwareInfo
 from src.utils.hardware_info  import get_hardware_eval_for_apple_silicon
 from src.core.logging import logger
-from src.core.api import hardware_router as router
 
 from src.domains.hardware.schemas import (
     HardwareTrainingInfo,
     HardwareAppStartupInfo,
     DetailedHardwareInfo
 )
+
+router = APIRouter(prefix="/hardware", tags=["hardware"])
 
 @router.get("/training_info", response_model=HardwareTrainingInfo)
 def get_hardware_training_info(

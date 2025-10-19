@@ -11,19 +11,13 @@ This module provides comprehensive hardware detection for Apple Silicon Macs,
 replacing the previous Windows/CUDA-specific code with macOS MPS equivalents.
 """
 
-import logging
-import time
-import psutil
-import cpuinfo
-import shutil
-import os
-import torch
-import re
-import subprocess
-import platform
-import json
-from pathlib import Path
+
+######### TODO MAKE THIS A METH IN THE ENGINES
+
+import time, psutil, cpuinfo, os, torch, subprocess, platform, json
 from typing import Optional, Dict, Any
+
+from src.core.logging import logger
 
 # --- Apple Silicon GPU Performance Tables ----------------------------
 # Apple Silicon chips have unified memory architecture - GPU and CPU share the same memory pool
@@ -238,7 +232,7 @@ def get_macos_system_info() -> Dict[str, Any]:
         else:
             return {}
     except Exception as e:
-        print(f"Failed to get macOS system info: {e}")
+        logger.info(f"Failed to get macOS system info: {e}")
         return {}
 
 
@@ -285,7 +279,7 @@ def detect_apple_silicon_chip() -> Optional[str]:
         return None
         
     except Exception as e:
-        print(f"Failed to detect Apple Silicon chip: {e}")
+        logger.info(f"Failed to detect Apple Silicon chip: {e}")
         return None
 
 
@@ -318,7 +312,7 @@ def get_unified_memory_info() -> Dict[str, float]:
         }
         
     except Exception as e:
-        print(f"Failed to get unified memory info: {e}")
+        logger.info(f"Failed to get unified memory info: {e}")
         return {
             "total_memory_gb": 0.0,
             "available_memory_gb": 0.0,
@@ -433,7 +427,7 @@ def get_macos_cpu_info() -> Dict[str, Any]:
         return cpu_specs
         
     except Exception as e:
-        print(f"Failed to get CPU info: {e}")
+        logger.info(f"Failed to get CPU info: {e}")
         return {
             "model": "Unknown CPU",
             "architecture": "Unknown",
@@ -495,7 +489,7 @@ def get_whole_hardware_info() -> Dict[str, Any]:
         }
         
     except Exception as e:
-        print(f"Failed to get complete hardware info: {e}")
+        logger.info(f"Failed to get complete hardware info: {e}")
         # Return minimal fallback info
         return {
             "system": {"platform": platform.system()},
@@ -533,7 +527,7 @@ def get_current_available_hardware_info() -> Dict[str, float]:
         }
         
     except Exception as e:
-        print(f"Failed to get current hardware info: {e}")
+        logger.info(f"Failed to get current hardware info: {e}")
         return {
             "available_memory_gb": 4.0,
             "available_storage_gb": 10.0,
@@ -572,7 +566,7 @@ def get_static_hardware_info() -> Dict[str, Any]:
         return static_info
         
     except Exception as e:
-        print(f"Failed to get static hardware info: {e}")
+        logger.info(f"Failed to get static hardware info: {e}")
         return {
             "total_memory_gb": 8.0,
             "cpu_model": "Unknown CPU",
@@ -599,7 +593,7 @@ def warm_up_mps_gpu(seconds: float = 1.0) -> bool:
         bool: True if warm-up was successful, False otherwise
     """
     if not mps_runtime_available():
-        print("MPS not available for GPU warm-up")
+        logger.info("MPS not available for GPU warm-up")
         return False
     
     try:
@@ -624,11 +618,11 @@ def warm_up_mps_gpu(seconds: float = 1.0) -> bool:
         # Ensure all operations complete
         torch.mps.synchronize()
         
-        print(f"MPS GPU warmed up for {seconds} seconds")
+        logger.info(f"MPS GPU warmed up for {seconds} seconds")
         return True
         
     except Exception as e:
-        print(f"Failed to warm up MPS GPU: {e}")
+        logger.info(f"Failed to warm up MPS GPU: {e}")
         return False
 
 
@@ -674,7 +668,7 @@ def calculate_cpu_performance_units() -> float:
                 return cores * 3.0
                 
     except Exception as e:
-        print(f"Failed to calculate CPU performance units: {e}")
+        logger.info(f"Failed to calculate CPU performance units: {e}")
         return 8.0  # Default fallback
 
 
@@ -769,11 +763,11 @@ def get_hardware_eval_for_apple_silicon() -> Dict[str, Any]:
             raise RuntimeError("Could not detect Apple Silicon chip model")
         
         # Warm up the GPU for accurate performance measurement
-        print(f"Warming up {chip_model} GPU...")
+        logger.info(f"Warming up {chip_model} GPU...")
         warm_up_success = warm_up_mps_gpu(1.5)
         
         if not warm_up_success:
-            print("Warning: GPU warm-up failed, performance scores may be inaccurate")
+            logger.info("Warning: GPU warm-up failed, performance scores may be inaccurate")
         
         # Calculate performance metrics
         
@@ -883,19 +877,19 @@ def get_hardware_eval_for_apple_silicon() -> Dict[str, Any]:
             }
         }
         
-        # Print summary for debugging
-        print(f"\n=== Apple Silicon Performance Evaluation ===")
-        print(f"Chip: {chip_model}")
-        print(f"GPU: {gpu_info['gpu_name']} ({gpu_info.get('gpu_cores', 0)} cores)")
-        print(f"Memory: {total_memory:.1f} GB unified @ {memory_bandwidth:.1f} GB/s")
-        print(f"Inference Score: {inference_score:.1f} ({get_performance_label(inference_score)})")
-        print(f"Fine-tuning Score: {finetuning_score:.1f} ({get_performance_label(finetuning_score)})")
-        print(f"==============================================\n")
+        # logger.info summary for debugging
+        logger.info(f"\n=== Apple Silicon Performance Evaluation ===")
+        logger.info(f"Chip: {chip_model}")
+        logger.info(f"GPU: {gpu_info['gpu_name']} ({gpu_info.get('gpu_cores', 0)} cores)")
+        logger.info(f"Memory: {total_memory:.1f} GB unified @ {memory_bandwidth:.1f} GB/s")
+        logger.info(f"Inference Score: {inference_score:.1f} ({get_performance_label(inference_score)})")
+        logger.info(f"Fine-tuning Score: {finetuning_score:.1f} ({get_performance_label(finetuning_score)})")
+        logger.info(f"==============================================\n")
         
         return results
         
     except Exception as e:
-        print(f"Hardware evaluation failed: {e}")
+        logger.info(f"Hardware evaluation failed: {e}")
         
         # Return fallback results
         return {

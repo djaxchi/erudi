@@ -3,7 +3,7 @@ import DragDropArea from "./DragDropArea";
 import { Loader, X } from "lucide-react";
 import ErrorModal from "./modals/ErrorModal";
 import ComingSoonModal from "./modals/ComingSoonModal";
-import API_BASE_URL from "../config/api.js"
+import { API_BASE_URL } from "../config/api.js"
 
 /* ─────────────── Recap small table ─────────────── */
 function RecapTable({ recap }) {

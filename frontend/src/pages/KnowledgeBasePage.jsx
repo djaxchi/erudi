@@ -10,7 +10,7 @@ import DragDropArea from "../components/DragDropArea";
 import Dropdown from "../components/Dropdown";
 import { useKnowledgeBase } from "../contexts/KnowledgeBaseContext";
 import ErrorModal from "../components/modals/ErrorModal";
-import API_BASE_URL from "../config/api.js"
+import { API_BASE_URL } from "../config/api.js"
 
 export default function KnowledgeBasePage() {
   const { open: openKnowledgeBase, isCreating, isStarting } = useKnowledgeBase();

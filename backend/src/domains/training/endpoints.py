@@ -8,8 +8,7 @@ import gc, shutil
 from sqlalchemy.orm import Session
 from src.database.core import get_db, SessionLocal
 
-from fastapi import HTTPException, BackgroundTasks, Depends 
-from src.core.api import training_router as router
+from fastapi import HTTPException, BackgroundTasks, Depends, APIRouter
 
 from src.entities.TrainingJob import TrainingJob
 from src.entities.Llm import Llm
@@ -18,7 +17,9 @@ from src.domains.training.services import TrainingProgressCallback
 
 from src.utils.file_processor import process_pdfs_to_causal_dataset
 from src.core.logging import logger
-from backend.src.core.vars import LLM_Engine
+from src.core import vars
+
+router = APIRouter(prefix="/training", tags=["training"])
 
 
 @router.get("/training/{llm_id}/status")

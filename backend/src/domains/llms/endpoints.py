@@ -2,7 +2,7 @@ import asyncio, os, shutil, asyncio
 from typing import List
 from datetime import datetime, timedelta
 
-from fastapi import BackgroundTasks, Depends, HTTPException
+from fastapi import BackgroundTasks, Depends, HTTPException, APIRouter
 from sqlalchemy.orm import Session
 from src.database.core import get_db, SessionLocal
 
@@ -12,7 +12,8 @@ from src.domains.llms.schemas import LLMCreate, LLMResponse, DownloadJobResponse
 from src.domains.llms.services import download_llm
 
 from src.core.logging import logger
-from src.core.api import download_llm_router as router
+
+router = APIRouter(prefix="/llms", tags=["llms"])
 
 @router.get("/", response_model=List[LLMResponse])
 async def get_all_llms(db: Session = Depends(get_db)):

@@ -1,11 +1,17 @@
-import os, faiss, numpy
+import os
+os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1") # Accelerate/vecLib (macOS)
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+import faiss, numpy
+faiss.omp_set_num_threads(1)
 from datetime import datetime
 from typing import Any, List
 
-from fastapi import BackgroundTasks, Depends, HTTPException
+from fastapi import BackgroundTasks, Depends, HTTPException, APIRouter
 from sqlalchemy.orm import Session
-from src.database.core import get_db
-from src.core.api import knowledge_base_router as router
+from src.database.core import get_db, SessionLocal
 
 from src.entities.KnowledgeBase import KnowledgeBase
 from src.entities.VectorStore import VectorStore
@@ -20,21 +26,17 @@ from src.domains.knowledge_base.schemas import (
 )
 
 from src.core.logging import logger
-from backend.src.core.vars import (
+from src.core.vars import (
     INDEXES_DIR
 )
 
-faiss.omp_set_num_threads(1)
-os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")  # Accelerate/vecLib (macOS)
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+
+router = APIRouter(prefix="/knowledge_base", tags=["knowledge_base"])
 
 @router.get("/{llm_id}/status")
 def get_kbAttach_status(llm_id: int, db: Session = Depends(get_db)):
     """
-    Get the status of a kb job.
+    Get the status of a kb job during creation of the kb.
     """
     kb_job = db.query(KBJobModel).filter(KBJobModel.new_model_id == llm_id).first()
     if not kb_job:
@@ -140,7 +142,7 @@ def create_knowledge_base(
                 db.commit()
                 db.refresh(kb_job)      
 
-                background_tasks.add_task(update_kb_assistant_with_new_data, kb_job.id, kb.id, texts, db) 
+                background_tasks.add_task(update_kb_assistant_with_new_data, kb_job.id, kb.id, texts) 
 
                 return KnowledgeBaseResponse(
                     msg="Assistant is being updated with the new data.",
@@ -192,7 +194,7 @@ def create_knowledge_base(
         db.commit()
         logger.info(f"Knowledge Base job created with ID: {kb_job.id}")
 
-        background_tasks.add_task(init_new_kb_assistant, kb_job.id, new_llm.id, kb.id, vector_store.id, texts, db)
+        background_tasks.add_task(init_new_kb_assistant, kb_job.id, new_llm.id, kb.id, vector_store.id, texts)
 
         return KnowledgeBaseResponse(
             msg="Knowledge Base Assistant is being created.",
@@ -246,7 +248,8 @@ def populate_vector_store(start_counter: int, vectors_data: dict, texts: List[st
     EmbedderService.cleanup()
     return (index, vectors_data)
 
-def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[str], db: Session) -> Llm:
+def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[str]) -> Llm:
+    db = SessionLocal()
     try:
         kb_job = db.query(KBJobModel).filter(KBJobModel.id == kb_job_id).first()
         if not kb_job:
@@ -352,10 +355,11 @@ def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[st
     finally:
         db.close()
         
-def init_new_kb_assistant(kb_job_id: int, new_llm_id: int, kb_id: int, vector_store_id: int, texts: List[str], db: Session) -> Llm:
+def init_new_kb_assistant(kb_job_id: int, new_llm_id: int, kb_id: int, vector_store_id: int, texts: List[str]) -> Llm:
     """
     Initialize the knowledge base assistant by creating the FAISS index and storing vectors.
     """
+    db = SessionLocal()
     try:
         kb_job = db.query(KBJobModel).filter(KBJobModel.id == kb_job_id).first()
         if not kb_job:
@@ -482,8 +486,13 @@ def init_new_kb_assistant(kb_job_id: int, new_llm_id: int, kb_id: int, vector_st
             logger.info(f"✅ Index reload successful: {test_index.ntotal} vectors")
             
             if test_index.ntotal > 0:
-                first_vector = numpy.zeros((1, test_index.d), dtype='float32')
-                D, I = test_index.search(first_vector, 1)
+                embedder = EmbedderService.get_embedder()
+                query_emb = embedder.encode("Ceci est une phrase de test", convert_to_tensor=True)
+                logger.info("Phrase test embeddée.")
+                q = numpy.ascontiguousarray(
+                    query_emb.detach().cpu().numpy().astype("float32")
+                ).reshape(1, -1)
+                _, I = test_index.search(q, k=1)
                 logger.info(f"✅ Basic search successful: found ID {I[0][0]}")
             else:
                 logger.warning("⚠️ Index is empty")

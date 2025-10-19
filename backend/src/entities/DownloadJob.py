@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, Float
 from sqlalchemy.sql import func
-from ..database import Base
+from src.database.core import Base
 
 class DownloadJobModel(Base):
     __tablename__ = "download_jobs"

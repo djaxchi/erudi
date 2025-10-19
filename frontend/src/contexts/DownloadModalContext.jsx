@@ -10,7 +10,7 @@ import ReactDOM from 'react-dom'
 import ConfirmationModal from '../components/modals/ConfirmationModal'
 import SpinnerDots from '../components/Spinner'
 import { X, ChevronLeft, ChevronRight } from 'lucide-react'
-import API_BASE_URL from "../config/api.js"
+import { API_BASE_URL } from "../config/api.js"
 
 const DownloadModalContext = createContext()
 

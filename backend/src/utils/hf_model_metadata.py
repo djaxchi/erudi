@@ -1,13 +1,16 @@
+from src.core.logging import logger
+from src.core.vars import HF_API
+
 def get_disk_size_after_quant(link_hf_quant_repo):
     """Get the actual size of MLX quantized model from Hugging Face"""
     try:
-        repo_info = api.repo_info(link_hf_quant_repo, files_metadata=True)
+        repo_info = HF_API.repo_info(link_hf_quant_repo, files_metadata=True)
         total_size = sum(file.size for file in repo_info.siblings if file.size)
         # Convert to GB
         size_gb = total_size / (1024**3)
         return f"~{size_gb:.1f} GB"
     except Exception as e:
-        logging.error(f"Error getting MLX model size for {link_hf_quant_repo}: {e}")
+        logger.error(f"Error getting MLX model size for {link_hf_quant_repo}: {e}")
         # Fallback estimates based on quantization
         if "4bit" in link_hf_quant_repo.lower():
             return "~3-4 GB"  # Rough estimate for 4-bit 7B models

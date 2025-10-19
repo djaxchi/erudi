@@ -43,7 +43,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         local_dest_path: Union[str, Path],
         quantize: bool = True,
         q_bits: str = "4",
-        **kwargs
+        *args
     ) -> None:
         """Convert and quantize a HuggingFace model (already downloaded to local_hf_dir)
         into a directory ready for inference."""
@@ -55,7 +55,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         cls,
         llm_id: str,
         llm_local_path: Union[str, Path],
-        **kwargs
+        *args
     ) -> Tuple[Any, Any]:
         """Load or retrieve the model + tokenizer for this backend."""
         pass
@@ -69,7 +69,8 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         prompt: list[dict[str, str]],
         max_tokens: int,
         temperature: float,
-        **kwargs
+        top_p: float,
+        *args
     ) -> Generator[str, None, None]:
         """Generate streamed text given a prompt. Yields the text tokens."""
         pass
@@ -100,8 +101,8 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                     llm_engine = CUDA_Engine
                 else:
                     llm_engine = CPU_Engine
-                    logger.debug(f"System: {system} and CUDA not availabl.")
-            logger.debug(f"Engine chosen: {llm_engine}")
+                    logger.info(f"System: {system} and CUDA not availabl.")
+            logger.info(f"Engine chosen: {llm_engine}")
             if llm_engine is None:
                 raise
             return llm_engine
