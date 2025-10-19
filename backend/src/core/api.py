@@ -15,6 +15,7 @@ from src.domains.knowledge_base.endpoints import router as knowledge_base_router
 from src.domains.startup.endpoints import router as startup_router
 from src.domains.training.endpoints import router as training_router
 from src.core.health import router as health_router
+from src.domains.mail_extension.endpoints import router as mail_extension_router
 
 def register_routers(app: FastAPI) -> None :
     
@@ -26,6 +27,7 @@ def register_routers(app: FastAPI) -> None :
     app.include_router(conversations_router, prefix="/erudi")
     app.include_router(health_router, prefix="/erudi")
     app.include_router(startup_router, prefix="/erudi")
+    app.include_router(mail_extension_router, prefix="/erudi")
 
 def add_exception_handlers(app: FastAPI) -> None :
     app.add_exception_handler(AppBaseException, app_base_exception_handler)

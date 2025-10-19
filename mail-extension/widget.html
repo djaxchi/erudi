@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Erudit Chat Widget</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="widget.css" />
+</head>
+<body>
+  <div id="erudit-root" class="erudit-root" role="application" aria-label="Erudit chat widget">
+    <!-- Header -->
+    <div class="header-bar">
+      <div class="header-left">
+        <div class="label">Chat with</div>
+        <div id="modelBtn" class="model-btn">Loading models… ▾</div>
+      </div>
+      <div class="header-right">
+        <button id="closeBtn" class="icon-btn" title="Close">✕</button>
+      </div>
+    </div>
+
+    <!-- Dropdown will be appended dynamically -->
+    <div id="settingsPanel" class="settings-panel hidden">
+      <div class="settings-left">
+        <textarea id="customPrompt" class="custom-prompt" placeholder="Customize the System Prompt"></textarea>
+      </div>
+      <div class="settings-right">
+        <input id="temperature" class="num-input" type="number" step="0.01" min="0" max="2" placeholder="Temperature" />
+        <input id="topP" class="num-input" type="number" step="0.01" min="0" max="1" placeholder="Top-P" />
+        <input id="maxTokens" class="num-input" type="number" step="1" min="16" max="4096" placeholder="Max Tokens" />
+        <button id="applySettingsBtn" class="apply-btn">Apply</button>
+      </div>
+    </div>
+
+    <!-- messages area -->
+    <div id="messages" class="messages" tabindex="0" role="log" aria-live="polite">
+      <div class="msg llm">Hi! 😊 How can I help you today?</div>
+    </div>
+
+    <!-- input bar -->
+    <div class="input-bar">
+      <input id="inputText" class="text-input" placeholder="Ask a question to your AI" aria-label="Ask a question to your AI" />
+      <button id="sendBtn" class="send-btn" title="Send">➤</button>
+    </div>
+
+    <!-- modal for no-model -->
+    <div id="modalOverlay" class="modal-overlay hidden">
+      <div class="modal-card">
+        <h3>No models available</h3>
+        <p>Please download a model in your Erudit software before using the extension.</p>
+        <button id="modalOkBtn" class="modal-ok">OK</button>
+      </div>
+    </div>
+
+    <!-- small settings toggle inside header -->
+    <button id="settingsToggle" class="settings-toggle" title="Settings">⚙</button>
+  </div>
+
+  <script src="widget.js"></script>
+</body>
+</html>
