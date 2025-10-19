@@ -3,21 +3,15 @@
 
 from dotenv import load_dotenv
 import os
-from pathlib import Path
-from datetime import datetime
+from typing import Optional, Type
 from src.engines.base_engine import BaseEngine
+
+from huggingface_hub import HfApi
 
 load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN")
 INDEXES_DIR = os.getenv("INDEXES_DIR", "")
 
-LLM_Engine = BaseEngine.get_engine()
+HF_API = HfApi(token=HF_TOKEN)
 
-# ----------------------------
-# LOGGING CONFIG
-# ----------------------------
-LOG_DIR = Path("logs")
-LOG_DIR.mkdir(parents=True, exist_ok=True)
-LOG_FILE = LOG_DIR / f"backend_{datetime.now().strftime('%Y-%m-%d')}.log"
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
-BACKUP_COUNT = 10  # Keep 10 rotated files
+LLM_Engine : Optional[Type[BaseEngine]] = None # It is defined in the lifespan at FastAPI init.

@@ -1,6 +1,6 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text, Boolean
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text
 from sqlalchemy.orm import relationship
-from ..database import Base
+from src.database.core import Base
 from datetime import datetime
 
 class Conversation(Base):

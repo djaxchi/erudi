@@ -18,7 +18,7 @@ export default function App() {
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/health`, {
+        const response = await fetch(`${API_BASE_URL}/health/`, {
           method: 'GET',
         });
         

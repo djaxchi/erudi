@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ErrorModal from "./modals/ErrorModal";
-import API_BASE_URL from "../config/api.js"
+import { API_BASE_URL } from "../config/api.js"
 
 export default function ChatCollapsibleSection({
   title,

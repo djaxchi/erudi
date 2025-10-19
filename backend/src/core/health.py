@@ -1,6 +1,8 @@
-from src.core.api import health_router as router
+from fastapi import APIRouter
 
-@router.get("")
+router = APIRouter(prefix="/health", tags=["health"])
+
+@router.get("/")
 async def health():
     """Health check endpoint"""
     return {"status": "ok", "message": "Backend is running"}

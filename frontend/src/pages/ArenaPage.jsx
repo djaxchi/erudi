@@ -7,7 +7,7 @@ import { Trash, Plus } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import MarkdownRenderer from "../components/MarkdownRenderer";
-import API_BASE_URL from "../config/api.js"
+import { API_BASE_URL } from "../config/api.js"
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {

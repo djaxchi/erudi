@@ -4,8 +4,7 @@ from datetime import datetime
 from typing import List
 import faiss
 
-from fastapi import Depends, HTTPException, Body, status
-from src.core.api import conversations_router as router
+from fastapi import Depends, HTTPException, Body, status, APIRouter
 from sqlalchemy.orm import Session
 from fastapi.responses import StreamingResponse
 
@@ -14,7 +13,7 @@ from src.database.core import get_db
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
 from src.entities.Message import Message
-from backend.src.core.vars import LLM_Engine
+from src.core import vars
 from src.core.logging import logger
 from src.utils.inference_utils import (
     EmbedderService,
@@ -31,6 +30,8 @@ from src.domains.conversations.schemas import (
     ConversationWithMessagesResponse,
     MessageResponse
 )
+
+router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 _conversation_summary_cache = {}
 
@@ -310,7 +311,7 @@ def retrieve_context(
         Returns:
             str: The generated summary.
         """
-        model, tokenizer = LLM_Engine.get_model(llm)
+        model, tokenizer = vars.LLM_Engine.get_model_and_tokenizer(llm_id=llm.id, llm_local_path=llm.link)
         if len(history) < 10:
             return ""
 
@@ -337,7 +338,7 @@ def retrieve_context(
             logger.info("======= Generating conversation summary... =======")
             summary = ""
 
-            for chunk in LLM_Engine.generate_stream(
+            for chunk in vars.LLM_Engine.generate_stream(
                 model=model,
                 tokenizer=tokenizer,
                 prompt=merged_summary_prompt,
@@ -513,7 +514,7 @@ async def generate_title(
         raise HTTPException(status_code=404, detail="LLM not found")
     model_type = llm.type
     try:
-        model, tokenizer = LLM_Engine.get_model(llm)
+        model, tokenizer = vars.LLM_Engine.get_model_and_tokenizer(llm_id=llm.id, llm_local_path=llm.link)
     except Exception as e:
         logger.exception("Failed to load model or tokenizer: %s", e)
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
@@ -583,7 +584,7 @@ async def generate_title(
             temp = 0.5 if model_type == "mistral" else 1.0
             nucleus = 0.9 if model_type == "mistral" else 0.95
             max_tok = 12 if model_type == "mistral" else 12
-            for new_text in LLM_Engine.generate_stream(
+            for new_text in vars.LLM_Engine.generate_stream(
                 model=model,
                 tokenizer=tokenizer,
                 prompt=full_title_generation_prompt,
@@ -802,7 +803,7 @@ async def query_and_respond(
 
     # Model Loading
     try:
-        model, tokenizer = LLM_Engine.get_model(llm=llm)
+        model, tokenizer = vars.LLM_Engine.get_model_and_tokenizer(llm_id=llm.id, llm_local_path=llm.link)
     except Exception as e:
         logger.exception("Failed to load model or tokenizer: %s", e)
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
@@ -814,7 +815,7 @@ async def query_and_respond(
             f"Generating response from MLX model for prompt: {payload.question}"
         )
         try:
-            for text in LLM_Engine.generate_stream(
+            for text in vars.LLM_Engine.generate_stream(
                 model=model,
                 tokenizer=tokenizer,
                 prompt=final_prompt,
@@ -907,7 +908,7 @@ async def store_error_message(
         db.commit()
 
         logger.info(f"Stored error message for conversation {conversation_id}")
-        LLM_Engine.cleanup()
+        vars.LLM_Engine.cleanup()
         return {
             "message": "Error message stored successfully",
             "error_message_id": error_message.id,

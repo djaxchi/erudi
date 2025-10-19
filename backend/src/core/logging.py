@@ -1,13 +1,13 @@
-import logging
-import sys
+import logging, sys
+from pathlib import Path
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
-from backend.src.core.vars import LOG_FILE, MAX_FILE_SIZE, BACKUP_COUNT
 
 # ----------------------------
 # Formatter
 # ----------------------------
 class CustomFormatter(logging.Formatter):
-    """Custom formatter to add colors for console output."""
+    """Custom formatter to add colors for console output and shorten pathname."""
 
     grey = "\x1b[38;21m"
     yellow = "\x1b[33;21m"
@@ -17,14 +17,18 @@ class CustomFormatter(logging.Formatter):
     reset = "\x1b[0m"
 
     FORMATS = {
-        logging.DEBUG: blue + "[DEBUG] %(asctime)s - %(name)s - %(message)s" + reset,
-        logging.INFO: grey + "[INFO]  %(asctime)s - %(name)s - %(message)s" + reset,
-        logging.WARNING: yellow + "[WARN]  %(asctime)s - %(name)s - %(message)s" + reset,
-        logging.ERROR: red + "[ERROR] %(asctime)s - %(name)s - %(message)s" + reset,
-        logging.CRITICAL: bold_red + "[CRIT] %(asctime)s - %(name)s - %(message)s" + reset,
+        logging.DEBUG: blue + "[DEBUG] %(asctime)s - %(name)s - %(pathname)s:%(funcName)s:l%(lineno)d - %(message)s" + reset,
+        logging.INFO: grey + "[INFO]  %(asctime)s - %(name)s - %(pathname)s:%(funcName)s:l%(lineno)d - %(message)s" + reset,
+        logging.WARNING: yellow + "[WARN]  %(asctime)s - %(name)s - %(pathname)s:%(funcName)s:l%(lineno)d - %(message)s" + reset,
+        logging.ERROR: red + "[ERROR] %(asctime)s - %(name)s - %(pathname)s:%(funcName)s:l%(lineno)d - %(message)s" + reset,
+        logging.CRITICAL: bold_red + "[CRIT] %(asctime)s - %(name)s - %(pathname)s:%(funcName)s:l%(lineno)d - %(message)s" + reset,
     }
 
     def format(self, record):
+        # Shorten pathname to start from "backend/"
+        backend_idx = record.pathname.find("backend/")
+        if backend_idx != -1:
+            record.pathname = record.pathname[backend_idx:]
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt, datefmt="%Y-%m-%d %H:%M:%S")
         return formatter.format(record)
@@ -32,7 +36,16 @@ class CustomFormatter(logging.Formatter):
 # ----------------------------
 # Logger setup
 # ----------------------------
-def get_logger(name: str = "erudi-backend") -> logging.Logger:
+def get_logger(name: str = "erudi") -> logging.Logger:
+    # ----------------------------
+    # LOGGING CONFIG
+    # ----------------------------
+    LOG_DIR = Path("logs")
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_FILE = LOG_DIR / f"backend_{datetime.now().strftime('%Y-%m-%d')}.log"
+    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+    BACKUP_COUNT = 10  # Keep 10 rotated files
+
     logger = logging.getLogger(name)
     if logger.hasHandlers():
         return logger  # Avoid duplicate handlers
@@ -41,7 +54,7 @@ def get_logger(name: str = "erudi-backend") -> logging.Logger:
 
     # Console handler (for development)
     ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)  # Change to DEBUG for verbose local logging
+    ch.setLevel(logging.DEBUG)  # Change to DEBUG for verbose local logging
     ch.setFormatter(CustomFormatter())
     logger.addHandler(ch)
 
@@ -59,8 +72,6 @@ def get_logger(name: str = "erudi-backend") -> logging.Logger:
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(file_formatter)
     logger.addHandler(fh)
-
-    # Optionally, add integration with Sentry or other monitoring tools here
 
     return logger
 

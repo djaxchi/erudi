@@ -1,7 +1,6 @@
 from datetime import datetime
 
-from src.core.api import arena_router as router
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, APIRouter
 from fastapi.responses import StreamingResponse
 
 from sqlalchemy.orm import Session
@@ -9,13 +8,15 @@ from src.database.core import get_db
 
 from src.domains.arena.schemas import ArenaQueryPayload
 from src.entities.Llm import Llm
-from backend.src.core.vars import LLM_Engine
+from src.core import vars
 from src.core.logging import logger
 from src.utils.inference_utils import (
     get_prompting_strategy,
     get_relevant_texts_from_kb,
     build_system_prompt
 )
+
+router = APIRouter(prefix="/arena", tags=["arena"])
 
 @router.post("/{llm_id}/query")
 async def query_arena(
@@ -100,7 +101,7 @@ async def query_arena(
 
     # Model Loading
     try:
-        model, tokenizer = LLM_Engine.get_model(llm)
+        model, tokenizer = vars.LLM_Engine.get_model_and_tokenizer(llm_id=llm.id, llm_local_path=llm.link)
     except Exception as e:
         logger.exception("Failed to load model or tokenizer")
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
@@ -110,7 +111,7 @@ async def query_arena(
         start = datetime.now()
         logger.info(f"Generating response from MLX model for prompt: {payload.question}")
         try:
-            for new_text in LLM_Engine.generate_stream(
+            for new_text in vars.LLM_Engine.generate_stream(
                 model=model,
                 tokenizer=tokenizer,
                 prompt = final_prompt,

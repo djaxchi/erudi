@@ -10,7 +10,7 @@ import ErrorModal from "../components/modals/ErrorModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";
 import logoErudi from "../img/logoerudifinal.png";
-import API_BASE_URL from "../config/api.js"
+import { API_BASE_URL } from "../config/api.js"
 
 export default function ChatPage() {
   const navigate = useNavigate();
