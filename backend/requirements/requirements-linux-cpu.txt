@@ -1,0 +1,3 @@
+-r meta/base.txt
+-r meta/linux-specs.txt
+-r meta/cpu.txt

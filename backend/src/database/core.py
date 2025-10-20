@@ -3,9 +3,11 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
 load_dotenv()
 # SQLite database URL
+Path(".", "data").mkdir(parents=True, exist_ok=True)
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Create the SQLite engine
