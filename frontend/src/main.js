@@ -171,6 +171,7 @@ const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    title: "erudi - BETA",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
@@ -210,7 +211,7 @@ const createWindow = () => {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';"
+          "default-src 'self'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https://script.google.com https://script.googleusercontent.com; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;"
         ]
       }
     });

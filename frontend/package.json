@@ -12,8 +12,8 @@
     "lint": "echo \"No linting configured\""
   },
   "keywords": [],
-  "author": "Nabil Dakkoune <nabil.dakkoune.86@hotmail.com>",
-  "license": "MIT",
+  "author": "Djalil Chikhi, Rayan Hanader, Sami Taider, Youssef Chaouki, Youssef Laatar",
+  "license": "SEE LICENSE IN LICENSE",
   "devDependencies": {
     "@babel/core": "^7.27.1",
     "@babel/preset-react": "^7.27.1",

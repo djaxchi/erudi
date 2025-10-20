@@ -2,8 +2,27 @@
 
 # Build script for Erudi - Electron app with embedded Python backend
 # This script automates the complete build process
+#
+# Usage:
+#   ./build-erudi.sh                 # Full build (backend + frontend)
+#   ./build-erudi.sh --skip-backend  # Skip backend rebuild
 
 set -e  # Exit on any error
+
+# Parse command line arguments
+SKIP_BACKEND=false
+for arg in "$@"; do
+  case $arg in
+    --skip-backend)
+      SKIP_BACKEND=true
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $arg"
+      exit 1
+      ;;
+  esac
+done
 
 # Colors for output
 RED='\033[0;31m'
@@ -21,37 +40,65 @@ PROJECT_ROOT="/Users/djadja/Code/erudi"
 
 echo -e "${YELLOW}📁 Project root: $PROJECT_ROOT${NC}"
 
-# Step 1: Build backend with PyInstaller
-echo -e "${BLUE}🔄 Step 1: Building backend with PyInstaller...${NC}"
-cd "$PROJECT_ROOT/backend"
-
-# Check if virtual environment exists
-if [ ! -d "venv" ]; then
-    echo -e "${RED}❌ Virtual environment not found. Creating one...${NC}"
-    python -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
+# Step 1: Build backend with PyInstaller (unless skipped)
+if [ "$SKIP_BACKEND" = true ]; then
+    echo -e "${YELLOW}⏭️  Skipping backend rebuild (--skip-backend flag set)${NC}"
+    
+    # Verify backend already exists
+    if [ ! -f "$PROJECT_ROOT/backend/dist/backend/backend" ]; then
+        echo -e "${RED}❌ Backend executable not found at $PROJECT_ROOT/backend/dist/backend/backend${NC}"
+        echo -e "${RED}   Run without --skip-backend to rebuild it first${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✅ Using existing backend build${NC}"
 else
-    source venv/bin/activate
+    echo -e "${BLUE}🔄 Step 1: Building backend with PyInstaller...${NC}"
+    cd "$PROJECT_ROOT/backend"
+
+    # Clean up old database before building
+    echo -e "${BLUE}🧹 Cleaning up old database...${NC}"
+    if [ -f "data/erudi.db" ]; then
+        echo -e "${YELLOW}🗑️  Removing old erudi.db${NC}"
+        rm -f data/erudi.db
+        echo -e "${GREEN}✅ Old database removed${NC}"
+    else
+        echo -e "${YELLOW}ℹ️  No existing database found${NC}"
+    fi
+
+    # Check if virtual environment exists
+    if [ ! -d "venv" ]; then
+        echo -e "${RED}❌ Virtual environment not found. Creating one...${NC}"
+        python -m venv venv
+        source venv/bin/activate
+        echo -e "${BLUE}📦 Installing Python dependencies...${NC}"
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    else
+        echo -e "${BLUE}♻️  Virtual environment found. Refreshing dependencies...${NC}"
+        source venv/bin/activate
+        echo -e "${BLUE}📦 Updating Python dependencies...${NC}"
+        pip install --upgrade pip
+        pip install --upgrade -r requirements.txt
+    fi
+
+    # Check if PyInstaller is installed
+    if ! command -v pyinstaller &> /dev/null; then
+        echo -e "${YELLOW}⚠️  PyInstaller not found. Installing...${NC}"
+        pip install pyinstaller
+    fi
+
+    # Build the backend executable
+    echo -e "${BLUE}🔨 Building backend executable...${NC}"
+    pyinstaller backend.spec
+
+    # Check if build was successful
+    if [ ! -f "dist/backend/backend" ]; then
+        echo -e "${RED}❌ Backend build failed! dist/backend/backend not found.${NC}"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✅ Backend build successful!${NC}"
 fi
-
-# Check if PyInstaller is installed
-if ! command -v pyinstaller &> /dev/null; then
-    echo -e "${YELLOW}⚠️  PyInstaller not found. Installing...${NC}"
-    pip install pyinstaller
-fi
-
-# Build the backend executable
-echo -e "${BLUE}🔨 Building backend executable...${NC}"
-pyinstaller backend.spec
-
-# Check if build was successful
-if [ ! -f "dist/backend/backend" ]; then
-    echo -e "${RED}❌ Backend build failed! dist/backend/backend not found.${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}✅ Backend build successful!${NC}"
 
 # Step 2: Install frontend dependencies if needed
 echo -e "${BLUE}🔍 Step 2: Checking frontend dependencies...${NC}"

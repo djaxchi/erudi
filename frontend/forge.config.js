@@ -13,11 +13,26 @@ module.exports = {
     appBundleId: "com.erudi.app",
     appCategoryType: "public.app-category.productivity",
     // Icône de l'application
-    icon: "./assets/icons/icon", // Electron Forge cherchera icon.icns sur macOS, icon.ico sur Windows, icon.png sur Linux
+    icon: "./assets/icons/icon",
     // Métadonnées de l'application
     appCopyright: "Copyright © 2025 Erudi Team",
     appVersion: "1.0.0",
-    buildVersion: "1.0.0"
+    buildVersion: "1.0.0",
+    
+    // macOS Code Signing & Notarization
+    osxSign: {
+      identity: process.env.APPLE_SIGNING_IDENTITY || null,
+      hardenedRuntime: true,
+      entitlements: "./entitlements.plist",
+      entitlementsInherit: "./entitlements.plist",
+      gatekeeper: false,
+    },
+    osxNotarize: {
+      tool: "notarytool",
+      appleId: process.env.APPLE_ID,
+      appleIdPassword: process.env.APPLE_ID_PASSWORD,
+      teamId: process.env.APPLE_TEAM_ID,
+    },
   },
   rebuildConfig: {},
   makers: [
@@ -33,7 +48,15 @@ module.exports = {
       name: "@electron-forge/maker-dmg",
       config: {
         name: "erudi-Installer",
-        icon: "./assets/icons/icon.icns"
+        icon: "./assets/icons/icon.icns",
+        background: "./assets/dmg-background.png", 
+        format: "UDZO",
+        window: {
+          x: 100,
+          y: 100,
+          width: 600,
+          height: 400
+        }
       }
     },
     {
