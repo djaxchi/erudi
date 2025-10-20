@@ -1,16 +1,6 @@
-import mlx_lm
-import logging
-import faiss
-import os
-import torch
-import threading
-import asyncio
-import gc
-import numpy as np
-from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
-from datetime import datetime, timedelta
-from typing import Optional, Tuple, Any, List, Callable
+import faiss, os, numpy
+from datetime import datetime
+from typing import Optional, List
 
 from sqlalchemy.orm import Session
 
@@ -19,8 +9,10 @@ from src.entities.Llm import Llm
 from src.entities.VectorStore import VectorStore
 from src.utils.file_processor import chunk_by_tokens
 
-load_dotenv()
-CACHE_DIR = os.getenv("CACHE_DIR")
+from src.core.vars import (
+    CACHE_DIR
+)
+from src.core.logging import logger
 
 class EmbedderService:
     """Singleton service for managing the sentence transformer embedder.
@@ -40,14 +32,15 @@ class EmbedderService:
         Returns:
             SentenceTransformer: The singleton embedder instance.
         """
+        from sentence_transformers import SentenceTransformer
         if cls._instance is None:
-            logging.info("Loading the Embedder via EmbedderService")
+            logger.info("Loading the Embedder via EmbedderService")
             os.makedirs(CACHE_DIR, exist_ok=True)
             cls._instance = SentenceTransformer(
                 "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
                 cache_folder=CACHE_DIR,
             )
-            logging.info("Embedder loaded")
+            logger.info("Embedder loaded")
         return cls._instance
     
     @classmethod
@@ -56,9 +49,7 @@ class EmbedderService:
         if cls._instance is not None:
             del cls._instance
             cls._instance = None
-            if torch.backends.mps.is_available():
-                torch.mps.empty_cache()
-            logging.info("Embedder cleaned up")
+            logger.info("Embedder cleaned up")
 
 
 def get_prompting_strategy(param_size: int) -> dict:
@@ -307,17 +298,17 @@ def get_relevant_texts_from_kb(
 
         # Encode query chunk
         try:
-            logging.info(f"Encoding query chunk: {chunk[:50]}...")
+            logger.info(f"Encoding query chunk: {chunk[:50]}...")
             query_emb = embedder.encode(chunk, convert_to_tensor=True)
             if query_emb is None or query_emb.numel() == 0:
                 raise Exception("Error embedding chunk.")
         except Exception as e:
-            logging.error(f"Error embedding chunk: {e}")
+            logger.error(f"Error embedding chunk: {e}")
             continue
 
         # Search similar vectors
         try:
-            q = np.ascontiguousarray(
+            q = numpy.ascontiguousarray(
                 query_emb.detach().cpu().numpy().astype("float32")
             ).reshape(1, -1)
             _, I = faiss_index.search(q, k=kb_top_k)
