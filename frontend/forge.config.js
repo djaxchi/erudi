@@ -52,8 +52,8 @@ module.exports = {
         background: "./assets/dmg-background.png", 
         format: "UDZO",
         window: {
-          x: 100,
-          y: 100,
+          x: 200,
+          y: 300,
           width: 600,
           height: 400
         }
