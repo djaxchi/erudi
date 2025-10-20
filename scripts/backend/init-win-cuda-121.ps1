@@ -45,18 +45,10 @@ python -m pip install --upgrade pip
 if (-not $?) { Write-Error "Failed to upgrade pip" }
 
 # Install requirements
-$requirements = @(
-    ".\backend\requirements\requirements-base.txt",
-    ".\backend\requirements\windows\requirements-windows.txt",
-    ".\backend\requirements\cuda\requirements-cuda-base.txt"
-    ".\backend\requirements\cuda\requirements-cuda-121.txt"
-)
-
-foreach ($req in $requirements) {
-    Write-Status "Installing requirements from $req..."
-    python -m pip install -r $req
-    if (-not $?) { Write-Error "Failed to install requirements from $req" }
-}
+$req = ".\backend\requirements\requirements-win-cuda-121.txt"
+Write-Status "Installing requirements from $req..."
+python -m pip install -r $req
+if (-not $?) { Write-Error "Failed to install requirements from $req" }
 
 Write-Host ""
 Write-Host "Environment setup complete! Welcome on-board at Erudi! " -ForegroundColor Green
