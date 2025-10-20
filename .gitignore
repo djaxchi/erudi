@@ -8,10 +8,18 @@
 .env
 .env.example
 
-# Build
-backend.spec
+# Build artifacts
 dist/
 build/
+backend/dist/
+backend/build/
+frontend/out/
+frontend/.webpack/
+frontend/backend/
+
+# Temporary files
+*.log
+/tmp/erudi-backend.log
 
 .DS_Store
 Thumbs.db
