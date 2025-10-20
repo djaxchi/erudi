@@ -7,7 +7,6 @@ import threading
 import asyncio
 import gc
 import numpy as np
-from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, Any, List, Callable
@@ -18,9 +17,9 @@ from app.models.KnowledgeBase import KnowledgeBase
 from app.models.Llm import Llm
 from app.models.VectorStore import VectorStore
 from app.utils.file_processor import chunk_by_tokens
+from app.utils.path_utils import get_cache_dir
 
-load_dotenv()
-CACHE_DIR = os.getenv("CACHE_DIR")
+CACHE_DIR = str(get_cache_dir())
 
 class ModelManager:
     """Singleton manager for MLX models and tokenizers.

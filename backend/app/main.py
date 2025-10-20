@@ -26,11 +26,12 @@ from .models.VectorStore import VectorStore
 from .models.KBJob import KBJobModel
 from .models.StaticHardwareInfos import StaticHardwareInfo
 from .models.StartupVariables import StartupVariables
+from .utils.path_utils import init_environment
 
 from huggingface_hub import HfApi
-from dotenv import load_dotenv
 
-load_dotenv()
+# Initialize environment variables from correct location
+init_environment()
 HF_TOKEN = os.getenv("HF_TOKEN")
 api = HfApi(token=HF_TOKEN)
 

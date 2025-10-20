@@ -68,12 +68,10 @@ const startRealBackend = () => {
     
     let backendPath;
     if (app.isPackaged) {
-      // BUILD MODE: Look for packaged backend
       backendPath = resolvePackagedBackendPath();
     } else {
-      // DEV MODE: Look for backend in development location
       const devCandidates = [
-        path.join(__dirname, '..', '..', 'backend', 'dist', 'backend', 'backend'),
+        path.join(__dirname, '..', '..', 'backend', 'backend'),
       ];
       backendPath = devCandidates.find(p => fs.existsSync(p)) || null;
     }
@@ -139,7 +137,6 @@ const startRealBackend = () => {
             return;
           }
         } catch (error) {
-          // Silently continue trying
         }
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
@@ -174,7 +171,6 @@ const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: "erudi - AI Assistant",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,

@@ -5,7 +5,7 @@ module.exports = {
   packagerConfig: {
     asar: true,
     extraResource: [
-      "./backend"
+      "../backend/dist/backend"
     ],
     // Personnalisation de l'application
     name: "erudi",
@@ -32,7 +32,8 @@ module.exports = {
     {
       name: "@electron-forge/maker-dmg",
       config: {
-        name: "Erudi-Installer"
+        name: "erudi-Installer",
+        icon: "./assets/icons/icon.icns"
       }
     },
     {

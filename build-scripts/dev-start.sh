@@ -75,6 +75,7 @@ uvicorn app.main:app --reload --port 8000 &
 BACKEND_PID=$!
 
 echo -e "${GREEN}✅ Backend started (PID: $BACKEND_PID)${NC}"
+echo -e "${BLUE}📝 Backend logs will appear below:${NC}"
 
 # Wait a moment for backend to start
 echo -e "${BLUE}⏳ Waiting for backend to be ready...${NC}"

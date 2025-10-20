@@ -1,12 +1,10 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import os
-from dotenv import load_dotenv
+from .utils.path_utils import get_database_url
 
-load_dotenv()
-# SQLite database URL
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Get the absolute database URL (handles both dev and frozen paths)
+DATABASE_URL = get_database_url()
 
 # Create the SQLite engine
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})

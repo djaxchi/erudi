@@ -26,9 +26,8 @@ import faiss
 faiss.omp_set_num_threads(1)
 import numpy as np
 
-from dotenv import load_dotenv
-load_dotenv()
-INDEXES_DIR = os.getenv("INDEXES_DIR", "")
+from ..utils.path_utils import get_indexes_dir
+INDEXES_DIR = str(get_indexes_dir())
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

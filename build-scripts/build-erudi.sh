@@ -53,37 +53,16 @@ fi
 
 echo -e "${GREEN}✅ Backend build successful!${NC}"
 
-# Step 2: Copy backend to frontend
-echo -e "${BLUE}📦 Step 2: Copying backend to frontend...${NC}"
+# Step 2: Install frontend dependencies if needed
+echo -e "${BLUE}🔍 Step 2: Checking frontend dependencies...${NC}"
 cd "$PROJECT_ROOT/frontend"
-
-# Remove old backend if it exists
-if [ -d "backend" ]; then
-    echo -e "${YELLOW}🗑️  Removing old backend...${NC}"
-    rm -rf backend/
-fi
-
-# Copy new backend
-echo -e "${BLUE}📋 Copying new backend build...${NC}"
-cp -r ../backend/dist/backend ./backend
-
-# Verify copy was successful
-if [ ! -f "backend/backend" ]; then
-    echo -e "${RED}❌ Backend copy failed! backend/backend not found.${NC}"
-    exit 1
-fi
-
-echo -e "${GREEN}✅ Backend copied successfully!${NC}"
-
-# Step 3: Install frontend dependencies if needed
-echo -e "${BLUE}🔍 Step 3: Checking frontend dependencies...${NC}"
 if [ ! -d "node_modules" ]; then
     echo -e "${YELLOW}📥 Installing frontend dependencies...${NC}"
     npm install
 fi
 
-# Step 4: Build Electron app
-echo -e "${BLUE}⚡ Step 4: Building Electron app...${NC}"
+# Step 3: Build Electron app
+echo -e "${BLUE}⚡ Step 3: Building Electron app...${NC}"
 
 # Clean old builds
 if [ -d "out" ]; then
@@ -94,8 +73,8 @@ fi
 # Build the app
 npm run make
 
-# Step 5: Verify build results
-echo -e "${BLUE}🔍 Step 5: Verifying build results...${NC}"
+# Step 4: Verify build results
+echo -e "${BLUE}🔍 Step 4: Verifying build results...${NC}"
 
 # Check for DMG file (preferred for macOS)
 DMG_PATH="$PROJECT_ROOT/frontend/out/make/Erudi-Installer.dmg"

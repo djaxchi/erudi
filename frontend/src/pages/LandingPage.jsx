@@ -411,11 +411,11 @@ fetchWelcomePopupStatus();
       />
 
       {/* Main sidebar */}
-      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-80 opacity-100 p-6'} bg-[#272727] text-white flex flex-col transition-all duration-300 overflow-hidden`}>
+      <aside className={`${brainSidebarCollapsed ? 'w-0 opacity-0' : 'w-80 opacity-100 p-6'} bg-[#272727] text-white flex flex-col transition-all duration-300`}>
         <div className="flex items-center justify-start mb-6 flex-shrink-0">
           <img 
             src={logoErudi} 
-            alt="Erudi" 
+            alt="Erudi"
             className="h-[40px] ml-2 w-auto cursor-pointer hover:opacity-80 transition-opacity" 
             onClick={() => setShowWelcome(true)}
             onError={(e) => {
@@ -431,7 +431,7 @@ fetchWelcomePopupStatus();
             onLocalModelRefresh={handleMainPageRefresh}
           />
         </div>
-        <div className="flex-1 min-h-0 overflow-hidden">
+        <div className="flex-1 min-h-0">
           <ModelCollapsibleSection
             title="Remote Models"
            hasSearch={true}
