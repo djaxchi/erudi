@@ -7,18 +7,34 @@ function Write-Error($msg) { Write-Host "[ERROR] $msg" -ForegroundColor Red; exi
 
 # Check Python version (3.9+)
 Write-Status "Checking Python version..."
-try {
-    $version = python --version 2>&1
-    if ($version -match '(\d+)\.(\d+)\.(\d+)') {
-        $major = [int]$Matches[1]; $minor = [int]$Matches[2]
-        if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 9)) {
-            Write-Error "Python 3.9+ required, found: $version"
+
+$pythonCandidates = @("python", "python3", "py", "py3")
+$pythonCmd = $null
+$version = $null
+
+foreach ($cmd in $pythonCandidates) {
+    try {
+        $version = & $cmd --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $pythonCmd = $cmd
+            break
         }
+    } catch {}
+}
+
+if (-not $pythonCmd) {
+    Write-Error "No valid Python executable found in PATH (tried: $($pythonCandidates -join ', '))"
+}
+
+if ($version -match '(\d+)\.(\d+)\.(\d+)') {
+    $major = [int]$Matches[1]; $minor = [int]$Matches[2]
+    if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 9)) {
+        Write-Error "Python 3.9+ required, found: $version"
     } else {
-        Write-Error "Could not determine Python version"
+        Write-Status "Using Python: $pythonCmd ($version)"
     }
-} catch {
-    Write-Error "Python not found in PATH"
+} else {
+    Write-Error "Could not determine Python version from output: $version"
 }
 
 # Create and activate virtual environment
@@ -31,7 +47,7 @@ if (Test-Path $venvPath) {
 }
 
 # Create new venv
-python -m venv $venvPath
+& python -m venv $venvPath
 if (-not $?) { Write-Error "Failed to create virtual environment" }
 
 # Activate venv
@@ -39,15 +55,17 @@ Write-Status "Activating virtual environment..."
 & "$venvPath\Scripts\Activate.ps1"
 if (-not $?) { Write-Error "Failed to activate virtual environment" }
 
+$venvPython = Join-Path $venvPath "Scripts\python.exe"
+
 # Upgrade pip
 Write-Status "Upgrading pip..."
-python -m pip install --upgrade pip
+& $venvPython -m pip install --upgrade pip
 if (-not $?) { Write-Error "Failed to upgrade pip" }
 
 # Install requirements
 $req = ".\backend\requirements\requirements-win-cpu.txt"
 Write-Status "Installing requirements from $req..."
-python -m pip install -r $req
+& $venvPython -m pip install --force-reinstall --no-cache-dir -r $req
 if (-not $?) { Write-Error "Failed to install requirements from $req" }
 
 Write-Host ""

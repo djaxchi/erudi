@@ -1,5 +1,5 @@
+-r meta/cuda-118-specs.txt
 -r meta/base.txt
 -r meta/linux-specs.txt
 -r meta/cuda-base-specs.txt
 -r meta/cuda-linux-specs.txt
--r meta/cuda-118-specs.txt
