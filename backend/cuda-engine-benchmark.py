@@ -15,9 +15,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN", None)
+non_quant_dir = Path("data", "models", "llmcompressor", "base-gemma-4B")
 
-
-
+####################### POUR TELECHARGER UN MODELE #######################
 # async def download_files_concurrent(
 #     fs,
 #     tasks,
@@ -91,6 +91,18 @@ HF_TOKEN = os.getenv("HF_TOKEN", None)
 
 #     return save_dir
 
+# async def main():
+#     print("Downloading Base LLM")
+#     t0 = time.time()
+#     await download_llm(model_link="google/gemma-3-4b-it", save_dir=non_quant_dir)
+#     dt=time.time()-t0
+#     print(f"[INFO] LLM downloaded in {dt:.1f}s in {non_quant_dir}")
+
+# asyncio.run(main())
+
+
+
+####################### VLLM TESTS #######################
 # def stream_inference_vllm(model_path: str, prompt: str, max_tokens: int = 128, temperature: float = 0.2):
     
 #     """
@@ -164,7 +176,6 @@ HF_TOKEN = os.getenv("HF_TOKEN", None)
 #     print("\n[INFO] Generation complete.")
 
 
-non_quant_dir = Path("data", "models", "llmcompressor", "base-gemma-4B")
 
 
 
@@ -173,25 +184,62 @@ non_quant_dir = Path("data", "models", "llmcompressor", "base-gemma-4B")
 
 
 
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from optimum.gptq import GPTQQuantizer, load_quantized_model
-import torch
-model_name = str(non_quant_dir)
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16)
+####################### OPTIMUM/AUTO-GPTQ TESTS #######################
 
-quantizer = GPTQQuantizer(
-    bits=4
-)
-quantized_model = quantizer.quantize_model(model, tokenizer)
-quant_dir = Path("data", "models", "llmcompressor", "awq-gemma-4B")
-quantizer.save(model, str(quant_dir))
+# from transformers import AutoModelForCausalLM, AutoTokenizer
+# from optimum.gptq import GPTQQuantizer, load_quantized_model
+# import torch
+# model_name = str(non_quant_dir)
+# print("Loading base model")
+# tokenizer = AutoTokenizer.from_pretrained(model_name)
+# model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16)
+# print("Base model loaded")
 
-from accelerate import init_empty_weights
-with init_empty_weights():
-    empty_model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16)
-empty_model.tie_weights()
-quantized_model = load_quantized_model(empty_model, save_folder=str(quant_dir), device_map="auto")
+# print("Creating config for GPTQ Quantizer")
+# quantizer = GPTQQuantizer(
+#     bits=4,
+#     cache_block_outputs=False,
+#     dataset="c4"
+# )
+# print("Config created")
+
+# print("Quantizing model")
+# quantized_model = quantizer.quantize_model(model, tokenizer)
+# print("Model Quantized")
+
+# print("Saving quantized model")
+# quant_dir = Path("data", "models", "llmcompressor", "awq-gemma-4B")
+# quantizer.save(model, str(quant_dir))
+# print("Quantized model saved")
+
+# print("Loading quantized model")
+# from accelerate import init_empty_weights
+# with init_empty_weights():
+#     empty_model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16)
+# empty_model.tie_weights()
+# quantized_model = load_quantized_model(empty_model, save_folder=str(quant_dir), device_map="auto")
+
+# # Tokenize input
+# prompt = "Tell me two phrases about AWQ Quantization"
+# temperature = 0.2
+# max_tokens = 1024
+
+# inputs = tokenizer(prompt, return_tensors="pt").to(quantized_model.device)
+
+# # Prepare streamer
+# # Sampling parameters
+# gen_kwargs = dict(
+#     **inputs,
+#     max_new_tokens=max_tokens,
+#     temperature=temperature,
+#     do_sample=True,
+# )
+
+# print(f"[INFO] Starting Generation (temperature={temperature}, max_tokens={max_tokens})")
+# v0 = time.time()
+# out = quantized_model.generate(**gen_kwargs)
+# dt = time.time() - v0
+# print(f"Generated in {dt:.1f}s.\nPrompt is: {prompt}\nResponse is: {out}")
 
 
 
@@ -203,15 +251,7 @@ quantized_model = load_quantized_model(empty_model, save_folder=str(quant_dir), 
 
 
 
-
-# async def main():
-#     print("Downloading Base LLM")
-#     t0 = time.time()
-#     await download_llm(model_link="google/gemma-3-4b-it", save_dir=non_quant_dir)
-#     dt=time.time()-t0
-#     print(f"[INFO] LLM downloaded in {dt:.1f}s in {non_quant_dir}")
-
-# asyncio.run(main())
+####################### LLMCOMPRESSOR TESTS #######################
 
 # t0 = time.time()
 # quant_dir = Path("data", "models", "llmcompressor", "awq-gemma-4B")
