@@ -1,31 +1,64 @@
-from pydantic import BaseModel
+"""
+Pydantic schemas for conversation-related data validation.
+"""
+from pydantic import BaseModel, Field, validator
 from datetime import datetime
 from typing import List, Optional
 
 class MessageBase(BaseModel):
-    sender: str
-    content: str
+    """Base schema for messages."""
+    sender: str = Field(..., description="Message sender (user or assistant)")
+    content: str = Field(..., min_length=1, max_length=32768, description="Message content")
+
+    @validator('sender')
+    def validate_sender(cls, v):
+        if v not in ['user', 'assistant']:
+            raise ValueError('Sender must be either "user" or "assistant"')
+        return v
 
 class MessageCreate(MessageBase):
+    """Schema for creating new messages."""
     pass
 
 class MessageResponse(MessageBase):
-    id: int
-    conversation_id: int
-    timestamp: datetime
-    starred: bool
+    """Schema for message responses."""
+    id: int = Field(..., description="Message ID")
+    conversation_id: int = Field(..., description="Parent conversation ID")
+    timestamp: datetime = Field(..., description="Message creation timestamp")
+    starred: bool = Field(default=False, description="Whether message is starred")
 
     class Config:
         from_attributes = True
 
 class ConversationBase(BaseModel):
-    llm_id: int
+    """Base schema for conversations."""
+    llm_id: int = Field(..., description="ID of the LLM to use")
 
 class ConversationCreate(ConversationBase):
-    temperature: Optional[float] = 0.2
-    top_p: Optional[float] = 0.5
-    max_tokens: Optional[int] = 1024
-    custom_prompt: Optional[str] = ""
+    """Schema for creating new conversations."""
+    temperature: Optional[float] = Field(
+        default=0.2,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature for text generation"
+    )
+    top_p: Optional[float] = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Nucleus sampling probability threshold"
+    )
+    max_tokens: Optional[int] = Field(
+        default=1024,
+        ge=1,
+        le=32768,
+        description="Maximum number of tokens to generate"
+    )
+    custom_prompt: Optional[str] = Field(
+        default="",
+        max_length=4096,
+        description="Custom system prompt override"
+    )
 
 class ConversationUpdate(ConversationBase):
     """Schéma utilisé pour les mises à jour partielles (PATCH)."""

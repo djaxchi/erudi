@@ -1,14 +1,13 @@
 """
 Prompt engineering utilities for conversations.
 """
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from src.core.logging import logger
 
 
 class PromptBuilder:
-    """
-    Handles construction and optimization of prompts for conversation context.
-    """
+    """Handles construction and optimization of prompts for conversation context."""
+    
     @staticmethod
     def build_system_prompt(
         model_name: str,
@@ -62,6 +61,85 @@ class PromptBuilder:
             context_elements.append(starred_context)
 
         return "\n".join(context_elements)
+
+
+class PromptGenerator:
+    """Utility for generating prompts with conversation context."""
+
+    def __init__(
+        self,
+        prompt_builder: PromptBuilder,
+        model_name: str = "Assistant",
+        size_category: str = "medium"
+    ):
+        """
+        Initialize the prompt generator.
+        
+        Args:
+            prompt_builder: PromptBuilder instance
+            model_name: Name of the model
+            size_category: Size category of the model
+        """
+        self.prompt_builder = prompt_builder
+        self.model_name = model_name
+        self.size_category = size_category
+
+    def generate_with_context(
+        self,
+        query: str,
+        relevant_messages: List[Tuple[str, str]],
+        max_length: int = 2000,
+        long_term_memory: Optional[str] = None,
+        starred_messages: Optional[List[str]] = None
+    ) -> str:
+        """
+        Generate a prompt with relevant conversation context.
+        
+        Args:
+            query: The current query/message
+            relevant_messages: List of (sender, content) tuples with relevant history
+            max_length: Maximum length of generated prompt
+            long_term_memory: Optional conversation summary
+            starred_messages: Optional list of important messages
+            
+        Returns:
+            Generated prompt with context
+        """
+        try:
+            # Get system prompt
+            system_prompt = self.prompt_builder.build_system_prompt(
+                model_name=self.model_name,
+                size_category=self.size_category,
+                long_term_memory=long_term_memory,
+                starred_messages=starred_messages
+            )
+            
+            # Start building prompt
+            sections = [
+                "System: " + system_prompt,
+                "\nRelevant conversation history:\n"
+            ]
+            
+            # Add relevant messages
+            for sender, content in relevant_messages:
+                role = "Assistant" if sender == "assistant" else "Human"
+                sections.append(f"{role}: {content}\n")
+                
+            # Add current query
+            sections.append(f"\nHuman: {query}\n")
+            sections.append("Assistant:")
+            
+            # Combine and truncate if needed
+            prompt = "".join(sections)
+            if len(prompt) > max_length:
+                prompt = prompt[:max_length]
+                
+            return prompt
+            
+        except Exception as e:
+            logger.exception(f"Error generating prompt: {str(e)}")
+            # Fall back to simple prompt
+            return f"Human: {query}\nAssistant:"
 
     @staticmethod
     def build_query_prompt(
