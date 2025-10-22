@@ -6,11 +6,13 @@
     <key>com.apple.security.cs.allow-jit</key>
     <false/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <false/>
+    <true/>
     <key>com.apple.security.cs.allow-dyld-environment-variables</key>
     <false/>
     <key>com.apple.security.cs.disable-library-validation</key>
     <false/>
+    <key>com.apple.security.cs.disable-executable-page-protection</key>
+    <true/>
     
     <!-- Network Entitlements (for backend communication) -->
     <key>com.apple.security.network.client</key>
@@ -23,14 +25,6 @@
     <true/>
     <key>com.apple.security.files.downloads.read-write</key>
     <true/>
-    
-    <!-- Process Management (for spawning backend) -->
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <false/>
-    
-    <!-- Allow execution of downloaded code (needed for MLX/PyInstaller backend) -->
-    <key>com.apple.security.cs.disable-executable-page-protection</key>
-    <false/>
     
     <!-- Temp Directory Access -->
     <key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>

@@ -33,6 +33,27 @@ Use the automated build script:
 ./build-scripts/build-erudi.sh
 ```
 
+or 
+```bash
+# Load your credentials
+source .env.notarize
+
+# Build with automatic signing & notarization
+./build-scripts/build-erudi.sh
+```
+for notorization
+
+with 
+
+.env.notarize having
+
+export APPLE_ID=
+export APPLE_ID_PASSWORD=
+export APPLE_TEAM_ID=
+export APPLE_SIGNING_IDENTITY=
+
+
+
 This will:
 1. Build the backend with PyInstaller
 2. Copy it to the frontend directory

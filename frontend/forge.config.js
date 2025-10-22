@@ -20,19 +20,23 @@ module.exports = {
     buildVersion: "1.0.0",
     
     // macOS Code Signing & Notarization
-    osxSign: {
-      identity: process.env.APPLE_SIGNING_IDENTITY || null,
-      hardenedRuntime: true,
-      entitlements: "./entitlements.plist",
-      entitlementsInherit: "./entitlements.plist",
-      gatekeeper: false,
-    },
-    osxNotarize: {
-      tool: "notarytool",
-      appleId: process.env.APPLE_ID,
-      appleIdPassword: process.env.APPLE_ID_PASSWORD,
-      teamId: process.env.APPLE_TEAM_ID,
-    },
+    ...(process.env.APPLE_SIGNING_IDENTITY && {
+      osxSign: {
+        identity: process.env.APPLE_SIGNING_IDENTITY,
+        hardenedRuntime: true,
+        entitlements: "./entitlements.plist",
+        entitlementsInherit: "./entitlements.plist",
+        gatekeeper: false,
+      },
+    }),
+    ...(process.env.APPLE_ID && {
+      osxNotarize: {
+        tool: "notarytool",
+        appleId: process.env.APPLE_ID,
+        appleIdPassword: process.env.APPLE_ID_PASSWORD,
+        teamId: process.env.APPLE_TEAM_ID,
+      },
+    }),
   },
   rebuildConfig: {},
   makers: [
@@ -52,11 +56,27 @@ module.exports = {
         background: "./assets/dmg-background.png", 
         format: "UDZO",
         window: {
-          x: 200,
-          y: 300,
-          width: 600,
-          height: 400
-        }
+          x: 420,
+          y: 200,
+          width: 640,
+          height: 440
+        },
+        contents: [
+          {
+            x: 200,
+            y: 200,
+            type: "file",
+            path: "./out/erudi-darwin-arm64/erudi.app"
+          },
+          {
+            x: 400,
+            y: 200,
+            type: "link",
+            path: "/Applications"
+          }
+        ],
+        iconSize: 80,
+        textColor: "#FFFFFF"
       }
     },
     {
