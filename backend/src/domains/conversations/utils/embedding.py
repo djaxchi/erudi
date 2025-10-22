@@ -1,30 +1,51 @@
 """
 Embedding and semantic search utilities for conversations.
+Handles the generation, caching, and searching of message embeddings.
 """
-from typing import List, Tuple
+from datetime import datetime
+from typing import List, Tuple, Optional, Dict
 import numpy as np
 import faiss
+from contextlib import contextmanager
+
 from src.core.logging import logger
 from src.utils.inference_utils import EmbedderService
+from src.core.exceptions import EmbeddingError
+from src.entities.Message import Message
 
 
 class ConversationEmbedder:
-    """
-    Handles embedding generation and semantic search for conversation messages.
-    """
-    def __init__(self):
+    """Handles embedding generation and semantic search for conversation messages."""
+    
+    def __init__(self, embedding_dimension: int = 384):
+        """
+        Initialize the embedder.
+        
+        Args:
+            embedding_dimension: Dimension of the embeddings to generate
+        """
         self._embedder = None
+        self._embedding_dimension = embedding_dimension
+        logger.info(
+            f"Initializing ConversationEmbedder with {embedding_dimension}d embeddings"
+        )
 
-    def _ensure_embedder(self):
-        """Initialize embedder if not already done."""
-        if self._embedder is None:
-            self._embedder = EmbedderService.get_embedder()
-
-    def _cleanup_embedder(self):
-        """Clean up embedder resources."""
-        if self._embedder is not None:
-            EmbedderService.cleanup()
-            self._embedder = None
+    @contextmanager
+    def _embedder_context(self):
+        """Context manager for embedder lifecycle."""
+        try:
+            if self._embedder is None:
+                logger.debug("Initializing embedder instance")
+                self._embedder = EmbedderService.get_embedder()
+            yield self._embedder
+        except Exception as e:
+            logger.error(f"Error in embedder context: {str(e)}")
+            raise EmbeddingError(f"Embedder error: {str(e)}")
+        finally:
+            if self._embedder is not None:
+                logger.debug("Cleaning up embedder instance")
+                EmbedderService.cleanup()
+                self._embedder = None
 
     def embed_query(self, query: str) -> np.ndarray:
         """
@@ -35,15 +56,33 @@ class ConversationEmbedder:
             
         Returns:
             Numpy array containing the embedding
+            
+        Raises:
+            EmbeddingError: If embedding generation fails
         """
-        try:
-            self._ensure_embedder()
-            query_emb = self._embedder.encode(query, convert_to_tensor=True)
-            return query_emb.cpu().numpy()
-        finally:
-            self._cleanup_embedder()
+        logger.debug(f"Generating embedding for query: {query[:50]}...")
+        
+        with self._embedder_context() as embedder:
+            try:
+                query_emb = embedder.encode(query, convert_to_tensor=True)
+                embedding = query_emb.cpu().numpy()
+                
+                if embedding.shape[0] != self._embedding_dimension:
+                    raise EmbeddingError(
+                        f"Invalid embedding dimension: {embedding.shape[0]}, "
+                        f"expected {self._embedding_dimension}"
+                    )
+                    
+                return embedding
+                
+            except Exception as e:
+                raise EmbeddingError(f"Query embedding failed: {str(e)}")
 
-    def embed_messages(self, messages: List[str]) -> np.ndarray:
+    def embed_messages(
+        self,
+        messages: List[str],
+        batch_size: int = 32
+    ) -> np.ndarray:
         """
         Generate embeddings for a list of messages.
         
@@ -62,17 +101,22 @@ class ConversationEmbedder:
 
     def find_relevant_messages(
         self,
+        conversation_id: int,
         query: str,
-        history: List[Tuple[str, str]],
-        n_results: int
+        history: List[Tuple[int, str, str, datetime]],
+        n_results: int,
+        cache
     ) -> List[Tuple[str, str]]:
         """
         Find messages from history that are semantically relevant to the query.
+        Uses cached FAISS index when available, otherwise creates new embeddings.
         
         Args:
+            conversation_id: ID of the conversation
             query: The query text
-            history: List of (sender, message) tuples representing conversation history
+            history: List of (message_id, sender, content, timestamp) tuples
             n_results: Number of relevant messages to return
+            cache: ConversationCache instance
             
         Returns:
             List of (sender, message) tuples sorted by relevance to query
@@ -81,52 +125,70 @@ class ConversationEmbedder:
             return []
 
         try:
-            # Extract just the message content for embedding
-            messages = [msg for _, msg in history]
-            
-            # Generate embeddings
+            # Generate query embedding
             query_emb = self.embed_query(query)
-            msg_embs = self.embed_messages(messages)
 
-            # Create FAISS index for similarity search
-            index = faiss.IndexFlatL2(msg_embs.shape[1])
-            index.add(msg_embs)
+            # Check cache for existing embeddings
+            cached_data = cache.get_cached_messages(conversation_id)
+            
+            # If no cache exists or cache is outdated, create new embeddings
+            if not cached_data or len(cached_data.messages) != len(history):
+                logger.info(
+                    f"Creating new embeddings for conversation {conversation_id}"
+                )
+                
+                # Generate embeddings for all messages
+                messages = [content for _, _, content, _ in history]
+                all_embeddings = self.embed_messages(messages)
+                
+                # Store in cache
+                for i, (msg_id, sender, content, timestamp) in enumerate(history):
+                    cache.add_message_embedding(
+                        conversation_id=conversation_id,
+                        message_id=msg_id,
+                        sender=sender,
+                        content=content,
+                        embedding=all_embeddings[i],
+                        timestamp=timestamp
+                    )
 
-            # Search for similar messages
-            _, indices = index.search(
-                query_emb.reshape(1, -1),
-                k=min(n_results, len(messages))
+            # Search for relevant messages
+            relevant = cache.find_relevant_messages(
+                conversation_id=conversation_id,
+                query_embedding=query_emb,
+                k=n_results
             )
 
-            # Return original messages with sender information
-            relevant_messages = []
+            # Format results maintaining conversation flow
+            result_messages = []
             used_messages = set()
 
-            for idx in indices[0]:
-                sender, msg = history[idx]
-                
-                # Skip if we've already included this message
-                if msg in used_messages:
+            for msg in relevant:
+                if msg.content in used_messages:
                     continue
-                used_messages.add(msg)
+                used_messages.add(msg.content)
 
-                # For user messages, try to include the assistant's response
-                if sender == "user" and idx + 1 < len(history):
-                    next_sender, next_msg = history[idx + 1]
-                    if next_msg not in used_messages:
-                        relevant_messages.append((sender, msg))
-                        used_messages.add(next_msg)
-                        relevant_messages.append((next_sender, next_msg))
+                # Find message in history for context
+                for i, (_, sender, content, _) in enumerate(history):
+                    if content == msg.content:
+                        # For user messages, include assistant's response
+                        if sender == "user" and i + 1 < len(history):
+                            _, next_sender, next_content, _ = history[i + 1]
+                            if next_content not in used_messages:
+                                result_messages.append((sender, content))
+                                used_messages.add(next_content)
+                                result_messages.append((next_sender, next_content))
+                        
+                        # For assistant messages, include user's question
+                        elif sender != "user" and i > 0:
+                            _, prev_sender, prev_content, _ = history[i - 1]
+                            if prev_content not in used_messages:
+                                result_messages.append((prev_sender, prev_content))
+                                used_messages.add(content)
+                                result_messages.append((sender, content))
+                        break
 
-                # For assistant messages, try to include the user's question
-                elif sender != "user" and idx > 0:
-                    prev_sender, prev_msg = history[idx - 1]
-                    if prev_msg not in used_messages:
-                        relevant_messages.append((prev_sender, prev_msg))
-                        used_messages.add(prev_msg)
-                        relevant_messages.append((sender, msg))
-
-            return relevant_messages
+            return result_messages
 
         except Exception as e:
             logger.exception(f"Error finding relevant messages: {str(e)}")
