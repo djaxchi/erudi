@@ -9,7 +9,7 @@ from typing import List, Tuple, Optional, AsyncGenerator, Callable, Iterator
 
 from src.core.logging import logger
 from backend.src.core import config
-from src.utils.inference_utils import get_prompting_strategy, build_system_prompt
+from src.utils.prompt_utils import get_prompting_strategy, build_system_prompt
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.conversations.utils.cache import ConversationCache
 from src.domains.conversations.utils.context import ConversationContext
