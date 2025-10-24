@@ -226,6 +226,5 @@ data/db/
 
 # Logs and temporary files
 *.log
-logs/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,terraform,ansible

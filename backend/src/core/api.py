@@ -1,9 +1,10 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from src.database.seed import createTables, startup_populate_database
 
 from src.core.exceptions import AppBaseException, app_base_exception_handler
-from src.core import vars
+from backend.src.core import config
 from src.engines.base_engine import BaseEngine
 from src.core.logging import logger
 
@@ -30,18 +31,26 @@ def register_routers(app: FastAPI) -> None :
 def add_exception_handlers(app: FastAPI) -> None :
     app.add_exception_handler(AppBaseException, app_base_exception_handler)
 
-
+def add_middleware(app: FastAPI) -> None:
+    app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+    
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Before yield comes the startup code
     logger.info("==== Starting up... ====")
-    vars.LLM_Engine = BaseEngine.get_engine()
+    config.LLM_Engine = BaseEngine.get_engine()
     await createTables()
     #await delete_all_data()
     await startup_populate_database()
-    vars.LLM_Engine.start_cleanup_task()
+    config.LLM_Engine.start_cleanup_task()
     yield
     logger.info("==== Shutting down... ====")
     # Shutdown code can go here if needed
-    vars.LLM_Engine.stop_cleanup_task()
-    vars.LLM_Engine.cleanup()
+    config.LLM_Engine.stop_cleanup_task()
+    config.LLM_Engine.cleanup()

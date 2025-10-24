@@ -15,8 +15,8 @@ from src.database.core import SessionLocal
 from src.entities.DownloadJob import DownloadJobModel
 from src.entities.Llm import Llm
 
-from src.core.vars import HF_TOKEN
-from src.core import vars
+from backend.src.core.config import HF_TOKEN
+from backend.src.core import config
 from src.core.logging import logger
 
 # Environment setup
@@ -33,7 +33,7 @@ def get_quantized_model_link(original_link: str) -> str:
     Returns:
         str: quantized model link if mapping exists, otherwise original link
     """
-    quantized_link = vars.LLM_Engine.MODEL_MAPPING.get(original_link, original_link)
+    quantized_link = config.LLM_Engine.MODEL_MAPPING.get(original_link, original_link)
     if quantized_link != original_link:
         logger.info(f"Using quantized model: {original_link} -> {quantized_link}")
     return quantized_link
@@ -295,7 +295,7 @@ async def download_llm(
             shutil.move(temp_save_dir, final_save_dir)
         else:
             # Need to convert to right format and quantize locally
-            await asyncio.to_thread(vars.LLM_Engine.quant_and_save_from_hf_format, temp_save_dir, final_save_dir)
+            await asyncio.to_thread(config.LLM_Engine.quant_and_save_from_hf_format, temp_save_dir, final_save_dir)
             shutil.rmtree(temp_save_dir, ignore_errors=True)
     except Exception as e:
         logger.error(f"Failed to process model: {e}")

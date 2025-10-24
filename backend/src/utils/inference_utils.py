@@ -9,7 +9,7 @@ from src.entities.Llm import Llm
 from src.entities.VectorStore import VectorStore
 from src.utils.file_processor import chunk_by_tokens
 
-from src.core.vars import (
+from backend.src.core.config import (
     CACHE_DIR
 )
 from src.core.logging import logger

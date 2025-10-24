@@ -1,14 +1,7 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from src.core.api import register_routers, lifespan, add_exception_handlers
+from src.core.api import register_routers, lifespan, add_exception_handlers, add_middleware
 
-app = FastAPI(lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(lifespan=lifespan, title="Erudi", version="0.1.0")
+add_middleware(app=app)
 add_exception_handlers(app=app)
 register_routers(app=app)

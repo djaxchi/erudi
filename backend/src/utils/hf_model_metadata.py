@@ -1,5 +1,5 @@
 from src.core.logging import logger
-from src.core.vars import HF_API
+from backend.src.core.config import HF_API
 
 def get_disk_size_after_quant(link_hf_quant_repo):
     """Get the actual size of MLX quantized model from Hugging Face"""

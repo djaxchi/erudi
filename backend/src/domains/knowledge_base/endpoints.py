@@ -26,7 +26,7 @@ from src.domains.knowledge_base.schemas import (
 )
 
 from src.core.logging import logger
-from src.core.vars import (
+from backend.src.core.config import (
     INDEXES_DIR
 )
 

@@ -8,7 +8,7 @@ from src.database.core import get_db
 
 from src.domains.arena.schemas import ArenaQueryPayload
 from src.entities.Llm import Llm
-from src.core import vars
+from backend.src.core import config
 from src.core.logging import logger
 from src.utils.inference_utils import (
     get_prompting_strategy,
@@ -101,7 +101,7 @@ async def query_arena(
 
     # Model Loading
     try:
-        model, tokenizer = vars.LLM_Engine.get_model_and_tokenizer(llm_id=llm.id, llm_local_path=llm.link)
+        model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(llm_id=llm.id, llm_local_path=llm.link)
     except Exception as e:
         logger.exception("Failed to load model or tokenizer")
         raise HTTPException(status_code=500, detail=f"Model loading error: {str(e)}")
@@ -111,7 +111,7 @@ async def query_arena(
         start = datetime.now()
         logger.info(f"Generating response from MLX model for prompt: {payload.question}")
         try:
-            for new_text in vars.LLM_Engine.generate_stream(
+            for new_text in config.LLM_Engine.generate_stream(
                 model=model,
                 tokenizer=tokenizer,
                 prompt = final_prompt,

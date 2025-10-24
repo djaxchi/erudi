@@ -462,14 +462,14 @@ export default function ConversationPage() {
   };
 
   // Toggle star state and send appropriate POST
-  const toggleStar = async (msgId, content) => {
+  const toggleStar = async (msgId) => {
     const isStarred = starredIds[msgId];
     const url = `${API_BASE_URL}/conversations/${isStarred ? 'unstar_message' : 'star_message'}`;
     try {
       await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message : content }),
+        body: JSON.stringify({ message_id: msgId }),
       });
       setStarredIds(prev => ({ ...prev, [msgId]: !isStarred }));
     } catch (err) {
@@ -597,7 +597,7 @@ export default function ConversationPage() {
                     </button>
                     {/* Star button */}
                     <button
-                      onClick={() => toggleStar(msg.id, msg.content)}
+                      onClick={() => toggleStar(msg.id)}
                       className="text-gray-400 hover:text-white transition-colors"
                       title="Star message"
                     >
