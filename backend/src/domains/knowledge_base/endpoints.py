@@ -1,3 +1,73 @@
+"""REST API endpoints for Knowledge Base (KB) creation and RAG attachment to LLMs.
+
+This module orchestrates the complete lifecycle of Knowledge Base assistants:
+1. **Document ingestion**: Parse PDFs/TXT files → chunk by tokens.
+2. **Vector indexing**: Embed chunks via sentence-transformers → FAISS IndexIDMap.
+3. **LLM specialization**: Create specialized LLM entry attached to KB (kb_id FK).
+4. **Background processing**: Queue KB jobs for async embedding + indexing.
+
+Architecture:
+    ┌──────────────┐
+    │ User uploads │
+    │ PDF/TXT files│
+    └───────┬──────┘
+            │ (1) create_knowledge_base() → validates files
+            ↓
+    ┌──────────────┐
+    │ Prepare docs │ ← file_processor.prepare_for_knowledge_base()
+    │ & chunk text │ ← file_processor.chunk_by_tokens(chunk_size=512)
+    └───────┬──────┘
+            │ (2) Create KnowledgeBase + VectorStore + specialized Llm
+            ↓
+    ┌──────────────┐
+    │ Background   │ ← BackgroundTasks.add_task(init_new_kb_assistant)
+    │ FAISS index  │   or update_kb_assistant_with_new_data()
+    └───────┬──────┘
+            │ (3) Embed chunks via sentence-transformers
+            │ (4) Store in FAISS IndexIDMap (384-dim float32)
+            ↓
+    ┌──────────────┐
+    │ Ready for    │ ← RAG queries use faiss.search(k=5)
+    │ inference    │   inject top-5 chunks into prompt context
+    └──────────────┘
+
+Data Model:
+    - **KnowledgeBase**: Stores file_names_list JSON + index_path on disk.
+    - **VectorStore**: Stores vectors_data JSON mapping FAISS IDs → text chunks.
+    - **Llm**: Specialized model entry with is_attached_to_kb=1 + kb_id FK.
+    - **KBJob**: Background task status (pending/running/completed/failed).
+
+FAISS Configuration:
+    - IndexFlatL2(384): Brute-force L2 distance (exact search).
+    - IndexIDMap: Wraps IndexFlatL2 to allow custom integer IDs per chunk.
+    - Vectors stored as float32 numpy arrays (CPU-based, no GPU required).
+
+Endpoints:
+    - GET  /knowledge_base/{llm_id}/status → Poll KB job progress.
+    - POST /knowledge_base/create → Create new KB assistant or update existing.
+
+Background Tasks:
+    - init_new_kb_assistant(): First-time setup (create index, embed all chunks).
+    - update_kb_assistant_with_new_data(): Incremental update (add new chunks to existing index).
+    - populate_vector_store(): Shared embedding logic for both tasks.
+
+Error Handling:
+    - Failed jobs clean up temp LLM entries, VectorStore, and FAISS index files.
+    - Status polling returns error_message when status="failed".
+
+Example:
+    POST /knowledge_base/create
+    {
+        "selectedModel": 42,
+        "modelName": "Financial Reports Assistant",
+        "description": "Specialized for Q1-Q4 2024 earnings reports",
+        "paths": ["/uploads/q1_2024.pdf", "/uploads/q2_2024.pdf"]
+    }
+    Response: {"msg": "Knowledge Base Assistant is being created.", "model_id": 108}
+
+    GET /knowledge_base/108/status
+    Response: {"status": "running", "status_updated_at": "2024-01-15T10:30:00Z"}
+"""
 import os
 # os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1") # Accelerate/vecLib (macOS)
 # os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -26,7 +96,7 @@ from src.domains.knowledge_base.schemas import (
 )
 
 from src.core.logging import logger
-from backend.src.core.config import (
+from src.core.config import (
     INDEXES_DIR
 )
 
@@ -35,8 +105,25 @@ router = APIRouter(prefix="/knowledge_base", tags=["knowledge_base"])
 
 @router.get("/{llm_id}/status")
 def get_kbAttach_status(llm_id: int, db: Session = Depends(get_db)):
-    """
-    Get the status of a kb job during creation of the kb.
+    """Poll KB job status with automatic cleanup for failed jobs.
+
+    Queries KBJob by new_model_id (the specialized LLM created during KB attachment).
+    If status="failed", deletes temp LLM entry, associated VectorStore, KnowledgeBase,
+    and FAISS index file from disk.
+
+    Args:
+        llm_id: ID of the specialized LLM created by create_knowledge_base().
+        db: Database session injected by FastAPI.
+
+    Returns:
+        dict: {"status": str, "status_updated_at": datetime, "error_message": str | None}
+
+    Raises:
+        HTTPException: 404 if KB job not found for given llm_id.
+
+    Example:
+        GET /knowledge_base/108/status
+        Response: {"status": "running", "status_updated_at": "2024-01-15T10:30:00Z", "error_message": null}
     """
     kb_job = db.query(KBJobModel).filter(KBJobModel.new_model_id == llm_id).first()
     if not kb_job:
@@ -75,8 +162,41 @@ def create_knowledge_base(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
-    """
-    Attach a new knowledge base to an assistant.
+    """Create or update a Knowledge Base assistant with document ingestion.
+
+    If the base LLM already has a KB attached (is_attached_to_kb=1), updates the existing
+    KB with new documents. Otherwise, creates a new specialized LLM entry, KnowledgeBase,
+    VectorStore, and queues background task to build FAISS index.
+
+    Workflow:
+        1. Validate payload (paths, selectedModel, modelName).
+        2. Parse documents via prepare_for_knowledge_base() → text extraction.
+        3. Check if base LLM already has KB:
+           - YES → Queue update_kb_assistant_with_new_data() background task.
+           - NO  → Create new specialized Llm + KB + VectorStore → Queue init_new_kb_assistant().
+        4. Background task embeds chunks via sentence-transformers → FAISS IndexIDMap.
+        5. Status poll endpoint returns progress until completion.
+
+    Args:
+        payload: Request body with selectedModel, modelName, description, paths.
+        background_tasks: FastAPI background task queue.
+        db: Database session injected by FastAPI.
+
+    Returns:
+        KnowledgeBaseResponse: {"msg": str, "model_id": int} with specialized LLM ID.
+
+    Raises:
+        HTTPException: 400 if paths empty or invalid, 404 if base LLM not found, 500 on processing errors.
+
+    Example:
+        POST /knowledge_base/create
+        {
+            "selectedModel": 42,
+            "modelName": "Financial Reports Assistant",
+            "description": "Q1-Q4 2024 earnings",
+            "paths": ["/uploads/q1.pdf", "/uploads/q2.pdf"]
+        }
+        Response: {"msg": "Knowledge Base Assistant is being created.", "model_id": 108}
     """
     logger.info(f"🚀 Received payload: {payload}")
     
@@ -212,6 +332,28 @@ def create_knowledge_base(
         db.close()
 
 def populate_vector_store(start_counter: int, vectors_data: dict, texts: List[str], index: Any) -> tuple[Any, dict]:
+    """Embed text chunks and add to FAISS index with sequential integer IDs.
+
+    Chunks each text via chunk_by_tokens(chunk_size=512), embeds via sentence-transformers
+    (384-dim paraphrase-multilingual-MiniLM-L12-v2), and adds to FAISS IndexIDMap with
+    custom IDs starting at start_counter. Updates vectors_data JSON mapping ID → chunk text.
+
+    Args:
+        start_counter: Starting FAISS ID (0 for new index, max(existing)+1 for updates).
+        vectors_data: Existing dict mapping str(ID) → chunk text (mutated in-place).
+        texts: List of full-text documents to chunk and embed.
+        index: FAISS IndexIDMap to add vectors to (mutated in-place).
+
+    Returns:
+        Tuple of (updated FAISS index, updated vectors_data dict).
+
+    Example:
+        >>> index = faiss.IndexIDMap(faiss.IndexFlatL2(384))
+        >>> vectors_data = {}
+        >>> texts = ["This is document 1.", "This is document 2."]
+        >>> index, vectors = populate_vector_store(0, vectors_data, texts, index)
+        >>> print(index.ntotal)  # Number of vectors added
+    """
     embedder = EmbedderService.get_embedder()
 
     for text in texts:
@@ -249,6 +391,30 @@ def populate_vector_store(start_counter: int, vectors_data: dict, texts: List[st
     return (index, vectors_data)
 
 def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[str]) -> Llm:
+    """Incrementally update existing KB with new documents (background task).
+
+    Loads existing FAISS index from disk, computes next available ID, embeds new chunks via
+    populate_vector_store(), and writes updated index back to disk. On failure, rolls back
+    to original index and marks KBJob as failed.
+
+    Args:
+        kb_job_id: KBJob database ID to track status.
+        kb_id: KnowledgeBase ID to update.
+        texts: New full-text documents to chunk and add to existing index.
+
+    Returns:
+        Updated Llm entry (base_llm, not new specialized assistant).
+
+    Raises:
+        HTTPException: 404 if KBJob/KB/VectorStore not found, 500 on indexing errors.
+
+    Note:
+        Runs in BackgroundTasks thread with separate SessionLocal() instance.
+
+    Example:
+        >>> background_tasks.add_task(update_kb_assistant_with_new_data, 42, 15, new_texts)
+        # Async task updates KB #15 with new_texts, polls KBJob #42 for status
+    """
     db = SessionLocal()
     try:
         kb_job = db.query(KBJobModel).filter(KBJobModel.id == kb_job_id).first()
@@ -356,8 +522,36 @@ def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[st
         db.close()
         
 def init_new_kb_assistant(kb_job_id: int, new_llm_id: int, kb_id: int, vector_store_id: int, texts: List[str]) -> Llm:
-    """
-    Initialize the knowledge base assistant by creating the FAISS index and storing vectors.
+    """Initialize new Knowledge Base assistant from scratch (background task).
+
+    Complete setup pipeline:
+    1. Create FAISS IndexIDMap(IndexFlatL2(384)) for 384-dim embeddings.
+    2. Embed all chunks via populate_vector_store() starting at ID=0.
+    3. Write index to disk at {INDEXES_DIR}/{kb_id}.index.
+    4. Store vectors_data JSON in VectorStore (maps FAISS IDs → chunk text).
+    5. Verify index readability + perform test search.
+    6. Mark KBJob as completed on success, or failed with cleanup on error.
+
+    Args:
+        kb_job_id: KBJob database ID to track status.
+        new_llm_id: Specialized LLM ID created for this KB assistant.
+        kb_id: KnowledgeBase ID to populate.
+        vector_store_id: VectorStore ID to store vectors_data JSON.
+        texts: Full-text documents to chunk and embed.
+
+    Returns:
+        Newly created specialized Llm entry.
+
+    Raises:
+        HTTPException: 404 if entities not found, 500 on FAISS or embedding errors.
+
+    Note:
+        Runs in BackgroundTasks thread with separate SessionLocal() instance.
+        On failure, cleans up: VectorStore, KnowledgeBase, FAISS index file, specialized Llm.
+
+    Example:
+        >>> background_tasks.add_task(init_new_kb_assistant, 42, 108, 15, 23, texts)
+        # Creates FAISS index for KB #15, embeds texts, stores in VectorStore #23
     """
     db = SessionLocal()
     try:

@@ -1,3 +1,68 @@
+"""MLX engine for Apple Silicon inference using Metal Performance Shaders.
+
+This module implements the MLX backend for local LLM inference on Mac devices
+with M1/M2/M3 chips. It provides:
+- 4-bit quantization for memory efficiency
+- Metal GPU acceleration via MLX framework
+- Thread-safe model loading and generation
+- Automatic model caching and cleanup
+
+Architecture:
+    MLX Engine (Singleton):
+    ┌───────────────────────────────────────────────────────────┐
+    │ get_model_and_tokenizer()                                 │
+    │  └─> Load quantized model from disk → cache in memory    │
+    └───────────────────────────────────────────────────────────┘
+                            ↓
+    ┌───────────────────────────────────────────────────────────┐
+    │ generate_stream()                                         │
+    │  1. Apply chat template                                   │
+    │  2. Configure sampler (temp, top_p, top_k)                │
+    │  3. Stream tokens via mlx_lm.stream_generate()            │
+    │  4. Update last_used timestamp                            │
+    └───────────────────────────────────────────────────────────┘
+                            ↓
+    ┌───────────────────────────────────────────────────────────┐
+    │ Cleanup Task (30s interval)                               │
+    │  └─> Free model if idle > 300s                            │
+    └───────────────────────────────────────────────────────────┘
+
+Quantization Mapping:
+    Maps HuggingFace model IDs to MLX-quantized 4-bit variants:
+    - mistralai/Mistral-7B-Instruct-v0.3 → mlx-community/.../4bit
+    - google/gemma-2-2b-it → mlx-community/.../4bit
+    - etc.
+
+Example:
+    Load and generate with MLX engine::
+
+        from src.engines.mlx_engine import MLX_Engine
+
+        # Load model
+        model, tokenizer = MLX_Engine.get_model_and_tokenizer(
+            llm_id="mistral-7b",
+            llm_local_path="/path/to/mlx/model"
+        )
+
+        # Stream generation
+        prompt = [{"role": "user", "content": "Hello!"}]
+        for token in MLX_Engine.generate_stream(
+            model, tokenizer, prompt,
+            max_tokens=512, temperature=0.7
+        ):
+            print(token, end="", flush=True)
+
+Note:
+    - Requires mlx_lm library (installed on Mac Silicon only)
+    - Models are 4-bit quantized for 4x memory savings
+    - Thread-safe via cls._lock for concurrent requests
+    - Automatic cleanup after 5 minutes idle time
+
+Warning:
+    Only use on Apple Silicon. On other platforms, BaseEngine.get_engine()
+    will select CUDA_Engine or CPU_Engine instead.
+"""
+
 import os, shutil, logging, importlib
 from datetime import datetime
 from typing import Optional, Tuple, Any, Generator, Union
@@ -27,6 +92,24 @@ class MLX_Engine(BaseEngine):
         quantize: bool = True,
         q_bits: str = "4",
     ) -> None:
+        """Convert HuggingFace model to MLX 4-bit quantized format.
+
+        Args:
+            local_hf_path: Path to HuggingFace model directory (SafeTensors format).
+            local_dest_path: Destination path for quantized MLX model.
+            quantize: Whether to apply quantization. Defaults to True.
+            q_bits: Quantization bits ("4" for 4-bit). Defaults to "4".
+
+        Returns:
+            None. Quantized model saved to local_dest_path.
+
+        Raises:
+            Exception: If mlx_lm.convert() fails (corrupted weights, OOM, etc.).
+
+        Note:
+            Uses mlx_lm.convert() which removes existing destination directory.
+            4-bit quantization reduces model size by ~75% with minimal quality loss.
+        """
         """Convert Hugging Face model to MLX format."""
 
         mlx_lm = importlib.import_module("mlx_lm")
@@ -169,6 +252,21 @@ class MLX_Engine(BaseEngine):
         llm_id: str,
         llm_local_path: Union[str, Path],
     ) -> None:
+        """Internal method to load MLX model and tokenizer into memory.
+
+        Args:
+            llm_id: Model identifier for caching (e.g., "mistral-7b").
+            llm_local_path: Path to quantized MLX model directory.
+
+        Returns:
+            None. Sets cls._model, cls._tokenizer, cls._model_id.
+
+        Raises:
+            Exception: If mlx_lm.load() fails (missing weights, incompatible format).
+
+        Note:
+            Clears cached model state on failure to prevent inconsistencies.
+        """
         """Internal method to load a model and its tokenizer.
         
         Args:

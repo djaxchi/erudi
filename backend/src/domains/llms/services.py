@@ -1,6 +1,53 @@
-"""
-Utility for downloading LLM repositories from Hugging Face with progress
-tracking and database updates.
+"""Business logic for LLM download orchestration with progress tracking and quantization.
+
+This module manages the complete lifecycle of downloading LLM models from HuggingFace,
+tracking progress in real-time, and converting to engine-specific formats (e.g., MLX 4-bit).
+
+Architecture:
+    1. download_llm() orchestrates the full pipeline (download → quantize → cleanup).
+    2. DownloadTracker monitors progress and ETA across concurrent file downloads.
+    3. make_callback() creates fsspec hooks to update DownloadTracker on each chunk.
+    4. update_db_with_progress() runs in background thread to persist status to DB.
+    5. download_files_concurrent() parallelizes .safetensors shard downloads.
+
+Engine Integration:
+    - Checks llm.quantized flag to determine if model is pre-quantized (MLX format).
+    - Pre-quantized models skip local quantization and are moved directly to final dir.
+    - Non-quantized models are converted via config.LLM_Engine.quant_and_save_from_hf_format().
+
+Download Flow:
+    ┌─────────────┐
+    │ HuggingFace │
+    │  Repository │
+    └──────┬──────┘
+           │ (1) List files & compute total bytes
+           ↓
+    ┌──────────────┐
+    │ temp_save_dir│ ← Download .safetensors + config files
+    └──────┬───────┘
+           │ (2) Check llm.quantized flag
+           ↓
+    ┌─────────────┐
+    │  Quantize?  │ → YES → config.LLM_Engine.quant_and_save_from_hf_format()
+    └─────────────┘ → NO  → shutil.move to final_save_dir
+           ↓
+    ┌──────────────┐
+    │final_save_dir│ ← Ready for inference
+    └──────────────┘
+
+Example:
+    from src.domains.llms.services import download_llm
+    import asyncio
+
+    # Download and quantize Llama-3-8B
+    final_path = asyncio.run(download_llm(
+        model_link="meta-llama/Llama-3-8B-Instruct",
+        model_id=42,
+        temp_save_dir="/data/models/temp_42",
+        final_save_dir="/data/models/42",
+        job_id=15
+    ))
+    # → Downloads to temp, quantizes to MLX 4-bit, saves to final, updates job #15
 """
 
 import os, time, threading, shutil, asyncio
@@ -15,8 +62,8 @@ from src.database.core import SessionLocal
 from src.entities.DownloadJob import DownloadJobModel
 from src.entities.Llm import Llm
 
-from backend.src.core.config import HF_TOKEN
-from backend.src.core import config
+from src.core.config import HF_TOKEN
+from src.core import config
 from src.core.logging import logger
 
 # Environment setup
@@ -24,14 +71,21 @@ FILES_TO_EXCLUDE = ["consolidated.safetensors"]
 
 
 def get_quantized_model_link(original_link: str) -> str:
-    """
-    Convert an original model link to its quantized version in the right backend if available.
-    
+    """Resolve engine-specific quantized model link from MODEL_MAPPING if available.
+
+    Checks config.LLM_Engine.MODEL_MAPPING for a pre-quantized variant (e.g., MLX 4-bit
+    version). If found, returns the quantized link; otherwise returns original unchanged.
+
     Args:
-        original_link (str): Original Hugging Face model link
-        
+        original_link: HuggingFace model ID (e.g., "meta-llama/Llama-3-8B-Instruct").
+
     Returns:
-        str: quantized model link if mapping exists, otherwise original link
+        Quantized model link if mapping exists, otherwise original_link.
+
+    Example:
+        >>> link = get_quantized_model_link("meta-llama/Llama-3-8B-Instruct")
+        >>> print(link)
+        "mlx-community/Meta-Llama-3-8B-Instruct-4bit"  # or original if not mapped
     """
     quantized_link = config.LLM_Engine.MODEL_MAPPING.get(original_link, original_link)
     if quantized_link != original_link:
@@ -40,13 +94,23 @@ def get_quantized_model_link(original_link: str) -> str:
 
 
 class DownloadTracker:
-    """
-    Tracks download progress across multiple files and estimates ETA.
+    """Thread-safe progress tracker for multi-file downloads with ETA estimation.
+
+    Aggregates downloaded bytes across concurrent file transfers and periodically
+    computes ETA based on moving average of download rate. Used by fsspec callbacks
+    and background DB updater thread.
 
     Attributes:
-        total_bytes (int): Total bytes to download.
-        downloaded_bytes (int): Bytes downloaded so far.
-        eta_seconds (Optional[float]): Estimated seconds remaining.
+        total_bytes: Total download size in bytes (set before download starts).
+        downloaded_bytes: Bytes downloaded so far (updated by callbacks).
+        eta_seconds: Estimated seconds remaining (None until first ETA computation).
+
+    Example:
+        >>> tracker = DownloadTracker()
+        >>> tracker.total_bytes = 1_000_000_000
+        >>> tracker.update(50_000_000)
+        >>> print(tracker.percent)
+        5.0
     """
 
     def __init__(self) -> None:
@@ -57,33 +121,39 @@ class DownloadTracker:
         logger.info("DownloadJob initialized")
 
     def update(self, bytes_downloaded: int) -> None:
-        """
-        Update the downloaded byte count for the job.
+        """Atomically increment downloaded byte count (thread-safe).
 
         Args:
-            bytes_downloaded (int): Number of bytes downloaded in this chunk.
+            bytes_downloaded: Number of bytes downloaded in this chunk transfer.
         """
         with self._lock:
             self.downloaded_bytes += bytes_downloaded
 
     @property
     def percent(self) -> float:
-        """
-        Compute the percentage of completion.
+        """Compute download completion percentage with zero-division guard.
 
         Returns:
-            float: Progress percentage [0.0–100.0].
+            Progress percentage in range [0.0, 100.0]. Returns 0.0 if total_bytes is 0.
         """
         if self.total_bytes == 0:
             return 0.0
         return (self.downloaded_bytes / self.total_bytes) * 100
 
     async def monitor_eta(self, interval: float = 20.0) -> None:
-        """
-        Periodically estimate remaining time based on current download rate.
+        """Continuously estimate remaining time based on download rate (runs until 100%).
+
+        Samples downloaded_bytes at regular intervals, computes delta rate, and updates
+        eta_seconds. Runs as asyncio task in background until download completes.
 
         Args:
-            interval (float): Seconds between ETA calculations.
+            interval: Seconds between ETA recalculations (default 20s).
+
+        Example:
+            >>> tracker = DownloadTracker()
+            >>> eta_task = asyncio.create_task(tracker.monitor_eta(interval=5.0))
+            >>> # ... download happens in parallel ...
+            >>> await eta_task  # Wait for completion
         """
         logger.info("Starting ETA monitoring")
         last_time = time.time()
@@ -111,14 +181,23 @@ class DownloadTracker:
 
 
 def make_callback(job: DownloadTracker) -> Callback:
-    """
-    Create an fsspec Callback to update DownloadJob on each transfer chunk.
+    """Create fsspec Callback that updates DownloadTracker on each file transfer chunk.
+
+    The callback's transfer-chunk hook is invoked by fsspec after each network read.
+    Computes delta bytes since last update to avoid double-counting (guards against
+    negative deltas from fsspec resets).
 
     Args:
-        job (DownloadJob): Tracker instance to update.
+        job: DownloadTracker instance to update with progress.
 
     Returns:
-        Callback: Configured fsspec callback.
+        Configured fsspec Callback with total size and chunk hook.
+
+    Example:
+        >>> tracker = DownloadTracker()
+        >>> tracker.total_bytes = 1_000_000
+        >>> callback = make_callback(tracker)
+        >>> fs.get_file("repo/file.safetensors", "local.safetensors", callback)
     """
     def after_chunk(size: int, value: int, **kwargs) -> None:
         # Calculate bytes since last update and guard against negative
@@ -129,13 +208,28 @@ def make_callback(job: DownloadTracker) -> Callback:
 
 
 def update_db_with_progress(job: DownloadTracker, job_id: int, model_id: int) -> None:
-    """
-    Periodically update DownloadJobModel row in the database.
+    """Background thread that polls DownloadTracker and persists progress to database.
+
+    Runs in daemon thread (started by download_llm). Loops at 1Hz polling job.percent,
+    updates DownloadJobModel row with progress/ETA/elapsed time. On completion, sets
+    status="completed" and llm.local=1. On exception, marks status="failed" and cleans
+    up temp files and LLM entry.
 
     Args:
-        job (DownloadJob): Tracker instance with progress state.
-        job_id (int): Primary key of the DownloadJobModel to update.
-        model_id (int): LLM model ID to mark local on completion.
+        job: DownloadTracker instance to poll for progress state.
+        job_id: Database primary key of DownloadJobModel to update.
+        model_id: LLM ID to mark local=1 on successful completion.
+
+    Warning:
+        Runs in separate thread - uses separate SessionLocal() instance to avoid
+        SQLAlchemy threading conflicts.
+
+    Example:
+        >>> threading.Thread(
+        ...     target=update_db_with_progress,
+        ...     args=(tracker, 42, 15),
+        ...     daemon=True
+        ... ).start()
     """
     session = SessionLocal()
     try:
@@ -181,14 +275,22 @@ async def download_files_concurrent(
     tasks: List[Tuple[str, str]],
     local_dir: str
 ) -> None:
-    """
-    Download multiple files concurrently using asyncio Executor.
+    """Download multiple HuggingFace files in parallel using asyncio executor pool.
+
+    Wraps synchronous fs.get_file() calls in run_in_executor to achieve I/O concurrency.
+    Useful for downloading .safetensors shards simultaneously to maximize bandwidth.
 
     Args:
-        fs (HfFileSystem): Hugging Face filesystem instance.
-        callback (Callback): Callback for progress updates.
-        tasks (List[Tuple[str,str]]): List of (repo_id, file_path).
-        local_dir (str): Base local directory to save files.
+        fs: HfFileSystem instance with auth token.
+        callback: fsspec Callback for progress tracking (shared across all files).
+        tasks: List of (repo_id, file_path) tuples to download.
+        local_dir: Base directory to save files (subdirectories created as needed).
+
+    Example:
+        >>> fs = HfFileSystem(token=HF_TOKEN)
+        >>> callback = make_callback(tracker)
+        >>> tasks = [("meta-llama/Llama-3-8B", "model-00001-of-00004.safetensors"), ...]
+        >>> await download_files_concurrent(fs, callback, tasks, "/data/models/temp_42")
     """
     loop = asyncio.get_running_loop()
     coros = []
@@ -207,18 +309,34 @@ async def download_llm(
     final_save_dir: str,
     job_id: Optional[int] = None
 ) -> str:
-    """
-    Download a Hugging Face repo with progress tracking and optional DB updates.
+    """Download HuggingFace model with progress tracking and engine-specific quantization.
+
+    Complete pipeline: list repo files → download to temp_save_dir → quantize (if needed)
+    → save to final_save_dir. Pre-quantized models (llm.quantized=1) skip local conversion
+    and are moved directly. Progress updates are persisted to DownloadJobModel if job_id provided.
 
     Args:
-        model_link (str): Hugging Face repo ID (could be original or MLX-quantized).
-        model_id (int): Database ID of the LLM model.
-        temp_save_dir (str): Temporary directory for full-precision model.
-        final_save_dir (str): Final directory for mlx quantized model.
-        job_id (Optional[int]): DownloadJobModel ID to update.
+        model_link: HuggingFace repo ID (e.g., "meta-llama/Llama-3-8B-Instruct").
+        model_id: Database ID of the LLM entry (used to check quantized flag).
+        temp_save_dir: Temp directory for full-precision download (deleted after quantization).
+        final_save_dir: Final directory for quantized model (ready for inference).
+        job_id: Optional DownloadJobModel ID for progress tracking (spawns background thread).
 
     Returns:
-        str: Final local path containing downloaded files.
+        Path to temp_save_dir (note: may be deleted if quantization successful).
+
+    Raises:
+        Exception: If HuggingFace API fails, download fails, or quantization fails.
+
+    Example:
+        >>> final_path = await download_llm(
+        ...     model_link="meta-llama/Llama-3-8B-Instruct",
+        ...     model_id=42,
+        ...     temp_save_dir="/data/models/temp_42",
+        ...     final_save_dir="/data/models/42",
+        ...     job_id=15
+        ... )
+        >>> # Progress tracked in DownloadJobModel(id=15), final model in /data/models/42
     """
     # Check if model is already quantized from database
     session = SessionLocal()

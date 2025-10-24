@@ -1,0 +1,64 @@
+# Erudi Documentation Map
+# Maps code modules to documentation reference pages
+# Generated automatically - do not edit manually
+# Last updated: 2025-10-24 22:49:37
+
+reference:
+  core:
+    - src.core
+    - src.core.api
+    - src.core.config
+    - src.core.exceptions
+    - src.core.health
+    - src.core.logging
+
+  engines:
+    - src.engines
+    - src.engines.base_engine
+    - src.engines.cpu_engine
+    - src.engines.cuda_engine
+    - src.engines.mlx_engine
+
+  conversations:
+    - src.domains.conversations.endpoints
+    - src.domains.conversations.schemas
+    - src.domains.conversations.services
+
+  llms:
+    - src.domains.llms.endpoints
+    - src.domains.llms.schemas
+    - src.domains.llms.services
+
+  knowledge_base:
+    - src.domains.knowledge_base.endpoints
+    - src.domains.knowledge_base.schemas
+    - src.domains.knowledge_base.services
+
+  arena:
+    - src.domains.arena.endpoints
+    - src.domains.arena.schemas
+    - src.domains.arena.services
+
+  hardware:
+    - src.domains.hardware.endpoints
+    - src.domains.hardware.schemas
+    - src.domains.hardware.services
+
+  entities:
+    - src.entities
+    - src.entities.Conversation
+    - src.entities.DownloadJob
+    - src.entities.KBJob
+    - src.entities.KnowledgeBase
+    - src.entities.Llm
+    - src.entities.Message
+    - src.entities.StartupVariables
+    - src.entities.StaticHardwareInfos
+    - src.entities.TrainingJob
+    - src.entities.VectorStore
+
+  database:
+    - src.database
+    - src.database.core
+    - src.database.seed
+

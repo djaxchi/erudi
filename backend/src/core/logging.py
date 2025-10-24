@@ -1,3 +1,59 @@
+"""Structured logging configuration with console and file output.
+
+This module provides a centralized logging system with:
+- Color-coded console output for development
+- Rotating file handlers to prevent log bloat
+- Customizable formatters with pathname shortening
+- Singleton logger instance for application-wide use
+
+Log Levels:
+    - DEBUG: Internal diagnostics (token generation, model loading steps)
+    - INFO: Lifecycle transitions (startup, shutdown, model switched)
+    - WARNING: Recoverable issues (fallback to CPU, missing KB)
+    - ERROR: Operation failures (model not found, CUDA OOM)
+    - CRITICAL: System failures (database corruption, engine crash)
+
+Log Format:
+    Console::
+
+        [INFO]  2025-10-24 14:32:10 - erudi - backend/src/main.py:app:l42 - Server started
+
+    File::
+
+        [INFO] 2025-10-24 14:32:10 - erudi - main.py:42 - Server started
+
+File Management:
+    - Logs written to: logs/backend_YYYY-MM-DD.log
+    - Rotation: 10 MB max file size
+    - Retention: 10 backup files (logs.1, logs.2, ...)
+    - Encoding: UTF-8 for multilingual support
+
+Example:
+    Use the global logger instance::
+
+        from src.core.logging import logger
+
+        logger.debug("Loading model weights...")
+        logger.info("Model successfully loaded")
+        logger.warning("GPU memory low, reducing batch size")
+        logger.error("Failed to load model", exc_info=True)
+
+    Create a custom logger for a specific module::
+
+        from src.core.logging import get_logger
+
+        module_logger = get_logger("erudi.domains.llms")
+        module_logger.info("LLM service initialized")
+
+Note:
+    The logger is configured as a singleton. Repeated calls to get_logger()
+    with the same name will return the existing logger instance.
+
+Warning:
+    Never log sensitive data (HF tokens, user prompts, file paths with PII).
+    Use structured logging: logger.info("Model loaded", extra={"model_id": 123})
+"""
+
 import logging, sys
 from pathlib import Path
 from datetime import datetime
@@ -25,6 +81,17 @@ class CustomFormatter(logging.Formatter):
     }
 
     def format(self, record):
+        """Format log record with color codes and shortened paths.
+
+        Args:
+            record: LogRecord instance containing log event information.
+
+        Returns:
+            str: Formatted log message with ANSI color codes.
+
+        Note:
+            Pathnames are shortened to start from "backend/" for readability.
+        """
         # Shorten pathname to start from "backend/"
         backend_idx = record.pathname.find("backend/")
         if backend_idx != -1:
@@ -37,6 +104,36 @@ class CustomFormatter(logging.Formatter):
 # Logger setup
 # ----------------------------
 def get_logger(name: str = "erudi") -> logging.Logger:
+    """Create or retrieve a configured logger instance.
+
+    Configures a logger with both console (colored) and file (rotating) handlers.
+    If a logger with the given name already exists, returns the existing instance
+    to prevent duplicate handler registration.
+
+    Args:
+        name: Logger name, typically "erudi" or "erudi.<module>".
+            Defaults to "erudi".
+
+    Returns:
+        logging.Logger: Configured logger instance with console and file handlers.
+
+    Example:
+        ::
+
+            from src.core.logging import get_logger
+
+            # Default logger
+            logger = get_logger()
+            logger.info("Application started")
+
+            # Module-specific logger
+            llm_logger = get_logger("erudi.domains.llms")
+            llm_logger.debug("Model loaded successfully")
+
+    Note:
+        Loggers are singletons. Repeated calls with the same name return the
+        same instance. Handlers are only attached on first call.
+    """
     # ----------------------------
     # LOGGING CONFIG
     # ----------------------------

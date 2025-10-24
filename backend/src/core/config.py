@@ -1,3 +1,67 @@
+"""Global application configuration and environment management.
+
+This module centralizes all configuration constants, environment variables,
+and directory paths used across the Erudi  It ensures consistent
+path resolution and provides a single source of truth for deployment settings.
+
+Configuration Categories:
+    - **Authentication**: HuggingFace token for model downloads
+    - **Directories**: Data storage, model cache, logs, vector indexes
+    - **Database**: SQLite connection string
+    - **Engine**: Runtime LLM engine instance (MLX/CUDA/CPU)
+
+Directory Structure:
+    ::
+
+        backend/
+        ├── data/
+        │   ├── erudi.db              # SQLite database
+        │   ├── indexes/              # FAISS vector indexes
+        │   ├── models/               # Quantized models (MLX/GGUF)
+        │   └── models_cache/         # HuggingFace download cache
+        └── logs/                     # Structured application logs
+
+Environment Variables:
+    HF_TOKEN (optional):
+        HuggingFace API token for downloading gated models.
+        If not set, only public models are accessible.
+
+        Example in .env::
+
+            HF_TOKEN=***HF_TOKEN_REMOVED***
+
+Global State:
+    LLM_Engine:
+        Runtime engine instance initialized during FastAPI lifespan startup.
+        Set by BaseEngine.get_engine() based on platform detection.
+        Type is Optional[Type[BaseEngine]] before initialization.
+
+Example:
+    Access configuration in application code::
+
+        from src.core import config
+
+        # Use paths
+        model_path = config.LLM_DIR / "Llama-3-8B"
+        index_path = config.INDEXES_DIR / "kb_123.index"
+
+        # Check HuggingFace authentication
+        if config.HF_TOKEN:
+            config.HF_API.whoami()  # Verify token validity
+
+        # Use engine (after lifespan startup)
+        async for token in config.LLM_Engine.generate_stream(prompt, params):
+            yield token
+
+Note:
+    All directories are created automatically at module import time.
+    Do not manually modify LLM_Engine; it is managed by the lifespan context.
+
+Warning:
+    Changing ROOT_DIR after import will not update derived paths (LLM_DIR,
+    CACHE_DIR, etc.). Ensure paths are configured before first import.
+"""
+
 # TO COMPLETE WITH BUILDTIME VARS
 
 

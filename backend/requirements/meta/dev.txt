@@ -11,6 +11,7 @@ httpx==0.28.1  # For FastAPI testing
 black==24.10.0
 ruff==0.8.4
 mypy==1.13.0
+pydocstyle==6.3.0
 
 # Development Tools
 ipython==8.31.0
@@ -18,3 +19,7 @@ ipdb==0.13.13
 
 # Type stubs
 types-python-dateutil==2.9.0.20241206
+
+# Docs
+mktest
+pyyaml>=6.0
