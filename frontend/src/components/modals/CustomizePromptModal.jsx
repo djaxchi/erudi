@@ -110,7 +110,7 @@ export default function CustomizePromptModal({
                       "bg-white/10 border border-white/20",
                       "px-4 py-3 text-sm text-gray-100 placeholder-gray-400",
                       "focus:outline-none focus:ring-2 focus:ring-emerald-400/60 focus:border-emerald-400/60",
-                      "backdrop-blur-sm transition-all",
+                      "backdrop-blur-sm transition-all custom-scroll",
                     ].join(" ")}
                     value={localPrompt}
                     onChange={(e) => setLocalPrompt(e.target.value)}

@@ -442,7 +442,7 @@ fetchWelcomePopupStatus();
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 bg-[#071b18] relative overflow-auto">
+      <main className="flex-1 bg-[#071b18] relative custom-scroll overflow-auto">
         <div className="p-8 space-y-8">
           {/* Local Models Section */}
           <section>

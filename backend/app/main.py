@@ -2,6 +2,7 @@ from datetime import datetime
 import os
 import shutil
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from .utils.inference_utils import ModelManager
 from .utils.hardware_info import get_hardware_eval_for_apple_silicon
@@ -187,6 +188,60 @@ async def delete_all_data():
     except Exception as e:
         logging.error(f"Error deleting data: {e}")
         db.rollback()
+    finally:
+        db.close()
+
+async def cleanup_orphaned_models():
+    """
+    Remove model files from data/models that don't have corresponding database entries.
+    This happens when the app is reinstalled but Application Support data persists.
+    Also cleans up temporary model directories.
+    """
+    db: Session = SessionLocal()
+    try:
+        models_dir = Path("data/models")
+        if not models_dir.exists():
+            logging.info("Models directory doesn't exist, nothing to clean up.")
+            return
+        
+        # Get all local models from the database
+        local_models = db.query(Llm).filter(Llm.local == 1).all()
+        valid_model_ids = {str(model.id) for model in local_models}
+        
+        # Scan the models directory for subdirectories
+        cleaned_count = 0
+        temp_cleaned_count = 0
+        
+        for item in models_dir.iterdir():
+            if item.is_dir():
+                dir_name = item.name
+                
+                # Clean up temp directories (they start with "temp_")
+                if dir_name.startswith("temp_"):
+                    logging.info(f"Removing temporary model directory: {dir_name}")
+                    try:
+                        shutil.rmtree(item, ignore_errors=True)
+                        temp_cleaned_count += 1
+                    except Exception as e:
+                        logging.error(f"Failed to remove temp model {dir_name}: {e}")
+                    continue
+                
+                # Check if this directory corresponds to a valid model ID
+                if dir_name not in valid_model_ids:
+                    logging.info(f"Removing orphaned model directory: {dir_name}")
+                    try:
+                        shutil.rmtree(item, ignore_errors=True)
+                        cleaned_count += 1
+                    except Exception as e:
+                        logging.error(f"Failed to remove orphaned model {dir_name}: {e}")
+        
+        if cleaned_count > 0 or temp_cleaned_count > 0:
+            logging.info(f"Cleaned up {cleaned_count} orphaned model(s) and {temp_cleaned_count} temp directory(ies).")
+        else:
+            logging.info("No orphaned models or temp directories found.")
+            
+    except Exception as e:
+        logging.error(f"Error during orphaned model cleanup: {e}")
     finally:
         db.close()
 
@@ -581,6 +636,7 @@ async def lifespan(app: FastAPI):
     await createTables()
     #await delete_all_data()
     await startup_populate_database()
+    await cleanup_orphaned_models()  # Clean up models from previous installations
     ModelManager.start_cleanup_task()
     yield
     print("__________________________________ Shutting down... __________________________________")

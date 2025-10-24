@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog} = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require("electron");
 const path = require("node:path");
 const { spawn } = require("child_process");
 const fs = require('fs');
@@ -286,6 +286,205 @@ const startRealBackend = () => {
   });
 };
 
+// Create application menu with Help options
+const createApplicationMenu = () => {
+  const isMac = process.platform === 'darwin';
+  
+  const template = [
+    // App menu (macOS only)
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+    
+    // File menu
+    {
+      label: 'File',
+      submenu: [
+        isMac ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+    
+    // Edit menu
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...(isMac ? [
+          { role: 'pasteAndMatchStyle' },
+          { role: 'delete' },
+          { role: 'selectAll' },
+          { type: 'separator' },
+          {
+            label: 'Speech',
+            submenu: [
+              { role: 'startSpeaking' },
+              { role: 'stopSpeaking' }
+            ]
+          }
+        ] : [
+          { role: 'delete' },
+          { type: 'separator' },
+          { role: 'selectAll' }
+        ])
+      ]
+    },
+    
+    // View menu
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    
+    // Window menu
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac ? [
+          { type: 'separator' },
+          { role: 'front' },
+          { type: 'separator' },
+          { role: 'window' }
+        ] : [
+          { role: 'close' }
+        ])
+      ]
+    },
+    
+    // Help menu
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'Open Data Folder',
+          click: async () => {
+            try {
+              const dataDir = getDataDirectory();
+              
+              // Create directory if it doesn't exist
+              if (!fs.existsSync(dataDir)) {
+                fs.mkdirSync(dataDir, { recursive: true });
+              }
+              
+              // Open in Finder
+              shell.openPath(dataDir);
+              log(`Opened data folder: ${dataDir}`);
+            } catch (error) {
+              log(`Failed to open data folder: ${error.message}`);
+              dialog.showErrorBox('Error', `Failed to open data folder: ${error.message}`);
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Clear All Data...',
+          click: async () => {
+            try {
+              if (!mainWindow) {
+                log('Cannot clear data: no main window');
+                return;
+              }
+              
+              const dataDir = getDataDirectory();
+              
+              // Show confirmation dialog
+              const result = await dialog.showMessageBox(mainWindow, {
+                type: 'warning',
+                buttons: ['Cancel', 'Delete All Data'],
+                defaultId: 0,
+                cancelId: 0,
+                title: 'Clear All Data',
+                message: 'Are you sure you want to delete all data?',
+                detail: 'This will permanently delete:\n• All downloaded AI models\n• Conversation history\n• Custom settings\n• Knowledge bases\n\nThis action cannot be undone.\n\nThe application will quit after deletion.'
+              });
+              
+              if (result.response === 1) { // User clicked "Delete All Data"
+                log('User confirmed data deletion. Clearing all data...');
+                
+                // Kill backend process first
+                if (backendProcess) {
+                  log('Stopping backend process...');
+                  backendProcess.kill('SIGTERM');
+                  backendProcess = null;
+                }
+                
+                // Wait a bit for backend to shut down
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Delete the data directory
+                if (fs.existsSync(dataDir)) {
+                  const { execSync } = require('child_process');
+                  try {
+                    execSync(`rm -rf "${dataDir}"`, { stdio: 'ignore' });
+                    log(`Successfully deleted data directory: ${dataDir}`);
+                  } catch (error) {
+                    log(`Failed to delete data directory: ${error.message}`);
+                    throw error;
+                  }
+                }
+                
+                // Show success message
+                await dialog.showMessageBox(mainWindow, {
+                  type: 'info',
+                  buttons: ['OK'],
+                  title: 'Data Cleared',
+                  message: 'All data has been deleted successfully.',
+                  detail: 'The application will now quit.'
+                });
+                
+                // Quit the app
+                app.quit();
+              } else {
+                log('User cancelled data deletion');
+              }
+            } catch (error) {
+              log(`Failed to clear data: ${error.message}`);
+              dialog.showErrorBox('Error', `Failed to clear data: ${error.message}`);
+            }
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Learn More',
+          click: async () => {
+            await shell.openExternal('https://github.com/djaxchi/erudi');
+          }
+        }
+      ]
+    }
+  ];
+  
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+};
+
 const createWindow = () => {
   if (isCreatingWindow || mainWindow) {
     log('Window creation already in progress or window exists, skipping...');
@@ -375,8 +574,110 @@ ipcMain.handle('dialog:openDirectory', async () => {
   return result.filePaths[0];
 });
 
+// Helper function to get Application Support data directory path
+function getDataDirectory() {
+  const appName = 'erudi';
+  return path.join(os.homedir(), 'Library', 'Application Support', appName);
+}
+
+// IPC handler to open data folder in Finder
+ipcMain.handle('data:openFolder', async () => {
+  try {
+    const dataDir = getDataDirectory();
+    
+    // Create directory if it doesn't exist
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    
+    // Open in Finder
+    shell.openPath(dataDir);
+    log(`Opened data folder: ${dataDir}`);
+    return { success: true, path: dataDir };
+  } catch (error) {
+    log(`Failed to open data folder: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler to clear all data and quit
+ipcMain.handle('data:clearAll', async () => {
+  try {
+    const dataDir = getDataDirectory();
+    
+    // Show confirmation dialog
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      buttons: ['Cancel', 'Delete All Data'],
+      defaultId: 0,
+      cancelId: 0,
+      title: 'Clear All Data',
+      message: 'Are you sure you want to delete all data?',
+      detail: 'This will permanently delete:\n• All downloaded AI models\n• Conversation history\n• Custom settings\n• Knowledge bases\n\nThis action cannot be undone.\n\nThe application will quit after deletion.'
+    });
+    
+    if (result.response === 1) { // User clicked "Delete All Data"
+      log('User confirmed data deletion. Clearing all data...');
+      
+      // Kill backend process first
+      if (backendProcess) {
+        log('Stopping backend process...');
+        backendProcess.kill('SIGTERM');
+        backendProcess = null;
+      }
+      
+      // Wait a bit for backend to shut down
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Delete the data directory
+      if (fs.existsSync(dataDir)) {
+        const { execSync } = require('child_process');
+        try {
+          execSync(`rm -rf "${dataDir}"`, { stdio: 'ignore' });
+          log(`Successfully deleted data directory: ${dataDir}`);
+        } catch (error) {
+          log(`Failed to delete data directory: ${error.message}`);
+          throw error;
+        }
+      }
+      
+      // Show success message
+      await dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        buttons: ['OK'],
+        title: 'Data Cleared',
+        message: 'All data has been deleted successfully.',
+        detail: 'The application will now quit.'
+      });
+      
+      // Quit the app
+      app.quit();
+      
+      return { success: true };
+    } else {
+      log('User cancelled data deletion');
+      return { success: false, cancelled: true };
+    }
+  } catch (error) {
+    log(`Failed to clear data: ${error.message}`);
+    
+    await dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      buttons: ['OK'],
+      title: 'Error',
+      message: 'Failed to clear data',
+      detail: error.message
+    });
+    
+    return { success: false, error: error.message };
+  }
+});
+
 app.whenReady().then(async () => {
   log('App ready. Attempting to start backend...');
+  
+  // Create application menu
+  createApplicationMenu();
   
   // Kill any lingering backend processes before starting
   try {
