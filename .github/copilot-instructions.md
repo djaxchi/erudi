@@ -117,6 +117,22 @@ backend/
 
 ---
 
+## Documentation
+
+### Management
+- **MkDocs + Material theme** for comprehensive documentation
+- **Scripts in `scripts/documentation_audit/`** for automated generation and quality control
+- **CI/CD integration** with quality gates (90% docstring coverage required)
+- **Versioned docs** in `docs/` (narrative guides + API reference)
+
+### Writing New Code
+- **Google-style docstrings** required for all public functions, classes, and methods
+- **Complete coverage**: Args, Returns, Raises sections with types
+- **Update `docs/`** when adding new features or changing APIs
+- **Run audit scripts** after changes: `python scripts/documentation_audit/quality_control.py`
+
+---
+
 ## Requirements
 
 ### Functional
