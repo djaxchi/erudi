@@ -57,7 +57,7 @@ from src.entities.KnowledgeBase import KnowledgeBase
 from src.entities.Llm import Llm
 from src.entities.VectorStore import VectorStore
 from src.utils.file_processor import chunk_by_tokens
-from src.utils.inference_utils import EmbedderService
+from src.engines.embedder_engine import Embedder_Engine
 from src.core.logging import logger
 
 
@@ -161,7 +161,7 @@ def get_relevant_texts_from_kb(
         raise Exception(f"VectorStore not found for Knowledge Base {kb.id}")
 
     # Process query
-    embedder = EmbedderService.get_embedder()
+    embedder = Embedder_Engine.get_embedder()
     chunks = chunk_by_tokens(text=query)
     if not chunks:
         raise Exception("No valid text chunks found in the query.")
@@ -197,5 +197,5 @@ def get_relevant_texts_from_kb(
         except Exception as e:
             raise Exception(f"Error searching FAISS index: {str(e)}") from e
 
-    EmbedderService.cleanup()
+    Embedder_Engine.cleanup()
     return relevant_texts

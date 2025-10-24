@@ -88,7 +88,7 @@ from src.entities.VectorStore import VectorStore
 from src.entities.Llm import Llm
 from src.entities.KBJob import KBJobModel
 
-from src.utils.inference_utils import EmbedderService
+from src.engines.embedder_engine import Embedder_Engine
 from src.utils.file_processor import prepare_for_knowledge_base, chunk_by_tokens
 from src.domains.knowledge_base.schemas import (
     KnowledgeBaseCreate,
@@ -354,7 +354,7 @@ def populate_vector_store(start_counter: int, vectors_data: dict, texts: List[st
         >>> index, vectors = populate_vector_store(0, vectors_data, texts, index)
         >>> print(index.ntotal)  # Number of vectors added
     """
-    embedder = EmbedderService.get_embedder()
+    embedder = Embedder_Engine.get_embedder()
 
     for text in texts:
         if not text.strip():
@@ -387,7 +387,7 @@ def populate_vector_store(start_counter: int, vectors_data: dict, texts: List[st
             logger.info(f"Vector added to index with FAISS ID: {start_counter}")
             start_counter += 1
 
-    EmbedderService.cleanup()
+    Embedder_Engine.cleanup()
     return (index, vectors_data)
 
 def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[str]) -> Llm:
@@ -680,7 +680,7 @@ def init_new_kb_assistant(kb_job_id: int, new_llm_id: int, kb_id: int, vector_st
             logger.info(f"✅ Index reload successful: {test_index.ntotal} vectors")
             
             if test_index.ntotal > 0:
-                embedder = EmbedderService.get_embedder()
+                embedder = Embedder_Engine.get_embedder()
                 query_emb = embedder.encode("Ceci est une phrase de test", convert_to_tensor=True)
                 logger.info("Phrase test embeddée.")
                 q = numpy.ascontiguousarray(
