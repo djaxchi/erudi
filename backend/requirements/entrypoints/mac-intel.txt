@@ -1,2 +1,0 @@
--r meta/base.txt
--r meta/mac-intel-specs.txt

@@ -49,7 +49,7 @@ Platform-specific setup scripts:
 - Linux CUDA → `setup-linux-cuda-121.sh`  
 - Windows CUDA → `setup-win-cuda-121.ps1`
 
-They create virtual environments and install from `backend/requirements/entrypoints/{platform}.txt`.
+They create virtual environments and install from `backend/requirements/entrypoints/dev/{platform}.txt` (or `prod/{platform}-prod.txt` for production).
 
 ### Run
 `bash

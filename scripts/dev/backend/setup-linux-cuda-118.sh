@@ -1,22 +1,38 @@
 #!/usr/bin/env bash
-# Simple and efficient Python environment setup script for Erudi on macOS/Linux with CUDA 12.1
-# Requirements: Python 3.9+
+# Erudi Backend Setup Script - Linux CUDA 11.8
+# Supports both development and production environments
+# Compatible with interactive use and CI/CD pipelines
+# Requirements: Python 3.9+, CUDA 11.8
 
 set -e  # Exit on error
 
-# Helper functions for consistent status messages
-write_status() { echo -e "\033[36m[STATUS] $1\033[0m"; }
-write_error() { echo -e "\033[31m[ERROR] $1\033[0m"; exit 1; }
+# Colors for output
+readonly COLOR_STATUS="\033[36m"
+readonly COLOR_SUCCESS="\033[32m"
+readonly COLOR_ERROR="\033[31m"
+readonly COLOR_RESET="\033[0m"
 
-# Determine current directory and set venv + requirements paths
+# Helper functions
+write_status() { echo -e "${COLOR_STATUS}[STATUS]${COLOR_RESET} $1"; }
+write_success() { echo -e "${COLOR_SUCCESS}[SUCCESS]${COLOR_RESET} $1"; }
+write_error() { echo -e "${COLOR_ERROR}[ERROR]${COLOR_RESET} $1"; exit 1; }
+
+# Determine environment (CI/CD or interactive)
+is_ci_mode() {
+    [[ "${CI:-false}" == "true" ]] || [[ "${GITHUB_ACTIONS:-false}" == "true" ]] || [[ -n "${JENKINS_HOME:-}" ]]
+}
+
+# Determine current directory and set paths
 current_dir=$(basename "$PWD")
 if [ "$current_dir" == "backend" ]; then
-    echo "You are currently in erudi/backend/"
-    req="./requirements/entrypoints/linux-cuda-118.txt"
+    write_status "Running from erudi/backend/"
+    req_dev="./requirements/entrypoints/dev/linux-cuda-118.txt"
+    req_prod="./requirements/entrypoints/prod/linux-cuda-118-prod.txt"
     venv_path="./venv"
 else
-    echo "You are currently in erudi/ , don't forget to move in backend/ after the init to run the backend"
-    req="./backend/requirements/entrypoints/linux-cuda-118.txt"
+    write_status "Running from erudi/ (don't forget to cd backend/ after setup)"
+    req_dev="./backend/requirements/entrypoints/dev/linux-cuda-118.txt"
+    req_prod="./backend/requirements/entrypoints/prod/linux-cuda-118-prod.txt"
     venv_path="./backend/venv"
 fi
 
@@ -50,22 +66,64 @@ else
     write_error "Could not determine Python version from output: $version"
 fi
 
-# Check and create virtual environment
+# Determine environment type (production or development)
+install_type="dev"
+
+if is_ci_mode; then
+    write_status "CI/CD mode detected"
+    # Check for INSTALL_TYPE environment variable in CI
+    install_type="${INSTALL_TYPE:-prod}"
+    write_status "Installing ${install_type} dependencies (set INSTALL_TYPE=dev/prod to change)"
+else
+    # Interactive mode
+    echo
+    echo "Choose installation type:"
+    echo "  [1] Development (includes testing, linting, debugging tools)"
+    echo "  [2] Production  (minimal dependencies only)"
+    echo
+    read -p "Enter choice [1/2] (default: 1): " choice
+    choice=${choice:-1}
+
+    case "$choice" in
+        1) install_type="dev" ;;
+        2) install_type="prod" ;;
+        *) write_error "Invalid choice. Please enter 1 or 2." ;;
+    esac
+fi
+
+if [ "$install_type" == "dev" ]; then
+    req_file="$req_dev"
+    write_status "Setting up DEVELOPMENT environment"
+else
+    req_file="$req_prod"
+    write_status "Setting up PRODUCTION environment"
+fi
+
+# Handle existing virtual environment
 write_status "Checking virtual environment in $venv_path..."
 
 if [ -d "$venv_path" ]; then
-    read -p "A virtual env already exists in $venv_path. Do you want to delete it ? (Y/n) " venv_confirmation
-    venv_confirmation=${venv_confirmation:-Y}
-    if [[ "$venv_confirmation" =~ ^[Yy]$ ]]; then
-        write_status "Removing existing virtual environment..."
+    if is_ci_mode; then
+        # In CI, always recreate
+        write_status "CI mode: Removing existing virtual environment..."
         rm -rf "$venv_path"
-        write_status "Creating venv..."
+        write_status "Creating fresh virtual environment..."
         $python_cmd -m venv "$venv_path" || write_error "Failed to create virtual environment"
     else
-        write_status "Virtual environment already exists, requirements will be installed inside it."
+        # Interactive mode: ask user
+        read -p "Virtual environment exists. Recreate it? [Y/n]: " venv_confirmation
+        venv_confirmation=${venv_confirmation:-Y}
+        if [[ "$venv_confirmation" =~ ^[Yy]$ ]]; then
+            write_status "Removing existing virtual environment..."
+            rm -rf "$venv_path"
+            write_status "Creating fresh virtual environment..."
+            $python_cmd -m venv "$venv_path" || write_error "Failed to create virtual environment"
+        else
+            write_status "Using existing virtual environment"
+        fi
     fi
 else
-    write_status "Creating venv..."
+    write_status "Creating virtual environment..."
     $python_cmd -m venv "$venv_path" || write_error "Failed to create virtual environment"
 fi
 
@@ -78,20 +136,43 @@ venv_python="$venv_path/bin/python"
 
 # Upgrade pip
 write_status "Upgrading pip..."
-$venv_python -m pip install --upgrade pip || write_error "Failed to upgrade pip"
+$venv_python -m pip install --upgrade pip --quiet || write_error "Failed to upgrade pip"
 
 # Install requirements
-read -p "Do you want to --force-reinstall the requirements ? (Y/n) " force_reinstall_confirmation
-force_reinstall_confirmation=${force_reinstall_confirmation:-Y}
-
-write_status "Installing requirements from $req..."
-if [[ "$force_reinstall_confirmation" =~ ^[Yy]$ ]]; then
-    $venv_python -m pip install --no-cache-dir --force-reinstall -r "$req" || write_error "Failed to install requirements from $req"
+if is_ci_mode; then
+    # In CI, always force reinstall for clean state
+    write_status "Installing requirements from $req_file (force reinstall)..."
+    $venv_python -m pip install --no-cache-dir --force-reinstall -r "$req_file" || write_error "Failed to install requirements"
 else
-    $venv_python -m pip install --no-cache-dir -r "$req" || write_error "Failed to install requirements from $req"
+    # Interactive mode: ask about force reinstall
+    read -p "Force reinstall all packages? [Y/n]: " force_reinstall
+    force_reinstall=${force_reinstall:-Y}
+
+    if [[ "$force_reinstall" =~ ^[Yy]$ ]]; then
+        write_status "Installing requirements from $req_file (force reinstall)..."
+        $venv_python -m pip install --no-cache-dir --force-reinstall -r "$req_file" || write_error "Failed to install requirements"
+    else
+        write_status "Installing requirements from $req_file..."
+        $venv_python -m pip install --no-cache-dir -r "$req_file" || write_error "Failed to install requirements"
+    fi
 fi
 
+# Success message
 echo
-echo -e "\033[32mEnvironment setup complete! Welcome on-board at Erudi !\033[0m"
-echo "You can now run: 'uvicorn src.main:app' inside backend/ and after sourcing the venv."
+write_success "✓ Environment setup complete!"
+echo
+echo "Environment: ${install_type^^}"
+echo "Python: $version"
+echo "Virtual env: $venv_path"
+echo
+if [ "$current_dir" != "backend" ]; then
+    echo "Next steps:"
+    echo "  1. cd backend/"
+    echo "  2. source venv/bin/activate"
+    echo "  3. uvicorn src.main:app --reload"
+else
+    echo "Next steps:"
+    echo "  1. source venv/bin/activate"
+    echo "  2. uvicorn src.main:app --reload"
+fi
 echo

@@ -1,5 +1,0 @@
--r meta/cuda-118-specs.txt
--r meta/base.txt
--r meta/win-specs.txt
--r meta/cuda-base-specs.txt
--r meta/cuda-win-specs.txt
