@@ -1,3 +1,0 @@
--r meta/base.txt
--r meta/win-specs.txt
--r meta/cpu.txt

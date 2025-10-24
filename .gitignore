@@ -12,3 +12,5 @@ build/
 Thumbs.db
 
 *.vscode
+
+site/

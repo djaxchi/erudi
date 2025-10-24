@@ -1,0 +1,36 @@
+site_name: Erudi Documentation
+repo_url: https://github.com/djaxchi/erudi
+
+theme:
+  name: material
+  features:
+    - navigation.expand
+    - content.code.copy
+  custom_dir: docs
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - 🧠 Overview: index.md
+  - 🧩 Architecture: architecture.md
+  - 🚀 Getting Started: usage.md
+  - ⚙️ API Reference:
+      - Engines: reference/engines.md
+      - Conversations: reference/conversations.md
+      - LLMs: reference/llms.md
+      - API Schemas: api/schemas.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            docstring_style: google
+            merge_init_into_class: true
+            show_root_heading: true
+            show_signature: true
+            separate_signature: true
+            line_length: 88

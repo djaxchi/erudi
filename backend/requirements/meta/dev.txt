@@ -1,0 +1,20 @@
+# Development Dependencies
+# Tools for development, testing, and debugging
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+httpx==0.28.1  # For FastAPI testing
+
+# Code Quality
+black==24.10.0
+ruff==0.8.4
+mypy==1.13.0
+
+# Development Tools
+ipython==8.31.0
+ipdb==0.13.13
+
+# Type stubs
+types-python-dateutil==2.9.0.20241206
