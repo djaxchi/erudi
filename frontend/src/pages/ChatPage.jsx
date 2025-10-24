@@ -21,6 +21,7 @@ export default function ChatPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [showErrorPopup, setShowErrorPopup] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [isLanguageWarningExpanded, setIsLanguageWarningExpanded] = useState(false);
 
   // Parameters state
   const [settings, setSettings] = useState({
@@ -250,8 +251,51 @@ export default function ChatPage() {
         {models.length === 0 ? (
           <GradientBox className="w-[700px] max-w-full">
             <div className="text-white text-center py-10">
-              Aucun modèle local disponible. Veuillez en ajouter un.
+              No current local models found, please add local models to proceed.
             </div>
+            {/* Language Warning */}
+              <div className="flex justify-center px-2 pb-1">
+                <div className="w-[700px] max-w-full">
+                  <div
+                    className={[
+                      "relative w-full rounded-[26px] overflow-hidden",
+                      "bg-[rgba(64,35,22,0.45)] backdrop-blur-[18px] saturate-[1.4]",
+                      "shadow-[0_8px_30px_-4px_rgba(0,0,0,0.45),0_2px_6px_-1px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,200,150,0.06)]",
+                    ].join(" ")}
+                  >
+                    <div
+                      aria-hidden
+                      className="absolute inset-0 pointer-events-none rounded-[26px] mix-blend-overlay"
+                      style={{
+                        background:
+                          "linear-gradient(to bottom, rgba(255,180,100,0.18), rgba(255,180,100,0) 40%)",
+                      }}
+                    />
+                    <div
+                      aria-hidden
+                      className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
+                      style={{
+                        backgroundImage:
+                          'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")',
+                        backgroundSize: "200px 200px",
+                      }}
+                    />
+
+            {/* Content */}
+              <div className="relative z-10 p-6">
+                <h2 className="text-lg font-semibold tracking-tight text-orange-100 mb-3">
+                  Note on Language
+                </h2>
+                <p className="text-sm text-orange-200/80 mb-3">
+                  Base models have been massively trained on English data. You will get significantly better results by chatting in English.
+                </p>
+                <p className="text-sm text-orange-200/70 italic">
+                  Pour les français, ça vous fera de l'entraînement :)
+                </p>
+              </div>
+          </div>
+        </div>
+      </div>
           </GradientBox>
         ) : (
           /* Interface de création de chat avec design HeaderBar */
@@ -523,6 +567,72 @@ export default function ChatPage() {
                     placeholder="Ask me anything..."
                   />
                 </div>
+                {/* Language Warning */}
+              <div className="flex justify-center mt-6 px-2 pb-1">
+                <div className="w-[700px] max-w-full">
+                  <div
+                    className={[
+                      "relative w-full rounded-[26px] overflow-hidden cursor-pointer transition-all duration-300",
+                      "bg-[rgba(64,35,22,0.45)] backdrop-blur-[18px] saturate-[1.4]",
+                      "shadow-[0_8px_30px_-4px_rgba(0,0,0,0.45),0_2px_6px_-1px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,200,150,0.06)]",
+                      "hover:border-orange-600/40",
+                    ].join(" ")}
+                    onClick={() => setIsLanguageWarningExpanded(!isLanguageWarningExpanded)}
+                  >
+                    <div
+                      aria-hidden
+                      className="absolute inset-0 pointer-events-none rounded-[26px] mix-blend-overlay"
+                      style={{
+                        background:
+                          "linear-gradient(to bottom, rgba(255,180,100,0.18), rgba(255,180,100,0) 40%)",
+                      }}
+                    />
+                    <div
+                      aria-hidden
+                      className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
+                      style={{
+                        backgroundImage:
+                          'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")',
+                        backgroundSize: "200px 200px",
+                      }}
+                    />
+
+            {/* Content */}
+              <div className="relative z-10 p-4 px-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-base font-semibold tracking-tight text-orange-100">
+                    Note on Language
+                  </h2>
+                  <motion.div
+                    animate={{ rotate: isLanguageWarningExpanded ? 180 : 0 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <ChevronDown className="w-5 h-5 text-orange-100" />
+                  </motion.div>
+                </div>
+                
+                <AnimatePresence>
+                  {isLanguageWarningExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="overflow-hidden"
+                    >
+                      <p className="text-sm text-orange-200/80 mb-3 mt-3">
+                        Base models have been massively trained on English data. You will get significantly better results by chatting in English.
+                      </p>
+                      <p className="text-sm text-orange-200/70 italic">
+                        Pour les français, ça vous fera de l'entraînement :)
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+          </div>
+        </div>
+      </div>
               </div>
             </div>
           </div>

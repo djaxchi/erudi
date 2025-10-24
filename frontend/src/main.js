@@ -64,6 +64,46 @@ const startRealBackend = () => {
   return new Promise((resolve, reject) => {
     log('Starting backend server...');
     
+    // In development mode, assume backend is already running via dev-start.sh
+    if (!app.isPackaged) {
+      log('Development mode: assuming backend is running via dev-start.sh');
+      // Just check if backend is responding
+      const checkDevBackendHealth = async () => {
+        for (let i = 0; i < 10; i++) {
+          try {
+            log(`Dev backend health check attempt ${i + 1}/10`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
+            
+            const response = await fetch(`http://127.0.0.1:8000/main_window/health`, {
+              signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+              const data = await response.json();
+              log(`Backend is ready: ${data.message}`);
+              resolve();
+              return;
+            }
+          } catch (error) {
+            log(`Dev backend health check failed: ${error.message}`);
+          }
+          
+          // Wait before next attempt
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        
+        // If we get here, backend is not responding
+        log('Backend is not responding. Make sure to run: ./build-scripts/dev-start.sh');
+        reject(new Error('Backend is not responding on localhost:8000'));
+      };
+      
+      checkDevBackendHealth();
+      return;
+    }
+    
+    // Production mode: spawn packaged backend
     const PORT = 8000;
     
     // Kill any existing process on the port first
@@ -359,6 +399,13 @@ app.whenReady().then(async () => {
   
   const tryStartBackend = async () => {
     try {
+      // In development mode, skip backend startup - assume user runs it separately
+      if (!app.isPackaged) {
+        log('Development mode: skipping backend startup (run backend separately)');
+        createWindow();
+        return;
+      }
+      
       await startRealBackend();
       log('Real backend started successfully, creating window...');
       createWindow();

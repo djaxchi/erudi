@@ -25,8 +25,15 @@ def init_environment():
     Initialize environment variables by loading .env from the correct location.
     Must be called before accessing any environment variables.
     """
-    base_dir = get_base_dir()
-    env_path = base_dir / '.env'
+    if getattr(sys, 'frozen', False):
+        # In production (frozen), .env is in the bundle directory
+        base_dir = get_base_dir()
+        env_path = base_dir / '.env'
+    else:
+        # In development, .env is in the project root (one level up from backend)
+        base_dir = get_base_dir()
+        env_path = base_dir.parent / '.env'
+    
     load_dotenv(env_path)
 
 
