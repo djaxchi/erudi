@@ -9,7 +9,7 @@ import faiss
 from contextlib import contextmanager
 
 from src.core.logging import logger
-from src.utils.inference_utils import EmbedderService
+from src.engines.embedder_engine import Embedder_Engine
 from src.core.exceptions import EmbeddingError
 from src.entities.Message import Message
 
@@ -36,7 +36,7 @@ class ConversationEmbedder:
         try:
             if self._embedder is None:
                 logger.debug("Initializing embedder instance")
-                self._embedder = EmbedderService.get_embedder()
+                self._embedder = Embedder_Engine.get_embedder()
             yield self._embedder
         except Exception as e:
             logger.error(f"Error in embedder context: {str(e)}")
@@ -44,7 +44,7 @@ class ConversationEmbedder:
         finally:
             if self._embedder is not None:
                 logger.debug("Cleaning up embedder instance")
-                EmbedderService.cleanup()
+                Embedder_Engine.cleanup()
                 self._embedder = None
 
     def embed_query(self, query: str) -> np.ndarray:

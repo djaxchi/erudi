@@ -62,7 +62,7 @@ from fastapi import Depends, APIRouter
 from sqlalchemy.orm import Session
 
 from src.entities.StaticHardwareInfos import StaticHardwareInfo
-from src.utils.hardware_info  import get_hardware_eval_for_apple_silicon
+from src.domains.hardware.hardware_info  import get_hardware_eval_for_apple_silicon
 from src.core.logging import logger
 
 from src.domains.hardware.schemas import (

@@ -8,7 +8,7 @@ import faiss
 from dataclasses import dataclass
 
 from src.core.logging import logger
-from src.utils.inference_utils import EmbedderService
+from src.engines.embedder_engine import Embedder_Engine
 from .cache_types import ConversationEmbeddingCache, MessageEmbedding
 
 
