@@ -17,7 +17,7 @@ from src.domains.training.services import TrainingProgressCallback
 
 from src.utils.file_processor import process_pdfs_to_causal_dataset
 from src.core.logging import logger
-from src.core import vars
+from backend.src.core import config
 
 router = APIRouter(prefix="/training", tags=["training"])
 

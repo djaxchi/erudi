@@ -106,3 +106,7 @@ class ConversationQueryResponse(BaseModel):
 
 class ConversationDeleteBulk(BaseModel):
     conversation_ids: List[int]
+
+
+class MessageStarRequest(BaseModel):
+    message_id: int = Field(..., description="ID of the message to toggle star state")

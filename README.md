@@ -1,3 +1,37 @@
+
+
+
+
+
+
+## To Setup
+
+### On Mac-Silicon (M1+)
+run `bash ./scripts/dev/backend/setup-mac-silicon.sh`
+
+### On Mac-Intel
+run `bash ./scripts/dev/backend/setup-mac-intel.sh`
+
+### On Linux CUDA 121
+run `bash ./scripts/dev/backend/setup-linux-cuda-121.sh`
+
+### On Linux CUDA 118
+run `bash ./scripts/dev/backend/setup-linux-cuda-118.sh`
+
+### On Linux CPU
+run `bash ./scripts/dev/backend/setup-linux-cpu.sh`
+
+### On Windows CPU
+run `.\scripts\dev\backend\setup-win-cpu.ps1`
+
+### On Windows CUDA 121
+run `.\scripts\dev\backend\setup-win-cuda-121.ps1`
+
+### On Windows CUDA 118
+run `.\scripts\dev\backend\setup-win-cuda-118.ps1`
+
+---
+
 ✅ Prérequis
 
 Node.js >= 18

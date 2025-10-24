@@ -5,10 +5,10 @@ import os, shutil
 from datetime import datetime
 
 from src.core.logging import logger
-from src.core.vars import (
+from backend.src.core.config import (
     HF_API
 )
-from src.core import vars
+from backend.src.core import config
 
 from sqlalchemy.orm import Session
 from src.database.core import (
@@ -118,7 +118,7 @@ def add_base_models(db: Session, HF_API):
             continue
 
         try:
-            quant_link = vars.LLM_Engine.MODEL_MAPPING.get(link)
+            quant_link = config.LLM_Engine.MODEL_MAPPING.get(link)
             is_quantized = quant_link is not None
             model_info = HF_API.model_info(link)
             size_estimate = get_disk_size_after_quant(quant_link) if is_quantized else get_model_size_estimate(name, link)
@@ -138,7 +138,7 @@ def add_base_models(db: Session, HF_API):
         except Exception as e:
             logger.warning(f"Error fetching metadata for {name}: {e}")
             # fallback
-            quant_link = vars.LLM_Engine.MODEL_MAPPING.get(link)
+            quant_link = config.LLM_Engine.MODEL_MAPPING.get(link)
             is_quantized = quant_link is not None
             size_estimate = get_disk_size_after_quant(quant_link) if is_quantized else get_model_size_estimate(name, link)
             actual_link = quant_link if is_quantized else link
