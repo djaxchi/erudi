@@ -189,7 +189,7 @@ export default function DragDropArea({ onFilesAdded }) {
           </div>
 
           {/* File list - scrollable with fixed height */}
-          <div className="flex-1 overflow-y-auto space-y-2 max-h-[300px] scrollbar-thin scrollbar-track-gray-800/50 scrollbar-thumb-gray-600 hover:scrollbar-thumb-gray-500 scrollbar-corner-gray-800">
+          <div className="flex-1 overflow-y-auto space-y-2 max-h-[300px] custom-scroll">
             {selectedFiles.map((filePath, index) => (
               <div
                 key={index}
