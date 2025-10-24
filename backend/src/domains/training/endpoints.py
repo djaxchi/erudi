@@ -1,3 +1,59 @@
+"""REST API endpoints for LLM fine-tuning orchestration (STUB - Under Development).
+
+This module will orchestrate fine-tuning workflows for local LLMs using LoRA/QLoRA adapters.
+Currently implements status polling endpoint only. Full training pipeline is commented out
+pending multi-engine training adapter implementation.
+
+Planned Architecture:
+    ┌──────────────┐
+    │ User uploads │
+    │ training PDFs│
+    └───────┬──────┘
+            │ (1) POST /training/train → Create TrainingJob
+            ↓
+    ┌──────────────┐
+    │ Process PDFs │ ← process_pdfs_to_causal_dataset()
+    │ to causal    │   (extract text, chunk, format for CLM)
+    │ dataset      │
+    └───────┬──────┘
+            │ (2) Background task: train_and_update()
+            ↓
+    ┌──────────────┐
+    │ Load base    │ ← AutoModelForCausalLM + PEFT LoRA
+    │ model + LoRA │   (quantized 4-bit for memory efficiency)
+    └───────┬──────┘
+            │ (3) Train with HuggingFace Trainer
+            ↓
+    ┌──────────────┐
+    │ Poll status  │ ← GET /training/{llm_id}/status
+    │ via TrainJob │   (progress, time_left, error_message)
+    └──────────────┘
+
+Current Status:
+    - Status polling: ✅ IMPLEMENTED
+    - Training pipeline: ⏸️ STUBBED (commented out)
+    - Multi-engine adapters: 🚧 PENDING
+
+TODO:
+    - Add training methods to BaseEngine interface.
+    - Implement MLX_Engine.train() for Apple Silicon LoRA.
+    - Implement CUDA_Engine.train() for NVIDIA LoRA.
+    - Uncomment and adapt train_llm_route() endpoint.
+
+Endpoints:
+    - GET /training/{llm_id}/status → Poll training job progress.
+    - POST /training/train → (COMMENTED OUT) Start fine-tuning job.
+
+Example:
+    GET /training/42/status
+    Response: {
+        "status": "running",
+        "progress": 65.0,
+        "time_elapsed": 120.5,
+        "time_left": 60.2,
+        "error_message": null
+    }
+"""
 # TODO AJOUTER LES BAILS DE TRAINING DANS LES ENGINES POUR ADAPTER ET DECOMMENTER
 
 
@@ -17,15 +73,44 @@ from src.domains.training.services import TrainingProgressCallback
 
 from src.utils.file_processor import process_pdfs_to_causal_dataset
 from src.core.logging import logger
-from backend.src.core import config
+from src.core import config
 
 router = APIRouter(prefix="/training", tags=["training"])
 
 
 @router.get("/training/{llm_id}/status")
 def get_training_status(llm_id: int, db: Session = Depends(get_db)):
-    """
-    Get the status of a training job.
+    """Poll training job status with progress metrics and automatic cleanup on failure.
+
+    Queries TrainingJob for the given LLM ID, returns status/progress/timing. If status="failed",
+    automatically deletes the temp LLM entry and cleans up model files.
+
+    Args:
+        llm_id: Database ID of the LLM being trained.
+        db: Database session injected by FastAPI.
+
+    Returns:
+        dict: {
+            "status": str,  # pending/running/completed/failed
+            "status_updated_at": datetime,
+            "error_message": str | None,
+            "progress": float (0-100),
+            "time_elapsed": float (seconds),
+            "time_left": float | None (seconds)
+        }
+
+    Raises:
+        HTTPException: 404 if training job not found for given llm_id.
+
+    Example:
+        GET /training/42/status
+        Response: {
+            "status": "running",
+            "progress": 65.0,
+            "time_elapsed": 120.5,
+            "time_left": 60.2,
+            "error_message": null
+        }
     """
     training_job = db.query(TrainingJob).filter(TrainingJob.llm_id == llm_id).first()
     if not training_job:

@@ -1,6 +1,13 @@
-"""
-Repository layer for arena domain.
-Handles all database operations.
+"""Repository layer for arena database operations.
+
+Provides data access methods for the arena domain, following the repository pattern.
+Isolates SQLAlchemy queries from business logic, handles database errors gracefully.
+
+Example:
+    from src.domains.arena.repository import ArenaRepository
+
+    repo = ArenaRepository(db)
+    llm = repo.get_llm_by_id(42)
 """
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -12,25 +19,34 @@ from src.core.logging import logger
 
 
 class ArenaRepository:
-    """Repository for managing arena database operations."""
+    """Repository for arena database queries with error handling."""
     
     def __init__(self, db: Session):
-        """Initialize the repository with a database session."""
+        """Initialize repository with database session.
+
+        Args:
+            db: SQLAlchemy session for executing queries.
+        """
         logger.debug("Initializing ArenaRepository")
         self.db = db
 
     def get_llm_by_id(self, llm_id: int) -> Llm:
-        """
-        Retrieve an LLM by ID.
-        
+        """Retrieve LLM entity by database ID with error handling.
+
         Args:
-            llm_id: ID of the LLM to retrieve
-            
+            llm_id: Database primary key of the LLM to retrieve.
+
         Returns:
-            The Llm object if found
-            
+            Llm entity with all metadata fields.
+
         Raises:
-            HTTPException: If LLM not found or query fails
+            HTTPException: 404 if LLM not found, 500 on SQLAlchemy errors.
+
+        Example:
+            >>> repo = ArenaRepository(db)
+            >>> llm = repo.get_llm_by_id(42)
+            >>> print(llm.name)
+            "Llama-3-8B-Instruct"
         """
         try:
             logger.debug(f"Retrieving LLM {llm_id}")

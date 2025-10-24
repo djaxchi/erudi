@@ -1,3 +1,59 @@
+"""Services for conversation management and streaming AI generation.
+
+This module contains business logic for:
+- Conversation lifecycle (create, update, delete)
+- Streaming token generation with LLM engines
+- Message persistence and history management
+- Context window optimization and caching
+- RAG integration (knowledge base injection)
+- Title auto-generation from first message
+
+Architecture:
+    Service Layer Pattern:
+    ┌────────────────────────────────────────────────────────────┐
+    │ ConversationService                                        │
+    │  - Business logic and orchestration                        │
+    │  - Uses repositories for data access                       │
+    │  - Uses engine for LLM inference                           │
+    └────────────────────────────────────────────────────────────┘
+                            ↓
+    ┌────────────────────────────────────────────────────────────┐
+    │ ConversationRepository / MessageRepository                 │
+    │  - Database CRUD operations                                │
+    │  - No business logic                                       │
+    └────────────────────────────────────────────────────────────┘
+
+Key Methods:
+    - create_conversation(): Initialize new chat session
+    - query_and_respond_stream(): Stream AI response token-by-token
+    - generate_title_stream(): Auto-generate conversation title
+    - delete_conversation(): Remove conversation with cascade
+    - store_error_message(): Record generation failures
+
+Context Management:
+    - ConversationCache: In-memory cache for recent conversations
+    - ConversationContext: Context window optimization (last N turns)
+    - System prompt injection via prompt_utils
+
+Example:
+    Stream AI response to user query::
+
+        service = ConversationService(db)
+        
+        async for token in service.query_and_respond_stream(
+            conversation_id=42,
+            payload=ConversationQuery(question="Explain Python decorators")
+        ):
+            print(token, end="", flush=True)
+
+Note:
+    All streaming methods are async generators (AsyncGenerator[str, None]).
+    Message persistence happens AFTER streaming completes.
+
+Warning:
+    Service methods are NOT thread-safe. Create new service instance per request.
+"""
+
 """
 Services for managing conversations and message processing.
 All business logic resides here. No direct database access.
@@ -8,7 +64,7 @@ from contextlib import suppress
 from typing import List, Tuple, Optional, AsyncGenerator, Callable, Iterator
 
 from src.core.logging import logger
-from backend.src.core import config
+from src.core import config
 from src.utils.prompt_utils import get_prompting_strategy, build_system_prompt
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.conversations.utils.cache import ConversationCache
@@ -22,6 +78,14 @@ class ConversationService:
     """Service for managing conversations and message processing."""
     
     def __init__(self, db):
+        """Initialize the conversation service with database session and utilities.
+
+        Args:
+            db: SQLAlchemy database session for repository operations.
+
+        Note:
+            Creates repository instances, conversation cache, and context manager.
+        """
         """
         Initialize the conversation service.
         
@@ -43,6 +107,28 @@ class ConversationService:
         max_tokens: int = 1024,
         custom_prompt: str = ""
     ) -> Conversation:
+        """Create a new conversation with specified LLM and generation parameters.
+
+        Args:
+            llm_id: ID of the LLM model to use for this conversation.
+            temperature: Sampling temperature (0.0-2.0, default 0.2).
+            top_p: Nucleus sampling threshold (0.0-1.0, default 0.5).
+            max_tokens: Maximum tokens to generate (1-32768, default 1024).
+            custom_prompt: Custom system prompt override (optional).
+
+        Returns:
+            Conversation: Created conversation object with auto-generated name.
+
+        Example:
+            ::
+
+                service = ConversationService(db)
+                conv = service.create_conversation(
+                    llm_id=5,
+                    temperature=0.7,
+                    custom_prompt="You are a Python expert."
+                )
+        """
         """
         Create a new conversation.
         
@@ -76,6 +162,23 @@ class ConversationService:
         max_tokens: Optional[int] = None,
         custom_prompt: Optional[str] = None
     ) -> Conversation:
+        """Update conversation metadata (partial update with optional fields).
+
+        Args:
+            conversation_id: ID of the conversation to update.
+            name: Optional new name for the conversation.
+            llm_id: Optional new LLM ID.
+            temperature: Optional new temperature.
+            top_p: Optional new top_p.
+            max_tokens: Optional new max_tokens.
+            custom_prompt: Optional new system prompt.
+
+        Returns:
+            Conversation: Updated conversation object.
+
+        Note:
+            Only provided (non-None) fields are updated. Omitted fields remain unchanged.
+        """
         """
         Update conversation fields.
         
@@ -103,6 +206,18 @@ class ConversationService:
         )
 
     def delete_conversation(self, conversation_id: int) -> None:
+        """Delete a conversation, its messages, and clear cache (cascade delete).
+
+        Args:
+            conversation_id: ID of the conversation to delete.
+
+        Returns:
+            None.
+
+        Note:
+            Cache is cleared before database deletion to ensure consistency.
+            All messages are also deleted due to cascade constraints.
+        """
         """
         Delete a conversation and clear its cache.
         
@@ -118,6 +233,18 @@ class ConversationService:
         self.conversation_repo.delete_conversation(conversation_id)
 
     def delete_conversations_bulk(self, conversation_ids: List[int]) -> None:
+        """Delete multiple conversations in a single operation (bulk delete).
+
+        Args:
+            conversation_ids: List of conversation IDs to delete.
+
+        Returns:
+            None.
+
+        Note:
+            Clears cache for all conversations before database deletion.
+            More efficient than deleting one-by-one.
+        """
         """
         Delete multiple conversations and clear their caches.
         
@@ -133,6 +260,18 @@ class ConversationService:
         self.conversation_repo.delete_conversations_bulk(conversation_ids)
 
     def store_error_message(self, conversation_id: int) -> int:
+        """Store an error message when AI generation fails (fallback mechanism).
+
+        Args:
+            conversation_id: ID of the conversation where error occurred.
+
+        Returns:
+            int: ID of the created error message.
+
+        Note:
+            Used by frontend to record generation failures and maintain
+            conversation history consistency.
+        """
         """
         Store an error message when generation fails.
         

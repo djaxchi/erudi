@@ -1,3 +1,69 @@
+"""Database initialization and seeding for application startup.
+
+This module handles:
+- Table creation via SQLAlchemy ORM
+- Seeding default LLM models from HuggingFace
+- Cleaning up interrupted jobs from previous sessions
+- Initializing hardware metrics and startup variables
+
+Seeding Strategy:
+    1. **Base Models**: Curated list of supported quantized models
+       (Gemma 1B/2B/4B/12B, Mistral 7B, Ministral 8B, Mistral-Nemo 12B)
+    2. **Derived Models**: Top 30 quality models per base model family,
+       filtered by downloads/likes and excluding quantized variants
+    3. **Job Recovery**: Mark incomplete download/training/KB jobs as failed
+    4. **Hardware Profiling**: Persist static system capabilities
+
+Quality Filters:
+    - Minimum 50 downloads and 5 likes
+    - Exclude pre-quantized models (GGUF, GPTQ, AWQ, etc.)
+    - Prioritize instruction-tuned, chat, and reasoning models
+    - Skip test/debug/experimental checkpoints
+
+Architecture:
+    Startup Flow:
+    ┌────────────────────────────────────────────────────────────┐
+    │ createTables()                                             │
+    │  └─> Create all SQLAlchemy tables if not exist            │
+    └────────────────────────────────────────────────────────────┘
+                            ↓
+    ┌────────────────────────────────────────────────────────────┐
+    │ startup_populate_database()                                │
+    │  1. add_base_models()       → Quantized core models       │
+    │  2. add_derived_models()    → Quality derived models      │
+    │  3. mark_unfinished_jobs_as_failed() → Cleanup jobs       │
+    │  4. initialize_hardware_info() → Persist capabilities     │
+    │  5. initialize_startup_variables() → First-run flags      │
+    └────────────────────────────────────────────────────────────┘
+
+Example:
+    Called automatically during FastAPI lifespan startup::
+
+        from src.database.seed import createTables, startup_populate_database
+
+        async def lifespan(app: FastAPI):
+            await createTables()
+            await startup_populate_database()
+            yield
+            # Cleanup...
+
+    Manual database reset (development only)::
+
+        from src.database.seed import delete_all_data
+
+        await delete_all_data()  # Interactive confirmation required
+
+Note:
+    - Base models use engine-specific MODEL_MAPPING for quantized links
+    - Derived models are fetched from HuggingFace search (200 max checked)
+    - Job cleanup prevents zombie processes and disk space leaks
+    - Hardware info is evaluated once and cached in database
+
+Warning:
+    delete_all_data() is destructive and requires interactive confirmation.
+    Never call in production. Use migrations for schema changes.
+"""
+
 # TODO CLEANING OF THE WHOLE FILE
 
 
@@ -5,10 +71,10 @@ import os, shutil
 from datetime import datetime
 
 from src.core.logging import logger
-from backend.src.core.config import (
+from src.core.config import (
     HF_API
 )
-from backend.src.core import config
+from src.core import config
 
 from sqlalchemy.orm import Session
 from src.database.core import (
@@ -32,10 +98,55 @@ from src.entities.StartupVariables import StartupVariables
 
 
 async def createTables():
+    """Create all database tables from SQLAlchemy models.
+
+    Uses metadata from Base to create tables for:
+    - Llm, Conversation, Message
+    - TrainingJob, DownloadJobModel, KBJobModel
+    - KnowledgeBase, VectorStore
+    - StaticHardwareInfo, StartupVariables
+
+    Returns:
+        None. Tables are created idempotently (if not exists).
+
+    Example:
+        ::
+
+            from src.database.seed import createTables
+
+            await createTables()
+            # All tables now exist in SQLite database
+    """
     # Create all tables in the database
     Base.metadata.create_all(bind=db_engine)
 
 async def delete_all_data() -> None :
+    """Delete all data from the database and file storage (DESTRUCTIVE).
+
+    This function performs a complete wipe of:
+    - All database records (models, conversations, jobs, etc.)
+    - Downloaded model files (data/models/)
+    - FAISS vector indexes (data/indexes/)
+
+    Requires interactive confirmation before proceeding.
+
+    Returns:
+        None. Database and directories are purged after confirmation.
+
+    Example:
+        ::
+
+            from src.database.seed import delete_all_data
+
+            await delete_all_data()
+            # Prompt: "Are you sure you want to do this? (y/n)"
+            # If "y": All data deleted
+            # If "n": Operation cancelled
+
+    Warning:
+        This is a destructive operation with no undo. Use only in development.
+        Never expose this function in production endpoints.
+    """
     # Delete all data from the database
     logger.debug("Preparing to delete all data from the database.")
     res = input("Are you sure you want to do this ? (y/n)")
@@ -72,6 +183,39 @@ async def delete_all_data() -> None :
         db.close()
 
 async def startup_populate_database():
+    """Populate database with default models and initialize runtime state.
+
+    Orchestrates the full seeding workflow:
+    1. Add base models (quantized core models)
+    2. Add derived models (quality HuggingFace models)
+    3. Mark unfinished jobs as failed (cleanup from previous crash)
+    4. Initialize hardware info (system capabilities)
+    5. Initialize startup variables (first-run flags)
+
+    Returns:
+        None. Database is populated or exception is raised.
+
+    Raises:
+        Exception: If any seeding step fails (HuggingFace API errors,
+            database write failures, hardware detection failures).
+            Rolls back transaction and re-raises.
+
+    Example:
+        ::
+
+            from src.database.seed import startup_populate_database
+
+            await startup_populate_database()
+            # Database now contains:
+            # - 7 base models (Gemma, Mistral families)
+            # - ~210 derived models (30 per base model)
+            # - Hardware metrics
+            # - Startup flags
+
+    Note:
+        This function is idempotent for base models (skips existing).
+        Derived models are re-fetched if database was wiped.
+    """
 
     db: Session = SessionLocal()
     try:
@@ -94,6 +238,22 @@ async def startup_populate_database():
 
 # TODO FIX TO MAKE IT ENGINE-AGNOSTIC AS IT IS NOW IN ENGINE
 def add_base_models(db: Session, HF_API):
+    """Add curated list of base models with quantized links.
+
+    Seeds the database with 7 core models across Gemma and Mistral families.
+    Uses engine-specific MODEL_MAPPING to prefer quantized variants (MLX, GGUF).
+
+    Args:
+        db: Active SQLAlchemy session for database operations.
+        HF_API: HuggingFace API client for fetching model metadata.
+
+    Returns:
+        None. Models are committed to database via session.
+
+    Note:
+        Existing models (by name) are skipped to avoid duplicates.
+        Falls back to size estimates if HuggingFace API fails.
+    """
     base_models = [
         ("Gemma-1B", "google/gemma-3-1b-it", "gemma"),
         ("Gemma-2B", "google/gemma-2-2b-it", "gemma"),
@@ -157,6 +317,22 @@ def add_base_models(db: Session, HF_API):
             logger.info(f"Added base model {name} (quantized={is_quantized}) with size estimate: {size_estimate}")
 
 def is_quality_model_from_hf_search(model_info):
+    """Filter HuggingFace models by quality metrics and tags.
+
+    Args:
+        model_info: HuggingFace ModelInfo object with downloads, likes, tags.
+
+    Returns:
+        bool: True if model meets quality thresholds, False otherwise.
+
+    Quality Criteria:
+        - Minimum 50 downloads and 5 likes
+        - Contains interesting tags (instruction-tuned, chat, reasoning, etc.)
+        - OR contains quality keywords in model ID (instruct, assistant, etc.)
+
+    Note:
+        Used by add_derived_models() to filter ~200 candidates to top 30.
+    """
     MIN_DOWNLOADS = 50
     MIN_LIKES = 5
     INTERESTING_TAGS = [
@@ -178,6 +354,25 @@ def is_quality_model_from_hf_search(model_info):
     return False
 
 def add_derived_models(db: Session, HF_API):
+    """Add top quality derived models from HuggingFace per base model family.
+
+    Searches HuggingFace for each base model family (Gemma, Mistral) and adds
+    the top 30 quality models sorted by downloads. Excludes pre-quantized
+    models and test/debug checkpoints.
+
+    Args:
+        db: Active SQLAlchemy session for database operations.
+        HF_API: HuggingFace API client for model search.
+
+    Returns:
+        None. Models are committed to database after each family.
+
+    Note:
+        - Checks up to 200 models per family to find top 30 quality models
+        - Skips GGUF, GPTQ, AWQ, 4bit, 8bit, LoRA, and test checkpoints
+        - Skips base model IDs to avoid duplicates with add_base_models()
+        - Parameter size inferred from name or fallback to family default
+    """
     base_model_searches = [
         ("Mistral-7B v0.3", "mistral", 7.0),
         ("Gemma 1B", "gemma", 1.0),
@@ -248,6 +443,23 @@ def add_derived_models(db: Session, HF_API):
         db.commit()
 
 def mark_unfinished_jobs_as_failed(db: Session):
+    """Mark interrupted jobs from previous sessions as failed and cleanup resources.
+
+    Handles three job types:
+    - DownloadJobModel: Delete incomplete model files, reset local_model_id
+    - TrainingJob: Delete partial training checkpoints, reset llm_id
+    - KBJobModel: Delete incomplete FAISS indexes, cleanup knowledge base
+
+    Args:
+        db: Active SQLAlchemy session for database operations.
+
+    Returns:
+        None. Job statuses updated and orphaned resources deleted.
+
+    Note:
+        This prevents zombie processes, disk space leaks, and database
+        inconsistencies from application crashes or forced shutdowns.
+    """
     # Download jobs
     unfinished_jobs = db.query(DownloadJobModel).filter(
         DownloadJobModel.status.in_(["running", "pending"])
@@ -307,6 +519,21 @@ def mark_unfinished_jobs_as_failed(db: Session):
         logger.warning(f"Marked unfinished KBJob {job.id} as failed.")
 
 def initialize_hardware_info(db: Session):
+    """Evaluate and persist system hardware capabilities.
+
+    Runs hardware detection once on first startup and caches results in
+    StaticHardwareInfo table. Subsequent startups skip evaluation.
+
+    Args:
+        db: Active SQLAlchemy session for database operations.
+
+    Returns:
+        None. Hardware info persisted to database or skipped if exists.
+
+    Note:
+        Falls back to safe default values if hardware evaluation fails.
+        Used by frontend to display system capabilities and recommend models.
+    """
     persist_hw_infos = db.query(StaticHardwareInfo).first()
     if persist_hw_infos:
         return
@@ -363,6 +590,21 @@ def initialize_hardware_info(db: Session):
     db.commit()
 
 def initialize_startup_variables(db: Session):
+    """Initialize or refresh startup state variables.
+
+    Creates StartupVariables record on first run. Used to track:
+    - welcome_popup_has_already_displayed: First-run welcome screen flag
+
+    Args:
+        db: Active SQLAlchemy session for database operations.
+
+    Returns:
+        None. StartupVariables record created or refreshed.
+
+    Note:
+        Future startup flags (onboarding state, dismissed notifications)
+        should be added as columns to StartupVariables entity.
+    """
     variables = db.query(StartupVariables).first()
     if not variables:
         variables = StartupVariables(welcome_popup_has_already_displayed=False)

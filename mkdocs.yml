@@ -6,7 +6,21 @@ theme:
   features:
     - navigation.expand
     - content.code.copy
+    - content.code.annotate
+  palette:
+    - scheme: slate
+      primary: custom
+      accent: custom
   custom_dir: docs
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
 
 extra_css:
   - stylesheets/extra.css
@@ -15,17 +29,27 @@ nav:
   - 🧠 Overview: index.md
   - 🧩 Architecture: architecture.md
   - 🚀 Getting Started: usage.md
+  - 📚 Guides:
+      - Conversations: guides/conversations.md
+      - LLMs: guides/llms.md
+      - Knowledge Base: guides/knowledge_base.md
   - ⚙️ API Reference:
+      - Core: reference/core.md
       - Engines: reference/engines.md
       - Conversations: reference/conversations.md
       - LLMs: reference/llms.md
-      - API Schemas: api/schemas.md
+      - Knowledge Base: reference/knowledge_base.md
+      - Arena: reference/arena.md
+      - Hardware: reference/hardware.md
+      - Entities: reference/entities.md
+      - Database: reference/database.md
 
 plugins:
   - search
   - mkdocstrings:
       handlers:
         python:
+          paths: [backend]
           options:
             show_source: true
             docstring_style: google

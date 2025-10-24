@@ -1,5 +1,20 @@
-"""
-Entity representing a message in a conversation.
+"""SQLAlchemy entity for individual messages within conversations.
+
+Represents a single user or assistant message with metadata for starring, caching,
+and timestamp tracking. Messages belong to a Conversation and are ordered by timestamp.
+
+Relationships:
+    - conversation: Many-to-one with Conversation (parent session).
+
+Example:
+    from src.entities.Message import Message
+
+    msg = Message(
+        conversation_id=42,
+        sender="user",
+        content="What is quantum computing?",
+        starred=False
+    )
 """
 from datetime import datetime
 from typing import Optional
@@ -11,7 +26,27 @@ from src.core.logging import logger
 
 
 class Message(Base):
-    """SQLAlchemy model for conversation messages."""
+    """SQLAlchemy model for conversation messages with starring and caching support.
+
+    Stores individual messages within conversations, tracking sender, content, timestamp,
+    starred status (for memory injection), and embedding cache status (for RAG optimization).
+
+    Attributes:
+        id: Primary key (auto-increment).
+        conversation_id: Foreign key to Conversation (parent session).
+        sender: Message sender - "user" or "llm" (validated).
+        content: Message text content (1-32768 chars, validated).
+        timestamp: Message creation timestamp (UTC).
+        starred: True if user starred for importance (used in memory injection).
+        is_embedding_cached: True if embedding computed and cached (RAG optimization).
+        conversation: Relationship to Conversation entity.
+        age: Hybrid property returning message age in seconds.
+
+    Example:
+        >>> msg = Message(conversation_id=42, sender="user", content="Hello!")
+        >>> msg.star()
+        >>> print(msg.starred)  # True
+    """
     __tablename__ = "messages"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -27,14 +62,36 @@ class Message(Base):
 
     @validates('sender')
     def validate_sender(self, key: str, sender: str) -> str:
-        """Validate message sender."""
+        """Validate sender is either 'user' or 'llm'.
+
+        Args:
+            key: Column name ("sender").
+            sender: Sender value to validate.
+
+        Returns:
+            Validated sender value.
+
+        Raises:
+            ValueError: If sender not in ['user', 'llm'].
+        """
         if sender not in ['user', 'llm']:
             raise ValueError("Sender must be either 'user' or 'llm'")
         return sender
 
     @validates('content')
     def validate_content(self, key: str, content: str) -> str:
-        """Validate message content."""
+        """Validate content is non-empty and within size limit.
+
+        Args:
+            key: Column name ("content").
+            content: Content value to validate.
+
+        Returns:
+            Validated content value.
+
+        Raises:
+            ValueError: If content empty or exceeds 32K chars.
+        """
         if not content or len(content.strip()) == 0:
             raise ValueError("Message content cannot be empty")
         if len(content) > 32768:  # 32K chars limit
@@ -43,17 +100,21 @@ class Message(Base):
 
     @hybrid_property
     def age(self) -> float:
-        """Get message age in seconds."""
+        """Get message age in seconds since creation.
+
+        Returns:
+            Time elapsed in seconds.
+        """
         return (datetime.utcnow() - self.timestamp).total_seconds()
 
     def star(self) -> None:
-        """Star this message."""
+        """Mark message as starred (important) for memory injection."""
         if not self.starred:
             self.starred = True
             logger.info(f"Message {self.id} starred")
 
     def unstar(self) -> None:
-        """Unstar this message."""
+        """Remove starred status from message."""
         if self.starred:
             self.starred = False
             logger.info(f"Message {self.id} unstarred")

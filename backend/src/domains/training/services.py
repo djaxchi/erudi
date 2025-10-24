@@ -1,9 +1,51 @@
+"""Business logic for fine-tuning progress tracking (STUB - TrainerCallback commented out).
+
+This module will provide a HuggingFace TrainerCallback for tracking fine-tuning progress
+and updating TrainingJob database records in real-time. Currently stubbed pending
+multi-engine training adapter implementation.
+
+Planned Features:
+    - TrainingProgressCallback: HuggingFace TrainerCallback subclass.
+    - Real-time progress updates: Updates TrainingJob.progress every N seconds.
+    - ETA estimation: Computes time_left based on elapsed time and completion %.
+    - Database persistence: Uses SessionLocal() in callback to avoid thread conflicts.
+
+Callback Lifecycle:
+    on_train_begin()   → Initialize start_time, set progress=0%
+    on_step_begin()    → (Optional) Log step start
+    on_step_end()      → Update progress every 2-3 seconds
+    on_log()           → Update progress when HF logs metrics
+    on_epoch_end()     → Update progress at epoch boundaries
+    on_train_end()     → Final progress update to 100%
+
+Example (when uncommented):
+    from src.domains.training.services import TrainingProgressCallback
+    from transformers import Trainer
+
+    callback = TrainingProgressCallback(training_job_id=42, db_factory=SessionLocal)
+    trainer = Trainer(model=model, callbacks=[callback], ...)
+    trainer.train()  # Progress updates persisted to TrainingJob(id=42)
+"""
 from datetime import datetime
 from src.entities.TrainingJob import TrainingJob
 
 from src.core.logging import logger
 
 class TrainingProgressCallback():
+    """Stub class for HuggingFace TrainerCallback (implementation commented out).
+
+    Will be used to track fine-tuning progress and update TrainingJob database records.
+    Full implementation is commented out pending multi-engine training adapter integration.
+
+    Planned Attributes (when uncommented):
+        training_job_id: Database ID of TrainingJob to update.
+        db_factory: SessionLocal factory for creating database sessions.
+        start_time: Training start timestamp for ETA calculation.
+        last_update_time: Last progress update timestamp (throttles DB writes).
+
+    Note:
+        Currently a pass-through stub to allow imports without errors.
+    """
     pass # Just for compilation
 
 # from transformers import TrainerCallback

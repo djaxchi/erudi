@@ -1,3 +1,62 @@
+"""REST API endpoints for hardware information and performance scoring.
+
+Provides system hardware detection, scoring, and monitoring endpoints for Apple Silicon
+devices. Scores are used to guide UI recommendations for inference and fine-tuning feasibility.
+
+Architecture:
+    ┌──────────────┐
+    │ Hardware     │
+    │ Detection    │ ← get_hardware_eval_for_apple_silicon()
+    └───────┬──────┘
+            │ (1) Detect chip model (M1/M2/M3/M4 + variant)
+            │ (2) Query system RAM, GPU cores, disk space
+            │ (3) Compute performance scores (CPU/GPU/Memory)
+            ↓
+    ┌──────────────┐
+    │ StaticHW     │ ← Persisted to database on first startup
+    │ InfoEntity   │   (chip, RAM, scores, labels)
+    └───────┬──────┘
+            │ (3) Endpoints query cached hardware info
+            ↓
+    ┌──────────────┐
+    │ Hardware     │ → /training_info (detailed specs for fine-tuning UI)
+    │ Endpoints    │ → /app_startup (boosted scores for dashboard)
+    │              │ → /detailed (full debug info)
+    └──────────────┘
+
+Scoring System:
+    - **CPU Score**: Based on performance cores count and architecture generation.
+    - **GPU Score**: Based on GPU cores count and estimated TFLOPS.
+    - **Memory Score**: Based on total unified memory (GB).
+    - **Inference Score**: Weighted combination (GPU 60%, Memory 30%, CPU 10%).
+    - **Fine-tuning Score**: Weighted combination (Memory 50%, GPU 35%, CPU 15%).
+
+Score Labels:
+    - 75-100: "Very Good" (recommended for production).
+    - 50-74:  "Good" (suitable for most tasks).
+    - 25-49:  "Medium" (limited capability).
+    - 0-24:   "Poor" (not recommended).
+
+Apple Silicon Specifics:
+    - **Unified Memory**: RAM shared between CPU and GPU (no separate VRAM).
+    - **MPS (Metal Performance Shaders)**: Apple's GPU acceleration framework.
+    - **Neural Engine**: Dedicated AI accelerator (measured in TOPS).
+    - **Memory Bandwidth**: Critical for LLM inference speed (GB/s).
+
+Endpoints:
+    - GET /hardware/training_info → Detailed specs for fine-tuning UI.
+    - GET /hardware/app_startup → Boosted scores for dashboard display (+20 points).
+    - GET /hardware/detailed → Full debug info with all specs and breakdown.
+
+Example:
+    GET /hardware/app_startup
+    Response: {
+        "global_inference_score": 85.0,
+        "global_inference_label": "Very Good",
+        "global_finetuning_score": 75.0,
+        "global_finetuning_label": "Very Good"
+    }
+"""
 from src.database.core import get_db
 from fastapi import Depends, APIRouter
 from sqlalchemy.orm import Session
@@ -18,9 +77,31 @@ router = APIRouter(prefix="/hardware", tags=["hardware"])
 def get_hardware_training_info(
     db: Session = Depends(get_db)
 ):
-    """
-    Get hardware information relevant for training/fine-tuning operations.
-    Updated for Apple Silicon unified memory architecture.
+    """Get detailed hardware specs for fine-tuning UI with Apple Silicon metrics.
+
+    Returns comprehensive hardware information including unified memory, GPU cores,
+    TFLOPs estimation, and performance scores. Used by fine-tuning UI to display
+    system capabilities and recommend model sizes.
+
+    Args:
+        db: Database session injected by FastAPI.
+
+    Returns:
+        HardwareTrainingInfo: Full hardware specs with scores and Apple Silicon details.
+
+    Example:
+        GET /hardware/training_info
+        Response: {
+            "chip_model": "M3 Max",
+            "total_ram_gb": 128.0,
+            "gpu_cores": 40,
+            "estimated_gpu_tflops": 14.6,
+            "memory_bandwidth_gbs": 400.0,
+            "global_finetuning_score": 85.0,
+            "global_finetuning_label": "Very Good",
+            "unified_memory": true,
+            ...
+        }
     """
     try:
         persist_hw_infos = db.query(StaticHardwareInfo).first()
@@ -128,9 +209,30 @@ def get_hardware_training_info(
 def get_app_startup_info(
     db: Session = Depends(get_db)
 ):
-    """
-    Get essential hardware performance information for application startup.
-    Returns inference and fine-tuning scores for UI display.
+    """Get boosted performance scores for application startup dashboard.
+
+    Returns inference and fine-tuning scores with +20 boost (capped at 100) for UI display.
+    If hardware info doesn't exist in database, automatically detects and persists it.
+    Used by frontend dashboard to show capability badges.
+
+    Args:
+        db: Database session injected by FastAPI.
+
+    Returns:
+        HardwareAppStartupInfo: Boosted scores with performance labels.
+
+    Note:
+        Scores are artificially boosted by 20 points to provide more optimistic UI feedback.
+        Real scores are available via /hardware/training_info or /hardware/detailed.
+
+    Example:
+        GET /hardware/app_startup
+        Response: {
+            "global_inference_score": 90.0,  # Real score was 70
+            "global_inference_label": "Very Good",
+            "global_finetuning_score": 80.0,  # Real score was 60
+            "global_finetuning_label": "Very Good"
+        }
     """
     try:
         hw_infos = db.query(StaticHardwareInfo).first()
@@ -250,9 +352,33 @@ def get_app_startup_info(
 def get_detailed_hardware_info(
     db: Session = Depends(get_db)
 ):
-    """
-    Get comprehensive hardware information including all Apple Silicon specifications.
-    Useful for debugging and detailed system analysis.
+    """Get comprehensive hardware info with all Apple Silicon specs for debugging.
+
+    Returns full hardware profile including raw scores (not boosted), performance breakdown
+    JSON, and all Apple Silicon-specific metrics. Used for system diagnostics and debugging.
+
+    Args:
+        db: Database session injected by FastAPI.
+
+    Returns:
+        DetailedHardwareInfo: Complete hardware profile with all fields populated.
+
+    Example:
+        GET /hardware/detailed
+        Response: {
+            "chip_model": "M3 Max",
+            "cpu_model": "Apple M3 Max",
+            "gpu_name": "Apple M3 Max GPU",
+            "system_ram_gb": 128.0,
+            "gpu_cores": 40,
+            "estimated_gpu_tflops": 14.6,
+            "memory_bandwidth_gbs": 400.0,
+            "neural_engine_tops": 18.0,
+            "global_inference_score": 70.0,  # Raw score (not boosted)
+            "global_finetuning_score": 60.0,  # Raw score (not boosted)
+            "performance_breakdown": {"cpu": {...}, "gpu": {...}, "memory": {...}},
+            ...
+        }
     """
     try:
         hw_infos = db.query(StaticHardwareInfo).first()
