@@ -1,8 +1,13 @@
 """
 Prompt engineering utilities for conversations.
+
+DEPRECATED: Most functionality moved to src.utils.prompt_utils
+This module is kept for backward compatibility and conversation-specific utilities.
 """
 from typing import List, Optional, Dict, Tuple
 from src.core.logging import logger
+from src.utils.prompt_utils import build_system_prompt as _build_system_prompt
+from src.utils.prompt_utils import get_prompting_strategy as _get_prompting_strategy
 
 
 class PromptBuilder:
@@ -18,6 +23,8 @@ class PromptBuilder:
         """
         Build a system prompt based on model size and available context.
         
+        This method wraps the shared utility for backward compatibility.
+        
         Args:
             model_name: Name of the model being used
             size_category: Size category of the model (small/medium/large)
@@ -27,40 +34,12 @@ class PromptBuilder:
         Returns:
             Formatted system prompt
         """
-        # Base personality and behavior
-        if size_category == "small":
-            base_prompt = (
-                f"You are {model_name}, a helpful and concise AI assistant. "
-                "Provide clear, straightforward answers."
-            )
-        elif size_category == "medium":
-            base_prompt = (
-                f"You are {model_name}, a knowledgeable and helpful AI assistant. "
-                "Provide clear, well-explained answers while being engaging and natural."
-            )
-        else:  # large
-            base_prompt = (
-                f"You are {model_name}, a highly capable AI assistant with broad knowledge. "
-                "Provide comprehensive, nuanced answers while being engaging and natural. "
-                "Consider multiple perspectives and explain your reasoning when appropriate."
-            )
-
-        context_elements = [base_prompt]
-
-        # Add long-term memory if available
-        if long_term_memory:
-            context_elements.append(
-                "\nContext from earlier in the conversation:\n" + long_term_memory
-            )
-
-        # Add starred messages if available
-        if starred_messages and len(starred_messages) > 0:
-            starred_context = "\nImportant points from this conversation:"
-            for msg in starred_messages:
-                starred_context += f"\n- {msg}"
-            context_elements.append(starred_context)
-
-        return "\n".join(context_elements)
+        return _build_system_prompt(
+            model_name=model_name,
+            size_category=size_category,
+            long_term_memory=long_term_memory,
+            starred_messages=starred_messages
+        )
 
 
 class PromptGenerator:
