@@ -6,12 +6,17 @@ from datetime import datetime
 from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from fastapi import HTTPException, status
 
 from src.entities.Conversation import Conversation
 from src.entities.Message import Message
 from src.entities.Llm import Llm
 from src.core.logging import logger
+from src.core.exceptions import (
+    ConversationNotFoundException,
+    ModelNotFoundException,
+    DatabaseException,
+    MessageNotFoundException,
+)
 
 
 class ConversationRepository:
@@ -30,7 +35,7 @@ class ConversationRepository:
             List of all Conversation objects
             
         Raises:
-            HTTPException: If database query fails
+            DatabaseException: If database query fails
         """
         try:
             logger.debug("Retrieving all conversations")
@@ -39,9 +44,9 @@ class ConversationRepository:
             return conversations
         except SQLAlchemyError as e:
             logger.error(f"Error retrieving all conversations: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not retrieve conversations"
+            raise DatabaseException(
+                "Could not retrieve conversations",
+                trace=str(e)
             )
 
     def get_conversation_by_id(self, conversation_id: int) -> Conversation:
@@ -55,7 +60,8 @@ class ConversationRepository:
             The Conversation object if found
             
         Raises:
-            HTTPException: If conversation not found or query fails
+            ConversationNotFoundException: If conversation not found
+            DatabaseException: If database query fails
         """
         try:
             logger.debug(f"Retrieving conversation {conversation_id}")
@@ -65,10 +71,7 @@ class ConversationRepository:
             
             if not conversation:
                 logger.warning(f"Conversation {conversation_id} not found")
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Conversation {conversation_id} not found"
-                )
+                raise ConversationNotFoundException(conversation_id)
                 
             logger.debug(
                 f"Retrieved conversation {conversation_id} "
@@ -76,15 +79,15 @@ class ConversationRepository:
             )
             return conversation
             
-        except HTTPException:
+        except ConversationNotFoundException:
             raise
         except SQLAlchemyError as e:
             logger.error(
                 f"Database error retrieving conversation {conversation_id}: {str(e)}"
             )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not retrieve conversation"
+            raise DatabaseException(
+                "Could not retrieve conversation",
+                trace=str(e)
             )
 
     def get_llm_by_id(self, llm_id: int) -> Llm:
@@ -98,23 +101,21 @@ class ConversationRepository:
             The Llm object if found
             
         Raises:
-            HTTPException: If LLM not found
+            ModelNotFoundException: If LLM not found
+            DatabaseException: If database error occurs
         """
         try:
             llm = self.db.query(Llm).filter(Llm.id == llm_id).first()
             if not llm:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"LLM {llm_id} not found"
-                )
+                raise ModelNotFoundException(f"LLM {llm_id}")
             return llm
-        except HTTPException:
+        except ModelNotFoundException:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Error retrieving LLM {llm_id}: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not retrieve LLM"
+            raise DatabaseException(
+                "Could not retrieve LLM",
+                trace=str(e)
             )
 
     def create_conversation(
@@ -141,7 +142,7 @@ class ConversationRepository:
             The created Conversation
             
         Raises:
-            HTTPException: If creation fails
+            DatabaseException: If creation fails
         """
         try:
             conversation = Conversation(
@@ -159,9 +160,9 @@ class ConversationRepository:
             
         except SQLAlchemyError as e:
             logger.error(f"Error creating conversation: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Could not create conversation: {str(e)}"
+            raise DatabaseException(
+                "Could not create conversation",
+                trace=str(e)
             )
 
     def update_conversation(
@@ -190,7 +191,8 @@ class ConversationRepository:
             Updated Conversation object
             
         Raises:
-            HTTPException: If update fails
+            ConversationNotFoundException: If conversation not found
+            DatabaseException: If update fails
         """
         try:
             conversation = self.get_conversation_by_id(conversation_id)
@@ -227,13 +229,13 @@ class ConversationRepository:
             
             return conversation
             
-        except HTTPException:
+        except ConversationNotFoundException:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Error updating conversation {conversation_id}: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Could not update conversation: {str(e)}"
+            raise DatabaseException(
+                "Could not update conversation",
+                trace=str(e)
             )
 
     def delete_conversation(self, conversation_id: int) -> None:
@@ -244,20 +246,21 @@ class ConversationRepository:
             conversation_id: ID of the conversation to delete
             
         Raises:
-            HTTPException: If deletion fails
+            ConversationNotFoundException: If conversation not found
+            DatabaseException: If deletion fails
         """
         try:
             conversation = self.get_conversation_by_id(conversation_id)
             self.db.delete(conversation)
             self.db.flush()  # Flush deletion, no commit
             logger.info(f"Deleted conversation {conversation_id}")
-        except HTTPException:
+        except ConversationNotFoundException:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Error deleting conversation {conversation_id}: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not delete conversation"
+            raise DatabaseException(
+                "Could not delete conversation",
+                trace=str(e)
             )
 
     def delete_conversations_bulk(self, conversation_ids: List[int]) -> None:
@@ -268,7 +271,7 @@ class ConversationRepository:
             conversation_ids: List of conversation IDs to delete
             
         Raises:
-            HTTPException: If deletion fails
+            DatabaseException: If deletion fails
         """
         try:
             self.db.query(Conversation).filter(
@@ -278,9 +281,9 @@ class ConversationRepository:
             logger.info(f"Bulk deleted {len(conversation_ids)} conversations")
         except SQLAlchemyError as e:
             logger.error(f"Error bulk deleting conversations: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Could not delete conversations: {str(e)}"
+            raise DatabaseException(
+                "Could not delete conversations",
+                trace=str(e)
             )
 
     def update_last_message_time(self, conversation_id: int) -> None:
@@ -294,13 +297,13 @@ class ConversationRepository:
             conversation = self.get_conversation_by_id(conversation_id)
             conversation.updated_at = datetime.utcnow()
             self.db.flush()  # Flush update, no commit
-        except HTTPException:
+        except ConversationNotFoundException:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Error updating last message time: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not update conversation timestamp"
+            raise DatabaseException(
+                "Could not update conversation timestamp",
+                trace=str(e)
             )
 
 
@@ -335,9 +338,9 @@ class MessageRepository:
             return messages
         except SQLAlchemyError as e:
             logger.error(f"Error retrieving messages: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not retrieve messages"
+            raise DatabaseException(
+                "Could not retrieve messages",
+                trace=str(e)
             )
 
     def get_conversation_history(
@@ -407,7 +410,7 @@ class MessageRepository:
             The created Message object
             
         Raises:
-            HTTPException: If creation fails
+            DatabaseException: If creation fails
         """
         try:
             message = Message(
@@ -421,9 +424,9 @@ class MessageRepository:
             return message
         except SQLAlchemyError as e:
             logger.error(f"Error creating message: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not create message"
+            raise DatabaseException(
+                "Could not create message",
+                trace=str(e)
             )
 
     def delete_message(self, message_id: int) -> None:
@@ -434,27 +437,25 @@ class MessageRepository:
             message_id: ID of the message to delete
             
         Raises:
-            HTTPException: If message not found or deletion fails
+            MessageNotFoundException: If message not found
+            DatabaseException: If deletion fails
         """
         try:
             message = self.db.query(Message).filter(
                 Message.id == message_id
             ).first()
             if not message:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Message {message_id} not found"
-                )
+                raise MessageNotFoundException(message_id)
             self.db.delete(message)
             self.db.flush()  # Flush deletion, no commit
             logger.info(f"Deleted message {message_id}")
-        except HTTPException:
+        except MessageNotFoundException:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Error deleting message {message_id}: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not delete message"
+            raise DatabaseException(
+                "Could not delete message",
+                trace=str(e)
             )
 
     def star_message(self, message_id: int) -> None:
@@ -465,27 +466,25 @@ class MessageRepository:
             message_id: ID of the message to star
             
         Raises:
-            HTTPException: If message not found or update fails
+            MessageNotFoundException: If message not found
+            DatabaseException: If update fails
         """
         try:
             message = self.db.query(Message).filter(
                 Message.id == message_id
             ).first()
             if not message:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Message {message_id} not found"
-                )
+                raise MessageNotFoundException(message_id)
             message.starred = True
             self.db.flush()  # Flush update, no commit
             logger.info(f"Starred message {message.id}")
-        except HTTPException:
+        except MessageNotFoundException:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Failed to star message {message_id}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to star message: {str(e)}"
+            raise DatabaseException(
+                "Failed to star message",
+                trace=str(e)
             )
 
     def unstar_message(self, message_id: int) -> None:
@@ -496,25 +495,23 @@ class MessageRepository:
             message_id: ID of the message to unstar
             
         Raises:
-            HTTPException: If message not found or update fails
+            MessageNotFoundException: If message not found
+            DatabaseException: If update fails
         """
         try:
             message = self.db.query(Message).filter(
                 Message.id == message_id
             ).first()
             if not message:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Message {message_id} not found"
-                )
+                raise MessageNotFoundException(message_id)
             message.starred = False
             self.db.flush()  # Flush update, no commit
             logger.info(f"Unstarred message {message.id}")
-        except HTTPException:
+        except MessageNotFoundException:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Failed to unstar message {message_id}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to unstar message: {str(e)}"
+            raise DatabaseException(
+                "Failed to unstar message",
+                trace=str(e)
             )

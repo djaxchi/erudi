@@ -59,6 +59,12 @@ from src.entities.VectorStore import VectorStore
 from src.utils.file_processor import chunk_by_tokens
 from src.engines.embedder_engine import Embedder_Engine
 from src.core.logging import logger
+from src.core.exceptions import (
+    KnowledgeBaseNotFoundException,
+    KnowledgeBaseCorruptedException,
+    FAISSException,
+    EmbeddingError,
+)
 
 
 def get_relevant_texts_from_kb(
@@ -144,27 +150,44 @@ def get_relevant_texts_from_kb(
     """
     # Validate knowledge base exists and is accessible
     kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == llm.kb_id).first()
-    if not kb or not os.path.exists(kb.index_path):
-        raise Exception(f"Knowledge Base index not found for LLM {llm.id}")
+    if not kb:
+        raise KnowledgeBaseNotFoundException(llm.kb_id)
+    
+    if not os.path.exists(kb.index_path):
+        raise KnowledgeBaseCorruptedException(
+            kb.id,
+            f"Index file not found at {kb.index_path}"
+        )
 
     # Load FAISS index
     try:
         faiss_index = faiss.read_index(kb.index_path)
-        if not faiss_index:
-            raise Exception(f"FAISS index not found for Knowledge Base {kb.id}")
+        if not faiss_index or faiss_index.ntotal == 0:
+            raise KnowledgeBaseCorruptedException(
+                kb.id,
+                "FAISS index is empty or corrupted"
+            )
+    except FAISSException:
+        raise
     except Exception as e:
-        raise Exception(f"Failed to read FAISS index for Knowledge Base {kb.id}") from e
+        raise FAISSException(
+            f"Failed to read FAISS index for Knowledge Base {kb.id}",
+            trace=str(e)
+        )
 
     # Get vector store
     vector_store = db.query(VectorStore).filter(VectorStore.kb_id == kb.id).first()
     if not vector_store:
-        raise Exception(f"VectorStore not found for Knowledge Base {kb.id}")
+        raise KnowledgeBaseCorruptedException(
+            kb.id,
+            "VectorStore not found"
+        )
 
     # Process query
     embedder = Embedder_Engine.get_embedder()
     chunks = chunk_by_tokens(text=query)
     if not chunks:
-        raise Exception("No valid text chunks found in the query.")
+        raise EmbeddingError("No valid text chunks found in the query.")
 
     relevant_texts = []
     for chunk in chunks:
@@ -176,10 +199,15 @@ def get_relevant_texts_from_kb(
             logger.info(f"Encoding query chunk: {chunk[:50]}...")
             query_emb = embedder.encode(chunk, convert_to_tensor=True)
             if query_emb is None or query_emb.numel() == 0:
-                raise Exception("Error embedding chunk.")
+                raise EmbeddingError("Empty embedding returned for query chunk")
+        except EmbeddingError:
+            raise
         except Exception as e:
             logger.error(f"Error embedding chunk: {e}")
-            continue
+            raise EmbeddingError(
+                f"Failed to embed query chunk: {e}",
+                trace=str(e)
+            )
 
         # Search similar vectors
         try:
@@ -195,7 +223,10 @@ def get_relevant_texts_from_kb(
                     if faiss_id_str in vector_store.vectors_data:
                         relevant_texts.append(vector_store.vectors_data[faiss_id_str])
         except Exception as e:
-            raise Exception(f"Error searching FAISS index: {str(e)}") from e
+            raise FAISSException(
+                f"FAISS search failed: {e}",
+                trace=str(e)
+            )
 
     Embedder_Engine.cleanup()
     return relevant_texts

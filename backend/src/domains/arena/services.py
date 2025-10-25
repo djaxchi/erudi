@@ -56,7 +56,14 @@ from src.utils.kb_utils import get_relevant_texts_from_kb
 from src.domains.arena.repository import ArenaRepository
 from src.domains.arena.schemas import ArenaQueryPayload
 from src.entities.Llm import Llm
-from src.core.exceptions import AppBaseException
+from src.core.exceptions import (
+    GenerationException,
+    KnowledgeBaseNotFoundException,
+    KnowledgeBaseCorruptedException,
+    ModelNotFoundException,
+    InvalidInputException,
+    ModelLoadingException,
+)
 
 
 class ArenaService:
@@ -123,11 +130,14 @@ class ArenaService:
             )
             if relevant_texts:
                 return "Relevant context from Knowledge Base:\n" + "\n".join(relevant_texts)
+        except (KnowledgeBaseNotFoundException, KnowledgeBaseCorruptedException):
+            raise
         except Exception as e:
             logger.exception("Failed to retrieve Knowledge Base context")
-            raise AppBaseException(
-                message="Knowledge Base retrieval error",
-                trace=e
+            raise KnowledgeBaseCorruptedException(
+                llm.kb_id,
+                f"Knowledge Base retrieval error: {e}",
+                trace=str(e)
             )
         
         return ""
@@ -233,7 +243,7 @@ class ArenaService:
         """
         # Validate question
         if not payload.question or not payload.question.strip():
-            raise AppBaseException(message="Question cannot be empty")
+            raise InvalidInputException("question")
 
         # Get LLM from database
         logger.info(f"Querying LLM {llm_id} from DB")
@@ -256,8 +266,8 @@ class ArenaService:
             )
         except Exception as e:
             logger.exception("Failed to load model or tokenizer")
-            raise AppBaseException(
-                message="Model loading error",
+            raise ModelLoadingException(
+                model_path=llm.link,
                 trace=e
             )
 
@@ -282,8 +292,8 @@ class ArenaService:
                     yield new_text
         except Exception as e:
             logger.exception("Streaming failed")
-            raise AppBaseException(
-                message="Streaming failed",
+            raise GenerationException(
+                message="Streaming failed during generation",
                 trace=e
             )
         finally:

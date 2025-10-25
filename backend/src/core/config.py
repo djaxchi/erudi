@@ -79,6 +79,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 INDEXES_DIR = ROOT_DIR / "data" / "indexes"
 LLM_DIR = ROOT_DIR / "data" / "models"
 CACHE_DIR = ROOT_DIR / "data" / "models_cache"
+TRAINING_DATASETS_DIR = ROOT_DIR / "data" / "training_datasets"
 LOG_DIR = ROOT_DIR / "logs"
 db_dir = ROOT_DIR / "data"
 db_dir.mkdir(parents=True, exist_ok=True)
@@ -87,6 +88,7 @@ DATABASE_URL = f"sqlite:///{db_path}"
 INDEXES_DIR.mkdir(parents=True, exist_ok=True)
 LLM_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+TRAINING_DATASETS_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 HF_API = HfApi(token=HF_TOKEN)

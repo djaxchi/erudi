@@ -43,6 +43,7 @@ Dependencies:
     - sentence_transformers: SentenceTransformer embedder
     - src.core.config: CACHE_DIR for model storage
     - src.core.logging: Structured logging
+    - src.core.exceptions: Custom exception types
 
 Migration from utils.inference_utils:
     **Old imports (deprecated but still work via re-export):**
@@ -67,6 +68,7 @@ See Also:
 import os
 from src.core.config import CACHE_DIR
 from src.core.logging import logger
+from src.core.exceptions import EmbeddingError, InsufficientMemoryException
 
 
 class Embedder_Engine:
@@ -201,9 +203,18 @@ class Embedder_Engine:
                     f"Embedder engine loaded successfully "
                     f"(dimension={cls.EMBEDDING_DIMENSION})"
                 )
+            except MemoryError as e:
+                logger.error(f"Insufficient memory to load embedder: {e}")
+                raise InsufficientMemoryException(
+                    "embedder loading",
+                    trace=str(e)
+                )
             except Exception as e:
                 logger.error(f"Failed to load embedder engine: {e}")
-                raise RuntimeError(f"Embedder engine initialization failed: {e}") from e
+                raise EmbeddingError(
+                    f"Embedder engine initialization failed: {e}",
+                    trace=str(e)
+                )
                 
         return cls._instance
     

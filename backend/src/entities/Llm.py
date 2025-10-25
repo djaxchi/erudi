@@ -53,7 +53,7 @@ class Llm(Base):
         - name must not be empty.
 
     Example:
-        >>> llm = Llm(name="Qwen2.5-7B", local=1, link="/data/models/42", type="qwen", param_size=7.0)
+        >>> llm = Llm(name="Qwen2.5-7B", local=1, link="backend/data/models/42", type="qwen", param_size=7.0)
         >>> db.add(llm)
         >>> db.commit()
     """

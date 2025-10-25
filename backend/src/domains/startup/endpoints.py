@@ -7,7 +7,7 @@ Architecture:
     - Endpoints use repository pattern via dependency injection.
     - Pydantic schemas validate all request/response data.
     - Structured logging for traceability.
-    - Proper error handling with HTTPException.
+    - Proper error handling with domain-specific exceptions.
 
 Endpoints:
     GET /startup/welcome-popup - Check and update welcome popup display status.
@@ -16,13 +16,14 @@ Example:
     curl http://localhost:8000/erudi/startup/welcome-popup
     {"has_already_displayed": false}
 """
-from fastapi import Depends, HTTPException, APIRouter
+from fastapi import Depends, APIRouter
 from sqlalchemy.orm import Session
 
 from src.database.core import get_db
 from src.domains.startup.repository import Startup_Variables_Repository
 from src.domains.startup.schemas import WelcomePopupResponse
 from src.core.logging import logger
+from src.core.exceptions import DatabaseException
 
 router = APIRouter(prefix="/startup", tags=["startup"])
 
@@ -61,7 +62,7 @@ async def get_welcome_popup_status(
         WelcomePopupResponse: {"has_already_displayed": bool}
 
     Raises:
-        HTTPException: 500 if database operation fails.
+        DatabaseException: If database operation fails.
 
     Example:
         First call:  GET /startup/welcome-popup → {"has_already_displayed": false}
@@ -88,8 +89,8 @@ async def get_welcome_popup_status(
     except Exception as e:
         db.rollback()
         logger.exception(f"Failed to get welcome popup status: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get welcome popup status: {str(e)}"
+        raise DatabaseException(
+            "Failed to get welcome popup status",
+            trace=str(e)
         )
 

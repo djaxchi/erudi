@@ -64,10 +64,13 @@ import gc, shutil
 from sqlalchemy.orm import Session
 from src.database.core import get_db, SessionLocal
 
-from fastapi import HTTPException, BackgroundTasks, Depends, APIRouter
+from fastapi import BackgroundTasks, Depends, APIRouter
 
 from src.entities.TrainingJob import TrainingJob
 from src.entities.Llm import Llm
+
+from src.core.logging import logger
+from src.core.exceptions import DatabaseException
 from src.domains.training.schemas import TrainingInfo
 from src.domains.training.services import TrainingProgressCallback
 
@@ -100,7 +103,7 @@ def get_training_status(llm_id: int, db: Session = Depends(get_db)):
         }
 
     Raises:
-        HTTPException: 404 if training job not found for given llm_id.
+        DatabaseException: If training job not found for given llm_id.
 
     Example:
         GET /training/42/status
@@ -114,7 +117,7 @@ def get_training_status(llm_id: int, db: Session = Depends(get_db)):
     """
     training_job = db.query(TrainingJob).filter(TrainingJob.llm_id == llm_id).first()
     if not training_job:
-        raise HTTPException(status_code=404, detail="Training job not found")
+        raise DatabaseException(f"Training job not found for LLM {llm_id}")
     
     status = training_job.status
     error_message = training_job.error_message
@@ -189,7 +192,8 @@ def get_training_status(llm_id: int, db: Session = Depends(get_db)):
 #         trained_model = Llm(name=payload.modelName, link='/', local=False, type=base_model_db.type)
 #         db.add(trained_model)
 #         db.flush()
-#         trained_model.link = f"./data/models/{trained_model.id}"
+#         # Use config.LLM_DIR for model storage
+#         trained_model.link = str(config.LLM_DIR / str(trained_model.id))
 
 #         training_job = TrainingJob(llm_id=trained_model.id, status="pending")
 #         db.add(training_job)
