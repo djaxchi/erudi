@@ -37,8 +37,12 @@ from src.utils.prompt_utils import (
 from src.utils.hf_model_metadata import (
     get_disk_size_after_quant,
     get_model_size_estimate,
-    get_parameter_count_from_name,
-    format_model_info_metadata
+    extract_parameter_pattern,
+    format_model_info_metadata,
+    ModelSize,
+    ParameterCount,
+    ParameterScale,
+    QuantizationType,
 )
 
 
@@ -555,7 +559,7 @@ class TestHFMetadataUtils:
     def test_get_disk_size_after_quant_success(self, mock_hf_api):
         """Test successful disk size retrieval via HF API.
         
-        Should return actual size from API when available.
+        Should return ModelSize from API when available.
         """
         # Mock HF API response
         mock_repo_info = Mock()
@@ -568,118 +572,123 @@ class TestHFMetadataUtils:
         
         size = get_disk_size_after_quant("mlx-community/Test-Model-4bit")
         
-        assert isinstance(size, str)
-        assert "GB" in size
-        # Should be approximately 1.4-1.5 GB
-        assert any(x in size for x in ["1.4", "1.5", "1.6"])
+        assert isinstance(size, ModelSize)
+        assert size.source == "api"
+        assert not size.is_estimate
+        # Should be approximately 1.4 GB
+        assert 1.0 <= size.size_gb <= 2.0
 
     @patch('src.utils.hf_model_metadata.HF_API')
     def test_get_disk_size_after_quant_api_failure(self, mock_hf_api):
         """Test fallback when HF API fails.
         
-        Should return estimate when API call fails.
+        Should return ModelSize estimate when API call fails.
         """
         mock_hf_api.repo_info.side_effect = Exception("API error")
         
         size = get_disk_size_after_quant("mlx-community/Test-Model-4bit")
         
-        assert isinstance(size, str)
-        # Should return estimate or "Unknown"
-        assert "GB" in size or "Unknown" in size
+        assert isinstance(size, ModelSize)
+        assert size.is_estimate
+        # Should use fallback calculation
+        assert size.size_gb > 0
 
     def test_get_model_size_estimate_mistral_7b(self):
         """Test size estimation for Mistral 7B models.
         
-        Should return known estimate for Mistral family.
+        Should return ModelSize for Mistral family.
         """
         size = get_model_size_estimate(
             "Mistral 7B Instruct",
             "mistralai/Mistral-7B-Instruct-v0.3"
         )
         
-        assert isinstance(size, str)
-        assert "GB" in size
-        # Mistral 7B should be ~13-14 GB
+        assert isinstance(size, ModelSize)
+        assert size.size_gb > 10  # Should be around 13.5 GB
 
     def test_get_model_size_estimate_gemma_2b(self):
         """Test size estimation for Gemma 2B models.
         
-        Should return known estimate for Gemma family.
+        Should return ModelSize for Gemma family.
         """
         size = get_model_size_estimate(
             "Gemma 2B",
             "google/gemma-2b"
         )
         
-        assert isinstance(size, str)
-        assert "GB" in size
+        assert isinstance(size, ModelSize)
+        assert size.size_gb > 4  # Should be around 5-6 GB
 
     def test_get_model_size_estimate_unknown_model(self):
         """Test size estimation for unknown model.
         
-        Should return "Unknown" or generic estimate.
+        Should return ModelSize with Unknown source for unknown models.
         """
         size = get_model_size_estimate(
             "UnknownModel 5B",
             "unknown/model-5b"
         )
         
-        assert isinstance(size, str)
-        # Should handle unknown models gracefully
+        assert isinstance(size, ModelSize)
+        # Should handle unknown models gracefully with fallback
 
-    def test_get_parameter_count_from_name_7b(self):
+    def test_extract_parameter_pattern_7b(self):
         """Test parameter extraction from model name (7B format).
         
-        Should extract "7B" or "7.0B" from model name.
+        Should extract ParameterCount(7.0, BILLION) from model name.
         """
-        params = get_parameter_count_from_name(
-            "Mistral 7B Instruct",
-            "mistralai/Mistral-7B-Instruct-v0.3"
-        )
+        params = extract_parameter_pattern("Mistral-7B-Instruct-v0.3")
         
-        assert "7" in params  # Could be "7B" or "7.0B" or "7"
+        assert params is not None
+        assert params.count == 7.0
+        assert params.scale == ParameterScale.BILLION
 
-    def test_get_parameter_count_from_name_1_5b(self):
+    def test_extract_parameter_pattern_1_5b(self):
         """Test parameter extraction from model name (1.5B format).
         
-        Should extract "1.5B" from model name.
+        Should extract ParameterCount(1.5, BILLION) from model name.
         """
-        params = get_parameter_count_from_name(
-            "Qwen 1.5B",
-            "Qwen/Qwen2.5-1.5B"
-        )
+        params = extract_parameter_pattern("Qwen2.5-1.5B")
         
-        assert "1.5" in params or "1_5" in params
+        assert params is not None
+        assert params.count == 1.5
+        assert params.scale == ParameterScale.BILLION
 
-    def test_get_parameter_count_from_name_no_params(self):
+    def test_extract_parameter_pattern_no_params(self):
         """Test parameter extraction when no param count in name.
         
-        Should return default or "Unknown".
+        Should return None when no pattern found.
         """
-        params = get_parameter_count_from_name(
-            "Generic Model",
-            "company/model"
-        )
+        params = extract_parameter_pattern("Generic-Model")
         
-        assert isinstance(params, str)
-        # Should handle missing param count
+        assert params is None
 
-    def test_get_parameter_count_from_link(self):
+    def test_extract_parameter_pattern_from_link(self):
         """Test parameter extraction from HF link.
         
         Should extract param count from link when not in name.
         """
-        params = get_parameter_count_from_name(
-            "Model",
-            "company/Model-8B-Instruct"
-        )
+        params = extract_parameter_pattern("Model-8B-Instruct")
         
-        assert "8" in params
+        assert params is not None
+        assert params.count == 8.0
+        assert params.scale == ParameterScale.BILLION
+
+    def test_extract_parameter_pattern_million(self):
+        """Test parameter extraction for million-scale models.
+        
+        Should extract ParameterCount(350, MILLION) from model name.
+        """
+        params = extract_parameter_pattern("model-350m")
+        
+        assert params is not None
+        assert params.count == 350.0
+        assert params.scale == ParameterScale.MILLION
 
     def test_format_model_info_metadata_basic(self):
         """Test metadata formatting with basic ModelInfo.
         
-        Should format ModelInfo to structured string.
+        Should format ModelInfo to structured string with ModelSize object.
         """
         mock_model_info = Mock()
         mock_model_info.id = "test/model-7b"
@@ -689,9 +698,11 @@ class TestHFMetadataUtils:
         mock_model_info.likes = 50
         mock_model_info.tags = ["text-generation", "transformers"]
         
+        size = ModelSize(size_gb=4.2, min_gb=4.0, max_gb=4.5, is_estimate=True, source="test")
+        
         metadata = format_model_info_metadata(
             model_info=mock_model_info,
-            size_estimate="~4.2 GB",
+            size_estimate=size,
             quantized=True
         )
         
@@ -718,6 +729,111 @@ class TestHFMetadataUtils:
         
         assert isinstance(metadata, str)
         assert "test/model" in metadata
+
+    def test_parse_quantization_type_4bit(self):
+        """Test quantization type detection for 4-bit models.
+        
+        Should detect INT4 from repo name patterns.
+        """
+        from src.utils.hf_model_metadata import parse_quantization_type
+        
+        quant_type = parse_quantization_type("mlx-community/Mistral-7B-4bit")
+        assert quant_type == QuantizationType.INT4
+
+    def test_parse_quantization_type_8bit(self):
+        """Test quantization type detection for 8-bit models.
+        
+        Should detect INT8 from repo name patterns.
+        """
+        from src.utils.hf_model_metadata import parse_quantization_type
+        
+        quant_type = parse_quantization_type("company/model-8bit-quantized")
+        assert quant_type == QuantizationType.INT8
+
+    def test_parse_quantization_type_fp16(self):
+        """Test quantization type detection for FP16 models.
+        
+        Should detect FP16 from repo name patterns.
+        """
+        from src.utils.hf_model_metadata import parse_quantization_type
+        
+        quant_type = parse_quantization_type("company/model-fp16")
+        assert quant_type == QuantizationType.FP16
+
+    def test_parse_quantization_type_unknown(self):
+        """Test quantization type detection for unknown formats.
+        
+        Should return UNKNOWN for unrecognized patterns.
+        """
+        from src.utils.hf_model_metadata import parse_quantization_type
+        
+        quant_type = parse_quantization_type("company/regular-model")
+        assert quant_type == QuantizationType.UNKNOWN
+
+    def test_calculate_size_from_parameters_7b_fp16(self):
+        """Test size calculation for 7B FP16 model.
+        
+        Should calculate ~14-16 GB for 7B parameters in FP16.
+        """
+        from src.utils.hf_model_metadata import calculate_size_from_parameters
+        
+        param_count = ParameterCount(count=7.0, scale=ParameterScale.BILLION, is_estimate=False)
+        size = calculate_size_from_parameters(param_count, QuantizationType.FP16)
+        
+        assert isinstance(size, ModelSize)
+        assert 14.0 <= size.size_gb <= 18.0
+        assert size.source == "calculated"
+
+    def test_calculate_size_from_parameters_7b_int4(self):
+        """Test size calculation for 7B INT4 model.
+        
+        Should calculate ~3.5 GB for 7B parameters in INT4.
+        """
+        from src.utils.hf_model_metadata import calculate_size_from_parameters
+        
+        param_count = ParameterCount(count=7.0, scale=ParameterScale.BILLION, is_estimate=False)
+        size = calculate_size_from_parameters(param_count, QuantizationType.INT4)
+        
+        assert isinstance(size, ModelSize)
+        assert 3.0 <= size.size_gb <= 4.5
+        assert size.source == "calculated"
+
+    def test_model_size_to_string(self):
+        """Test ModelSize to_string method.
+        
+        Should format size with tilde and range for estimates.
+        """
+        size = ModelSize(size_gb=4.2, min_gb=4.0, max_gb=4.5, is_estimate=True, source="test")
+        assert "~" in size.to_string()
+        assert "GB" in size.to_string()
+        
+        size_exact = ModelSize(size_gb=4.2, min_gb=4.2, max_gb=4.2, is_estimate=False, source="api")
+        assert size_exact.to_string() == "~4.2 GB"
+
+    def test_parameter_count_to_string(self):
+        """Test ParameterCount to_string method.
+        
+        Should format with B or M suffix based on scale.
+        """
+        params_b = ParameterCount(count=7.0, scale=ParameterScale.BILLION, is_estimate=False)
+        assert params_b.to_string() == "7B"  # Integer billions don't show decimal
+        
+        params_decimal = ParameterCount(count=1.5, scale=ParameterScale.BILLION, is_estimate=False)
+        assert params_decimal.to_string() == "1.5B"  # Non-integer billions show decimal
+        
+        params_m = ParameterCount(count=350.0, scale=ParameterScale.MILLION, is_estimate=False)
+        assert params_m.to_string() == "350M"  # Millions are always integers
+
+    def test_parameter_count_total_billions(self):
+        """Test ParameterCount total_billions property.
+        
+        Should convert millions to billions correctly.
+        """
+        params_b = ParameterCount(count=7.0, scale=ParameterScale.BILLION, is_estimate=False)
+        assert params_b.total_billions == 7.0
+        
+        params_m = ParameterCount(count=350.0, scale=ParameterScale.MILLION, is_estimate=False)
+        assert abs(params_m.total_billions - 0.35) < 0.01
 
 
 # ============ Integration Tests ============

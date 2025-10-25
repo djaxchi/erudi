@@ -4,10 +4,10 @@ This entity represents the complete lifecycle of an LLM model in Erudi:
 - **Remote models**: Browsable from HuggingFace (local=0).
 - **Downloading**: Temporary placeholder during download (local=2).
 - **Local models**: Downloaded and ready for inference (local=1).
-- **KB-attached**: Specialized assistants with Knowledge Base (is_attached_to_kb=1).
+- **KB-attached**: Specialized assistants with Knowledge Base (is_attached_to_kb=True).
 
 Relationships:
-    - kb: One-to-one with KnowledgeBase (if is_attached_to_kb=1).
+    - kb: One-to-one with KnowledgeBase (if is_attached_to_kb=True).
 
 Example:
     from src.entities.Llm import Llm
@@ -19,12 +19,12 @@ Example:
         link="meta-llama/Meta-Llama-3-8B-Instruct",
         type="llama",
         param_size=8.0,
-        quantized=0
+        quantized=False
     )
 """
-from sqlalchemy import Column, Integer, String, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, ForeignKey, Float, Boolean, CheckConstraint
 from src.database.core import Base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 
 class Llm(Base):
     """SQLAlchemy model for LLM catalog entries with download state and KB attachment.
@@ -41,11 +41,16 @@ class Llm(Base):
         type: Model family (e.g., "llama", "qwen", "mistral", "gemma").
         description: Optional user annotation or HuggingFace description.
         model_metadata: JSON string with additional metadata (vocab size, context length).
-        quantized: 0=not quantized (full precision), 1=pre-quantized (MLX/GGUF format).
+        quantized: Boolean - False=not quantized (full precision), True=pre-quantized (MLX/GGUF format).
         param_size: Model size in billions of parameters (2, 4, 8, 16, 70, etc.).
-        is_attached_to_kb: 0=standalone model, 1=specialized KB assistant.
-        kb_id: Foreign key to KnowledgeBase (if is_attached_to_kb=1).
+        is_attached_to_kb: Boolean - False=standalone model, True=specialized KB assistant.
+        kb_id: Foreign key to KnowledgeBase (if is_attached_to_kb=True).
         kb: Relationship to KnowledgeBase entity (one-to-one).
+
+    Constraints:
+        - local must be 0 (remote), 1 (local), or 2 (downloading).
+        - param_size must be positive.
+        - name must not be empty.
 
     Example:
         >>> llm = Llm(name="Qwen2.5-7B", local=1, link="/data/models/42", type="qwen", param_size=7.0)
@@ -55,19 +60,91 @@ class Llm(Base):
     __tablename__ = "llms"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True) # defiines if the model is downloaded or not
-    local = Column(Integer, nullable=False) # defines local path if model is local, huggingface link othewise
+    name = Column(String, index=True, nullable=False)
+    local = Column(Integer, nullable=False)
     link = Column(String, nullable=True)
-    type = Column(String, nullable=False)  # Type of the model (e.g., "mistral", "gemma")
-    description = Column(String, nullable=True)  # Optional description of the model
-    model_metadata = Column(String, nullable=True)  # Full ModelInfo metadata as formatted string
-    quantized = Column(Integer, default=0)  # 0 = not quantized (full precision), 1 = pre-quantized (MLX)
-    param_size = Column(Float, default=4)  # Model parameter size in billions (2, 4, 8, 16, etc.)
-    is_attached_to_kb = Column(Integer, default=0)  # 0 or 1 Indicates if the model is attached to a knowledge base
-    kb_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="SET NULL"), nullable=True)  # Foreign key to the knowledge base if attached
+    type = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    model_metadata = Column(String, nullable=True)
+    quantized = Column(Boolean, default=False, nullable=False)
+    param_size = Column(Float, default=4.0, nullable=False)
+    is_attached_to_kb = Column(Boolean, default=False, nullable=False)
+    kb_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="SET NULL"), nullable=True)
 
     kb = relationship("KnowledgeBase", back_populates="llm", uselist=False)
     conversations = relationship("Conversation", back_populates="llm", cascade="all, delete-orphan")
+    
+    @validates('name')
+    def validate_name(self, key, value):
+        """Ensure name is not empty.
+        
+        Args:
+            key: Column name being validated ('name').
+            value: Proposed value for the name field.
+            
+        Returns:
+            str: Stripped name value if valid.
+            
+        Raises:
+            ValueError: If name is empty or whitespace-only.
+        """
+        if not value or not value.strip():
+            raise ValueError("LLM name cannot be empty")
+        return value.strip()
+    
+    @validates('local')
+    def validate_local(self, key, value):
+        """Ensure local is 0 (remote), 1 (ready), or 2 (downloading).
+        
+        Args:
+            key: Column name being validated ('local').
+            value: Proposed integer value for download state.
+            
+        Returns:
+            int: The validated local state value.
+            
+        Raises:
+            ValueError: If value is not 0, 1, or 2.
+        """
+        if value not in [0, 1, 2]:
+            raise ValueError(f"Invalid local state: {value}. Must be 0 (remote), 1 (ready), or 2 (downloading)")
+        return value
+    
+    @validates('param_size')
+    def validate_param_size(self, key, value):
+        """Ensure param_size is positive.
+        
+        Args:
+            key: Column name being validated ('param_size').
+            value: Proposed float value for parameter size in billions.
+            
+        Returns:
+            float: The validated parameter size.
+            
+        Raises:
+            ValueError: If param_size is zero or negative.
+        """
+        if value <= 0:
+            raise ValueError(f"param_size must be positive, got {value}")
+        return value
+    
+    @validates('type')
+    def validate_type(self, key, value):
+        """Ensure type is not empty.
+        
+        Args:
+            key: Column name being validated ('type').
+            value: Proposed string value for model family type.
+            
+        Returns:
+            str: Stripped type value if valid.
+            
+        Raises:
+            ValueError: If type is empty or whitespace-only.
+        """
+        if not value or not value.strip():
+            raise ValueError("LLM type cannot be empty")
+        return value.strip()
         
     __table_args__ = (
         {"sqlite_autoincrement": True}

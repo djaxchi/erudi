@@ -91,11 +91,11 @@ Warning:
     Ensure model is not in use (check conversations) before deleting.
 """
 
-import asyncio, os, shutil, asyncio
+import asyncio, os, shutil
 from typing import List
 from datetime import datetime, timedelta
 
-from fastapi import BackgroundTasks, Depends, HTTPException, APIRouter
+from fastapi import BackgroundTasks, Depends, HTTPException, APIRouter, status as http_status
 from sqlalchemy.orm import Session
 from src.database.core import get_db, SessionLocal
 
@@ -103,47 +103,114 @@ from src.entities.Llm import Llm
 from src.entities.DownloadJob import DownloadJobModel
 from src.domains.llms.schemas import LLMCreate, LLMResponse, DownloadJobResponse
 from src.domains.llms.services import download_llm
+from src.domains.llms.repository import Llm_Repository, Download_Job_Repository
 
 from src.core.logging import logger
 
 router = APIRouter(prefix="/llms", tags=["llms"])
 
+
+# ============ Dependency Injection ============
+
+def get_llm_repository(db: Session = Depends(get_db)) -> Llm_Repository:
+    """Dependency injection for Llm_Repository.
+
+    Args:
+        db: Database session from FastAPI.
+
+    Returns:
+        Llm_Repository: Repository instance with injected session.
+    """
+    return Llm_Repository(db)
+
+
+def get_download_job_repository(db: Session = Depends(get_db)) -> Download_Job_Repository:
+    """Dependency injection for Download_Job_Repository.
+
+    Args:
+        db: Database session from FastAPI.
+
+    Returns:
+        Download_Job_Repository: Repository instance with injected session.
+    """
+    return Download_Job_Repository(db)
+
+
+# ============ LLM CRUD Endpoints ============
+
+# ============ LLM CRUD Endpoints ============
+
 @router.get("/", response_model=List[LLMResponse])
-async def get_all_llms(db: Session = Depends(get_db)):
+async def get_all_llms(llm_repo: Llm_Repository = Depends(get_llm_repository)):
     """List all LLMs (local and remote).
+
+    Args:
+        llm_repo: Injected LLM repository.
 
     Returns:
         List[LLMResponse]: All LLM models with metadata.
     """
-    llms = db.query(Llm).all()
+    # Read-only operation, no commit needed
+    llms = llm_repo.get_all()
     return llms
 
+
 @router.get("/local", response_model=List[LLMResponse])
-async def get_local_llms(db: Session = Depends(get_db)):
+async def get_local_llms(llm_repo: Llm_Repository = Depends(get_llm_repository)):
     """List only local (downloaded) LLMs ready for inference.
+
+    Args:
+        llm_repo: Injected LLM repository.
 
     Returns:
         List[LLMResponse]: LLMs with local=1.
     """
-    llms = db.query(Llm).filter(Llm.local == 1).all()
+    # Read-only operation, no commit needed
+    llms = llm_repo.get_all_local()
     return llms
 
+
 @router.get("/remote", response_model=List[LLMResponse])
-async def get_remote_llms(db: Session = Depends(get_db)):
+async def get_remote_llms(llm_repo: Llm_Repository = Depends(get_llm_repository)):
     """List only remote (HuggingFace) LLMs available for download.
+
+    Args:
+        llm_repo: Injected LLM repository.
 
     Returns:
         List[LLMResponse]: LLMs with local=0.
     """
-    llms = db.query(Llm).filter(Llm.local == 0).all()
+    # Read-only operation, no commit needed
+    llms = llm_repo.get_all_remote()
     return llms
 
+
+@router.get("/search", response_model=List[LLMResponse])
+async def search_llms(name: str, llm_repo: Llm_Repository = Depends(get_llm_repository)):
+    """Search LLMs by name (case-insensitive partial match).
+
+    Args:
+        name: Search query string.
+        llm_repo: Injected LLM repository.
+
+    Returns:
+        List[LLMResponse]: Matching LLMs.
+    """
+    # Read-only operation, no commit needed
+    llms = llm_repo.search_by_name(name)
+    return llms
+
+
 @router.get("/{llm_id}", response_model=LLMResponse)
-async def get_llm_by_id(llm_id: int, db: Session = Depends(get_db)):
+async def get_llm_by_id(
+    llm_id: int,
+    llm_repo: Llm_Repository = Depends(get_llm_repository)
+):
     """Get LLM details by ID.
 
     Args:
         llm_id: ID of the LLM to retrieve.
+        llm_repo: Injected LLM repository.
 
     Returns:
         LLMResponse: LLM metadata.
@@ -151,18 +218,26 @@ async def get_llm_by_id(llm_id: int, db: Session = Depends(get_db)):
     Raises:
         HTTPException: 404 if LLM not found.
     """
-    llm = db.query(Llm).filter(Llm.id == llm_id).first()
+    # Read-only operation, no commit needed
+    llm = llm_repo.get_by_id(llm_id)
     if not llm:
         raise HTTPException(status_code=404, detail="LLM not found")
     return llm
 
 @router.put("/{llm_id}", response_model=LLMResponse)
-async def update_llm(llm_id: int, llm: LLMCreate, db: Session = Depends(get_db)):
+async def update_llm(
+    llm_id: int,
+    llm_data: LLMCreate,
+    llm_repo: Llm_Repository = Depends(get_llm_repository),
+    db: Session = Depends(get_db),
+):
     """Update LLM metadata (name, description, etc.).
 
     Args:
         llm_id: ID of the LLM to update.
-        llm: LLMCreate schema with new values.
+        llm_data: LLMCreate schema with new values.
+        llm_repo: Injected LLM repository.
+        db: Database session for transaction control.
 
     Returns:
         LLMResponse: Updated LLM.
@@ -170,21 +245,34 @@ async def update_llm(llm_id: int, llm: LLMCreate, db: Session = Depends(get_db))
     Raises:
         HTTPException: 404 if LLM not found.
     """
-    db_llm = db.query(Llm).filter(Llm.id == llm_id).first()
-    if not db_llm:
-        raise HTTPException(status_code=404, detail="LLM not found")
-    for key, value in llm.dict().items():
-        setattr(db_llm, key, value)
-    db.commit()
-    db.refresh(db_llm)
-    return db_llm
+    try:
+        llm = llm_repo.get_by_id(llm_id)
+        if not llm:
+            raise HTTPException(status_code=404, detail="LLM not found")
+        
+        # Update fields from request
+        updated_llm = llm_repo.update(llm, **llm_data.dict())
+        db.commit()
+        return updated_llm
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to update LLM {llm_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update LLM: {str(e)}")
 
 @router.delete("/{llm_id}")
-async def delete_llm(llm_id: int, db: Session = Depends(get_db)):
+async def delete_llm(
+    llm_id: int,
+    llm_repo: Llm_Repository = Depends(get_llm_repository),
+    db: Session = Depends(get_db),
+):
     """Delete local LLM and its files (permanent deletion).
 
     Args:
         llm_id: ID of the LLM to delete.
+        llm_repo: Injected LLM repository.
+        db: Database session for transaction control.
 
     Returns:
         dict: Success message.
@@ -195,40 +283,46 @@ async def delete_llm(llm_id: int, db: Session = Depends(get_db)):
     Warning:
         Deletes model files from disk. Cannot be undone.
     """
-    db_llm = db.query(Llm).filter(Llm.id == llm_id).first()
-    if not db_llm:
-        raise HTTPException(status_code=404, detail="LLM not found")
-    if db_llm.local == 2:
-        raise HTTPException(status_code=400, detail="LLM is currently downloading")
-    if db_llm.link and os.path.exists(db_llm.link):
-        shutil.rmtree(db_llm.link, ignore_errors=True)
-    db.delete(db_llm)
-    db.commit()
-    return {"message": "LLM deleted successfully"}
+    try:
+        llm = llm_repo.get_by_id(llm_id)
+        if not llm:
+            raise HTTPException(status_code=404, detail="LLM not found")
+        
+        if llm.local == 2:
+            raise HTTPException(status_code=400, detail="LLM is currently downloading")
+        
+        # Delete files from disk if they exist
+        if llm.link and os.path.exists(llm.link):
+            shutil.rmtree(llm.link, ignore_errors=True)
+            logger.info(f"Deleted model files: {llm.link}")
+        
+        # Delete database record
+        llm_repo.delete(llm)
+        db.commit()
+        
+        return {"message": "LLM deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to delete LLM {llm_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete LLM: {str(e)}")
 
-@router.get("/search", response_model=List[LLMResponse])
-async def search_llms(name: str, db: Session = Depends(get_db)):
-    """Search LLMs by name (case-insensitive partial match).
 
-    Args:
-        name: Search query string.
-
-    Returns:
-        List[LLMResponse]: Matching LLMs.
-    """
-    llms = db.query(Llm).filter(Llm.name.ilike(f"%{name}%")).all()
-    return llms
-
+# ============ Download Management Endpoints ============
 
 @router.post(
     "/{llm_id}/download",
     response_model=DownloadJobResponse,
-    status_code=200,
+    status_code=http_status.HTTP_200_OK,
 )
 async def download_llm_route(
     llm_id: int,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    llm_repo: Llm_Repository = Depends(get_llm_repository),
+    job_repo: Download_Job_Repository = Depends(get_download_job_repository),
+    db: Session = Depends(get_db),
 ):
     """Start background download of LLM from HuggingFace.
 
@@ -238,117 +332,124 @@ async def download_llm_route(
     Args:
         llm_id: ID of the remote LLM to download.
         background_tasks: FastAPI background tasks manager.
+        llm_repo: Injected LLM repository.
+        job_repo: Injected download job repository.
+        db: Database session for transaction control.
 
     Returns:
         DownloadJobResponse: Job record with job_id, status, progress.
 
     Raises:
-        HTTPException: 404 if LLM not found.
+        HTTPException: 404 if LLM not found, 500 if paths already exist.
 
     Note:
-        Download progress can be polled via GET /download_jobs/{job_id}.
+        Download progress can be polled via GET /downloads/{job_id}/status.
         Large models (7B+) take 5-30 minutes.
     """
-    """
-    Start a new DownloadJobModel for the given LLM. Returns the DownloadJobModel record.
-    """
-    remote_llm = db.query(Llm).filter(Llm.id == llm_id).first()
-    if not remote_llm:
-        raise HTTPException(status_code=404, detail="LLM not found")
+    try:
+        # Get remote LLM metadata
+        remote_llm = llm_repo.get_by_id(llm_id)
+        if not remote_llm:
+            raise HTTPException(status_code=404, detail="LLM not found")
 
-    # Create new instance of Llm
-    local_llm = Llm(
-        name=remote_llm.name,
-        local=2,  # 2 means downloading
-        type=remote_llm.type,
-        description=remote_llm.description,
-        model_metadata=remote_llm.model_metadata,  # Copy metadata from remote model
-        quantized=remote_llm.quantized,  # Copy quantized flag from remote model
-        param_size=remote_llm.param_size,  # Copy parameter size from remote model
-    )
-    try:
-        db.add(local_llm)
-        db.commit()
-        db.refresh(local_llm)
-    except:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to create local LLM entry")
-    
-    try:
+        # Create temp LLM entry (local=2 means "downloading")
+        local_llm = llm_repo.create(
+            name=remote_llm.name,
+            local=2,
+            type=remote_llm.type,
+            description=remote_llm.description,
+            model_metadata=remote_llm.model_metadata,
+            quantized=remote_llm.quantized,
+            param_size=remote_llm.param_size,
+        )
+        
+        # Define paths and check availability
         temp_path = f"./data/models/temp_{local_llm.id}"
         final_path = f"./data/models/{local_llm.id}"
-        if os.path.exists(temp_path):
-            raise
-        if os.path.exists(final_path):
-            raise
-        local_llm.link = final_path
-        db.commit()
-        logger.info(f"Created local LLM entry: {local_llm.name} - {local_llm.link}")
-    except:
-        db.delete(local_llm)
-        raise HTTPException(status_code=500, detail="Failed to create local LLM entry")
-    
-    # Create persistent DownloadJobModel
-    job = DownloadJobModel(
-        remote_model_id=llm_id,
-        local_model_id=local_llm.id,
-        remote_model_link=remote_llm.link,
-        temp_local_model_link=local_llm.link,
-        final_local_model_link=final_path,
-        status="pending",
-        total_bytes=0.0,
-        progress=0.0,
-    )
-    try:
-        db.add(job)
-        db.commit()
-        db.refresh(job)
-    except:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to create DownloadJobModel")
-
-    def _download_task(model_link: str, model_id: int, temp_save_dir: str, final_save_dir: str, job_id: int):
-        try:
-            # mark RUNNING
-            session = SessionLocal()
-            dj = session.query(DownloadJobModel).get(job_id)
-            dj.status = "running"
-            dj.updated_at = datetime.now()
-            session.commit()
-            session.close()
-
-            # call the downloader (it will spawn its own updater thread)
-            
-            asyncio.run(
-                download_llm(
-                    model_link=model_link,
-                    model_id=model_id,
-                    temp_save_dir=temp_save_dir,
-                    final_save_dir=final_save_dir,
-                    job_id=job_id,
-                )
+        
+        if os.path.exists(temp_path) or os.path.exists(final_path):
+            llm_repo.delete(local_llm)
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Model path already exists. Please delete existing files first."
             )
-        except Exception as e:
+        
+        # Update local LLM with final path
+        llm_repo.update(local_llm, link=final_path)
+        db.commit()
+        logger.info(f"Created local LLM entry {local_llm.id}: {local_llm.name} -> {final_path}")
+
+        # Create download job
+        job = job_repo.create(
+            remote_model_id=str(llm_id),
+            local_model_id=local_llm.id,
+            remote_model_link=remote_llm.link,
+            temp_local_model_link=temp_path,
+            final_local_model_link=final_path,
+            status="pending",
+        )
+        db.commit()
+        logger.info(f"Created download job {job.id} for model {local_llm.name}")
+
+        # Background task function
+        def _download_task(
+            model_link: str,
+            model_id: int,
+            temp_save_dir: str,
+            final_save_dir: str,
+            job_id: int
+        ):
+            """Background download task with error handling."""
             session = SessionLocal()
-            dj = session.query(DownloadJobModel).get(job_id)
-            dj.status = "failed"
-            dj.error_message = str(e)
-            dj.updated_at = datetime.now()
-            session.commit()
-            session.close()
+            try:
+                # Mark job as running
+                job_obj = session.query(DownloadJobModel).get(job_id)
+                job_obj.status = "running"
+                job_obj.updated_at = datetime.utcnow()
+                session.commit()
+                logger.info(f"Started download job {job_id}")
 
-    # 2) enqueue background
-    background_tasks.add_task(
-        _download_task,
-        remote_llm.link,
-        local_llm.id,
-        temp_path,
-        final_path,
-        job.id,
-    )
+                # Run download (spawns its own progress updater thread)
+                asyncio.run(
+                    download_llm(
+                        model_link=model_link,
+                        model_id=model_id,
+                        temp_save_dir=temp_save_dir,
+                        final_save_dir=final_save_dir,
+                        job_id=job_id,
+                    )
+                )
+                logger.info(f"Download job {job_id} completed successfully")
+                
+            except Exception as e:
+                logger.exception(f"Download job {job_id} failed: {e}")
+                job_obj = session.query(DownloadJobModel).get(job_id)
+                job_obj.status = "failed"
+                job_obj.error_message = str(e)
+                job_obj.updated_at = datetime.utcnow()
+                session.commit()
+            finally:
+                session.close()
 
-    # 3) immediately return the DB row
-    return job
+        # Enqueue background task
+        background_tasks.add_task(
+            _download_task,
+            remote_llm.link,
+            local_llm.id,
+            temp_path,
+            final_path,
+            job.id,
+        )
+
+        return job
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to initiate download for LLM {llm_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start download: {str(e)}")
 
 
 @router.post(
@@ -357,12 +458,17 @@ async def download_llm_route(
 )
 def cancel_download(
     job_id: int,
+    llm_repo: Llm_Repository = Depends(get_llm_repository),
+    job_repo: Download_Job_Repository = Depends(get_download_job_repository),
     db: Session = Depends(get_db),
 ):
     """Cancel an active download job and cleanup partial files.
 
     Args:
         job_id: ID of the download job to cancel.
+        llm_repo: Injected LLM repository.
+        job_repo: Injected download job repository.
+        db: Database session for transaction control.
 
     Returns:
         dict: Success message.
@@ -373,41 +479,40 @@ def cancel_download(
     Note:
         Deletes temp files and marks LLM as failed. Cannot cancel completed jobs.
     """
-    """
-    Cancel a download by its job_id.
-    """
-    job = db.query(DownloadJobModel).get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Download job not found")
-    if job.status in ["completed", "failed"]:
-        raise HTTPException(status_code=400, detail="Cannot cancel completed or failed jobs")
-    llm = db.query(Llm).get(job.local_model_id)
-    if not llm:
-        raise HTTPException(status_code=404, detail="Local model not found")
-    if llm.local != 2:
-        raise HTTPException(status_code=400, detail="Download ended, cannot be cancelled. Please delete the model.")
+    try:
+        # Get job and validate state
+        job = job_repo.get_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Download job not found")
+        if job.status in ["completed", "failed"]:
+            raise HTTPException(status_code=400, detail="Cannot cancel completed or failed jobs")
+        
+        # Get associated LLM
+        llm = llm_repo.get_by_id(job.local_model_id)
+        if not llm:
+            raise HTTPException(status_code=404, detail="Local model not found")
+        if llm.local != 2:
+            raise HTTPException(status_code=400, detail="Download ended, cannot be cancelled. Please delete the model.")
+        
+        # Mark job as cancelled
+        job_repo.update_status(job, "cancelled")
+        
+        # Clean up temp files using repository method
+        job_repo.cleanup_job_files(job)
+        
+        # Delete temp LLM entry
+        llm_repo.delete(llm)
+        db.commit()
+        
+        logger.info(f"Cancelled download job {job_id} and deleted temp LLM {llm.id}")
+        return {"message": "Download job cancelled successfully"}
     
-    # Mark the job as cancelled
-    job.status = "cancelled"
-    job.updated_at = datetime.now()
-    db.commit()
-
-    # Clean up local model if it exists
-    if job.temp_local_model_link and job.temp_local_model_link != "":
-        if os.path.exists(job.temp_local_model_link):
-            shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
-        if "temp" not in job.temp_local_model_link and os.path.exists("./data/models/temp_"+str(job.local_model_id)):
-            shutil.rmtree("./data/models/temp_"+str(job.local_model_id), ignore_errors=True)
-        job.temp_local_model_link = ""
-    if job.final_local_model_link:
-        if os.path.exists(job.final_local_model_link) and job.final_local_model_link!= "":
-            shutil.rmtree(job.final_local_model_link, ignore_errors=True)
-        job.final_local_model_link = ""
-    job.local_model_id = -1
-    db.delete(llm)
-
-    db.commit()
-    return {"message": "Download job cancelled successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to cancel download job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel download: {str(e)}")
 
 
 @router.get(
@@ -417,6 +522,8 @@ def cancel_download(
 )
 def get_download_status_by_jobId(
     job_id: int,
+    llm_repo: Llm_Repository = Depends(get_llm_repository),
+    job_repo: Download_Job_Repository = Depends(get_download_job_repository),
     db: Session = Depends(get_db),
 ):
     """Get download job status by ID with automatic cleanup for failed/cancelled jobs.
@@ -427,7 +534,9 @@ def get_download_status_by_jobId(
 
     Args:
         job_id: The database ID of the download job to query.
-        db: Database session injected by FastAPI.
+        llm_repo: Injected LLM repository.
+        job_repo: Injected download job repository.
+        db: Database session for transaction control.
 
     Returns:
         DownloadJobResponse: Download job with current status, progress, ETA, and file paths.
@@ -439,37 +548,45 @@ def get_download_status_by_jobId(
         GET /llms/downloads/42/status
         Response: {"id": 42, "status": "running", "progress": 65.0, "eta_seconds": 120, ...}
     """
-    job = db.query(DownloadJobModel).get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Download job not found")
+    try:
+        job = job_repo.get_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Download job not found")
+        
+        # Handle failed/cancelled jobs: cleanup temp files and LLM entry
+        if job.status in ["failed", "cancelled"]:
+            llm = llm_repo.get_by_id(job.local_model_id)
+            if not llm:
+                raise HTTPException(status_code=404, detail="LLM not found")
+            
+            # Delete temp LLM entry
+            llm_repo.delete(llm)
+            
+            # Clean up temp files using repository method
+            job_repo.cleanup_job_files(job)
+            
+            db.commit()
+            db.refresh(job)
+            logger.info(f"Cleaned up {job.status} download job {job_id}")
+        
+        # Handle completed jobs: mark LLM as ready
+        elif job.status == "completed":
+            llm = llm_repo.get_by_id(job.local_model_id)
+            if not llm:
+                raise HTTPException(status_code=404, detail="LLM not found")
+            llm_repo.update(llm, local=1)
+            db.commit()
+            db.refresh(llm)
+            logger.info(f"Marked LLM {llm.id} as ready (download job {job_id} completed)")
+        
+        return job
     
-    if job.status == "failed" or job.status == "cancelled":
-        llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
-        if not llm:
-            raise HTTPException(status_code=404, detail="LLM not found")
-        db.delete(llm)
-        job.local_model_id = -1
-        if job.temp_local_model_link and job.temp_local_model_link != "":
-            if os.path.exists(job.temp_local_model_link):
-                shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
-            if "temp" not in job.temp_local_model_link and os.path.exists("./data/models/temp_"+str(job.local_model_id)):
-                shutil.rmtree("./data/models/temp_"+str(job.local_model_id), ignore_errors=True)
-            job.temp_local_model_link = ""
-        if job.final_local_model_link and job.final_local_model_link != "":
-            if os.path.exists(job.final_local_model_link):
-                shutil.rmtree(job.final_local_model_link, ignore_errors=True)
-            job.final_local_model_link = ""
-        job.updated_at = datetime.now()
-        db.commit()
-        db.refresh(job)
-    elif job.status == "completed":
-        llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
-        if not llm:
-            raise HTTPException(status_code=404, detail="LLM not found")
-        llm.local = 1
-        db.commit()
-        db.refresh(llm)
-    return job
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to get download status for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get download status: {str(e)}")
 
 
 @router.get(
@@ -478,6 +595,8 @@ def get_download_status_by_jobId(
     status_code=200,
 )
 def get_download_status_without_jobId(
+    llm_repo: Llm_Repository = Depends(get_llm_repository),
+    job_repo: Download_Job_Repository = Depends(get_download_job_repository),
     db: Session = Depends(get_db),
 ):
     """Get most recent active download job (for single-download UI polling).
@@ -487,7 +606,9 @@ def get_download_status_without_jobId(
     and need to poll without tracking job IDs. Performs same cleanup as get_by_id.
 
     Args:
-        db: Database session injected by FastAPI.
+        llm_repo: Injected LLM repository.
+        job_repo: Injected download job repository.
+        db: Database session for transaction control.
 
     Returns:
         DownloadJobResponse: The most recent active job with status and progress.
@@ -499,39 +620,43 @@ def get_download_status_without_jobId(
         GET /llms/downloads/status
         Response: {"id": 42, "status": "running", "progress": 65.0, ...}
     """
-    sixty_seconds_ago = datetime.now() - timedelta(seconds=60)
-    job = db.query(DownloadJobModel)\
-           .filter(DownloadJobModel.status.in_(["running", "pending"]))\
-           .filter(DownloadJobModel.updated_at >= sixty_seconds_ago)\
-           .order_by(DownloadJobModel.updated_at.desc())\
-           .first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Download job not found")
+    try:
+        # Get most recent active job
+        job = job_repo.get_most_recent_active()
+        if not job:
+            raise HTTPException(status_code=404, detail="Download job not found")
+        
+        # Handle failed jobs: cleanup temp files and LLM entry
+        if job.status == "failed":
+            llm = llm_repo.get_by_id(job.local_model_id)
+            if not llm:
+                raise HTTPException(status_code=404, detail="LLM not found")
+            
+            # Delete temp LLM entry
+            llm_repo.delete(llm)
+            
+            # Clean up temp files using repository method
+            job_repo.cleanup_job_files(job)
+            
+            db.commit()
+            db.refresh(job)
+            logger.info(f"Cleaned up failed download job {job.id}")
+        
+        # Handle completed jobs: mark LLM as ready
+        elif job.status == "completed":
+            llm = llm_repo.get_by_id(job.local_model_id)
+            if not llm:
+                raise HTTPException(status_code=404, detail="LLM not found")
+            llm_repo.update(llm, local=1)
+            db.commit()
+            db.refresh(llm)
+            logger.info(f"Marked LLM {llm.id} as ready (download job {job.id} completed)")
+        
+        return job
     
-    if job.status == "failed":
-        llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
-        if not llm:
-            raise HTTPException(status_code=404, detail="LLM not found")
-        db.delete(llm)
-        job.local_model_id = -1
-        if job.temp_local_model_link and job.temp_local_model_link != "":
-            if os.path.exists(job.temp_local_model_link):
-                shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
-            if "temp" not in job.temp_local_model_link and os.path.exists("./data/models/temp_"+str(job.local_model_id)):
-                shutil.rmtree("./data/models/temp_"+str(job.local_model_id), ignore_errors=True)
-            job.temp_local_model_link = ""
-        if job.final_local_model_link and job.final_local_model_link != "":
-            if os.path.exists(job.final_local_model_link):
-                shutil.rmtree(job.final_local_model_link, ignore_errors=True)
-            job.final_local_model_link = ""
-        job.updated_at = datetime.now()
-        db.commit()
-        db.refresh(job)
-    elif job.status == "completed":
-        llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
-        if not llm:
-            raise HTTPException(status_code=404, detail="LLM not found")
-        llm.local = 1
-        db.commit()
-        db.refresh(llm)
-    return job
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to get recent download status: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get download status: {str(e)}")
