@@ -494,9 +494,9 @@ class TestConversationEndpoints:
         
         response = client.post("/erudi/conversations/", json=payload)
         
-        assert response.status_code == status.HTTP_200_OK
+        assert response.status_code == status.HTTP_201_CREATED
         data = response.json()
-        assert data["name"] == "API Test Chat"
+        assert data["name"] == "New Conversation"  # Default name when not specified
         assert data["llm_id"] == mock_llm.id
 
     def test_get_all_conversations_endpoint(self, client, mock_llm):
@@ -534,7 +534,7 @@ class TestConversationEndpoints:
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["id"] == conversation_id
-        assert data["name"] == "Get Test"
+        assert data["name"] == "New Conversation"  # Default name when not specified
 
     def test_update_conversation_endpoint(self, client, mock_llm):
         """Test updating conversation via REST API.
@@ -589,7 +589,7 @@ class TestConversationEndpoints:
         c2 = client.post("/erudi/conversations/", json={"llm_id": mock_llm.id}).json()
         
         response = client.post(
-            "/erudi/conversations/bulk_delete",
+            "/erudi/conversations/delete_bulk",
             json={"conversation_ids": [c1["id"], c2["id"]]}
         )
         

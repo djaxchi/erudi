@@ -153,13 +153,11 @@ class ConversationRepository:
                 custom_prompt=custom_prompt
             )
             self.db.add(conversation)
-            self.db.commit()
-            self.db.refresh(conversation)
+            self.db.flush()  # Flush to get ID, no commit
             logger.info(f"Created conversation {conversation.id}")
             return conversation
             
         except SQLAlchemyError as e:
-            self.db.rollback()
             logger.error(f"Error creating conversation: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -224,8 +222,7 @@ class ConversationRepository:
                 updated = True
             
             if updated:
-                self.db.commit()
-                self.db.refresh(conversation)
+                self.db.flush()  # Flush changes, no commit
                 logger.info(f"Updated conversation {conversation_id}")
             
             return conversation
@@ -233,7 +230,6 @@ class ConversationRepository:
         except HTTPException:
             raise
         except SQLAlchemyError as e:
-            self.db.rollback()
             logger.error(f"Error updating conversation {conversation_id}: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -253,12 +249,11 @@ class ConversationRepository:
         try:
             conversation = self.get_conversation_by_id(conversation_id)
             self.db.delete(conversation)
-            self.db.commit()
+            self.db.flush()  # Flush deletion, no commit
             logger.info(f"Deleted conversation {conversation_id}")
         except HTTPException:
             raise
         except SQLAlchemyError as e:
-            self.db.rollback()
             logger.error(f"Error deleting conversation {conversation_id}: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -279,10 +274,9 @@ class ConversationRepository:
             self.db.query(Conversation).filter(
                 Conversation.id.in_(conversation_ids)
             ).delete(synchronize_session=False)
-            self.db.commit()
+            self.db.flush()  # Flush deletions, no commit
             logger.info(f"Bulk deleted {len(conversation_ids)} conversations")
         except SQLAlchemyError as e:
-            self.db.rollback()
             logger.error(f"Error bulk deleting conversations: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -299,11 +293,10 @@ class ConversationRepository:
         try:
             conversation = self.get_conversation_by_id(conversation_id)
             conversation.updated_at = datetime.utcnow()
-            self.db.commit()
+            self.db.flush()  # Flush update, no commit
         except HTTPException:
             raise
         except SQLAlchemyError as e:
-            self.db.rollback()
             logger.error(f"Error updating last message time: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -423,12 +416,10 @@ class MessageRepository:
                 sender=sender
             )
             self.db.add(message)
-            self.db.commit()
-            self.db.refresh(message)
+            self.db.flush()  # Flush to get ID, no commit
             logger.debug(f"Created message {message.id} in conversation {conversation_id}")
             return message
         except SQLAlchemyError as e:
-            self.db.rollback()
             logger.error(f"Error creating message: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -455,12 +446,11 @@ class MessageRepository:
                     detail=f"Message {message_id} not found"
                 )
             self.db.delete(message)
-            self.db.commit()
+            self.db.flush()  # Flush deletion, no commit
             logger.info(f"Deleted message {message_id}")
         except HTTPException:
             raise
         except SQLAlchemyError as e:
-            self.db.rollback()
             logger.error(f"Error deleting message {message_id}: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -487,12 +477,11 @@ class MessageRepository:
                     detail=f"Message {message_id} not found"
                 )
             message.starred = True
-            self.db.commit()
+            self.db.flush()  # Flush update, no commit
             logger.info(f"Starred message {message.id}")
         except HTTPException:
             raise
         except SQLAlchemyError as e:
-            self.db.rollback()
             logger.error(f"Failed to star message {message_id}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -519,12 +508,11 @@ class MessageRepository:
                     detail=f"Message {message_id} not found"
                 )
             message.starred = False
-            self.db.commit()
+            self.db.flush()  # Flush update, no commit
             logger.info(f"Unstarred message {message.id}")
         except HTTPException:
             raise
         except SQLAlchemyError as e:
-            self.db.rollback()
             logger.error(f"Failed to unstar message {message_id}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

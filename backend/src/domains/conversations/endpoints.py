@@ -218,6 +218,7 @@ async def get_messages_by_conversation(
     """
     Fetch all messages for a specific conversation.
     """
+    # Read-only operation, no commit needed
     return await run_in_threadpool(
         message_repo.get_messages_by_conversation,
         conversation_id,
@@ -228,12 +229,14 @@ async def get_messages_by_conversation(
 async def delete_message(
     message_id: int,
     message_repo: MessageRepository = Depends(get_message_repository),
+    db: Session = Depends(get_db),
 ):
     """Delete a specific message by its ID (soft delete).
 
     Args:
         message_id: ID of the message to delete.
         message_repo: Injected message repository.
+        db: Database session for transaction control.
 
     Returns:
         dict: Success confirmation message.
@@ -247,8 +250,13 @@ async def delete_message(
     """
     Delete a specific message by its ID.
     """
-    await run_in_threadpool(message_repo.delete_message, message_id)
-    return {"message": "Message deleted successfully"}
+    try:
+        await run_in_threadpool(message_repo.delete_message, message_id)
+        db.commit()
+        return {"message": "Message deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise
 
 
 @router.get("/", response_model=List[ConversationResponse])
@@ -286,6 +294,7 @@ async def get_all_conversations(
     """
     Fetch all conversations.
     """
+    # Read-only operation, no commit needed
     return await run_in_threadpool(conversation_repo.get_all_conversations)
 
 
@@ -325,6 +334,7 @@ async def get_conversation_by_id(
     """
     Fetch a single conversation by its ID, including messages.
     """
+    # Read-only operation, no commit needed
     return await run_in_threadpool(
         conversation_repo.get_conversation_by_id,
         conversation_id,
@@ -335,6 +345,7 @@ async def get_conversation_by_id(
 async def create_conversation(
     payload: ConversationCreate,
     service: ConversationService = Depends(get_conversation_service),
+    db: Session = Depends(get_db),
 ):
     """Create a new conversation with specified LLM and generation parameters.
 
@@ -342,6 +353,7 @@ async def create_conversation(
         payload: ConversationCreate schema with llm_id, temperature, top_p,
             max_tokens, and optional custom_prompt.
         service: Injected conversation service.
+        db: Database session for transaction control.
 
     Returns:
         ConversationResponse: Created conversation with auto-generated name
@@ -373,26 +385,34 @@ async def create_conversation(
         name after the first message exchange.
     """
     """Create a new conversation for a specific LLM (body JSON)."""
-    return await run_in_threadpool(
-        service.create_conversation,
-        payload.llm_id,
-        payload.temperature,
-        payload.top_p,
-        payload.max_tokens,
-        payload.custom_prompt,
-    )
+    try:
+        conv = await run_in_threadpool(
+            service.create_conversation,
+            payload.llm_id,
+            payload.temperature,
+            payload.top_p,
+            payload.max_tokens,
+            payload.custom_prompt,
+        )
+        db.commit()
+        return conv
+    except Exception as e:
+        db.rollback()
+        raise
 
 
 @router.delete("/{conversation_id}")
 async def delete_conversation(
     conversation_id: int,
     service: ConversationService = Depends(get_conversation_service),
+    db: Session = Depends(get_db),
 ):
     """Delete a conversation and all associated messages (cascade delete).
 
     Args:
         conversation_id: ID of the conversation to delete.
         service: Injected conversation service.
+        db: Database session for transaction control.
 
     Returns:
         dict: Success confirmation message.
@@ -410,8 +430,13 @@ async def delete_conversation(
     """
     Delete a conversation by its ID.
     """
-    await run_in_threadpool(service.delete_conversation, conversation_id)
-    return {"message": "Conversation deleted successfully"}
+    try:
+        await run_in_threadpool(service.delete_conversation, conversation_id)
+        db.commit()
+        return {"message": "Conversation deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise
 
 
 @router.patch("/{conversation_id}", response_model=ConversationResponse)
@@ -419,6 +444,7 @@ async def update_conversation(
     conversation_id: int,
     payload: ConversationUpdate,
     service: ConversationService = Depends(get_conversation_service),
+    db: Session = Depends(get_db),
 ):
     """Update conversation metadata (name, LLM, generation parameters).
 
@@ -427,6 +453,7 @@ async def update_conversation(
         payload: ConversationUpdate schema with optional name, llm_id,
             temperature, top_p, max_tokens, custom_prompt.
         service: Injected conversation service.
+        db: Database session for transaction control.
 
     Returns:
         ConversationResponse: Updated conversation with new metadata.
@@ -454,16 +481,22 @@ async def update_conversation(
         Only provided fields are updated. Omitted fields remain unchanged.
     """
     """Update conversation fields (name and llm_id)."""
-    return await run_in_threadpool(
-        service.update_conversation,
-        conversation_id,
-        payload.name,
-        payload.llm_id,
-        payload.temperature,
-        payload.top_p,
-        payload.max_tokens,
-        payload.custom_prompt,
-    )
+    try:
+        result = await run_in_threadpool(
+            service.update_conversation,
+            conversation_id,
+            payload.name,
+            payload.llm_id,
+            payload.temperature,
+            payload.top_p,
+            payload.max_tokens,
+            payload.custom_prompt,
+        )
+        db.commit()
+        return result
+    except Exception as e:
+        db.rollback()
+        raise
 
 
 @router.post("/{conversation_id}/generate_title")
@@ -555,12 +588,14 @@ async def query_and_respond(
 async def delete_bulk(
     payload: ConversationDeleteBulk,
     service: ConversationService = Depends(get_conversation_service),
+    db: Session = Depends(get_db),
 ):
     """Delete multiple conversations in a single request (bulk operation).
 
     Args:
         payload: ConversationDeleteBulk with list of conversation_ids to delete.
         service: Injected conversation service.
+        db: Database session for transaction control.
 
     Returns:
         dict: Success confirmation message.
@@ -578,11 +613,16 @@ async def delete_bulk(
         All messages in deleted conversations are also removed (cascade delete).
     """
     """Delete multiple conversations by their IDs (body JSON)."""
-    await run_in_threadpool(
-        service.delete_conversations_bulk,
-        payload.conversation_ids,
-    )
-    return {"message": "Conversations deleted successfully"}
+    try:
+        await run_in_threadpool(
+            service.delete_conversations_bulk,
+            payload.conversation_ids,
+        )
+        db.commit()
+        return {"message": "Conversations deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise
 
 
 @router.post("/{conversation_id}/store_error_message")
@@ -627,12 +667,14 @@ async def store_error_message(
 async def star_message(
     payload: MessageStarRequest,
     message_repo: MessageRepository = Depends(get_message_repository),
+    db: Session = Depends(get_db),
 ):
     """Mark a message as starred (bookmarked for later reference).
 
     Args:
         payload: MessageStarRequest with message_id to star.
         message_repo: Injected message repository.
+        db: Database session for transaction control.
 
     Returns:
         dict: Success confirmation with state="success".
@@ -651,20 +693,27 @@ async def star_message(
         to important responses or bookmarked content.
     """
     """Star a message in the conversation."""
-    await run_in_threadpool(message_repo.star_message, payload.message_id)
-    return {"state": "success", "message": "Message starred successfully"}
+    try:
+        await run_in_threadpool(message_repo.star_message, payload.message_id)
+        db.commit()
+        return {"state": "success", "message": "Message starred successfully"}
+    except Exception as e:
+        db.rollback()
+        raise
 
 
 @router.post("/unstar_message")
 async def unstar_message(
     payload: MessageStarRequest,
     message_repo: MessageRepository = Depends(get_message_repository),
+    db: Session = Depends(get_db),
 ):
     """Remove star/bookmark from a previously starred message.
 
     Args:
         payload: MessageStarRequest with message_id to unstar.
         message_repo: Injected message repository.
+        db: Database session for transaction control.
 
     Returns:
         dict: Success confirmation with state="success".
@@ -679,5 +728,10 @@ async def unstar_message(
             → {"state": "success", "message": "Message unstarred successfully"}
     """
     """Unstar a message in the conversation."""
-    await run_in_threadpool(message_repo.unstar_message, payload.message_id)
-    return {"state": "success", "message": "Message unstarred successfully"}
+    try:
+        await run_in_threadpool(message_repo.unstar_message, payload.message_id)
+        db.commit()
+        return {"state": "success", "message": "Message unstarred successfully"}
+    except Exception as e:
+        db.rollback()
+        raise
