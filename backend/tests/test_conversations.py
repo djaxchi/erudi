@@ -183,7 +183,7 @@ class TestMessageRepository:
         assert message.conversation_id == conversation.id
         assert message.sender == "user"
         assert message.content == "Hello AI"
-        assert message.is_starred == 0
+        assert message.starred == 0
 
     def test_get_messages_by_conversation_id(self, test_db_session, mock_llm):
         """Test retrieving all messages for a conversation.
@@ -197,15 +197,15 @@ class TestMessageRepository:
         
         conversation = conv_repo.create_conversation(llm_id=mock_llm.id, name="Test", temperature=0.5, top_p=0.8, max_tokens=512)
         
-        msg_repo.create_message(conversation.id, "user", "Question 1")
-        msg_repo.create_message(conversation.id, "assistant", "Answer 1")
-        msg_repo.create_message(conversation.id, "user", "Question 2")
+        msg_repo.create_message(conversation.id, "Question 1", "user")
+        msg_repo.create_message(conversation.id, "Answer 1", "llm")
+        msg_repo.create_message(conversation.id, "Question 2", "user")
         
-        messages = msg_repo.get_messages_by_conversation_id(conversation.id)
+        messages = msg_repo.get_messages_by_conversation(conversation.id)
         
         assert len(messages) == 3
         assert messages[0].sender == "user"
-        assert messages[1].sender == "assistant"
+        assert messages[1].sender == "llm"
         assert messages[2].content == "Question 2"
 
     def test_delete_message(self, test_db_session, mock_llm):
@@ -219,11 +219,11 @@ class TestMessageRepository:
         msg_repo = MessageRepository(test_db_session)
         
         conversation = conv_repo.create_conversation(llm_id=mock_llm.id, name="Test", temperature=0.5, top_p=0.8, max_tokens=512)
-        message = msg_repo.create_message(conversation.id, "user", "To delete")
+        message = msg_repo.create_message(conversation.id, "To delete", "user")
         
         msg_repo.delete_message(message.id)
         
-        messages = msg_repo.get_messages_by_conversation_id(conversation.id)
+        messages = msg_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 0
 
     def test_star_message(self, test_db_session, mock_llm):
@@ -237,11 +237,12 @@ class TestMessageRepository:
         msg_repo = MessageRepository(test_db_session)
         
         conversation = conv_repo.create_conversation(llm_id=mock_llm.id, name="Test", temperature=0.5, top_p=0.8, max_tokens=512)
-        message = msg_repo.create_message(conversation.id, "assistant", "Important answer")
+        message = msg_repo.create_message(conversation.id, "Important answer", "llm")
         
-        starred = msg_repo.star_message(message.id)
+        msg_repo.star_message(message.id)
+        test_db_session.refresh(message)
         
-        assert starred.is_starred == 1
+        assert message.starred == 1
 
     def test_unstar_message(self, test_db_session, mock_llm):
         """Test unstarring a message.
@@ -254,13 +255,14 @@ class TestMessageRepository:
         msg_repo = MessageRepository(test_db_session)
         
         conversation = conv_repo.create_conversation(llm_id=mock_llm.id, name="Test", temperature=0.5, top_p=0.8, max_tokens=512)
-        message = msg_repo.create_message(conversation.id, "assistant", "Answer")
+        message = msg_repo.create_message(conversation.id, "Answer", "llm")
         
         # Star then unstar
         msg_repo.star_message(message.id)
-        unstarred = msg_repo.unstar_message(message.id)
+        msg_repo.unstar_message(message.id)
+        test_db_session.refresh(message)
         
-        assert unstarred.is_starred == 0
+        assert message.starred == 0
 
 
 # ============ Service Tests ============
@@ -278,14 +280,14 @@ class TestConversationService:
         service = ConversationService(test_db_session)
         
         conversation = service.create_conversation(
-            name="Service Test",
             llm_id=mock_llm.id,
             temperature=0.6,
             top_p=0.85,
             max_tokens=2048
         )
         
-        assert conversation.name == "Service Test"
+        assert conversation.name  # Auto-generated
+        assert conversation.llm_id == mock_llm.id
         assert conversation.llm_id == mock_llm.id
 
     def test_delete_conversation_service(self, test_db_session, mock_llm):
@@ -297,7 +299,7 @@ class TestConversationService:
         """
         service = ConversationService(test_db_session)
         
-        conversation = service.create_conversation(llm_id=mock_llm.id, name="To Delete", temperature=0.5, top_p=0.8, max_tokens=512)
+        conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
         
         service.delete_conversation(conversation.id)
         
@@ -314,8 +316,8 @@ class TestConversationService:
         """
         service = ConversationService(test_db_session)
         
-        c1 = service.create_conversation(llm_id=mock_llm.id, name="Chat 1", temperature=0.5, top_p=0.8, max_tokens=512)
-        c2 = service.create_conversation(llm_id=mock_llm.id, name="Chat 2", temperature=0.5, top_p=0.8, max_tokens=512)
+        c1 = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
+        c2 = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
         
         service.delete_conversations_bulk([c1.id, c2.id])
         
@@ -331,7 +333,7 @@ class TestConversationService:
         """
         service = ConversationService(test_db_session)
         
-        conversation = service.create_conversation(llm_id=mock_llm.id, name="Error Test", temperature=0.5, top_p=0.8, max_tokens=512)
+        conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
         
         with patch("src.core.config.LLM_Engine") as mock_engine:
             mock_engine.cleanup.return_value = None
@@ -339,7 +341,7 @@ class TestConversationService:
             message_id = service.store_error_message(conversation.id)
         
         assert message_id is not None
-        messages = service.message_repo.get_messages_by_conversation_id(conversation.id)
+        messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 1
         assert "[ERROR_MESSAGE_SYSTEM]" in messages[0].content
 
@@ -352,7 +354,7 @@ class TestConversationService:
             mock_llm: LLM entity fixture.
         """
         service = ConversationService(test_db_session)
-        conversation = service.create_conversation(llm_id=mock_llm.id, name="New", temperature=0.5, top_p=0.8, max_tokens=512)
+        conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
         
         mock_model = Mock()
         mock_tokenizer = Mock()
@@ -381,7 +383,7 @@ class TestConversationService:
             mock_llm: LLM entity fixture.
         """
         service = ConversationService(test_db_session)
-        conversation = service.create_conversation(llm_id=mock_llm.id, name="New", temperature=0.5, top_p=0.8, max_tokens=512)
+        conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
         
         # Empty question should return early without calling engine
         async for _ in service.generate_title_stream(conversation.id, ""):
@@ -399,7 +401,7 @@ class TestConversationService:
             mock_llm: LLM entity fixture.
         """
         service = ConversationService(test_db_session)
-        conversation = service.create_conversation(llm_id=mock_llm.id, name="Chat", temperature=0.7, top_p=0.9, max_tokens=1024)
+        conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024)
         
         payload = ConversationQuery(
             question="Explain Python decorators",
@@ -423,7 +425,7 @@ class TestConversationService:
         assert result == mock_response_tokens
         
         # Verify user message and assistant message were saved
-        messages = service.message_repo.get_messages_by_conversation_id(conversation.id)
+        messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 2
         assert messages[0].sender == "user"
         assert messages[0].content == "Explain Python decorators"
@@ -439,11 +441,11 @@ class TestConversationService:
             mock_llm: LLM entity fixture.
         """
         service = ConversationService(test_db_session)
-        conversation = service.create_conversation(llm_id=mock_llm.id, name="Context Test", temperature=0.7, top_p=0.9, max_tokens=1024)
+        conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024)
         
         # Add previous messages
-        service.message_repo.create_message(conversation.id, "user", "What is Python?")
-        service.message_repo.create_message(conversation.id, "assistant", "Python is a language.")
+        service.message_repo.create_message(conversation.id, "What is Python?", "user")
+        service.message_repo.create_message(conversation.id, "Python is a language.", "llm")
         
         payload = ConversationQuery(
             question="Tell me more",
@@ -467,7 +469,7 @@ class TestConversationService:
         assert result == mock_tokens
         
         # Verify context was included (4 messages total: 2 context + 1 new user + 1 new assistant)
-        messages = service.message_repo.get_messages_by_conversation_id(conversation.id)
+        messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 4
 
 
@@ -485,7 +487,6 @@ class TestConversationEndpoints:
         """
         payload = {
             "llm_id": mock_llm.id,
-            "name": "API Test Chat",
             "temperature": 0.7,
             "top_p": 0.9,
             "max_tokens": 1024
@@ -506,8 +507,8 @@ class TestConversationEndpoints:
             mock_llm: LLM entity fixture.
         """
         # Create conversations
-        client.post("/erudi/conversations/", json={"llm_id": mock_llm.id, "name": "Chat 1"})
-        client.post("/erudi/conversations/", json={"llm_id": mock_llm.id, "name": "Chat 2"})
+        client.post("/erudi/conversations/", json={"llm_id": mock_llm.id})
+        client.post("/erudi/conversations/", json={"llm_id": mock_llm.id})
         
         response = client.get("/erudi/conversations/")
         
@@ -524,7 +525,7 @@ class TestConversationEndpoints:
         """
         create_response = client.post(
             "/erudi/conversations/",
-            json={"llm_id": mock_llm.id, "name": "Get Test"}
+            json={"llm_id": mock_llm.id}
         )
         conversation_id = create_response.json()["id"]
         
@@ -584,8 +585,8 @@ class TestConversationEndpoints:
             client: FastAPI test client.
             mock_llm: LLM entity fixture.
         """
-        c1 = client.post("/erudi/conversations/", json={"llm_id": mock_llm.id, "name": "C1"}).json()
-        c2 = client.post("/erudi/conversations/", json={"llm_id": mock_llm.id, "name": "C2"}).json()
+        c1 = client.post("/erudi/conversations/", json={"llm_id": mock_llm.id}).json()
+        c2 = client.post("/erudi/conversations/", json={"llm_id": mock_llm.id}).json()
         
         response = client.post(
             "/erudi/conversations/bulk_delete",
@@ -682,8 +683,8 @@ class TestConversationEndpoints:
         
         # Add messages directly
         msg_repo = MessageRepository(test_db_session)
-        msg_repo.create_message(conversation_id, "user", "Hello")
-        msg_repo.create_message(conversation_id, "assistant", "Hi there")
+        msg_repo.create_message(conversation_id, "Hello", "user")
+        msg_repo.create_message(conversation_id, "Hi there", "llm")
         
         response = client.get(f"/erudi/conversations/{conversation_id}/fetch_messages")
         
@@ -707,12 +708,12 @@ class TestConversationEndpoints:
         msg_repo = MessageRepository(test_db_session)
         
         conversation = conv_repo.create_conversation(llm_id=mock_llm.id, name="Test", temperature=0.5, top_p=0.8, max_tokens=512)
-        message = msg_repo.create_message(conversation.id, "user", "Delete me")
+        message = msg_repo.create_message(conversation.id, "Delete me", "user")
         
         response = client.delete(f"/erudi/conversations/messages/{message.id}")
         
         assert response.status_code == status.HTTP_200_OK
         
         # Verify deleted
-        messages = msg_repo.get_messages_by_conversation_id(conversation.id)
+        messages = msg_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 0
