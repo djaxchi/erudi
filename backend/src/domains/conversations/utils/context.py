@@ -160,9 +160,11 @@ class ConversationContext:
                 len(conversation_history) // 2
             )
             relevant_messages = self.embedder.find_relevant_messages(
+                conversation_id,
                 query,
                 conversation_history,
-                n_to_retrieve
+                n_to_retrieve,
+                self.cache
             )
             if relevant_messages:
                 context["middle_term_memory"] = relevant_messages

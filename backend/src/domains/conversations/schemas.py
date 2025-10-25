@@ -66,7 +66,7 @@ class MessageBase(BaseModel):
 
     @validator('sender')
     def validate_sender(cls, v):
-        """Ensure sender is either 'user' or 'assistant'.
+        """Ensure sender is either 'user', 'assistant', or 'llm'.
 
         Args:
             v: Sender value to validate.
@@ -75,10 +75,10 @@ class MessageBase(BaseModel):
             str: Validated sender value.
 
         Raises:
-            ValueError: If sender is not "user" or "assistant".
+            ValueError: If sender is not "user", "assistant", or "llm".
         """
-        if v not in ['user', 'assistant']:
-            raise ValueError('Sender must be either "user" or "assistant"')
+        if v not in ['user', 'assistant', 'llm']:
+            raise ValueError('Sender must be either "user", "assistant", or "llm"')
         return v
 
 class MessageCreate(MessageBase):

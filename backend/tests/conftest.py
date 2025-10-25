@@ -14,7 +14,7 @@ import tempfile
 from typing import Generator
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.testclient import TestClient
 
@@ -47,25 +47,42 @@ def test_db_engine():
 
 @pytest.fixture(scope="function")
 def test_db_session(test_db_engine) -> Generator[Session, None, None]:
-    """Create test database session with automatic rollback.
+    """Create test database session with savepoint-based nested transactions.
+    
+    Uses SAVEPOINT to allow code under test to call commit() without affecting
+    the outer test transaction. All changes are rolled back at test completion.
     
     Args:
         test_db_engine: SQLAlchemy engine fixture.
         
     Yields:
-        Database session that rolls back after test.
+        Database session that supports nested transactions via savepoints.
     """
+    connection = test_db_engine.connect()
+    transaction = connection.begin()  # Outer transaction
     TestingSessionLocal = sessionmaker(
         autocommit=False,
         autoflush=False,
-        bind=test_db_engine
+        bind=connection
     )
-    session = TestingSessionLocal()
+    session = TestingSessionLocal(bind=connection)
+    
+    # Begin nested transaction (savepoint)
+    nested = connection.begin_nested()
+    
+    @event.listens_for(session, "after_transaction_end")
+    def restart_savepoint(session, transaction):
+        """Automatically restart savepoint after each commit."""
+        if transaction.nested and not transaction._parent.nested:
+            # Re-establish savepoint after inner transaction ends
+            session.begin_nested()
+    
     try:
         yield session
     finally:
-        session.rollback()
         session.close()
+        transaction.rollback()  # Roll back everything
+        connection.close()
 
 
 @pytest.fixture(scope="function")

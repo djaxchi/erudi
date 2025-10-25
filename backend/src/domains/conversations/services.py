@@ -326,7 +326,6 @@ class ConversationService:
         # Early return if question is empty
         if not question or question.strip() == "":
             conversation.name = "New Conversation"
-            self.db.add(conversation)
             self.db.commit()
             return
         
@@ -364,7 +363,6 @@ class ConversationService:
             # Save the generated title
             final_title = generated_title if generated_title else "New Conversation"
             conversation.name = final_title
-            self.db.add(conversation)
             self.db.commit()
             logger.info(f"Title generated and saved: {conversation.name}")
 
