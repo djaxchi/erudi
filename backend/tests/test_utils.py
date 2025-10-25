@@ -555,13 +555,14 @@ class TestPromptUtils:
 class TestHFMetadataUtils:
     """Test suite for hf_model_metadata.py HuggingFace metadata utilities."""
 
-    @patch('src.utils.hf_model_metadata.HF_API')
-    def test_get_disk_size_after_quant_success(self, mock_hf_api):
+    @patch('src.utils.hf_model_metadata.get_hf_api')
+    def test_get_disk_size_after_quant_success(self, mock_get_hf_api):
         """Test successful disk size retrieval via HF API.
         
         Should return ModelSize from API when available.
         """
         # Mock HF API response
+        mock_hf_api = Mock()
         mock_repo_info = Mock()
         mock_file1 = Mock()
         mock_file1.size = 1_000_000_000  # 1 GB
@@ -569,6 +570,7 @@ class TestHFMetadataUtils:
         mock_file2.size = 500_000_000  # 0.5 GB
         mock_repo_info.siblings = [mock_file1, mock_file2]
         mock_hf_api.repo_info.return_value = mock_repo_info
+        mock_get_hf_api.return_value = mock_hf_api
         
         size = get_disk_size_after_quant("mlx-community/Test-Model-4bit")
         
@@ -578,13 +580,15 @@ class TestHFMetadataUtils:
         # Should be approximately 1.4 GB
         assert 1.0 <= size.size_gb <= 2.0
 
-    @patch('src.utils.hf_model_metadata.HF_API')
-    def test_get_disk_size_after_quant_api_failure(self, mock_hf_api):
+    @patch('src.utils.hf_model_metadata.get_hf_api')
+    def test_get_disk_size_after_quant_api_failure(self, mock_get_hf_api):
         """Test fallback when HF API fails.
         
         Should return ModelSize estimate when API call fails.
         """
+        mock_hf_api = Mock()
         mock_hf_api.repo_info.side_effect = Exception("API error")
+        mock_get_hf_api.return_value = mock_hf_api
         
         size = get_disk_size_after_quant("mlx-community/Test-Model-4bit")
         

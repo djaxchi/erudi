@@ -299,15 +299,15 @@ class TestStartupVariables_Entity:
         vars = StartupVariables()
         
         # Try setting to integer
-        with pytest.raises(ValueError, match="must be Boolean"):
+        with pytest.raises(ValueError, match="must be a Boolean"):
             vars.welcome_popup_has_already_displayed = 1
         
         # Try setting to string
-        with pytest.raises(ValueError, match="must be Boolean"):
+        with pytest.raises(ValueError, match="must be a Boolean"):
             vars.welcome_popup_has_already_displayed = "true"
         
         # Try setting to None
-        with pytest.raises(ValueError, match="must be Boolean"):
+        with pytest.raises(ValueError, match="must be a Boolean"):
             vars.welcome_popup_has_already_displayed = None
 
     def test_singleton_pattern_multiple_records(self, test_db_session: Session):

@@ -1149,7 +1149,7 @@ async def createTables() -> None:
     
     Deprecated: Use Database_Seeder().create_tables() instead.
     """
-    seeder = ()
+    seeder = Database_Seeder()
     await seeder.create_tables()
 
 
