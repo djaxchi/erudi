@@ -78,14 +78,15 @@ from src.utils.hf_model_metadata import (
     ParameterCount,
     ParameterScale,
 )
-from src.domains.hardware.hardware_info import get_hardware_eval_for_apple_silicon
+from src.domains.hardware.repository import Hardware_Repository
+from src.domains.hardware.services import Hardware_Service
 
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
 from src.entities.Message import Message
 from src.entities.TrainingJob import TrainingJob
 from src.entities.DownloadJob import DownloadJobModel
-from src.entities.StaticHardwareInfos import StaticHardwareInfo
+from src.entities.HardwareProfile import HardwareProfile
 from src.entities.VectorStore import VectorStore
 from src.entities.KnowledgeBase import KnowledgeBase
 from src.entities.KBJob import KBJobModel
@@ -656,85 +657,63 @@ class Hardware_Initializer:
             db: Active database session.
         """
         self.db = db
+        self.service = Hardware_Service(Hardware_Repository(db))
     
     def initialize_if_needed(self) -> bool:
         """Initialize hardware info if not already present.
         
+        Uses service layer to get or create hardware profile.
+        
         Returns:
             True if initialization was performed, False if already existed.
         """
-        existing = self.db.query(StaticHardwareInfo).first()
-        if existing:
-            logger.debug("Hardware info already initialized, skipping")
-            return False
-        
-        hw_info = self._evaluate_hardware()
-        self._persist_hardware_info(hw_info)
-        logger.info("Hardware info initialized successfully")
-        return True
-    
-    def _evaluate_hardware(self) -> Dict[str, Any]:
-        """Evaluate system hardware capabilities."""
         try:
-            return get_hardware_eval_for_apple_silicon()
+            existing = self.db.query(HardwareProfile).first()
+            if existing:
+                logger.debug("Hardware info already initialized, skipping")
+                return False
+            
+            # Use service to get or create profile
+            profile = self.service.get_or_create_profile()
+            self.db.commit()
+            
+            logger.info(f"Hardware info initialized: backend={profile.backend_type}")
+            return True
+            
         except Exception as e:
-            logger.warning(
-                f"Hardware evaluation failed: {e}. Using fallback values."
-            )
-            return self._get_fallback_hardware()
+            logger.exception(f"Hardware initialization failed: {e}")
+            self.db.rollback()
+            # Create fallback profile on error
+            self._create_fallback_profile()
+            return True
     
-    def _get_fallback_hardware(self) -> Dict[str, Any]:
-        """Get safe fallback hardware values."""
-        return {
-            "chip_model": "Unknown",
-            "cpu_model": "Unknown CPU",
-            "gpu_name": "Unknown GPU",
-            "total_memory_gb": 8.0,
-            "available_memory_gb": 4.0,
-            "disk_total_gb": 100.0,
-            "disk_available_gb": 50.0,
-            "global_inference_score": 20.0,
-            "global_inference_label": "Poor",
-            "global_finetuning_score": 15.0,
-            "global_finetuning_label": "Very Poor",
-            "cpu_score": 30.0,
-            "gpu_score": 20.0,
-            "memory_score": 25.0,
-            "mps_available": False,
-            "is_apple_silicon": False
-        }
-    
-    def _persist_hardware_info(self, hw: Dict[str, Any]) -> None:
-        """Persist hardware info to database."""
-        hw_entity = StaticHardwareInfo(
-            chip_model=hw.get("chip_model"),
-            cpu_model=hw.get("cpu_model"),
-            gpu_name=hw.get("gpu_name"),
-            system_ram_gb=hw.get("total_memory_gb"),
-            available_ram_gb=hw.get("available_memory_gb"),
-            disk_total_gb=hw.get("disk_total_gb"),
-            disk_avail_gb=hw.get("disk_available_gb"),
-            gpu_cores=hw.get("gpu_cores"),
-            estimated_gpu_tflops=hw.get("estimated_gpu_tflops"),
-            memory_bandwidth_gbs=hw.get("memory_bandwidth_gbs"),
-            neural_engine_tops=hw.get("neural_engine_tops"),
-            cpu_performance_units=hw.get("cpu_performance_units"),
-            architecture=hw.get("architecture"),
-            is_apple_silicon=hw.get("is_apple_silicon", False),
-            mps_available=hw.get("mps_available", False),
-            unified_memory=hw.get("unified_memory", False),
-            system_platform=hw.get("system_platform"),
-            global_inference_score=hw.get("global_inference_score"),
-            global_inference_label=hw.get("global_inference_label"),
-            global_finetuning_score=hw.get("global_finetuning_score"),
-            global_finetuning_label=hw.get("global_finetuning_label"),
-            cpu_score=hw.get("cpu_score"),
-            gpu_score=hw.get("gpu_score"),
-            memory_score=hw.get("memory_score"),
-            performance_breakdown=hw.get("performance_breakdown")
-        )
-        self.db.add(hw_entity)
-        self.db.commit()
+    def _create_fallback_profile(self) -> None:
+        """Create fallback hardware profile on initialization failure."""
+        try:
+            fallback_data = {
+                "backend_type": "cpu",
+                "cpu_model": "Unknown CPU",
+                "total_memory_gb": 8.0,
+                "available_memory_gb": 4.0,
+                "disk_total_gb": 100.0,
+                "disk_available_gb": 50.0,
+                "global_inference_score": 20.0,
+                "global_inference_label": "Poor",
+                "global_finetuning_score": 15.0,
+                "global_finetuning_label": "Poor",
+                "cpu_score": 30.0,
+                "memory_score": 25.0,
+                "system_platform": "Unknown"
+            }
+            
+            profile = HardwareProfile(**fallback_data)
+            self.db.add(profile)
+            self.db.commit()
+            logger.warning("Fallback hardware profile created")
+            
+        except Exception as e:
+            logger.exception(f"Failed to create fallback profile: {e}")
+            self.db.rollback()
 
 
 # ============ Startup Variables Initialization ============
@@ -918,7 +897,7 @@ class Database_Seeder:
             db.query(KBJobModel).delete()
             db.query(VectorStore).delete()
             db.query(KnowledgeBase).delete()
-            db.query(StaticHardwareInfo).delete()
+            db.query(HardwareProfile).delete()
             db.query(DownloadJobModel).delete()
             db.query(TrainingJob).delete()
             db.query(Message).delete()
