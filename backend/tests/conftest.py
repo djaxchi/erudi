@@ -129,9 +129,9 @@ def mock_llm(test_db_session):
         local=1,
         link="test/model/path",
         type="test",
-        is_attached_to_kb=0,
-        param_size=7.0,  # Float, not string
-        quantized=1
+        is_attached_to_kb=False,  # Boolean
+        param_size=7.0,
+        quantized=True  # Boolean
     )
     test_db_session.add(llm)
     test_db_session.commit()
@@ -168,10 +168,10 @@ def mock_llm_with_kb(test_db_session):
         local=1,
         link="test/model/path",
         type="test",
-        is_attached_to_kb=1,
+        is_attached_to_kb=True,  # Boolean
         kb_id=kb.id,
-        param_size=7.0,  # Float, not string
-        quantized=1
+        param_size=7.0,
+        quantized=True  # Boolean
     )
     test_db_session.add(llm)
     test_db_session.flush()

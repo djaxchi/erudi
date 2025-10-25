@@ -10,6 +10,58 @@ Le domaine **LLMs** gère le catalogue de modèles et leurs opérations :
 - Attachement de Knowledge Bases pour RAG
 - Monitoring des jobs de téléchargement
 
+## Architecture
+
+### Flux de Données
+
+```
+[Client HTTP] 
+    ↓
+[Endpoint: /erudi/llms] (endpoints.py)
+    ↓ Validation Pydantic
+[Service Layer] (services.py)
+    ↓ Business Logic
+[Repository] (repository.py)
+    ↓ SQLAlchemy Queries
+[Database] (SQLite)
+    ↓
+[Entity: Llm, DownloadJob] (entities/)
+```
+
+### Couches Logiques
+
+1. **Endpoints** (`endpoints.py`): 9 routes REST pour CRUD et téléchargement
+   - GET `/llms/` - Liste tous les modèles
+   - GET `/llms/local` - Modèles téléchargés uniquement
+   - GET `/llms/remote` - Modèles HuggingFace disponibles
+   - GET `/llms/search?name=` - Recherche par nom
+   - GET `/llms/{id}` - Détails d'un modèle
+   - PUT `/llms/{id}` - Mise à jour métadonnées
+   - DELETE `/llms/{id}` - Suppression modèle + fichiers
+   - POST `/llms/{id}/download` - Lancement téléchargement
+   - POST `/llms/downloads/{job_id}/cancel` - Annulation téléchargement
+   - GET `/llms/downloads/{job_id}/status` - État du job
+
+2. **Services** (`services.py`): Logique métier pour téléchargements
+   - `DownloadTracker`: Suivi progression temps réel
+   - `download_llm()`: Orchestration téléchargement + quantization
+   - `make_callback()`: Callbacks HuggingFace Hub
+
+3. **Repository** (`repository.py`): Accès données
+   - `Llm_Repository`: CRUD pour catalogue LLMs
+   - `Download_Job_Repository`: Gestion jobs téléchargement
+
+4. **Entities**: Modèles SQLAlchemy
+   - `Llm`: Entrée catalogue (remote/local/downloading)
+   - `DownloadJob`: État téléchargement (progress, ETA, erreurs)
+
+### Relations avec Autres Domaines
+
+- **[Conversations](./conversations.md)**: Les LLMs sont utilisés pour générer réponses
+- **[Knowledge Base](./knowledge_base.md)**: LLMs peuvent être attachés à des KB (RAG)
+- **[Engines](../reference/engines.md)**: MLX/CUDA/CPU exécutent inférence
+- **[Training](../reference/training.md)**: Fine-tuning sur modèles locaux
+
 ## Catalogue de Modèles
 
 ### Lister les Modèles Disponibles

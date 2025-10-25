@@ -13,9 +13,9 @@ Model State Encoding (local field):
 - 1: Local (downloaded and ready for inference).
 - 2: Downloading (temporary placeholder during download).
 
-Quantization Encoding (quantized field):
-- 0: Not quantized (full precision or unknown).
-- 1: Pre-quantized (model already in 4-bit/8-bit format).
+Quantization Status (quantized field):
+- False: Not quantized (full precision or unknown).
+- True: Pre-quantized (model already in 4-bit/8-bit format).
 
 Example:
     from src.domains.llms.schemas import LLMCreate, DownloadJobResponse
@@ -39,8 +39,8 @@ class LLMBase(BaseModel):
         local: Download state - 0=remote, 1=local/ready, 2=downloading.
         link: HuggingFace model ID or local filesystem path.
     """
-    name: str
-    local: int  # 1 for local, 0 for remote
+    name: str = Field(..., min_length=1, description="Model name must not be empty")
+    local: int = Field(..., ge=0, le=2, description="Must be 0 (remote), 1 (ready), or 2 (downloading)")
     link: str
 
 class LLMCreate(LLMBase):
@@ -66,15 +66,21 @@ class LLMResponse(LLMBase):
         type: Model family (e.g., "llama", "qwen", "mistral").
         description: Model description from HuggingFace or user annotation.
         model_metadata: JSON string with additional metadata (vocab size, context length).
-        quantized: 0=not quantized, 1=pre-quantized (already in 4-bit/8-bit format).
+        quantized: Boolean - False=not quantized, True=pre-quantized (already in 4-bit/8-bit format).
+        param_size: Model size in billions of parameters (must be positive).
     """
     id: int
     type: Optional[str] = None
     description: Optional[str] = None
     model_metadata: Optional[str] = None
-    quantized: Optional[int] = 0  # 0 = not quantized, 1 = pre-quantized
+    quantized: Optional[bool] = False
+    param_size: Optional[float] = Field(default=4.0, gt=0, description="Parameter size must be positive")
 
     class Config:
+        """Pydantic configuration for LLMResponse model.
+        
+        Enables ORM mode to directly convert SQLAlchemy Llm entities to Pydantic models.
+        """
         from_attributes = True
 
 class DownloadJobResponse(BaseModel):
@@ -106,20 +112,24 @@ class DownloadJobResponse(BaseModel):
         ... )
         >>> print(job.job_id)  # 42 (aliased from 'id')
     """
-    job_id:             int                = Field(..., alias="id")
-    remote_model_id:         str
-    local_model_id:          Optional[int] = None
-    remote_model_link:       str
-    local_model_link:        Optional[str] = None
-    status:             str  # pending, running, completed, failed
-    total_bytes:        float
-    progress:           float
-    total_time_elapsed: float
-    time_left:          float
-    error_message:      Optional[str]      = None
-    created_at:         datetime
-    updated_at:         Optional[datetime] = None
+    job_id: int = Field(..., alias="id")
+    remote_model_id: str = Field(..., min_length=1)
+    local_model_id: Optional[int] = None
+    remote_model_link: str = Field(..., min_length=1)
+    local_model_link: Optional[str] = None
+    status: str = Field(..., pattern="^(pending|running|completed|failed|cancelled)$")
+    total_bytes: float = Field(default=0.0, ge=0)
+    progress: float = Field(default=0.0, ge=0.0, le=100.0)
+    total_time_elapsed: float = Field(default=0.0, ge=0)
+    time_left: float = Field(default=0.0, ge=0)
+    error_message: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
+        """Pydantic configuration for DownloadJobResponse model.
+        
+        Enables ORM mode and validates field names by alias (job_id aliased from id).
+        """
         from_attributes = True
         validate_by_name = True

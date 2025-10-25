@@ -51,7 +51,6 @@ Example:
 """
 
 import os, time, threading, shutil, asyncio
-from datetime import datetime
 from threading import Lock
 from typing import Optional, List, Tuple
 
@@ -59,7 +58,7 @@ from huggingface_hub import HfApi, HfFileSystem
 from fsspec.callbacks import Callback
 
 from src.database.core import SessionLocal
-from src.entities.DownloadJob import DownloadJobModel
+from src.domains.llms.repository import update_db_with_progress
 from src.entities.Llm import Llm
 
 from src.core.config import HF_TOKEN
@@ -200,73 +199,24 @@ def make_callback(job: DownloadTracker) -> Callback:
         >>> fs.get_file("repo/file.safetensors", "local.safetensors", callback)
     """
     def after_chunk(size: int, value: int, **kwargs) -> None:
+        """Update download progress after receiving a chunk from HuggingFace.
+        
+        Nested callback invoked by huggingface_hub after each file chunk transfer.
+        Calculates delta bytes and updates the DownloadTracker with progress.
+        
+        Args:
+            size: Total file size in bytes.
+            value: Cumulative bytes downloaded so far.
+            **kwargs: Additional metadata from huggingface_hub (ignored).
+        
+        Returns:
+            None
+        """
         # Calculate bytes since last update and guard against negative
         delta = value - job.downloaded_bytes if value is not None else 0
         job.update(max(delta, 0))
 
     return Callback(size=job.total_bytes, hooks={"transfer-chunk": after_chunk})
-
-
-def update_db_with_progress(job: DownloadTracker, job_id: int, model_id: int) -> None:
-    """Background thread that polls DownloadTracker and persists progress to database.
-
-    Runs in daemon thread (started by download_llm). Loops at 1Hz polling job.percent,
-    updates DownloadJobModel row with progress/ETA/elapsed time. On completion, sets
-    status="completed" and llm.local=1. On exception, marks status="failed" and cleans
-    up temp files and LLM entry.
-
-    Args:
-        job: DownloadTracker instance to poll for progress state.
-        job_id: Database primary key of DownloadJobModel to update.
-        model_id: LLM ID to mark local=1 on successful completion.
-
-    Warning:
-        Runs in separate thread - uses separate SessionLocal() instance to avoid
-        SQLAlchemy threading conflicts.
-
-    Example:
-        >>> threading.Thread(
-        ...     target=update_db_with_progress,
-        ...     args=(tracker, 42, 15),
-        ...     daemon=True
-        ... ).start()
-    """
-    session = SessionLocal()
-    try:
-        dbj = session.query(DownloadJobModel).get(job_id)
-        llm = session.query(Llm).get(model_id)
-        if not dbj or not llm:
-            logger.error(f"DB row for job {job_id} or model {model_id} not found")
-            return
-
-        start_time = datetime.utcnow()
-        # Loop until download completes
-        while job.percent < 100.0:
-            time.sleep(1)
-            dbj.total_bytes = job.total_bytes
-            dbj.progress = job.percent
-            dbj.total_time_elapsed = (datetime.utcnow() - start_time).total_seconds()
-            dbj.time_left = job.eta_seconds or 0.0
-            session.commit()
-            logger.info(f"Job {job_id}: {dbj.progress:.2f}% complete")
-
-        # Finalize job state
-        dbj.progress = 100.0
-        dbj.status = "completed"
-        llm.local = 1
-        session.commit()
-    except Exception as e:
-        dbj.status = "failed"
-        dbj.error_message = str(e)
-        job.local_model_id = -1
-        shutil.rmtree(job.local_model_link, ignore_errors=True)
-        job.local_model_link = ""
-        job.updated_at = datetime.now()
-        session.delete(llm)
-        session.commit()
-        logger.error(f"Job {job_id} failed: {e}")
-    finally:
-        session.close()
 
 
 async def download_files_concurrent(
@@ -341,7 +291,7 @@ async def download_llm(
     # Check if model is already quantized from database
     session = SessionLocal()
     llm = session.query(Llm).get(model_id)
-    is_prequantized = llm.quantized == 1 if llm else False
+    is_prequantized = llm.quantized if llm else False
     session.close()
     
     # The link stored in DB is already the MLX link for pre-quantized models

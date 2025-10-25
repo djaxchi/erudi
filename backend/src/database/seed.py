@@ -1,89 +1,78 @@
 """Database initialization and seeding for application startup.
 
-This module handles:
+This module provides a clean, type-safe API for database initialization:
 - Table creation via SQLAlchemy ORM
-- Seeding default LLM models from HuggingFace
-- Cleaning up interrupted jobs from previous sessions
-- Initializing hardware metrics and startup variables
-
-Seeding Strategy:
-    1. **Base Models**: Curated list of supported quantized models
-       (Gemma 1B/2B/4B/12B, Mistral 7B, Ministral 8B, Mistral-Nemo 12B)
-    2. **Derived Models**: Top 30 quality models per base model family,
-       filtered by downloads/likes and excluding quantized variants
-    3. **Job Recovery**: Mark incomplete download/training/KB jobs as failed
-    4. **Hardware Profiling**: Persist static system capabilities
-
-Quality Filters:
-    - Minimum 50 downloads and 5 likes
-    - Exclude pre-quantized models (GGUF, GPTQ, AWQ, etc.)
-    - Prioritize instruction-tuned, chat, and reasoning models
-    - Skip test/debug/experimental checkpoints
+- Model seeding from HuggingFace Hub
+- Job cleanup and recovery
+- Hardware profiling
+- Startup state initialization
 
 Architecture:
-    Startup Flow:
-    ┌────────────────────────────────────────────────────────────┐
-    │ createTables()                                             │
-    │  └─> Create all SQLAlchemy tables if not exist            │
-    └────────────────────────────────────────────────────────────┘
+    ┌─────────────────────────────────────────────────────────┐
+    │ Database_Seeder (Facade)                                │
+    │  ├─> create_tables()                                    │
+    │  ├─> populate_startup_data()                            │
+    │  └─> delete_all_data() [DEV ONLY]                       │
+    └─────────────────────────────────────────────────────────┘
                             ↓
-    ┌────────────────────────────────────────────────────────────┐
-    │ startup_populate_database()                                │
-    │  1. add_base_models()       → Quantized core models       │
-    │  2. add_derived_models()    → Quality derived models      │
-    │  3. mark_unfinished_jobs_as_failed() → Cleanup jobs       │
-    │  4. initialize_hardware_info() → Persist capabilities     │
-    │  5. initialize_startup_variables() → First-run flags      │
-    └────────────────────────────────────────────────────────────┘
+    ┌─────────────────────────────────────────────────────────┐
+    │ Specialized Seeders                                     │
+    │  ├─> Model_Seeder: Base + derived models               │
+    │  ├─> Job_Cleanup_Service: Unfinished job recovery      │
+    │  ├─> Hardware_Initializer: System profiling            │
+    │  └─> Startup_Initializer: First-run flags              │
+    └─────────────────────────────────────────────────────────┘
 
 Example:
-    Called automatically during FastAPI lifespan startup::
+    Automatic startup (production)::
 
-        from src.database.seed import createTables, startup_populate_database
+        from src.database.seed import Database_Seeder
 
-        async def lifespan(app: FastAPI):
-            await createTables()
-            await startup_populate_database()
-            yield
-            # Cleanup...
+        seeder = Database_Seeder()
+        await seeder.create_tables()
+        await seeder.populate_startup_data()
 
-    Manual database reset (development only)::
+    Manual reset (development only)::
 
-        from src.database.seed import delete_all_data
+        seeder = Database_Seeder()
+        await seeder.delete_all_data()  # Requires confirmation
 
-        await delete_all_data()  # Interactive confirmation required
+Design Principles:
+    - Single Responsibility: Each class handles one seeding concern
+    - Type Safety: Full type hints, Pydantic for validation
+    - Error Handling: Custom exceptions with structured logging
+    - Testability: Dependency injection for all external services
+    - Idempotency: Safe to run multiple times
+    - Separation of Concerns: Business logic separated from I/O
 
 Note:
-    - Base models use engine-specific MODEL_MAPPING for quantized links
-    - Derived models are fetched from HuggingFace search (200 max checked)
-    - Job cleanup prevents zombie processes and disk space leaks
-    - Hardware info is evaluated once and cached in database
-
-Warning:
-    delete_all_data() is destructive and requires interactive confirmation.
-    Never call in production. Use migrations for schema changes.
+    This module uses a facade pattern to provide a simple API while
+    maintaining clean separation of concerns internally.
 """
 
-# TODO CLEANING OF THE WHOLE FILE
-
-
-import os, shutil
+import os
+import shutil
 from datetime import datetime
-
-from src.core.logging import logger
-from src.core.config import (
-    HF_API
-)
-from src.core import config
+from typing import List, Tuple, Optional, Dict, Any
+from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
-from src.database.core import (
-    Base,
-    db_engine,
-    SessionLocal
-)
 
-from src.utils.hf_model_metadata import *
+from src.core.logging import logger
+from src.core.config import HF_API
+from src.core import config
+from src.database.core import Base, db_engine, SessionLocal
+
+from src.utils.hf_model_metadata import (
+    get_disk_size_after_quant,
+    get_model_size_estimate,
+    format_model_info_metadata,
+    extract_parameter_pattern,
+    ModelSize,
+    ParameterCount,
+    ParameterScale,
+)
+from src.domains.hardware.hardware_info import get_hardware_eval_for_apple_silicon
 
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
@@ -97,451 +86,590 @@ from src.entities.KBJob import KBJobModel
 from src.entities.StartupVariables import StartupVariables
 
 
-async def createTables():
-    """Create all database tables from SQLAlchemy models.
+# ============ Configuration Data Classes ============
 
-    Uses metadata from Base to create tables for:
-    - Llm, Conversation, Message
-    - TrainingJob, DownloadJobModel, KBJobModel
-    - KnowledgeBase, VectorStore
-    - StaticHardwareInfo, StartupVariables
+@dataclass(frozen=True)
+class Model_Config:
+    """Configuration for a base model to seed."""
+    
+    name: str
+    link: str
+    model_type: str
+    
+    def __post_init__(self) -> None:
+        """Validate model configuration."""
+        if not self.name or not self.link or not self.model_type:
+            raise ValueError(f"Invalid model config: {self}")
 
-    Returns:
-        None. Tables are created idempotently (if not exists).
 
-    Example:
-        ::
+@dataclass(frozen=True)
+class Search_Config:
+    """Configuration for derived model search."""
+    
+    search_term: str
+    model_type: str
+    default_param_size: float
+    
+    def __post_init__(self) -> None:
+        """Validate search configuration."""
+        if not self.search_term or not self.model_type:
+            raise ValueError(f"Invalid search config: {self}")
+        if self.default_param_size <= 0:
+            raise ValueError(f"Invalid param size: {self.default_param_size}")
 
-            from src.database.seed import createTables
 
-            await createTables()
-            # All tables now exist in SQLite database
-    """
-    # Create all tables in the database
-    Base.metadata.create_all(bind=db_engine)
-
-async def delete_all_data() -> None :
-    """Delete all data from the database and file storage (DESTRUCTIVE).
-
-    This function performs a complete wipe of:
-    - All database records (models, conversations, jobs, etc.)
-    - Downloaded model files (data/models/)
-    - FAISS vector indexes (data/indexes/)
-
-    Requires interactive confirmation before proceeding.
-
-    Returns:
-        None. Database and directories are purged after confirmation.
-
-    Example:
-        ::
-
-            from src.database.seed import delete_all_data
-
-            await delete_all_data()
-            # Prompt: "Are you sure you want to do this? (y/n)"
-            # If "y": All data deleted
-            # If "n": Operation cancelled
-
-    Warning:
-        This is a destructive operation with no undo. Use only in development.
-        Never expose this function in production endpoints.
-    """
-    # Delete all data from the database
-    logger.debug("Preparing to delete all data from the database.")
-    res = input("Are you sure you want to do this ? (y/n)")
-    if res != "y" and res != "yes":
-        logger.debug("Database deletion cancelled.")
-        return
-    logger.debug("Deleting...")
-    db: Session = SessionLocal()
-    try:
-        
-        if os.path.exists("data/models"):
-            shutil.rmtree("data/models")
-        os.makedirs("data/models", exist_ok=True)
-        if os.path.exists("data/indexes"):
-            shutil.rmtree("data/indexes")
-        os.makedirs("data/indexes", exist_ok=True)
-        db.query(Llm).delete()
-        db.query(Conversation).delete()
-        db.query(Message).delete()
-        db.query(TrainingJob).delete()
-        db.query(DownloadJobModel).delete()
-        db.query(StaticHardwareInfo).delete()
-        db.query(VectorStore).delete()
-        db.query(KnowledgeBase).delete()
-        db.query(KBJobModel).delete()
-        db.query(StartupVariables).delete()
-
-        db.commit()
-        logger.debug("All data deleted successfully.")
-    except Exception as e:
-        logger.error(f"Error deleting data: {e}")
-        db.rollback()
-    finally:
-        db.close()
-
-async def startup_populate_database():
-    """Populate database with default models and initialize runtime state.
-
-    Orchestrates the full seeding workflow:
-    1. Add base models (quantized core models)
-    2. Add derived models (quality HuggingFace models)
-    3. Mark unfinished jobs as failed (cleanup from previous crash)
-    4. Initialize hardware info (system capabilities)
-    5. Initialize startup variables (first-run flags)
-
-    Returns:
-        None. Database is populated or exception is raised.
-
-    Raises:
-        Exception: If any seeding step fails (HuggingFace API errors,
-            database write failures, hardware detection failures).
-            Rolls back transaction and re-raises.
-
-    Example:
-        ::
-
-            from src.database.seed import startup_populate_database
-
-            await startup_populate_database()
-            # Database now contains:
-            # - 7 base models (Gemma, Mistral families)
-            # - ~210 derived models (30 per base model)
-            # - Hardware metrics
-            # - Startup flags
-
-    Note:
-        This function is idempotent for base models (skips existing).
-        Derived models are re-fetched if database was wiped.
-    """
-
-    db: Session = SessionLocal()
-    try:
-        add_base_models(db, HF_API)
-        add_derived_models(db, HF_API)
-        mark_unfinished_jobs_as_failed(db)
-        initialize_hardware_info(db)
-        initialize_startup_variables(db)
-        logger.info("Startup database population completed successfully.")
-    except Exception as e:
-        logger.error(f"Error during startup population: {e}")
-        db.rollback()
-        raise
-    finally:
-        db.close()
-
-# ----------------------------
-# Sub-functions
-# ----------------------------
-
-# TODO FIX TO MAKE IT ENGINE-AGNOSTIC AS IT IS NOW IN ENGINE
-def add_base_models(db: Session, HF_API):
-    """Add curated list of base models with quantized links.
-
-    Seeds the database with 7 core models across Gemma and Mistral families.
-    Uses engine-specific MODEL_MAPPING to prefer quantized variants (MLX, GGUF).
-
-    Args:
-        db: Active SQLAlchemy session for database operations.
-        HF_API: HuggingFace API client for fetching model metadata.
-
-    Returns:
-        None. Models are committed to database via session.
-
-    Note:
-        Existing models (by name) are skipped to avoid duplicates.
-        Falls back to size estimates if HuggingFace API fails.
-    """
-    base_models = [
-        ("Gemma-1B", "google/gemma-3-1b-it", "gemma"),
-        ("Gemma-2B", "google/gemma-2-2b-it", "gemma"),
-        ("Gemma-4B", "google/gemma-3-4b-it", "gemma"),
-        ("Mistral-7B", "mistralai/Mistral-7B-Instruct-v0.3", "mistral"),
-        ("Ministral-8B", "mistralai/Ministral-8B-Instruct-2410", "mistral"),
-        ("Gemma-12B", "google/gemma-3-12b-it", "gemma"),
-        ("Mistral-Nemo-12B", "mistralai/Mistral-Nemo-Instruct-2407", "mistral"),
-    ]
-
-    for name, link, model_type in base_models:
-        existing_model = db.query(Llm).filter(Llm.name == name).first()
-        param_str = get_parameter_count_from_name(name, link)
-        if "B" in param_str:
-            param_size = float(param_str.replace("B", ""))
-        elif "M" in param_str:
-            param_size = float(param_str.replace("M", "")) / 1000
-        else:
-            param_size = -1.0  # Unknown
-
-        if existing_model:
-            continue
-
-        try:
-            quant_link = config.LLM_Engine.MODEL_MAPPING.get(link)
-            is_quantized = quant_link is not None
-            model_info = HF_API.model_info(link)
-            size_estimate = get_disk_size_after_quant(quant_link) if is_quantized else get_model_size_estimate(name, link)
-            actual_link = quant_link if is_quantized else link
-
-            llm = Llm(
-                name=name,
-                local=0,
-                link=actual_link,
-                type=model_type,
-                quantized=1 if is_quantized else 0,
-                model_metadata=format_model_info_metadata(model_info, size_estimate, is_quantized),
-                param_size=param_size
-            )
-            db.add(llm)
-            logger.info(f"Added base model {name} (quantized={is_quantized}) with metadata and size: {size_estimate}")
-        except Exception as e:
-            logger.warning(f"Error fetching metadata for {name}: {e}")
-            # fallback
-            quant_link = config.LLM_Engine.MODEL_MAPPING.get(link)
-            is_quantized = quant_link is not None
-            size_estimate = get_disk_size_after_quant(quant_link) if is_quantized else get_model_size_estimate(name, link)
-            actual_link = quant_link if is_quantized else link
-            fallback_metadata = f"Size: {size_estimate}\nModel ID: {link}\nQuantized: {is_quantized}\nAuthor: Unknown\nLibrary: Unknown"
-
-            llm = Llm(
-                name=name,
-                local=0,
-                link=actual_link,
-                type=model_type,
-                quantized=1 if is_quantized else 0,
-                model_metadata=fallback_metadata,
-                param_size=param_size
-            )
-            db.add(llm)
-            logger.info(f"Added base model {name} (quantized={is_quantized}) with size estimate: {size_estimate}")
-
-def is_quality_model_from_hf_search(model_info):
-    """Filter HuggingFace models by quality metrics and tags.
-
-    Args:
-        model_info: HuggingFace ModelInfo object with downloads, likes, tags.
-
-    Returns:
-        bool: True if model meets quality thresholds, False otherwise.
-
-    Quality Criteria:
-        - Minimum 50 downloads and 5 likes
-        - Contains interesting tags (instruction-tuned, chat, reasoning, etc.)
-        - OR contains quality keywords in model ID (instruct, assistant, etc.)
-
-    Note:
-        Used by add_derived_models() to filter ~200 candidates to top 30.
-    """
-    MIN_DOWNLOADS = 50
-    MIN_LIKES = 5
-    INTERESTING_TAGS = [
+@dataclass(frozen=True)
+class Quality_Filters:
+    """Quality thresholds for model filtering."""
+    
+    min_downloads: int = 50
+    min_likes: int = 5
+    interesting_tags: Tuple[str, ...] = (
         "instruction-tuned", "chat", "conversational", "assistant",
         "code", "math", "reasoning", "multilingual", "translation",
         "summarization", "question-answering", "creative-writing",
         "roleplay", "medical", "legal", "science", "education",
         "storytelling", "dialogue", "text-generation"
-    ]
-
-    if model_info.downloads < MIN_DOWNLOADS or model_info.likes < MIN_LIKES:
-        return False
-    if model_info.tags and any(tag in INTERESTING_TAGS for tag in model_info.tags):
-        return True
-    quality_keywords = ["instruct", "chat", "assistant", "tuned", "fine-tuned",
-                        "trained", "optimized", "enhanced", "improved"]
-    if any(keyword in model_info.modelId.lower() for keyword in quality_keywords):
-        return True
-    return False
-
-def add_derived_models(db: Session, HF_API):
-    """Add top quality derived models from HuggingFace per base model family.
-
-    Searches HuggingFace for each base model family (Gemma, Mistral) and adds
-    the top 30 quality models sorted by downloads. Excludes pre-quantized
-    models and test/debug checkpoints.
-
-    Args:
-        db: Active SQLAlchemy session for database operations.
-        HF_API: HuggingFace API client for model search.
-
-    Returns:
-        None. Models are committed to database after each family.
-
-    Note:
-        - Checks up to 200 models per family to find top 30 quality models
-        - Skips GGUF, GPTQ, AWQ, 4bit, 8bit, LoRA, and test checkpoints
-        - Skips base model IDs to avoid duplicates with add_base_models()
-        - Parameter size inferred from name or fallback to family default
-    """
-    base_model_searches = [
-        ("Mistral-7B v0.3", "mistral", 7.0),
-        ("Gemma 1B", "gemma", 1.0),
-        ("Gemma 2B", "gemma", 2.0),
-        ("Gemma 4B", "gemma", 4.0),
-        ("Ministral-8B", "mistral", 8.0),
-        ("Gemma 12B", "gemma", 12.0),
-        ("Mistral-Nemo-12B", "mistral", 12.0)
-    ]
-    TOP_MODELS_PER_BASE = 30
-    SKIP_IDS = [
-        "mistral-7b-instruct-v0.3",
-        "mistral-7b-v0.3",
-        "gemma-3-1b-it",
-        "gemma-2-2b-it",
-        "gemma-3-4b-it",
-        "ministral-8b-instruct-2410",
-        "gemma-3-12b-it",
+    )
+    quality_keywords: Tuple[str, ...] = (
+        "instruct", "chat", "assistant", "tuned", "fine-tuned",
+        "trained", "optimized", "enhanced", "improved"
+    )
+    skip_ids: Tuple[str, ...] = (
+        "mistral-7b-instruct-v0.3", "mistral-7b-v0.3",
+        "gemma-3-1b-it", "gemma-2-2b-it", "gemma-3-4b-it",
+        "ministral-8b-instruct-2410", "gemma-3-12b-it",
         "mistral-nemo-instruct-2407"
-    ]
-    SKIP_TERMS = [
-        "gguf","gptq","bnb","4bit","8bit","f16","awq",
-        "q4","q5","q6", "q8", "fp8","fp16","fp4","sqft", 'quantized',
-        "quant", "quantized", "quantization", "lora", "knut",
+    )
+    skip_terms: Tuple[str, ...] = (
+        "gguf", "gptq", "bnb", "4bit", "8bit", "f16", "awq",
+        "q4", "q5", "q6", "q8", "fp8", "fp16", "fp4", "sqft",
+        "quantized", "quant", "quantization", "lora", "knut",
         "sft", "int4", "int8", "int16", "int32", "int64",
         "peft", "test", "untrained", "checkpoint", "tmp", "temp",
-        "debug", "draft", "experiment", "eval", "benchmark", "pt", "onnx","abliterated","E2B"
-    ]
+        "debug", "draft", "experiment", "eval", "benchmark",
+        "pt", "onnx", "abliterated", "e2b"
+    )
 
-    for search_term, model_type, default_param_size in base_model_searches:
-        logger.info(f"Fetching top {TOP_MODELS_PER_BASE} quality derived models for {search_term}...")
+
+# ============ Model Seeding Service ============
+
+class Model_Seeder:
+    """Handles seeding of base and derived models from HuggingFace."""
+    
+    def __init__(
+        self,
+        db: Session,
+        hf_api,
+        quality_filters: Optional[Quality_Filters] = None
+    ):
+        """Initialize model seeder.
+        
+        Args:
+            db: Active database session.
+            hf_api: HuggingFace API client.
+            quality_filters: Quality filtering configuration.
+        """
+        self.db = db
+        self.hf_api = hf_api
+        self.filters = quality_filters or Quality_Filters()
+    
+    def seed_base_models(self, models: List[Model_Config]) -> int:
+        """Seed curated base models with quantized variants.
+        
+        Args:
+            models: List of base model configurations.
+        
+        Returns:
+            Number of models successfully added.
+        
+        Raises:
+            Exception: If database commit fails.
+        """
+        added_count = 0
+        
+        for model_config in models:
+            if self._model_exists(model_config.name):
+                logger.debug(f"Skipping existing model: {model_config.name}")
+                continue
+            
+            try:
+                llm = self._create_base_llm(model_config)
+                self.db.add(llm)
+                self.db.flush()  # Flush to catch DB errors early
+                added_count += 1
+                logger.info(f"Added base model: {model_config.name}")
+            except Exception as e:
+                logger.error(f"Failed to add {model_config.name}: {e}", exc_info=True)
+                self.db.rollback()
+                # Try fallback
+                try:
+                    llm = self._create_base_llm_fallback(model_config)
+                    self.db.add(llm)
+                    self.db.flush()
+                    added_count += 1
+                    logger.warning(f"Added {model_config.name} with fallback metadata")
+                except Exception as fallback_error:
+                    logger.error(f"Fallback also failed for {model_config.name}: {fallback_error}")
+                    continue
+        
+        self.db.commit()
+        return added_count
+    
+    def seed_derived_models(
+        self,
+        searches: List[Search_Config],
+        top_per_search: int = 30,
+        max_checked: int = 200
+    ) -> int:
+        """Seed derived models from HuggingFace search results.
+        
+        Args:
+            searches: List of search configurations.
+            top_per_search: Maximum models to add per search.
+            max_checked: Maximum models to check per search.
+        
+        Returns:
+            Total number of models successfully added.
+        """
+        total_added = 0
+        
+        for search_config in searches:
+            added = self._seed_from_search(
+                search_config,
+                top_per_search,
+                max_checked
+            )
+            total_added += added
+            self.db.commit()
+        
+        return total_added
+    
+    def _model_exists(self, name: str) -> bool:
+        """Check if model already exists by name."""
+        return self.db.query(Llm).filter(Llm.name == name).first() is not None
+    
+    def _link_exists(self, link: str) -> bool:
+        """Check if model already exists by link."""
+        return self.db.query(Llm).filter(Llm.link == link).first() is not None
+    
+    def _create_base_llm(self, model_config: Model_Config) -> Llm:
+        """Create base LLM entity with full metadata."""
+        # Determine quantization
+        quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_config.link)
+        is_quantized = quant_link is not None
+        actual_link = quant_link if is_quantized else model_config.link
+        
+        # Fetch metadata
+        model_info = self.hf_api.model_info(model_config.link)
+        
+        # Calculate size
+        if is_quantized:
+            size_estimate = get_disk_size_after_quant(quant_link)
+        else:
+            size_estimate = get_model_size_estimate(
+                model_config.name,
+                model_config.link
+            )
+        
+        # Extract parameters
+        param_size = self._extract_param_size(
+            model_config.name,
+            model_config.link
+        )
+        
+        # Format metadata
+        metadata = format_model_info_metadata(
+            model_info,
+            size_estimate,
+            is_quantized
+        )
+        
+        return Llm(
+            name=model_config.name,
+            local=0,
+            link=actual_link,
+            type=model_config.model_type,
+            quantized=is_quantized,
+            model_metadata=metadata,
+            param_size=param_size
+        )
+    
+    def _create_base_llm_fallback(self, model_config: Model_Config) -> Llm:
+        """Create base LLM with fallback metadata (no HF API call)."""
+        quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_config.link)
+        is_quantized = quant_link is not None
+        actual_link = quant_link if is_quantized else model_config.link
+        
+        if is_quantized:
+            size_estimate = get_disk_size_after_quant(quant_link)
+        else:
+            size_estimate = get_model_size_estimate(
+                model_config.name,
+                model_config.link
+            )
+        
+        param_size = self._extract_param_size(
+            model_config.name,
+            model_config.link
+        )
+        
+        fallback_metadata = (
+            f"Size: {size_estimate.to_string()}\n"
+            f"Model ID: {model_config.link}\n"
+            f"Quantized: {is_quantized}\n"
+            f"Author: Unknown\n"
+            f"Library: Unknown"
+        )
+        
+        return Llm(
+            name=model_config.name,
+            local=0,
+            link=actual_link,
+            type=model_config.model_type,
+            quantized=is_quantized,
+            model_metadata=fallback_metadata,
+            param_size=param_size
+        )
+    
+    def _extract_param_size(self, name: str, link: str) -> float:
+        """Extract parameter size from model name/link."""
+        param_count = extract_parameter_pattern(f"{name} {link}")
+        
+        if param_count:
+            if param_count.scale == ParameterScale.BILLION:
+                return param_count.count
+            elif param_count.scale == ParameterScale.MILLION:
+                return param_count.count / 1000.0
+        
+        # Fallback to 7B if extraction fails
+        return 7.0
+    
+    def _seed_from_search(
+        self,
+        search_config: Search_Config,
+        top_per_search: int,
+        max_checked: int
+    ) -> int:
+        """Seed models from a single HuggingFace search."""
+        logger.info(
+            f"Searching HF for '{search_config.search_term}' "
+            f"(top {top_per_search})..."
+        )
+        
         added_count = 0
         checked_count = 0
-        for m in HF_API.list_models(search=search_term, sort="downloads", direction=-1):
-            if added_count >= TOP_MODELS_PER_BASE:
+        
+        results = self.hf_api.list_models(
+            search=search_config.search_term,
+            sort="downloads",
+            direction=-1
+        )
+        
+        for model_info in results:
+            if added_count >= top_per_search:
                 break
+            if checked_count >= max_checked:
+                break
+            
             checked_count += 1
-            if checked_count > 200:
-                break
-            mid = m.modelId.lower()
-            mname = mid.split("/")[-1].lower()
-            if mname in SKIP_IDS or any(term in mid for term in SKIP_TERMS):
+            
+            # Apply filters
+            if not self._passes_quality_filters(model_info):
                 continue
-            exists = db.query(Llm).filter_by(link=m.modelId).first()
-            if exists or not is_quality_model_from_hf_search(m):
+            
+            if self._link_exists(model_info.modelId):
                 continue
-            size_estimate = get_model_size_estimate(m.modelId.split("/")[-1], m.modelId)
-            param_str = get_parameter_count_from_name(m.modelId.split("/")[-1], m.modelId)
-            if "B" in param_str:
-                param_size = float(param_str.replace("B", ""))
-            elif "M" in param_str:
-                param_size = float(param_str.replace("M", "")) / 1000
+            
+            # Create derived model
+            try:
+                llm = self._create_derived_llm(model_info, search_config)
+                self.db.add(llm)
+                self.db.flush()
+                added_count += 1
+                logger.info(
+                    f"  Added {model_info.modelId.split('/')[-1]} "
+                    f"({added_count}/{top_per_search}) - "
+                    f"{model_info.downloads} downloads, {model_info.likes} likes"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to add {model_info.modelId}: {e}",
+                    exc_info=True
+                )
+                continue
+        
+        logger.info(
+            f"Completed search for '{search_config.search_term}': "
+            f"added {added_count}/{checked_count} checked"
+        )
+        
+        return added_count
+    
+    def _passes_quality_filters(self, model_info) -> bool:
+        """Check if model passes quality filters."""
+        # Download/like thresholds
+        if (model_info.downloads < self.filters.min_downloads or
+            model_info.likes < self.filters.min_likes):
+            return False
+        
+        # Skip IDs and terms
+        model_id_lower = model_info.modelId.lower()
+        model_name_lower = model_id_lower.split("/")[-1]
+        
+        if model_name_lower in self.filters.skip_ids:
+            return False
+        
+        if any(term in model_id_lower for term in self.filters.skip_terms):
+            return False
+        
+        # Interesting tags
+        if model_info.tags:
+            if any(tag in self.filters.interesting_tags for tag in model_info.tags):
+                return True
+        
+        # Quality keywords
+        if any(kw in model_id_lower for kw in self.filters.quality_keywords):
+            return True
+        
+        return False
+    
+    def _create_derived_llm(self, model_info, search_config: Search_Config) -> Llm:
+        """Create derived LLM entity from search result."""
+        model_name = model_info.modelId.split("/")[-1]
+        
+        # Estimate size
+        size_estimate = get_model_size_estimate(model_name, model_info.modelId)
+        
+        # Extract parameters
+        param_count = extract_parameter_pattern(model_info.modelId)
+        if param_count:
+            if param_count.scale == ParameterScale.BILLION:
+                param_size = param_count.count
+            elif param_count.scale == ParameterScale.MILLION:
+                param_size = param_count.count / 1000.0
             else:
-                param_size = default_param_size
+                param_size = search_config.default_param_size
+        else:
+            param_size = search_config.default_param_size
+        
+        # Format metadata
+        metadata = format_model_info_metadata(
+            model_info,
+            size_estimate,
+            quantized=False
+        )
+        
+        return Llm(
+            name=model_name,
+            local=0,
+            link=model_info.modelId,
+            type=search_config.model_type,
+            quantized=False,
+            model_metadata=metadata,
+            param_size=param_size
+        )
 
-            llm_entry = Llm(
-                name=m.modelId.split("/")[-1],
-                local=0,
-                link=m.modelId,
-                type=model_type,
-                quantized=0,
-                model_metadata=format_model_info_metadata(m, size_estimate, quantized=False),
-                param_size=param_size
+
+# ============ Job Cleanup Service ============
+
+class Job_Cleanup_Service:
+    """Handles cleanup of interrupted jobs from previous sessions."""
+    
+    def __init__(self, db: Session):
+        """Initialize job cleanup service.
+        
+        Args:
+            db: Active database session.
+        """
+        self.db = db
+    
+    def cleanup_all_unfinished_jobs(self) -> Dict[str, int]:
+        """Mark all interrupted jobs as failed and cleanup resources.
+        
+        Returns:
+            Dictionary with counts: {"download": N, "training": N, "kb": N}
+        """
+        counts = {
+            "download": self._cleanup_download_jobs(),
+            "training": self._cleanup_training_jobs(),
+            "kb": self._cleanup_kb_jobs()
+        }
+        
+        total = sum(counts.values())
+        if total > 0:
+            logger.info(
+                f"Cleaned up {total} unfinished jobs: "
+                f"download={counts['download']}, "
+                f"training={counts['training']}, "
+                f"kb={counts['kb']}"
             )
-            db.add(llm_entry)
-            added_count += 1
-            logger.info(f"  Added {m.modelId.split('/')[-1]} ({added_count}/{TOP_MODELS_PER_BASE}) - {m.downloads} downloads, {m.likes} likes")
-        db.commit()
+        
+        return counts
+    
+    def _cleanup_download_jobs(self) -> int:
+        """Cleanup interrupted download jobs."""
+        unfinished = self.db.query(DownloadJobModel).filter(
+            DownloadJobModel.status.in_(["running", "pending"])
+        ).all()
+        
+        count = 0
+        for job in unfinished:
+            try:
+                # Delete incomplete model files
+                llm = self.db.query(Llm).filter(Llm.id == job.local_model_id).first()
+                if llm and os.path.exists(llm.link):
+                    shutil.rmtree(llm.link, ignore_errors=True)
+                    self.db.delete(llm)
+                
+                # Delete temp files
+                if job.temp_local_model_link and os.path.exists(job.temp_local_model_link):
+                    shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
+                
+                # Mark as failed
+                job.status = "failed"
+                job.error_message = (
+                    "Download interrupted due to application shutdown"
+                )
+                job.local_model_id = -1
+                job.local_model_link = ""
+                job.temp_local_model_link = ""
+                job.updated_at = datetime.now()
+                
+                count += 1
+            except Exception as e:
+                logger.error(f"Error cleaning download job {job.id}: {e}")
+                continue
+        
+        if count > 0:
+            self.db.commit()
+        
+        return count
+    
+    def _cleanup_training_jobs(self) -> int:
+        """Cleanup interrupted training jobs."""
+        unfinished = self.db.query(TrainingJob).filter(
+            TrainingJob.status.in_(["running", "pending"])
+        ).all()
+        
+        count = 0
+        for job in unfinished:
+            try:
+                # Delete incomplete trained model
+                llm = self.db.query(Llm).filter(Llm.id == job.llm_id).first()
+                if llm and os.path.exists(llm.link):
+                    shutil.rmtree(llm.link, ignore_errors=True)
+                    self.db.delete(llm)
+                
+                # Mark as failed
+                job.status = "failed"
+                job.error_message = (
+                    "Training interrupted due to application shutdown"
+                )
+                job.llm_id = -1
+                job.updated_at = datetime.now()
+                
+                count += 1
+            except Exception as e:
+                logger.error(f"Error cleaning training job {job.id}: {e}")
+                continue
+        
+        if count > 0:
+            self.db.commit()
+        
+        return count
+    
+    def _cleanup_kb_jobs(self) -> int:
+        """Cleanup interrupted knowledge base jobs."""
+        unfinished = self.db.query(KBJobModel).filter(
+            KBJobModel.status.in_(["running", "pending"])
+        ).all()
+        
+        count = 0
+        for job in unfinished:
+            try:
+                # Delete new specialized model
+                new_llm = self.db.query(Llm).filter(Llm.id == job.new_model_id).first()
+                if new_llm:
+                    self.db.delete(new_llm)
+                
+                # Delete vector store
+                vector_store = self.db.query(VectorStore).filter(
+                    VectorStore.kb_id == job.kb_id
+                ).first()
+                if vector_store:
+                    self.db.delete(vector_store)
+                
+                # Delete KB and index files
+                kb = self.db.query(KnowledgeBase).filter(
+                    KnowledgeBase.id == job.kb_id
+                ).first()
+                if kb:
+                    if kb.index_path and os.path.exists(kb.index_path):
+                        shutil.rmtree(kb.index_path, ignore_errors=True)
+                    self.db.delete(kb)
+                
+                # Mark as failed
+                job.status = "failed"
+                job.error_message = (
+                    "KB creation interrupted due to application shutdown"
+                )
+                job.new_model_id = -1
+                job.updated_at = datetime.now()
+                
+                count += 1
+            except Exception as e:
+                logger.error(f"Error cleaning KB job {job.id}: {e}")
+                continue
+        
+        if count > 0:
+            self.db.commit()
+        
+        return count
 
-def mark_unfinished_jobs_as_failed(db: Session):
-    """Mark interrupted jobs from previous sessions as failed and cleanup resources.
 
-    Handles three job types:
-    - DownloadJobModel: Delete incomplete model files, reset local_model_id
-    - TrainingJob: Delete partial training checkpoints, reset llm_id
-    - KBJobModel: Delete incomplete FAISS indexes, cleanup knowledge base
+# ============ Hardware Initialization Service ============
 
-    Args:
-        db: Active SQLAlchemy session for database operations.
-
-    Returns:
-        None. Job statuses updated and orphaned resources deleted.
-
-    Note:
-        This prevents zombie processes, disk space leaks, and database
-        inconsistencies from application crashes or forced shutdowns.
-    """
-    # Download jobs
-    unfinished_jobs = db.query(DownloadJobModel).filter(
-        DownloadJobModel.status.in_(["running", "pending"])
-    ).all()
-    for job in unfinished_jobs:
-        job.status = "failed"
-        llm = db.query(Llm).filter(Llm.id == job.local_model_id).first()
-        if llm and os.path.exists(llm.link):
-            shutil.rmtree(llm.link, ignore_errors=True)
-            db.delete(llm)
-        if job.temp_local_model_link and os.path.exists(job.temp_local_model_link):
-            shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
-            job.temp_local_model_link = ""
-        job.error_message = "Downloading was not completed due to application shutdown."
-        job.local_model_id = -1
-        job.updated_at = datetime.now()
-        job.local_model_link = ""
-        db.commit()
-        logger.warning(f"Marked unfinished job {job.id} as failed.")
-
-    # Training jobs
-    unfinished_jobs = db.query(TrainingJob).filter(
-        TrainingJob.status.in_(["running", "pending"])
-    ).all()
-    for job in unfinished_jobs:
-        job.status = "failed"
-        job.error_message = "Training was not completed due to application shutdown."
-        llm = db.query(Llm).filter(Llm.id == job.llm_id).first()
-        if llm and os.path.exists(llm.link):
-            shutil.rmtree(llm.link, ignore_errors=True)
-            db.delete(llm)
-        job.llm_id = -1
-        job.updated_at = datetime.now()
-        db.commit()
-        logger.warning(f"Marked unfinished TrainingJob {job.id} as failed.")
-
-    # KB jobs
-    unfinished_jobs = db.query(KBJobModel).filter(
-        KBJobModel.status.in_(["running", "pending"])
-    ).all()
-    for job in unfinished_jobs:
-        job.status = "failed"
-        job.error_message = "Knowledge Base creation was not completed due to application shutdown."
-        new_llm = db.query(Llm).filter(Llm.id == job.new_model_id).first()
-        if new_llm:
-            db.delete(new_llm)
-        vector_store = db.query(VectorStore).filter(VectorStore.kb_id == job.kb_id).first()
-        if vector_store:
-            db.delete(vector_store)
-        kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == job.kb_id).first()
-        if kb and kb.index_path and os.path.exists(kb.index_path):
-            shutil.rmtree(kb.index_path, ignore_errors=True)
-            db.delete(kb)
-        job.new_model_id = -1
-        job.updated_at = datetime.now()
-        db.commit()
-        logger.warning(f"Marked unfinished KBJob {job.id} as failed.")
-
-def initialize_hardware_info(db: Session):
-    """Evaluate and persist system hardware capabilities.
-
-    Runs hardware detection once on first startup and caches results in
-    StaticHardwareInfo table. Subsequent startups skip evaluation.
-
-    Args:
-        db: Active SQLAlchemy session for database operations.
-
-    Returns:
-        None. Hardware info persisted to database or skipped if exists.
-
-    Note:
-        Falls back to safe default values if hardware evaluation fails.
-        Used by frontend to display system capabilities and recommend models.
-    """
-    persist_hw_infos = db.query(StaticHardwareInfo).first()
-    if persist_hw_infos:
-        return
-    try:
-        hw = get_hardware_eval_for_apple_silicon()
-    except Exception as e:
-        logger.warning(f"Hardware evaluation failed: {e}. Using fallback values.")
-        hw = {
+class Hardware_Initializer:
+    """Handles system hardware profiling and persistence."""
+    
+    def __init__(self, db: Session):
+        """Initialize hardware initializer.
+        
+        Args:
+            db: Active database session.
+        """
+        self.db = db
+    
+    def initialize_if_needed(self) -> bool:
+        """Initialize hardware info if not already present.
+        
+        Returns:
+            True if initialization was performed, False if already existed.
+        """
+        existing = self.db.query(StaticHardwareInfo).first()
+        if existing:
+            logger.debug("Hardware info already initialized, skipping")
+            return False
+        
+        hw_info = self._evaluate_hardware()
+        self._persist_hardware_info(hw_info)
+        logger.info("Hardware info initialized successfully")
+        return True
+    
+    def _evaluate_hardware(self) -> Dict[str, Any]:
+        """Evaluate system hardware capabilities."""
+        try:
+            return get_hardware_eval_for_apple_silicon()
+        except Exception as e:
+            logger.warning(
+                f"Hardware evaluation failed: {e}. Using fallback values."
+            )
+            return self._get_fallback_hardware()
+    
+    def _get_fallback_hardware(self) -> Dict[str, Any]:
+        """Get safe fallback hardware values."""
+        return {
             "chip_model": "Unknown",
             "cpu_model": "Unknown CPU",
             "gpu_name": "Unknown GPU",
@@ -559,56 +687,273 @@ def initialize_hardware_info(db: Session):
             "mps_available": False,
             "is_apple_silicon": False
         }
-    persist_hw_infos = StaticHardwareInfo(
-        chip_model=hw.get("chip_model"),
-        cpu_model=hw.get("cpu_model"),
-        gpu_name=hw.get("gpu_name"),
-        system_ram_gb=hw.get("total_memory_gb"),
-        available_ram_gb=hw.get("available_memory_gb"),
-        disk_total_gb=hw.get("disk_total_gb"),
-        disk_avail_gb=hw.get("disk_available_gb"),
-        gpu_cores=hw.get("gpu_cores"),
-        estimated_gpu_tflops=hw.get("estimated_gpu_tflops"),
-        memory_bandwidth_gbs=hw.get("memory_bandwidth_gbs"),
-        neural_engine_tops=hw.get("neural_engine_tops"),
-        cpu_performance_units=hw.get("cpu_performance_units"),
-        architecture=hw.get("architecture"),
-        is_apple_silicon=hw.get("is_apple_silicon", False),
-        mps_available=hw.get("mps_available", False),
-        unified_memory=hw.get("unified_memory", False),
-        system_platform=hw.get("system_platform"),
-        global_inference_score=hw.get("global_inference_score"),
-        global_inference_label=hw.get("global_inference_label"),
-        global_finetuning_score=hw.get("global_finetuning_score"),
-        global_finetuning_label=hw.get("global_finetuning_label"),
-        cpu_score=hw.get("cpu_score"),
-        gpu_score=hw.get("gpu_score"),
-        memory_score=hw.get("memory_score"),
-        performance_breakdown=hw.get("performance_breakdown")
-    )
-    db.add(persist_hw_infos)
-    db.commit()
+    
+    def _persist_hardware_info(self, hw: Dict[str, Any]) -> None:
+        """Persist hardware info to database."""
+        hw_entity = StaticHardwareInfo(
+            chip_model=hw.get("chip_model"),
+            cpu_model=hw.get("cpu_model"),
+            gpu_name=hw.get("gpu_name"),
+            system_ram_gb=hw.get("total_memory_gb"),
+            available_ram_gb=hw.get("available_memory_gb"),
+            disk_total_gb=hw.get("disk_total_gb"),
+            disk_avail_gb=hw.get("disk_available_gb"),
+            gpu_cores=hw.get("gpu_cores"),
+            estimated_gpu_tflops=hw.get("estimated_gpu_tflops"),
+            memory_bandwidth_gbs=hw.get("memory_bandwidth_gbs"),
+            neural_engine_tops=hw.get("neural_engine_tops"),
+            cpu_performance_units=hw.get("cpu_performance_units"),
+            architecture=hw.get("architecture"),
+            is_apple_silicon=hw.get("is_apple_silicon", False),
+            mps_available=hw.get("mps_available", False),
+            unified_memory=hw.get("unified_memory", False),
+            system_platform=hw.get("system_platform"),
+            global_inference_score=hw.get("global_inference_score"),
+            global_inference_label=hw.get("global_inference_label"),
+            global_finetuning_score=hw.get("global_finetuning_score"),
+            global_finetuning_label=hw.get("global_finetuning_label"),
+            cpu_score=hw.get("cpu_score"),
+            gpu_score=hw.get("gpu_score"),
+            memory_score=hw.get("memory_score"),
+            performance_breakdown=hw.get("performance_breakdown")
+        )
+        self.db.add(hw_entity)
+        self.db.commit()
 
-def initialize_startup_variables(db: Session):
-    """Initialize or refresh startup state variables.
 
-    Creates StartupVariables record on first run. Used to track:
-    - welcome_popup_has_already_displayed: First-run welcome screen flag
+# ============ Startup Variables Initialization ============
 
-    Args:
-        db: Active SQLAlchemy session for database operations.
+class Startup_Initializer:
+    """Handles initialization of startup state variables."""
+    
+    def __init__(self, db: Session):
+        """Initialize startup initializer.
+        
+        Args:
+            db: Active database session.
+        """
+        self.db = db
+    
+    def initialize_if_needed(self) -> bool:
+        """Initialize startup variables if not already present.
+        
+        Returns:
+            True if initialization was performed, False if already existed.
+        """
+        existing = self.db.query(StartupVariables).first()
+        if existing:
+            logger.debug("Startup variables already initialized, skipping")
+            return False
+        
+        variables = StartupVariables(
+            welcome_popup_has_already_displayed=False
+        )
+        self.db.add(variables)
+        self.db.commit()
+        logger.info("Startup variables initialized successfully")
+        return True
 
-    Returns:
-        None. StartupVariables record created or refreshed.
 
-    Note:
-        Future startup flags (onboarding state, dismissed notifications)
-        should be added as columns to StartupVariables entity.
+# ============ Main Database Seeder (Facade) ============
+
+class Database_Seeder:
+    """Facade for all database seeding operations.
+    
+    Provides a simple, high-level API for database initialization
+    while maintaining clean separation of concerns internally.
+    
+    Example:
+        ::
+
+            seeder = Database_Seeder()
+            await seeder.create_tables()
+            await seeder.populate_startup_data()
     """
-    variables = db.query(StartupVariables).first()
-    if not variables:
-        variables = StartupVariables(welcome_popup_has_already_displayed=False)
-        db.add(variables)
-        db.commit()
-    else:
-        db.refresh(variables)
+    
+    # Default base models
+    DEFAULT_BASE_MODELS = [
+        Model_Config("Gemma-1B", "google/gemma-3-1b-it", "gemma"),
+        Model_Config("Gemma-2B", "google/gemma-2-2b-it", "gemma"),
+        Model_Config("Gemma-4B", "google/gemma-3-4b-it", "gemma"),
+        Model_Config("Mistral-7B", "mistralai/Mistral-7B-Instruct-v0.3", "mistral"),
+        Model_Config("Ministral-8B", "mistralai/Ministral-8B-Instruct-2410", "mistral"),
+        Model_Config("Gemma-12B", "google/gemma-3-12b-it", "gemma"),
+        Model_Config("Mistral-Nemo-12B", "mistralai/Mistral-Nemo-Instruct-2407", "mistral"),
+    ]
+    
+    # Default derived model searches
+    DEFAULT_SEARCH_CONFIGS = [
+        Search_Config("Mistral-7B v0.3", "mistral", 7.0),
+        Search_Config("Gemma 1B", "gemma", 1.0),
+        Search_Config("Gemma 2B", "gemma", 2.0),
+        Search_Config("Gemma 4B", "gemma", 4.0),
+        Search_Config("Ministral-8B", "mistral", 8.0),
+        Search_Config("Gemma 12B", "gemma", 12.0),
+        Search_Config("Mistral-Nemo-12B", "mistral", 12.0),
+    ]
+    
+    async def create_tables(self) -> None:
+        """Create all database tables from SQLAlchemy models.
+        
+        Idempotent operation - safe to call multiple times.
+        """
+        try:
+            Base.metadata.create_all(bind=db_engine)
+            logger.info("Database tables created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create tables: {e}", exc_info=True)
+            raise
+    
+    async def populate_startup_data(
+        self,
+        db: Optional[Session] = None
+    ) -> Dict[str, Any]:
+        """Populate database with startup data.
+        
+        Args:
+            db: Optional database session. If None, creates new session.
+        
+        Returns:
+            Dictionary with operation results and counts.
+        
+        Raises:
+            Exception: If any critical seeding step fails.
+        """
+        should_close = db is None
+        if db is None:
+            db = SessionLocal()
+        
+        try:
+            results = {}
+            
+            # Seed base models
+            logger.info("Seeding base models...")
+            model_seeder = Model_Seeder(db, HF_API)
+            results["base_models_added"] = model_seeder.seed_base_models(
+                self.DEFAULT_BASE_MODELS
+            )
+            
+            # Seed derived models
+            logger.info("Seeding derived models...")
+            results["derived_models_added"] = model_seeder.seed_derived_models(
+                self.DEFAULT_SEARCH_CONFIGS,
+                top_per_search=30,
+                max_checked=200
+            )
+            
+            # Cleanup jobs
+            logger.info("Cleaning up unfinished jobs...")
+            job_cleanup = Job_Cleanup_Service(db)
+            results["jobs_cleaned"] = job_cleanup.cleanup_all_unfinished_jobs()
+            
+            # Initialize hardware
+            logger.info("Initializing hardware info...")
+            hw_init = Hardware_Initializer(db)
+            results["hardware_initialized"] = hw_init.initialize_if_needed()
+            
+            # Initialize startup variables
+            logger.info("Initializing startup variables...")
+            startup_init = Startup_Initializer(db)
+            results["startup_vars_initialized"] = startup_init.initialize_if_needed()
+            
+            logger.info(
+                f"Startup population completed: "
+                f"base={results['base_models_added']}, "
+                f"derived={results['derived_models_added']}, "
+                f"jobs_cleaned={sum(results['jobs_cleaned'].values())}"
+            )
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error during startup population: {e}", exc_info=True)
+            db.rollback()
+            raise
+        finally:
+            if should_close:
+                db.close()
+    
+    async def delete_all_data(self) -> None:
+        """Delete all data from database and file storage.
+        
+        **DESTRUCTIVE OPERATION - DEVELOPMENT ONLY**
+        
+        Requires interactive confirmation before proceeding.
+        
+        Warning:
+            Never expose this in production. No undo available.
+        """
+        logger.warning("Preparing to delete all data from the database")
+        response = input("Are you sure you want to delete ALL data? (yes/no): ")
+        
+        if response.lower() not in ("yes", "y"):
+            logger.info("Database deletion cancelled")
+            return
+        
+        db = SessionLocal()
+        try:
+            logger.warning("Deleting all data...")
+            
+            # Delete file storage
+            self._delete_storage_directories()
+            
+            # Delete database records
+            db.query(StartupVariables).delete()
+            db.query(KBJobModel).delete()
+            db.query(VectorStore).delete()
+            db.query(KnowledgeBase).delete()
+            db.query(StaticHardwareInfo).delete()
+            db.query(DownloadJobModel).delete()
+            db.query(TrainingJob).delete()
+            db.query(Message).delete()
+            db.query(Conversation).delete()
+            db.query(Llm).delete()
+            
+            db.commit()
+            logger.warning("All data deleted successfully")
+            
+        except Exception as e:
+            logger.error(f"Error deleting data: {e}", exc_info=True)
+            db.rollback()
+            raise
+        finally:
+            db.close()
+    
+    def _delete_storage_directories(self) -> None:
+        """Delete and recreate storage directories."""
+        directories = ["data/models", "data/indexes"]
+        
+        for directory in directories:
+            if os.path.exists(directory):
+                shutil.rmtree(directory)
+            os.makedirs(directory, exist_ok=True)
+            logger.debug(f"Recreated directory: {directory}")
+
+
+# ============ Legacy API Compatibility ============
+
+async def createTables() -> None:
+    """Legacy API: Create database tables.
+    
+    Deprecated: Use Database_Seeder().create_tables() instead.
+    """
+    seeder = ()
+    await seeder.create_tables()
+
+
+async def startup_populate_database() -> None:
+    """Legacy API: Populate startup data.
+    
+    Deprecated: Use Database_Seeder().populate_startup_data() instead.
+    """
+    seeder = Database_Seeder()
+    await seeder.populate_startup_data()
+
+
+async def delete_all_data() -> None:
+    """Legacy API: Delete all data.
+    
+    Deprecated: Use Database_Seeder().delete_all_data() instead.
+    """
+    seeder = Database_Seeder()
+    await seeder.delete_all_data()
