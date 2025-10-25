@@ -9,7 +9,7 @@ Key Features:
     - Query embedding and chunking
     - Top-k retrieval from VectorStore
     - Error handling for missing KB resources
-    - EmbedderService cleanup after retrieval
+    - Embedder_Engine cleanup after retrieval
 
 Functions:
     get_relevant_texts_from_kb: Semantic search for relevant KB chunks.
@@ -17,7 +17,7 @@ Functions:
 Dependencies:
     - faiss: Vector similarity search engine
     - numpy: Array operations for FAISS
-    - sentence_transformers: Embedder via EmbedderService
+    - sentence_transformers: Embedder via Embedder_Engine
     - sqlalchemy: Database session for KB/VectorStore queries
 
 Examples:
@@ -44,7 +44,7 @@ Notes:
     - VectorStore must exist for KB (vectors_data JSON)
     - Query is chunked via chunk_by_tokens for embedding
     - Returns empty list if query produces no valid chunks
-    - EmbedderService.cleanup() called after retrieval (memory management)
+    - Embedder_Engine.cleanup() called after retrieval (memory management)
 """
 import os
 import numpy
@@ -77,7 +77,7 @@ def get_relevant_texts_from_kb(
     1. **Validate**: Check KB exists, index file accessible, VectorStore present
     2. **Load Index**: Read FAISS index from disk
     3. **Chunk Query**: Split query into token-limited chunks via chunk_by_tokens
-    4. **Embed**: Encode each query chunk with EmbedderService
+    4. **Embed**: Encode each query chunk with Embedder_Engine
     5. **Search**: FAISS similarity search (top-k per chunk)
     6. **Collect**: Gather text from VectorStore.vectors_data by FAISS IDs
     7. **Cleanup**: Release embedder memory
@@ -132,14 +132,14 @@ def get_relevant_texts_from_kb(
         - Embedder: Uses paraphrase-multilingual-MiniLM-L12-v2 (384 dims)
         - FAISS: L2 distance metric (lower is more similar)
         - Query chunking: Necessary for long queries (>384 tokens)
-        - Memory: EmbedderService.cleanup() releases model after use
+        - Memory: Embedder_Engine.cleanup() releases model after use
         - Performance: ~10-50ms per query depending on index size and top-k
         - Error handling: Logs and skips chunks that fail to embed
         - Invalid indices: Skips FAISS indices <0 (no match found)
 
     See Also:
         chunk_by_tokens: Query chunking implementation
-        EmbedderService: Singleton embedder with memory management
+        Embedder_Engine: Singleton embedder with memory management
         prepare_for_knowledge_base: KB creation from PDFs/TXTs
     """
     # Validate knowledge base exists and is accessible

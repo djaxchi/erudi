@@ -1,5 +1,5 @@
 # Production Dependencies Only
 # Includes base requirements + platform-specific specs
 
--r ../meta/base.txt
--r ../meta/mac-silicon-specs.txt
+-r ../../meta/base.txt
+-r ../../meta/mac-silicon-specs.txt

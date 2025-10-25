@@ -67,6 +67,7 @@ class Llm(Base):
     kb_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="SET NULL"), nullable=True)  # Foreign key to the knowledge base if attached
 
     kb = relationship("KnowledgeBase", back_populates="llm", uselist=False)
+    conversations = relationship("Conversation", back_populates="llm", cascade="all, delete-orphan")
         
     __table_args__ = (
         {"sqlite_autoincrement": True}

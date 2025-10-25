@@ -112,8 +112,83 @@ backend/
 - Heavy tasks go to thread executors
 - Use `StreamingResponse` for async token generation
 
-### Exceptions
-- Specific, meaningful, and raised from core exception classes only
+### Exception Handling
+
+**Core Principles:**
+- All business exceptions inherit from `AppBaseException` (defined in `src/core/exceptions.py`)
+- Never use bare `except:` - always catch specific exception types
+- All custom exceptions must be defined in `src/core/exceptions.py`
+- Exceptions include HTTP status codes, custom error codes, and structured logging
+
+**Exception Hierarchy:**
+```python
+AppBaseException (base class)
+├── ModelNotFoundException (404, MODEL_NOT_FOUND)
+├── InvalidInputException (422, INVALID_INPUT)
+├── EngineException (500, LLM_ENGINE_FAILURE)
+├── EmbeddingError (500, EMBEDDING_FAILURE)
+└── [Add new exceptions here following the pattern]
+```
+
+**Creating New Exceptions:**
+1. Define in `src/core/exceptions.py` inheriting from `AppBaseException`
+2. Provide appropriate HTTP status code (use `fastapi.status` constants)
+3. Define custom Erudi error code (e.g., "EMBEDDING_FAILURE", "KB_NOT_FOUND")
+4. Include clear error messages with remediation hints
+5. Document in docstring: when raised, what it means, how to fix
+
+**Example:**
+```python
+class EmbeddingError(AppBaseException):
+    """Exception raised for embedding generation failures.
+    
+    Raised when sentence-transformers embedding model fails to encode text,
+    including model loading errors, out-of-memory conditions, or invalid input.
+    
+    Examples:
+        from src.core.exceptions import EmbeddingError
+        try:
+            embeddings = embedder.encode(text)
+        except Exception as e:
+            raise EmbeddingError(f"Failed to embed text: {e}")
+    """
+    
+    def __init__(self, message: str, trace: Optional[str] = None):
+        super().__init__(
+            message=message,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            erudi_code="EMBEDDING_FAILURE",
+            trace=trace
+        )
+```
+
+**Usage in Code:**
+```python
+# ❌ BAD - bare except
+try:
+    result = risky_operation()
+except:
+    pass
+
+# ❌ BAD - generic exception without context
+try:
+    model = load_model(model_id)
+except Exception:
+    raise Exception("Error loading model")
+
+# ✅ GOOD - specific exception with context
+from src.core.exceptions import ModelNotFoundException
+
+try:
+    model = load_model(model_id)
+except FileNotFoundError as e:
+    raise ModelNotFoundException(model_id, trace=str(e))
+```
+
+**FastAPI Integration:**
+- Global exception handler registered in `src/core/api.py`
+- Returns structured JSON responses: `{"success": false, "error": {"type": "...", "message": "..."}}`
+- Automatic logging with request path and error details
 
 ---
 
@@ -224,6 +299,96 @@ Quality gates
 
 ---
 
+## Development Workflow
+
+### Code Implementation Requirements
+
+When implementing new code, **always** follow this workflow:
+
+1. **Document First**
+   - Write Google-style docstrings for all functions, classes, and methods
+   - Include Args, Returns, Raises, Examples sections
+   - Update relevant documentation in `docs/` if adding new features
+
+2. **Write Tests**
+   - Create unit tests in `backend/tests/test_<domain>.py`
+   - Follow the 3-layer architecture (Repository → Service → Endpoints)
+   - Use fixtures from `conftest.py` for database and mocks
+   - Test both success and error cases
+
+3. **Make Tests Pass**
+   - Run tests with `backend/venv/bin/python -m pytest tests/test_<module>.py -v`
+   - Fix all failures before moving forward
+   - Ensure no regressions in existing tests
+
+### Python Environment Usage
+
+**CRITICAL**: Always use the virtual environment for Python operations:
+
+- **Run Python**: `backend/venv/bin/python` (NOT just `python`)
+- **Install packages**: `backend/venv/bin/pip install <package>` (NOT just `pip`)
+- **Run pytest**: `backend/venv/bin/python -m pytest` (NOT just `pytest`)
+- **Run scripts**: `backend/venv/bin/python scripts/script.py`
+
+This ensures operations run in the correct environment with proper dependencies.
+
+### Package Management
+
+When installing new Python packages:
+
+1. **Development packages** (pytest, black, mypy, etc.):
+   - Add to `backend/requirements/meta/dev.txt`
+   - Format: `package==version  # comment explaining purpose`
+
+2. **Production packages** (after user validation):
+   - Add to appropriate meta file:
+     - `backend/requirements/meta/base.txt` (all platforms)
+     - `backend/requirements/meta/mac-silicon-specs.txt` (Mac Silicon only)
+     - `backend/requirements/meta/cuda-121-specs.txt` (CUDA 12.1 only)
+     - etc.
+   - Rebuild entrypoint requirements: run appropriate build script
+
+3. **Never install without updating requirements**:
+   - All dependencies must be tracked
+   - Include version pinning for reproducibility
+   - Comment on purpose and platform constraints
+
+### Testing Workflow Example
+
+```bash
+# 1. Implement feature with docstrings
+# 2. Write tests
+# 3. Run tests
+cd backend
+source venv/bin/activate
+python -m pytest tests/test_knowledge_base.py::TestKB_Service -v
+
+# 4. Run all domain tests
+python -m pytest tests/test_knowledge_base.py -v
+
+# 5. Check coverage (optional)
+python -m pytest tests/test_knowledge_base.py --cov=src.domains.knowledge_base
+
+# 6. Fix any failures and repeat
+```
+
+### Package Installation Example
+
+```bash
+# Install new dev dependency
+cd backend
+source venv/bin/activate
+pip install httpx==0.28.1
+
+# Immediately update requirements
+echo "httpx==0.28.1  # HTTP client for testing" >> requirements/meta/dev.txt
+
+# If approved for production, add to base.txt
+echo "httpx==0.28.1  # HTTP client for API requests" >> requirements/meta/base.txt
+```
+
+---
+
 ## Performance and Memory
 
 - Use generators for large payloads  
@@ -244,14 +409,42 @@ Quality gates
 
 ## Acceptance Checklist
 
+Before considering any implementation complete, verify:
+
+### Code Quality
 - [ ] Reads context, avoids duplicate work  
-- [ ] Respects naming, structure, and placement  
-- [ ] Works across all supported OS/hardware  
+- [ ] Respects naming, structure, and placement (snake_case, repository pattern)
+- [ ] Works across all supported OS/hardware (Mac Silicon, Linux CUDA, CPU fallback)
 - [ ] API backward compatible  
-- [ ] Structured, secure logging  
-- [ ] Tests passing (unit/integration/e2e)  
-- [ ] No new lint/type errors  
-- [ ] Streaming output validated  
+- [ ] Structured, secure logging (no PII, paths, or prompts)
+- [ ] No new lint/type errors (ruff, black, mypy pass)
+
+### Documentation
+- [ ] Google-style docstrings for all public functions/classes/methods
+- [ ] Includes Args, Returns, Raises, Examples sections
+- [ ] Updated `docs/` if new features or API changes
+- [ ] README.md updated if user-facing changes
+
+### Testing
+- [ ] Unit tests written in `backend/tests/test_<domain>.py`
+- [ ] Tests cover success cases and error cases
+- [ ] All tests passing: `backend/venv/bin/python -m pytest tests/test_<module>.py -v`
+- [ ] No skipped tests (unless documented reason)
+- [ ] No regressions in existing tests
+- [ ] Mock heavy dependencies (FAISS, embeddings, model loading)
+
+### Environment & Dependencies
+- [ ] Used `backend/venv/bin/python` and `backend/venv/bin/pip` for all operations
+- [ ] New dev packages added to `backend/requirements/meta/dev.txt`
+- [ ] New prod packages added to appropriate meta file (after user approval)
+- [ ] Version pinning included with explanatory comments
+- [ ] Tested in isolated venv to verify dependencies
+
+### Functionality
+- [ ] Feature works as intended on target platform(s)
+- [ ] Streaming output validated (if applicable)
+- [ ] Error messages clear with remediation hints
+- [ ] Handles edge cases (empty input, missing files, network errors)
 
 ---
 
