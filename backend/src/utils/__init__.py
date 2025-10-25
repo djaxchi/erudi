@@ -25,9 +25,8 @@ Examples:
     >>> from src.utils import prepare_for_knowledge_base
 
 Migration Notes:
-    - EmbedderService moved to src.engines.embedder_engine.Embedder_Engine
-    - inference_utils.py maintained for backward compatibility only
-    - Use src.engines.embedder_engine for new code
+    - EmbedderService removed - use src.engines.embedder_engine.Embedder_Engine
+    - All embedder operations now via Embedder_Engine
 
 See Also:
     - src.engines: Inference engines (LLM, embedder)
@@ -65,11 +64,6 @@ from src.utils.hf_model_metadata import (
     format_model_info_metadata,
 )
 
-# Backward compatibility (deprecated - use src.engines.embedder_engine)
-from src.utils.inference_utils import (
-    EmbedderService,  # Alias for Embedder_Engine
-)
-
 __all__ = [
     # Prompt utilities
     'build_system_prompt',
@@ -89,6 +83,4 @@ __all__ = [
     'get_model_size_estimate',
     'get_parameter_count_from_name',
     'format_model_info_metadata',
-    # Deprecated (backward compatibility)
-    'EmbedderService',
 ]

@@ -177,6 +177,37 @@ class EngineException(AppBaseException):
         )
 
 
+class EmbeddingError(AppBaseException):
+    """Exception raised for embedding generation failures.
+    
+    Raised when sentence-transformers embedding model fails to encode text,
+    including model loading errors, out-of-memory conditions, or invalid input.
+    
+    Examples:
+        from src.core.exceptions import EmbeddingError
+        try:
+            embeddings = embedder.encode(text)
+        except Exception as e:
+            raise EmbeddingError(f"Failed to embed text: {e}")
+
+    """
+    
+    def __init__(self, message: str, trace: Optional[str] = None):
+        """Initialize embedding exception with error details.
+        
+        Args:
+            message: Description of the embedding failure.
+            trace: Optional stack trace or additional context.
+
+        """
+        super().__init__(
+            message=message,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            erudi_code="EMBEDDING_FAILURE",
+            trace=trace
+        )
+
+
 async def app_base_exception_handler(request: Request, exc: AppBaseException):
     """Global exception handler for AppBaseException and subclasses.
     

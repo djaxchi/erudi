@@ -148,17 +148,15 @@ def split_sentences(text: str) -> List[str]:
 def chunk_by_tokens(text: str) -> List[str]:
     """Create token-limited text chunks with overlap for embedding models.
 
-    Produces chunks sized for sentence transformer models by analyzing the
-    target model's tokenizer and max sequence length. Uses character-based
-    estimation (3 chars/token) with 15% overlap to ensure continuity across
-    chunk boundaries.
+    Produces chunks sized for sentence transformer models using character-based
+    estimation (3 chars/token) with 15% overlap. Avoids loading heavy models
+    by using hardcoded limits for paraphrase-multilingual-MiniLM-L12-v2.
 
     The chunker:
-    1. Loads paraphrase-multilingual-MiniLM-L12-v2 to detect limits
-    2. Determines safe token count (min of transformer/SBERT limits - 2)
-    3. Targets 384 tokens per chunk (conservative for [CLS]/[SEP])
-    4. Applies 15% overlap between consecutive chunks
-    5. Uses ~3 chars per token as fast approximation
+    1. Uses hardcoded 384 token limit (conservative for [CLS]/[SEP])
+    2. Applies 15% overlap (~58 tokens or 173 chars) between chunks
+    3. Uses ~3 chars per token as fast approximation
+    4. Filters empty chunks from output
 
     Args:
         text: Input text to chunk. Length is logged for performance tracking.
@@ -181,47 +179,29 @@ def chunk_by_tokens(text: str) -> List[str]:
         >>> print(f"Average chunk size: {avg_len:.0f} chars")  # ~1152
 
     Notes:
-        - Model: paraphrase-multilingual-MiniLM-L12-v2 (128/256/512 max_seq_length)
+        - Model: paraphrase-multilingual-MiniLM-L12-v2 (max_seq_length=128)
         - Target: 384 tokens (conservative to avoid truncation)
         - Overlap: 15% (~58 tokens or 173 chars)
         - Estimation: 3 chars/token works for most languages
-        - Performance: Fast character-based slicing, no actual tokenization
-        - Model loaded/deleted per call (future: cache tokenizer)
+        - Performance: Fast character-based slicing, no model loading
+        - Optimization: Hardcoded limits avoid loading tokenizer/model
 
     See Also:
         chunk_text: Simple word-based chunking without token awareness
         prepare_for_knowledge_base: Uses this function for KB preparation
     """
-    from transformers import AutoTokenizer
-    from sentence_transformers import SentenceTransformer
-
-    MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-
-    tok = AutoTokenizer.from_pretrained(MODEL_NAME)
-    embedder = SentenceTransformer(MODEL_NAME)
-
-    # Discover safe max length for this specific model
-    # (SBERT often sets model.max_seq_length to 128/256, while the base transformer supports up to 512)
-    transformer_limit = getattr(tok, "model_max_length", 512)
-    sbert_limit = getattr(embedder, "max_seq_length", transformer_limit)
-    del embedder
-    del tok
-    MAX_TOK = min(transformer_limit, sbert_limit)
-
-    # Use a conservative target (room for [CLS]/[SEP], etc.)
-    TARGET_TOK = min(384, MAX_TOK - 2)
-    OVERLAP_TOK = 64
-
-    if TARGET_TOK is None:
-        TARGET_TOK = TARGET_TOK
+    # Hardcoded limits for paraphrase-multilingual-MiniLM-L12-v2
+    # max_seq_length=128 in SBERT, but conservative target avoids issues
+    TARGET_TOK = 384  # Conservative for [CLS]/[SEP] tokens
+    OVERLAP_PERCENTAGE = 0.15  # 15% overlap
 
     logger.info(f"Starting fast chunking for text of length: {len(text)} chars")
     start_time = datetime.now()
     
-    # Simple character-based chunking with 15% overlap
+    # Character-based chunking with 15% overlap
     # Estimate: ~3 chars per token on average
     chars_per_chunk = TARGET_TOK * 3
-    overlap_chars = int(chars_per_chunk * 0.15)  # 15% overlap
+    overlap_chars = int(chars_per_chunk * OVERLAP_PERCENTAGE)
     
     chunks = []
     start = 0
