@@ -684,14 +684,12 @@ class TestDownloadJob_Endpoints:
     """Test suite for download job management endpoints."""
 
     @patch('src.domains.llms.endpoints.download_llm')
-    @patch('os.path.exists')
-    @patch('os.makedirs')
-    def test_start_download(self, mock_makedirs, mock_exists, mock_download, client, test_db_session):
+    @patch('pathlib.Path.exists')
+    def test_start_download(self, mock_exists, mock_download, client, test_db_session):
         """Test POST /erudi/llms/{id}/download starts download job.
         
         Args:
-            mock_makedirs: Mock for os.makedirs.
-            mock_exists: Mock for os.path.exists.
+            mock_exists: Mock for pathlib.Path.exists (temp/final paths).
             mock_download: Mock for download_llm service.
             client: FastAPI test client.
             test_db_session: Database session fixture.
@@ -720,12 +718,12 @@ class TestDownloadJob_Endpoints:
         response = client.post("/erudi/llms/99999/download")
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    @patch('os.path.exists')
+    @patch('pathlib.Path.exists')
     def test_start_download_path_exists(self, mock_exists, client, test_db_session):
         """Test POST /erudi/llms/{id}/download fails if model path exists.
         
         Args:
-            mock_exists: Mock for os.path.exists.
+            mock_exists: Mock for pathlib.Path.exists.
             client: FastAPI test client.
             test_db_session: Database session fixture.
         """

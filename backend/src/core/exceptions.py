@@ -8,6 +8,7 @@ Exception Hierarchy:
     AppBaseException (base class)
     ├── ModelNotFoundException (404, MODEL_NOT_FOUND)
     ├── InvalidInputException (422, INVALID_INPUT)
+    ├── StateConflictException (400, STATE_CONFLICT)
     ├── DatabaseException (500, DATABASE_ERROR)
     ├── FileSystemException (500, FILESYSTEM_ERROR)
     ├── FAISSException (500, FAISS_ERROR)
@@ -80,8 +81,9 @@ Exception Categories:
     - MessageNotFoundException
     - DownloadJobNotFoundException
 
-    **Client Errors (422):**
-    - InvalidInputException
+    **Client Errors (400, 422):**
+    - InvalidInputException (422)
+    - StateConflictException (400)
 
     **Server Errors (500):**
     - DatabaseException
@@ -207,6 +209,31 @@ class InvalidInputException(AppBaseException):
 
         """
         super().__init__(f"Invalid input for '{field_name}'", status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, erudi_code="INVALID_INPUT", trace=trace)
+
+
+class StateConflictException(AppBaseException):
+    """Exception raised when operation conflicts with current entity state.
+    
+    Used for operations that cannot proceed due to the current state of a resource,
+    such as attempting to delete a model that is currently downloading, or starting
+    a download when one is already in progress.
+    
+    Examples:
+        from src.core.exceptions import StateConflictException
+        if llm.local == 2:  # Downloading
+            raise StateConflictException("Cannot delete LLM while downloading")
+
+    """
+    
+    def __init__(self, message: str, trace: Optional[str] = None):
+        """Initialize state conflict exception.
+        
+        Args:
+            message: Description of the state conflict.
+            trace: Optional stack trace or additional context.
+
+        """
+        super().__init__(message=message, status_code=status.HTTP_400_BAD_REQUEST, erudi_code="STATE_CONFLICT", trace=trace)
 
 
 class DatabaseException(AppBaseException):

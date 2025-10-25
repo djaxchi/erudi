@@ -107,6 +107,10 @@ async def query_arena(
     """
     logger.info(f"Arena query request for LLM {llm_id}")
     
+    # Validate LLM exists BEFORE starting StreamingResponse
+    # (StreamingResponse returns 200 immediately, exceptions inside async generator are lost)
+    service._get_llm(llm_id)
+    
     return StreamingResponse(
         service.query_llm_stream(llm_id, payload),
         media_type="text/plain"

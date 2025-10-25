@@ -111,6 +111,8 @@ from src.core.exceptions import (
     ModelNotFoundException,
     DatabaseException,
     InvalidInputException,
+    StateConflictException,
+    FileSystemException,
     DownloadJobNotFoundException,
 )
 
@@ -290,7 +292,7 @@ async def delete_llm(
 
     Raises:
         ModelNotFoundException: If LLM not found.
-        InvalidInputException: If currently downloading.
+        StateConflictException: If currently downloading.
         DatabaseException: If deletion fails.
 
     Warning:
@@ -302,7 +304,7 @@ async def delete_llm(
             raise ModelNotFoundException(f"LLM {llm_id}")
         
         if llm.local == 2:
-            raise InvalidInputException("Cannot delete LLM while downloading")
+            raise StateConflictException("Cannot delete LLM while downloading")
         
         # Delete files from disk if they exist
         if llm.link and os.path.exists(llm.link):
@@ -315,7 +317,7 @@ async def delete_llm(
         
         return {"message": "LLM deleted successfully"}
         
-    except (ModelNotFoundException, InvalidInputException):
+    except (ModelNotFoundException, StateConflictException):
         raise
     except Exception as e:
         db.rollback()
@@ -386,7 +388,7 @@ async def download_llm_route(
         if temp_path.exists() or final_path.exists():
             llm_repo.delete(local_llm)
             db.rollback()
-            raise InvalidInputException(
+            raise FileSystemException(
                 "Model path already exists - delete existing files first"
             )
         
@@ -506,7 +508,7 @@ def cancel_download(
         if not job:
             raise DownloadJobNotFoundException(job_id)
         if job.status in ["completed", "failed"]:
-            raise InvalidInputException("Cannot cancel completed or failed jobs")
+            raise StateConflictException("Cannot cancel completed or failed jobs")
         
         # Get associated LLM
         llm = llm_repo.get_by_id(job.local_model_id)
@@ -528,7 +530,7 @@ def cancel_download(
         logger.info(f"Cancelled download job {job_id} and deleted temp LLM {llm.id}")
         return {"message": "Download job cancelled successfully"}
     
-    except (DownloadJobNotFoundException, ModelNotFoundException, InvalidInputException):
+    except (DownloadJobNotFoundException, ModelNotFoundException, InvalidInputException, StateConflictException):
         raise
     except Exception as e:
         db.rollback()

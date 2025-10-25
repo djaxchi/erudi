@@ -1,6 +1,3 @@
-
-
-
 """CUDA engine for NVIDIA GPU inference (STUB - UNDER DEVELOPMENT).
 
 This module is a placeholder for the CUDA backend implementation using:
@@ -60,27 +57,6 @@ Warning:
 
 
 # PAS DU TOUT BON POUR L'INSTANT, JUSTE UNE BASE
-
-
-import threading, asyncio, json, gc
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Any, Optional, Tuple, Generator, List
-from src.engines.base_engine import BaseEngine
-from src.core.logging import logger
-
-"""
-# Environment tuning for deterministic behavior (caller may already set these)
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-"""
-class CUDA_Engine(BaseEngine):
-    """
-    Singleton Engine for models to run on <framework_not_selected_yet>.
-    Built to run on CUDA-GPUs Backends.
-    """
-    pass
 
 
 import threading, asyncio, json, gc

@@ -90,6 +90,7 @@ def client(test_db_session):
     """Create FastAPI test client with dependency injection.
     
     Overrides get_db dependency to use test database session.
+    Creates app without lifespan to avoid production DB interactions.
     
     Args:
         test_db_session: Test database session fixture.
@@ -97,16 +98,34 @@ def client(test_db_session):
     Yields:
         FastAPI TestClient instance.
     """
+    from fastapi import FastAPI
+    from src.core.api import register_routers, add_exception_handlers, add_middleware
+    from src.engines.base_engine import BaseEngine
+    from src.core import config
+    
+    # Create app WITHOUT lifespan
+    test_app = FastAPI(title="Erudi Test", version="0.1.0")
+    add_middleware(app=test_app)
+    add_exception_handlers(app=test_app)
+    register_routers(app=test_app)
+    
+    # Override get_db to use test session
     def override_get_db():
         try:
             yield test_db_session
         finally:
             pass
     
-    app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
+    test_app.dependency_overrides[get_db] = override_get_db
+    
+    # Initialize engine for tests
+    if not config.LLM_Engine:
+        config.LLM_Engine = BaseEngine.get_engine()
+    
+    with TestClient(test_app, raise_server_exceptions=False) as test_client:
         yield test_client
-    app.dependency_overrides.clear()
+    
+    test_app.dependency_overrides.clear()
 
 
 # ============ Mock Data Fixtures ============

@@ -322,7 +322,7 @@ class KB_Repository:
             KBJobModel instance or None if not found.
         """
         return db.query(KBJobModel).filter(
-            KBJobModel.new_model_id == model_id
+            KBJobModel.new_model_id == str(model_id)
         ).first()
 
     def update_kb_job_status(

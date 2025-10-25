@@ -28,6 +28,8 @@ from src.entities.VectorStore import VectorStore
 from src.entities.Llm import Llm
 from src.entities.KBJob import KBJobModel
 
+from src.core.exceptions import FileSystemException, FAISSException
+
 
 # ============ Repository Layer Tests ============
 
@@ -346,10 +348,10 @@ class TestKB_Indexer:
         assert loaded_index.d == 384
     
     def test_load_index_not_found(self):
-        """Test loading non-existent index raises FileNotFoundError."""
+        """Test loading non-existent index raises FileSystemException."""
         indexer = KB_Indexer()
         
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(FileSystemException):
             indexer.load_index("/nonexistent/path.index")
     
     @pytest.mark.skip(reason="FAISS search causes segfault in test environment")
@@ -468,8 +470,8 @@ class TestKB_Service:
         # Verify job created
         kb_job = test_db_session.query(KBJobModel).filter(KBJobModel.id == kb_job_id).first()
         assert kb_job is not None
-        assert kb_job.base_model_id == llm.id
-        assert kb_job.new_model_id == llm.id  # Same for updates
+        assert kb_job.base_model_id == str(llm.id)
+        assert kb_job.new_model_id == str(llm.id)  # Same for updates
         assert kb_job.status == "pending"
     
     def test_update_existing_kb_not_attached(self, test_db_session, mock_llm):
@@ -703,12 +705,21 @@ class TestKnowledgeBaseEntity:
         
         assert kb.file_count == 3
     
-    def test_index_exists_property(self):
-        """Test index_exists property."""
+    def test_index_exists_property(self, tmp_path):
+        """Test index_exists property.
+        
+        Args:
+            tmp_path: Pytest temporary directory fixture.
+        """
         kb_no_index = KnowledgeBase(file_names_list={})
+        
+        # Create temp index file
+        index_file = tmp_path / "test.index"
+        index_file.write_text("fake index")
+        
         kb_with_index = KnowledgeBase(
             file_names_list={},
-            index_path="/test/index.index"
+            index_path=str(index_file)
         )
         
         assert kb_no_index.index_exists is False
@@ -790,8 +801,8 @@ class TestVectorStoreEntity:
         
         chunks = vs.get_all_chunks()
         
-        assert "chunk1" in chunks
-        assert "chunk2" in chunks
+        assert "chunk1" in chunks.values()
+        assert "chunk2" in chunks.values()
         assert len(chunks) == 2
     
     def test_clear_vectors(self):
