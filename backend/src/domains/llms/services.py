@@ -43,8 +43,8 @@ Example:
     final_path = asyncio.run(download_llm(
         model_link="meta-llama/Llama-3-8B-Instruct",
         model_id=42,
-        temp_save_dir="/data/models/temp_42",
-        final_save_dir="/data/models/42",
+        temp_save_dir=config.LLM_DIR / "temp_42",
+        final_save_dir=config.LLM_DIR / "42",
         job_id=15
     ))
     # → Downloads to temp, quantizes to MLX 4-bit, saves to final, updates job #15
@@ -64,6 +64,12 @@ from src.entities.Llm import Llm
 from src.core.config import HF_TOKEN
 from src.core import config
 from src.core.logging import logger
+from src.core.exceptions import (
+    HuggingFaceAPIException,
+    QuantizationException,
+    FileSystemException,
+    DownloadJobNotFoundException,
+)
 
 # Environment setup
 FILES_TO_EXCLUDE = ["consolidated.safetensors"]
@@ -240,7 +246,7 @@ async def download_files_concurrent(
         >>> fs = HfFileSystem(token=HF_TOKEN)
         >>> callback = make_callback(tracker)
         >>> tasks = [("meta-llama/Llama-3-8B", "model-00001-of-00004.safetensors"), ...]
-        >>> await download_files_concurrent(fs, callback, tasks, "/data/models/temp_42")
+        >>> await download_files_concurrent(fs, callback, tasks, config.LLM_DIR / "temp_42")
     """
     loop = asyncio.get_running_loop()
     coros = []
@@ -282,11 +288,11 @@ async def download_llm(
         >>> final_path = await download_llm(
         ...     model_link="meta-llama/Llama-3-8B-Instruct",
         ...     model_id=42,
-        ...     temp_save_dir="/data/models/temp_42",
-        ...     final_save_dir="/data/models/42",
+        ...     temp_save_dir=config.LLM_DIR / "temp_42",
+        ...     final_save_dir=config.LLM_DIR / "42",
         ...     job_id=15
         ... )
-        >>> # Progress tracked in DownloadJobModel(id=15), final model in /data/models/42
+        >>> # Progress tracked in DownloadJobModel(id=15), final model in backend/data/models/42
     """
     # Check if model is already quantized from database
     session = SessionLocal()

@@ -12,10 +12,10 @@ Example:
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-from fastapi import HTTPException, status
 
 from src.entities.Llm import Llm
 from src.core.logging import logger
+from src.core.exceptions import ModelNotFoundException, DatabaseException
 
 
 class ArenaRepository:
@@ -54,19 +54,16 @@ class ArenaRepository:
             
             if not llm:
                 logger.warning(f"LLM {llm_id} not found")
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"LLM {llm_id} not found"
-                )
+                raise ModelNotFoundException(f"LLM {llm_id}")
             
             logger.debug(f"Retrieved LLM {llm_id}: {llm.name}")
             return llm
             
-        except HTTPException:
+        except ModelNotFoundException:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Database error retrieving LLM {llm_id}: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Could not retrieve LLM"
+            raise DatabaseException(
+                "Could not retrieve LLM",
+                trace=str(e)
             )

@@ -62,6 +62,12 @@ from src.core.logging import logger
 from src.core.config import HF_API
 from src.core import config
 from src.database.core import Base, db_engine, SessionLocal
+from src.core.exceptions import (
+    DatabaseException,
+    HuggingFaceAPIException,
+    FileSystemException,
+    ConfigurationException,
+)
 
 from src.utils.hf_model_metadata import (
     get_disk_size_after_quant,
@@ -199,19 +205,23 @@ class Model_Seeder:
                 self.db.flush()  # Flush to catch DB errors early
                 added_count += 1
                 logger.info(f"Added base model: {model_config.name}")
-            except Exception as e:
-                logger.error(f"Failed to add {model_config.name}: {e}", exc_info=True)
+            except DatabaseException:
+                raise
+            except HuggingFaceAPIException as e:
+                logger.error(f"HF API error for {model_config.name}: {e}")
                 self.db.rollback()
-                # Try fallback
+                # Try fallback with default metadata
                 try:
                     llm = self._create_base_llm_fallback(model_config)
                     self.db.add(llm)
                     self.db.flush()
                     added_count += 1
                     logger.warning(f"Added {model_config.name} with fallback metadata")
-                except Exception as fallback_error:
-                    logger.error(f"Fallback also failed for {model_config.name}: {fallback_error}")
-                    continue
+                except DatabaseException as db_error:
+                    raise DatabaseException(
+                        f"Failed to add model {model_config.name} even with fallback",
+                        trace=str(db_error)
+                    )
         
         self.db.commit()
         return added_count
@@ -537,8 +547,11 @@ class Job_Cleanup_Service:
                 job.updated_at = datetime.now()
                 
                 count += 1
-            except Exception as e:
-                logger.error(f"Error cleaning download job {job.id}: {e}")
+            except FileSystemException as e:
+                logger.error(f"Filesystem error cleaning download job {job.id}: {e}")
+                continue
+            except DatabaseException as e:
+                logger.error(f"Database error cleaning download job {job.id}: {e}")
                 continue
         
         if count > 0:
@@ -570,8 +583,11 @@ class Job_Cleanup_Service:
                 job.updated_at = datetime.now()
                 
                 count += 1
-            except Exception as e:
-                logger.error(f"Error cleaning training job {job.id}: {e}")
+            except FileSystemException as e:
+                logger.error(f"Filesystem error cleaning training job {job.id}: {e}")
+                continue
+            except DatabaseException as e:
+                logger.error(f"Database error cleaning training job {job.id}: {e}")
                 continue
         
         if count > 0:
@@ -921,7 +937,7 @@ class Database_Seeder:
     
     def _delete_storage_directories(self) -> None:
         """Delete and recreate storage directories."""
-        directories = ["data/models", "data/indexes"]
+        directories = [str(config.LLM_DIR), str(config.INDEXES_DIR)]
         
         for directory in directories:
             if os.path.exists(directory):

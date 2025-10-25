@@ -35,6 +35,13 @@ from src.database.core import SessionLocal
 from src.entities.Llm import Llm
 from src.entities.DownloadJob import DownloadJobModel
 from src.core.logging import logger
+from src.core import config
+from src.core.exceptions import (
+    ModelNotFoundException,
+    DownloadJobNotFoundException,
+    DatabaseException,
+    FileSystemException,
+)
 
 
 class Llm_Repository:
@@ -384,8 +391,8 @@ class Download_Job_Repository:
             
             # Also check for temp_{id} pattern if not already in path
             if "temp" not in job.temp_local_model_link and job.local_model_id:
-                temp_fallback = f"./data/models/temp_{job.local_model_id}"
-                if os.path.exists(temp_fallback):
+                temp_fallback = config.LLM_DIR / f"temp_{job.local_model_id}"
+                if temp_fallback.exists():
                     shutil.rmtree(temp_fallback, ignore_errors=True)
                     logger.debug(f"Removed temp fallback: {temp_fallback}")
         
@@ -464,8 +471,10 @@ def update_db_with_progress(job_tracker, job_id: int, model_id: int) -> None:
             if dbj.temp_local_model_link:
                 if os.path.exists(dbj.temp_local_model_link):
                     shutil.rmtree(dbj.temp_local_model_link, ignore_errors=True)
-                if "temp" not in dbj.temp_local_model_link and os.path.exists(f"./data/models/temp_{model_id}"):
-                    shutil.rmtree(f"./data/models/temp_{model_id}", ignore_errors=True)
+                if "temp" not in dbj.temp_local_model_link:
+                    temp_fallback = config.LLM_DIR / f"temp_{model_id}"
+                    if temp_fallback.exists():
+                        shutil.rmtree(temp_fallback, ignore_errors=True)
             
             if dbj.final_local_model_link and os.path.exists(dbj.final_local_model_link):
                 shutil.rmtree(dbj.final_local_model_link, ignore_errors=True)

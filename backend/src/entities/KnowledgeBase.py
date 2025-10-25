@@ -12,7 +12,7 @@ Example:
     from src.entities.KnowledgeBase import KnowledgeBase
 
     kb = KnowledgeBase(
-        index_path="/data/indexes/42.index",
+        index_path="backend/data/indexes/42.index",
         file_names_list={"file_dropped_paths": ["/uploads/report1.pdf"]}
     )
     kb.add_file_path("/uploads/report2.pdf")
@@ -35,14 +35,14 @@ class KnowledgeBase(Base):
 
     Attributes:
         id: Primary key (auto-increment).
-        index_path: Filesystem path to FAISS index file (e.g., "data/indexes/42.index").
+        index_path: Filesystem path to FAISS index file (e.g., "backend/data/indexes/42.index").
         created_at: KB creation timestamp.
         file_names_list: JSON dict with source file paths ({"file_dropped_paths": [...]}).
         vectors: Relationship to VectorStore entities (embeddings metadata).
         llm: Relationship to specialized Llm entity (one-to-one).
 
     Example:
-        >>> kb = KnowledgeBase(index_path="/data/indexes/15.index")
+        >>> kb = KnowledgeBase(index_path="backend/data/indexes/15.index")
         >>> kb.file_names_list = {"file_dropped_paths": ["/uploads/doc1.pdf"]}
         >>> kb.add_file_path("/uploads/doc2.pdf")
         >>> print(kb.file_count)  # 2

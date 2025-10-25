@@ -67,6 +67,14 @@ import os, shutil, logging, importlib
 from datetime import datetime
 from typing import Optional, Tuple, Any, Generator, Union
 from src.engines.base_engine import BaseEngine
+from src.core.exceptions import (
+    QuantizationException,
+    ModelLoadingException,
+    GenerationException,
+    TokenizationException,
+    InsufficientMemoryException,
+    FileSystemException,
+)
 from pathlib import Path
 
 class MLX_Engine(BaseEngine):
@@ -126,8 +134,31 @@ class MLX_Engine(BaseEngine):
                 q_bits=q_bits
             )
             logging.info(f"Model converted to mlx in {datetime.now() - start}")
-        except:
-            raise 
+        except FileNotFoundError as e:
+            raise FileSystemException(
+                f"HF model not found at {local_hf_path}",
+                trace=str(e)
+            )
+        except OSError as e:
+            if "disk" in str(e).lower() or "space" in str(e).lower():
+                raise FileSystemException(
+                    f"Disk space issue during quantization: {e}",
+                    trace=str(e)
+                )
+            raise FileSystemException(
+                f"Filesystem error during quantization: {e}",
+                trace=str(e)
+            )
+        except MemoryError as e:
+            raise InsufficientMemoryException(
+                "model quantization",
+                trace=str(e)
+            )
+        except Exception as e:
+            raise QuantizationException(
+                f"MLX quantization failed: {e}",
+                trace=str(e)
+            ) 
 
     @classmethod
     def generate_stream(
@@ -170,7 +201,13 @@ class MLX_Engine(BaseEngine):
             try:
                 # Tokenize prompt
                 prompt_tokens = tokenizer.apply_chat_template(prompt, add_generation_prompt=True)
-                
+            except Exception as e:
+                raise TokenizationException(
+                    f"Failed to apply chat template: {e}",
+                    trace=str(e)
+                )
+            
+            try:
                 # Create sampler
                 sampler = mlx_lm.sample_utils.make_sampler(
                     temperature,
@@ -212,9 +249,17 @@ class MLX_Engine(BaseEngine):
                 logging.info(f"Peak memory: {response.peak_memory:.3f} GB")
 
                 cls._last_used = datetime.now()  # Update last use time
+            except MemoryError as e:
+                raise InsufficientMemoryException(
+                    "text generation",
+                    trace=str(e)
+                )
             except Exception as e:
                 logging.exception("Generation failed")
-                raise Exception(f"Generation error: {str(e)}")
+                raise GenerationException(
+                    f"MLX generation failed: {e}",
+                    trace=str(e)
+                )
     
     @classmethod
     def get_model_and_tokenizer(
@@ -281,9 +326,28 @@ class MLX_Engine(BaseEngine):
             cls._model, cls._tokenizer = mlx_lm.load(llm_local_path)
             cls._model_id = llm_id
             logging.info(f"Model and tokenizer loaded in {datetime.now() - start}")
+        except FileNotFoundError as e:
+            cls._model = None
+            cls._tokenizer = None
+            cls._model_id = None
+            raise FileSystemException(
+                f"Model not found at {llm_local_path}",
+                trace=str(e)
+            )
+        except MemoryError as e:
+            cls._model = None
+            cls._tokenizer = None
+            cls._model_id = None
+            raise InsufficientMemoryException(
+                "model loading",
+                trace=str(e)
+            )
         except Exception as e:
             cls._model = None
             cls._tokenizer = None
             cls._model_id = None
             logging.error(f"Failed to load model: {e}")
-            raise
+            raise ModelLoadingException(
+                f"Failed to load MLX model: {e}",
+                trace=str(e)
+            )

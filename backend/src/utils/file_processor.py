@@ -64,6 +64,7 @@ import pypdf
 from pathlib import Path
 from tqdm import tqdm
 from src.core.logging import logger
+from src.core import config
 from datetime import datetime
 
 from typing import List
@@ -533,7 +534,7 @@ def chunk_text(text, chunk_size, overlap):
         i += chunk_size - overlap
     return chunks
 
-def process_pdfs_to_causal_dataset(input_paths, chunk_size = 800, overlap = 200, output_path = "data/training_datasets/"):
+def process_pdfs_to_causal_dataset(input_paths, chunk_size = 800, overlap = 200, output_path = None):
     """Create causal language model training dataset from PDF/TXT files (STUB).
 
     Processes PDF and TXT files into word-based chunks and writes them to a
@@ -554,11 +555,11 @@ def process_pdfs_to_causal_dataset(input_paths, chunk_size = 800, overlap = 200,
             text is split for training examples.
         overlap: Number of words to overlap between chunks (default: 200).
             Provides context continuity across chunk boundaries.
-        output_path: Directory for output file (default: "data/training_datasets/").
+        output_path: Directory for output file (default: config.TRAINING_DATASETS_DIR).
             File will be named "data.txt" inside this directory.
 
     Returns:
-        Full path to created dataset file (e.g., "data/training_datasets/data.txt").
+        Full path to created dataset file (e.g., "backend/data/training_datasets/data.txt").
         File contains one chunk per line, newline-separated.
 
     Examples:
@@ -651,12 +652,18 @@ def process_pdfs_to_causal_dataset(input_paths, chunk_size = 800, overlap = 200,
         chunks = chunk_text(cleaned, chunk_size=chunk_size, overlap=overlap)
         all_chunks.extend(chunks)
         
-
-    os.makedirs(output_path, exist_ok=True)
-    output_path+="data.txt"
-    with open(output_path, "w", encoding="utf-8") as f:
+    # Use config.TRAINING_DATASETS_DIR if output_path not specified
+    if output_path is None:
+        output_dir = config.TRAINING_DATASETS_DIR
+    else:
+        output_dir = Path(output_path)
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_file = output_dir / "data.txt"
+    
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write("\n".join(chunk.strip() for chunk in all_chunks))
 
-    logger.info(f"Dataset created with {len(all_chunks)} chunks in {output_path}. in {datetime.now() - start} seconds")
+    logger.info(f"Dataset created with {len(all_chunks)} chunks in {output_file}. in {datetime.now() - start} seconds")
 
-    return output_path
+    return str(output_file)

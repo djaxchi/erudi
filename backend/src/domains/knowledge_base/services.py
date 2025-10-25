@@ -45,7 +45,14 @@ from src.engines.embedder_engine import Embedder_Engine
 from src.utils.file_processor import prepare_for_knowledge_base, chunk_by_tokens
 from src.core.config import INDEXES_DIR
 from src.core.logging import logger
-from src.core.exceptions import AppBaseException
+from src.core.exceptions import (
+    FAISSException,
+    EmbeddingError,
+    FileSystemException,
+    KnowledgeBaseNotFoundException,
+    KnowledgeBaseCorruptedException,
+    DatabaseException,
+)
 
 
 class KB_Indexer:
@@ -135,9 +142,14 @@ class KB_Indexer:
                     logger.debug(f"Indexed chunk {current_id}: {chunk[:50]}...")
                     current_id += 1
 
+                except EmbeddingError:
+                    raise
                 except Exception as e:
                     logger.error(f"Error indexing chunk {chunk_idx + 1}: {e}")
-                    continue
+                    raise EmbeddingError(
+                        f"Failed to embed chunk {chunk_idx + 1}",
+                        trace=str(e)
+                    )
 
         Embedder_Engine.cleanup()
         logger.info(f"Indexed {current_id - start_id} vectors (IDs {start_id} to {current_id - 1})")
@@ -159,9 +171,18 @@ class KB_Indexer:
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             faiss.write_index(index, file_path)
             logger.info(f"Saved FAISS index to {file_path}")
+        except OSError as e:
+            logger.error(f"Filesystem error saving FAISS index: {e}")
+            raise FileSystemException(
+                f"Failed to save FAISS index to {file_path}",
+                trace=str(e)
+            )
         except Exception as e:
             logger.error(f"Failed to save FAISS index: {e}")
-            raise RuntimeError(f"Failed to save FAISS index: {e}") from e
+            raise FAISSException(
+                f"FAISS write operation failed: {e}",
+                trace=str(e)
+            )
 
     @staticmethod
     def load_index(file_path: str) -> Any:
@@ -178,7 +199,7 @@ class KB_Indexer:
             RuntimeError: If read operation fails.
         """
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"FAISS index not found at {file_path}")
+            raise FileSystemException(f"FAISS index not found at {file_path}")
 
         try:
             index = faiss.read_index(file_path)
@@ -186,7 +207,10 @@ class KB_Indexer:
             return index
         except Exception as e:
             logger.error(f"Failed to load FAISS index: {e}")
-            raise RuntimeError(f"Failed to load FAISS index: {e}") from e
+            raise FAISSException(
+                f"FAISS read operation failed: {e}",
+                trace=str(e)
+            )
 
     @staticmethod
     def verify_index(file_path: str) -> bool:
@@ -507,11 +531,11 @@ class KB_Service:
         logger.info(f"Indexed {len(vectors_data)} chunks for KB {kb.id}")
 
         # Save index to disk
-        index_path = os.path.join(INDEXES_DIR, f"{kb.id}.index")
-        self.indexer.save_index(index, index_path)
+        index_path = INDEXES_DIR / f"{kb.id}.index"
+        self.indexer.save_index(index, str(index_path))
 
         # Update database
-        self.repo.update_kb_index_path(db, kb, index_path)
+        self.repo.update_kb_index_path(db, kb, str(index_path))
         self.repo.update_vector_store_data(db, vector_store, vectors_data)
 
     def _update_index(

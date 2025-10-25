@@ -11,7 +11,7 @@ Endpoints:
     POST /knowledge_base/create - Create new KB assistant or update existing
 """
 from typing import List
-from fastapi import BackgroundTasks, Depends, HTTPException, APIRouter
+from fastapi import BackgroundTasks, Depends, APIRouter
 from sqlalchemy.orm import Session
 
 from src.database.core import get_db, SessionLocal
@@ -21,6 +21,11 @@ from src.domains.knowledge_base.schemas import (
     KnowledgeBaseResponse
 )
 from src.core.logging import logger
+from src.core.exceptions import (
+    KnowledgeBaseNotFoundException,
+    DatabaseException,
+    InvalidInputException,
+)
 
 
 router = APIRouter(prefix="/knowledge_base", tags=["knowledge_base"])
@@ -41,7 +46,8 @@ def get_kb_job_status(
         dict: status, status_updated_at, error_message
 
     Raises:
-        HTTPException: 404 if KB job not found.
+        KnowledgeBaseNotFoundException: If KB job not found.
+        DatabaseException: If error fetching status.
     """
     service = KB_Service()
 
@@ -51,11 +57,14 @@ def get_kb_job_status(
 
     except ValueError as e:
         logger.error(f"KB job not found: {e}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise KnowledgeBaseNotFoundException(llm_id)
 
     except Exception as e:
         logger.error(f"Error fetching KB job status: {e}")
-        raise HTTPException(status_code=500, detail=f"Error fetching KB job status: {e}")
+        raise DatabaseException(
+            "Error fetching KB job status",
+            trace=str(e)
+        )
 
 
 @router.post("/create", response_model=KnowledgeBaseResponse)
@@ -86,26 +95,21 @@ def create_knowledge_base(
         KnowledgeBaseResponse: msg and model_id
 
     Raises:
-        HTTPException: 400/404/500 on errors
+        InvalidInputException: If validation fails.
+        KnowledgeBaseNotFoundException: If base LLM not found.
+        DatabaseException: If KB creation fails.
     """
     # Validate payload
     if not payload.paths or not isinstance(payload.paths, list):
-        raise HTTPException(
-            status_code=400,
-            detail="Paths must be a non-empty list of file paths."
+        raise InvalidInputException(
+            "paths (must be non-empty list)"
         )
 
     if not payload.selectedModel:
-        raise HTTPException(
-            status_code=400,
-            detail="Selected model ID is required."
-        )
+        raise InvalidInputException("selectedModel")
 
     if not payload.modelName:
-        raise HTTPException(
-            status_code=400,
-            detail="Model name is required."
-        )
+        raise InvalidInputException("modelName")
 
     logger.info(
         f"KB creation request: base_llm={payload.selectedModel}, "
@@ -121,10 +125,7 @@ def create_knowledge_base(
         base_llm = repo.get_local_llm_by_id(db, payload.selectedModel)
 
         if not base_llm:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Base LLM {payload.selectedModel} not found or not local."
-            )
+            raise KnowledgeBaseNotFoundException(payload.selectedModel)
 
         if base_llm.is_attached_to_kb:
             # Update existing KB
@@ -174,13 +175,13 @@ def create_knowledge_base(
 
     except ValueError as e:
         logger.error(f"Validation error: {e}")
-        raise HTTPException(status_code=404, detail=str(e))
+        raise KnowledgeBaseNotFoundException(payload.selectedModel)
 
     except Exception as e:
         logger.error(f"Error creating KB assistant: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error creating Knowledge Base Assistant: {str(e)}"
+        raise DatabaseException(
+            "Error creating Knowledge Base Assistant",
+            trace=str(e)
         )
 
 
