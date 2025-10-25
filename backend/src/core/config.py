@@ -91,6 +91,31 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 TRAINING_DATASETS_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-HF_API = HfApi(token=HF_TOKEN)
+# Lazy-loaded HuggingFace API client
+_HF_API: Optional[HfApi] = None
+
+def get_hf_api() -> HfApi:
+    """Get or initialize HuggingFace API client (lazy-loaded singleton).
+    
+    Provides thread-safe lazy initialization of HfApi client. The client is
+    created only when first requested, avoiding unnecessary initialization
+    during imports or when working offline.
+    
+    Returns:
+        HfApi: Configured HuggingFace API client with authentication token.
+    
+    Note:
+        Thread-safe through Python's GIL. Multiple calls return same instance.
+        Token is loaded from HF_TOKEN environment variable.
+    
+    Example:
+        >>> from src.core import config
+        >>> api = config.get_hf_api()
+        >>> models = api.list_models(search="gemma")
+    """
+    global _HF_API
+    if _HF_API is None:
+        _HF_API = HfApi(token=HF_TOKEN)
+    return _HF_API
 
 LLM_Engine : Optional[Type[BaseEngine]] = None # It is defined in the lifespan at FastAPI init.

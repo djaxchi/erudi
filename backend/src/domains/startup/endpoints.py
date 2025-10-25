@@ -21,9 +21,10 @@ from sqlalchemy.orm import Session
 
 from src.database.core import get_db
 from src.domains.startup.repository import Startup_Variables_Repository
-from src.domains.startup.schemas import WelcomePopupResponse
+from src.domains.startup.schemas import WelcomePopupResponse, ConnectionStatusResponse
 from src.core.logging import logger
 from src.core.exceptions import DatabaseException
+from src.database.seed import is_online
 
 router = APIRouter(prefix="/startup", tags=["startup"])
 
@@ -94,3 +95,62 @@ async def get_welcome_popup_status(
             trace=str(e)
         )
 
+
+@router.get("/connection-status", response_model=ConnectionStatusResponse)
+async def get_connection_status(
+    startup_repo: Startup_Variables_Repository = Depends(get_startup_repository),
+):
+    """Get application connection status and model seeding information.
+
+    Provides real-time information about:
+    - Whether app is in offline mode (last seeded from JSON fallback)
+    - Whether internet connectivity is currently available
+    - Last model seeding timestamp
+    - Whether models database has been seeded
+
+    Used by frontend to display warnings when model downloads are unavailable.
+
+    Args:
+        startup_repo: Injected startup variables repository.
+
+    Returns:
+        ConnectionStatusResponse: Connection and seeding status information.
+
+    Raises:
+        DatabaseException: If database operation fails.
+
+    Example:
+        GET /startup/connection-status
+        {
+            "offline_mode": false,
+            "can_download_models": true,
+            "last_seeded_at": "2025-01-24T10:30:00Z",
+            "models_seeded": true
+        }
+    """
+    try:
+        # Get or create singleton startup variables
+        vars = startup_repo.get_or_create()
+        
+        # Check current internet connectivity
+        current_online_status = is_online()
+        
+        logger.debug(
+            f"Connection status: offline_mode={vars.offline_mode}, "
+            f"can_download={current_online_status}, "
+            f"models_seeded={vars.models_seeded}"
+        )
+        
+        return ConnectionStatusResponse(
+            offline_mode=vars.offline_mode,
+            can_download_models=current_online_status,
+            last_seeded_at=vars.last_seeded_at,
+            models_seeded=vars.models_seeded
+        )
+        
+    except Exception as e:
+        logger.exception(f"Failed to get connection status: {e}")
+        raise DatabaseException(
+            "Failed to get connection status",
+            trace=str(e)
+        )

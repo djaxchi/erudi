@@ -58,8 +58,8 @@ Examples:
     >>> print(params.to_string() if params else "Unknown")  # "7B"
 
 Dependencies:
-    - huggingface_hub: HF_API for repo info fetching
-    - src.core.config: HF_API singleton instance
+    - huggingface_hub: get_hf_api() for repo info fetching
+    - src.core.config: get_hf_api() lazy loader function
     - src.core.logging: Structured logging
     - dataclasses: Type-safe data structures
     - enum: Enumeration types
@@ -78,7 +78,7 @@ from typing import Optional, Dict, Tuple, List
 from huggingface_hub import ModelInfo
 
 from src.core.logging import logger
-from src.core.config import HF_API
+from src.core.config import get_hf_api
 
 
 # ============ Enumerations ============
@@ -404,7 +404,7 @@ def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
         >>> print(size.to_string())  # "~3.0-4.0 GB" (estimated for 4-bit ~7B)
 
     Notes:
-        - Uses HF_API.repo_info with files_metadata=True
+        - Uses get_hf_api().repo_info with files_metadata=True
         - Sums all file sizes in repo (weights, config, tokenizer)
         - Fallback logic: Detects quantization type and parameter count
         - Error handling: Logs error and returns best estimate
@@ -413,7 +413,8 @@ def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
     try:
         logger.debug(f"Fetching disk size for quantized repo: {link_hf_quant_repo}")
         
-        repo_info = HF_API.repo_info(link_hf_quant_repo, files_metadata=True)
+        hf_api = get_hf_api()
+        repo_info = hf_api.repo_info(link_hf_quant_repo, files_metadata=True)
         total_size_bytes = sum(file.size for file in repo_info.siblings if file.size)
         
         # Convert to GB with high precision
