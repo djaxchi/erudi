@@ -41,7 +41,7 @@ Examples:
 
 import asyncio, threading, platform, importlib
 from datetime import datetime, timedelta
-from typing import Any, Optional, Tuple, Generator, Union, Type
+from typing import Any, Optional, Tuple, Generator, Union, Type, Dict
 from abc import ABC, abstractmethod, ABCMeta
 from pathlib import Path
 
@@ -224,6 +224,204 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 top_p=0.9
             ):
                 print(token, end="", flush=True)
+
+        """
+        pass
+
+    # ======================= HARDWARE DETECTION & EVALUATION =======================
+    @classmethod
+    @abstractmethod
+    def get_hardware_info(cls) -> Dict[str, Any]:
+        """Get comprehensive hardware information for this backend.
+        
+        Returns detailed hardware specifications including CPU, GPU/accelerator,
+        memory, and platform-specific details. Implementation varies by backend:
+        - MLX: Apple Silicon chip model, unified memory, MPS availability
+        - CUDA: NVIDIA GPU model, CUDA cores, separate VRAM
+        - CPU: Processor model, core count, system RAM
+        
+        Returns:
+            Dict containing hardware specifications with the following structure:
+            {
+                "system": {
+                    "platform": str,  # "Darwin", "Linux", "Windows"
+                    "platform_version": Optional[str],
+                    "machine": str,  # "arm64", "x86_64", etc.
+                    "processor": str
+                },
+                "cpu": {
+                    "model": str,
+                    "architecture": str,
+                    "total_cores": int,
+                    "logical_cores": int,
+                    "is_apple_silicon": bool,  # MLX only
+                    "performance_cores": Optional[int],  # MLX only
+                    "efficiency_cores": Optional[int],  # MLX only
+                },
+                "memory": {
+                    "total_memory_gb": float,
+                    "available_memory_gb": float,
+                    "memory_pressure": float,  # 0.0-1.0
+                    "memory_type": str,  # "unified" (MLX) or "system" (CPU/CUDA)
+                },
+                "gpu": {
+                    "gpu_name": str,
+                    "gpu_cores": Optional[int],  # MLX: GPU cores, CUDA: CUDA cores
+                    "memory_bandwidth_gbs": Optional[float],
+                    "vram_total_gb": Optional[float],  # CUDA only
+                    "vram_available_gb": Optional[float],  # CUDA only
+                    "compute_capability": Optional[str],  # CUDA only
+                    "cuda_version": Optional[str],  # CUDA only
+                    "mps_supported": Optional[bool],  # MLX only
+                    "unified_memory": bool,  # True for MLX, False for CUDA/CPU
+                },
+                "accelerator": {  # MLX only
+                    "neural_engine_tops": Optional[float],
+                    "architecture": Optional[str],  # "3nm", "5nm", etc.
+                },
+                "storage": {
+                    "total_gb": float,
+                    "available_gb": float,
+                    "usage_percentage": float
+                },
+                "backend_type": str,  # "mlx", "cuda", or "cpu"
+                "timestamp": float
+            }
+            
+        Raises:
+            EngineException: If hardware detection fails critically.
+            
+        Note:
+            Implementation should handle errors gracefully and return fallback
+            values rather than raising exceptions for non-critical failures.
+            
+        Examples:
+            >>> engine = BaseEngine.get_engine()
+            >>> hw_info = engine.get_hardware_info()
+            >>> print(f"GPU: {hw_info['gpu']['gpu_name']}")
+            >>> print(f"Total Memory: {hw_info['memory']['total_memory_gb']} GB")
+
+        """
+        pass
+
+    @classmethod
+    @abstractmethod
+    def warm_up_accelerator(cls, duration_seconds: float = 1.0) -> bool:
+        """Warm up the hardware accelerator (GPU/Neural Engine) for optimal performance.
+        
+        Runs compute-intensive operations to bring the accelerator to optimal
+        performance state before benchmarking or inference. Implementation varies:
+        - MLX: Matrix operations on MPS device
+        - CUDA: CUDA kernel warm-up on GPU
+        - CPU: CPU cache warm-up (minimal effect)
+        
+        Args:
+            duration_seconds: How long to run warm-up operations (default: 1.0).
+            
+        Returns:
+            bool: True if warm-up completed successfully, False otherwise.
+            
+        Raises:
+            EngineException: If warm-up fails critically (rare, usually returns False).
+            
+        Note:
+            This is particularly important for GPUs that dynamically adjust clocks.
+            MLX/MPS benefits significantly from warm-up due to power management.
+            CPU backend may implement minimal warm-up or skip entirely.
+            
+        Examples:
+            >>> engine = BaseEngine.get_engine()
+            >>> success = engine.warm_up_accelerator(1.5)
+            >>> if success:
+            ...     print("Accelerator ready for benchmarking")
+
+        """
+        pass
+
+    @classmethod
+    @abstractmethod
+    def get_performance_evaluation(cls) -> Dict[str, Any]:
+        """Calculate comprehensive performance metrics and scores for this backend.
+        
+        Evaluates hardware capabilities and returns performance scores for
+        inference and fine-tuning workloads. Scoring methodology varies by backend
+        but results are normalized to 0-100 scale for cross-platform comparison.
+        
+        Scoring Components:
+            - **Inference Score**: Optimized for generation speed and latency.
+              Weights: GPU/accelerator compute (35-60%), memory bandwidth (20-30%),
+              memory capacity (10-30%), CPU (5-10%).
+              
+            - **Fine-tuning Score**: Optimized for training throughput and memory.
+              Weights: Memory capacity (40-50%), GPU compute (25-35%),
+              memory bandwidth (20%), CPU (5%).
+        
+        Returns:
+            Dict containing performance metrics and scores:
+            {
+                # Hardware identification
+                "backend_type": str,  # "mlx", "cuda", "cpu"
+                "accelerator_name": str,  # GPU/chip model
+                "cpu_model": str,
+                
+                # Memory metrics
+                "total_memory_gb": float,
+                "available_memory_gb": float,
+                "memory_bandwidth_gbs": Optional[float],
+                
+                # Storage metrics
+                "disk_total_gb": float,
+                "disk_available_gb": float,
+                
+                # Compute metrics
+                "estimated_tflops": Optional[float],  # GPU compute power
+                "compute_units": Optional[int],  # GPU cores or CUDA cores
+                "cpu_performance_units": float,
+                
+                # Backend-specific metrics
+                "neural_engine_tops": Optional[float],  # MLX only
+                "cuda_version": Optional[str],  # CUDA only
+                "compute_capability": Optional[str],  # CUDA only
+                "architecture": Optional[str],  # MLX: "3nm", CUDA: "Ampere"
+                
+                # Performance scores (0-100)
+                "global_inference_score": float,
+                "global_inference_label": str,  # "Very Good", "Good", "Medium", "Poor"
+                "global_finetuning_score": float,
+                "global_finetuning_label": str,
+                "gpu_score": float,
+                "cpu_score": float,
+                "memory_score": float,
+                
+                # Technical details
+                "unified_memory": bool,
+                "accelerator_available": bool,
+                "system_platform": str,
+                
+                # Performance breakdown for debugging
+                "performance_breakdown": {
+                    "compute_score": float,
+                    "memory_bandwidth_score": float,
+                    "memory_capacity_score": float,
+                    "cpu_performance_score": float,
+                    # Backend-specific breakdown
+                }
+            }
+            
+        Raises:
+            EngineException: If evaluation fails critically.
+            
+        Note:
+            Scores are platform-specific estimates based on hardware specs.
+            Should call warm_up_accelerator() before evaluation for accuracy.
+            Returns fallback scores if evaluation fails rather than raising.
+            
+        Examples:
+            >>> engine = BaseEngine.get_engine()
+            >>> engine.warm_up_accelerator(1.5)
+            >>> eval_result = engine.get_performance_evaluation()
+            >>> print(f"Inference: {eval_result['global_inference_score']}/100")
+            >>> print(f"Fine-tuning: {eval_result['global_finetuning_score']}/100")
 
         """
         pass
