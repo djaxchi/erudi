@@ -738,6 +738,37 @@ class EngineException(AppBaseException):
         )
 
 
+class HardwareException(AppBaseException):
+    """Exception raised for hardware detection and profiling failures.
+    
+    Covers GPU detection errors, hardware capability assessment failures,
+    and issues during hardware profile creation or updates.
+    
+    Examples:
+        from src.core.exceptions import HardwareException
+        try:
+            profile = detect_hardware()
+        except RuntimeError as e:
+            raise HardwareException(f"Hardware detection failed: {e}")
+
+    """
+    
+    def __init__(self, message: str, trace: Optional[str] = None):
+        """Initialize hardware exception with error details.
+        
+        Args:
+            message: Description of the hardware failure.
+            trace: Optional stack trace or additional context.
+
+        """
+        super().__init__(
+            message=message,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            erudi_code="HARDWARE_ERROR",
+            trace=trace
+        )
+
+
 class EmbeddingError(AppBaseException):
     """Exception raised for embedding generation failures.
     

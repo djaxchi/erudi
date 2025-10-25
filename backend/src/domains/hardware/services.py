@@ -31,7 +31,7 @@ from src.domains.hardware.repository import Hardware_Repository
 from src.entities.HardwareProfile import HardwareProfile
 from src.core.logging import logger
 from src.core.exceptions import HardwareException
-from src.utils import vars
+from src.core import config
 
 
 class Hardware_Service:
@@ -128,14 +128,14 @@ class Hardware_Service:
         try:
             logger.debug("Starting hardware detection via LLM_Engine")
             
-            if not vars.LLM_Engine:
+            if not config.LLM_Engine:
                 raise HardwareException("LLM_Engine not initialized")
             
             # Get basic hardware info (backend_type, cpu, memory, disk)
-            basic_info = vars.LLM_Engine.get_hardware_info()
+            basic_info = config.LLM_Engine.get_hardware_info()
             
             # Get performance evaluation (scores, labels, accelerator details)
-            performance_info = vars.LLM_Engine.get_performance_evaluation()
+            performance_info = config.LLM_Engine.get_performance_evaluation()
             
             # Merge dictionaries
             hardware_data = {**basic_info, **performance_info}
@@ -174,11 +174,11 @@ class Hardware_Service:
         try:
             logger.info(f"Starting hardware warm-up: duration={duration_seconds}s")
             
-            if not vars.LLM_Engine:
+            if not config.LLM_Engine:
                 logger.warning("LLM_Engine not initialized, skipping warm-up")
                 return False
             
-            success = vars.LLM_Engine.warm_up_accelerator(duration_seconds)
+            success = config.LLM_Engine.warm_up_accelerator(duration_seconds)
             
             if success:
                 logger.info("Hardware warm-up completed successfully")

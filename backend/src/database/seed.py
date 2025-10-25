@@ -52,14 +52,15 @@ Note:
 
 import os
 import shutil
-from datetime import datetime
+import json
+from datetime import datetime, timedelta
 from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
 from src.core.logging import logger
-from src.core.config import HF_API
+from src.core.config import get_hf_api
 from src.core import config
 from src.database.core import Base, db_engine, SessionLocal
 from src.core.exceptions import (
@@ -91,6 +92,78 @@ from src.entities.VectorStore import VectorStore
 from src.entities.KnowledgeBase import KnowledgeBase
 from src.entities.KBJob import KBJobModel
 from src.entities.StartupVariables import StartupVariables
+
+
+# ============ Connectivity & Offline Mode Helpers ============
+
+def is_online() -> bool:
+    """Check if internet connection is available via HuggingFace API.
+    
+    Attempts a lightweight API call to verify connectivity. Used to determine
+    whether to seed models from HuggingFace or use offline fallback.
+    
+    Returns:
+        bool: True if online and can reach HuggingFace, False otherwise.
+    
+    Note:
+        Uses a 5-second timeout to avoid blocking startup for too long.
+        Caches result is not needed (only called once during startup).
+    
+    Example:
+        >>> if is_online():
+        ...     seed_from_huggingface()
+        ... else:
+        ...     seed_from_local_cache()
+    """
+    try:
+        api = get_hf_api()
+        # Lightweight check: Try to get model count (doesn't download anything)
+        api.list_models(limit=1).__iter__().__next__()
+        return True
+    except Exception as e:
+        logger.warning(f"Internet connectivity check failed: {e}")
+        return False
+
+
+def load_base_models_fallback() -> List[Dict[str, Any]]:
+    """Load base models from embedded JSON fallback file.
+    
+    Used when offline or HuggingFace API is unavailable. Provides minimal
+    model metadata to allow app functionality without internet.
+    
+    Returns:
+        List[Dict]: List of base model configurations from JSON file.
+    
+    Raises:
+        FileSystemException: If fallback JSON file is missing or corrupted.
+    
+    Note:
+        JSON file located at: src/database/base_models_fallback.json
+        Contains 7 curated base models with essential metadata.
+    
+    Example:
+        >>> models = load_base_models_fallback()
+        >>> print(models[0]['name'])  # "Gemma-1B"
+    """
+    fallback_path = config.ROOT_DIR / "src" / "database" / "base_models_fallback.json"
+    
+    try:
+        with open(fallback_path, 'r') as f:
+            models = json.load(f)
+        
+        logger.info(f"Loaded {len(models)} base models from offline fallback")
+        return models
+    
+    except FileNotFoundError:
+        raise FileSystemException(
+            f"Base models fallback file not found: {fallback_path}",
+            trace="FileNotFoundError"
+        )
+    except json.JSONDecodeError as e:
+        raise FileSystemException(
+            f"Failed to parse base models fallback JSON: {e}",
+            trace=str(e)
+        )
 
 
 # ============ Configuration Data Classes ============
@@ -162,24 +235,32 @@ class Quality_Filters:
 # ============ Model Seeding Service ============
 
 class Model_Seeder:
-    """Handles seeding of base and derived models from HuggingFace."""
+    """Handles seeding of base and derived models from HuggingFace.
+    
+    Supports both online and offline modes:
+    - Online: Fetches fresh metadata from HuggingFace API
+    - Offline: Uses embedded JSON fallback with minimal metadata
+    """
     
     def __init__(
         self,
         db: Session,
-        hf_api,
-        quality_filters: Optional[Quality_Filters] = None
+        hf_api=None,
+        quality_filters: Optional[Quality_Filters] = None,
+        offline_mode: bool = False
     ):
         """Initialize model seeder.
         
         Args:
             db: Active database session.
-            hf_api: HuggingFace API client.
+            hf_api: HuggingFace API client (None if offline).
             quality_filters: Quality filtering configuration.
+            offline_mode: If True, skip API calls and use fallback data.
         """
         self.db = db
         self.hf_api = hf_api
         self.filters = quality_filters or Quality_Filters()
+        self.offline_mode = offline_mode
     
     def seed_base_models(self, models: List[Model_Config]) -> int:
         """Seed curated base models with quantized variants.
@@ -226,6 +307,88 @@ class Model_Seeder:
         
         self.db.commit()
         return added_count
+    
+    def seed_base_models_offline(self) -> int:
+        """Seed base models from embedded JSON fallback (offline mode).
+        
+        Used when internet is unavailable or HuggingFace API fails. Loads
+        models from static JSON file with minimal but sufficient metadata.
+        
+        Returns:
+            Number of models successfully added from fallback.
+        
+        Raises:
+            FileSystemException: If fallback JSON is missing or corrupted.
+            DatabaseException: If database operations fail.
+        
+        Note:
+            This method ONLY seeds base models. Derived models are skipped
+            in offline mode as they require fresh HuggingFace searches.
+        
+        Example:
+            >>> seeder = Model_Seeder(db, offline_mode=True)
+            >>> count = seeder.seed_base_models_offline()
+            >>> print(f"Seeded {count} base models in offline mode")
+        """
+        logger.warning("Seeding in OFFLINE mode using fallback data")
+        
+        fallback_models = load_base_models_fallback()
+        added_count = 0
+        
+        for model_data in fallback_models:
+            # Check if model already exists
+            if self._model_exists(model_data['name']):
+                logger.debug(f"Skipping existing model: {model_data['name']}")
+                continue
+            
+            try:
+                # Create model config from JSON data
+                model_config = Model_Config(
+                    name=model_data['name'],
+                    link=model_data['link'],
+                    model_type=model_data['type']
+                )
+                
+                # Create LLM entity with fallback metadata
+                llm = self._create_base_llm_from_json(model_data)
+                self.db.add(llm)
+                self.db.flush()
+                added_count += 1
+                logger.info(f"Added base model (offline): {model_data['name']}")
+                
+            except Exception as e:
+                logger.error(f"Failed to add offline model {model_data['name']}: {e}")
+                continue
+        
+        self.db.commit()
+        logger.info(f"Offline seeding complete: {added_count} base models added")
+        return added_count
+    
+    def _create_base_llm_from_json(self, model_data: Dict[str, Any]) -> Llm:
+        """Create LLM entity from JSON fallback data.
+        
+        Args:
+            model_data: Dictionary from fallback JSON with keys:
+                name, link, type, param_size, model_metadata
+        
+        Returns:
+            Llm: Entity ready to be added to database.
+        """
+        # Determine quantization
+        quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_data['link'])
+        is_quantized = quant_link is not None
+        actual_link = quant_link if is_quantized else model_data['link']
+        
+        # Use embedded metadata and param_size from JSON
+        return Llm(
+            name=model_data['name'],
+            local=0,
+            link=actual_link,
+            type=model_data['type'],
+            quantized=is_quantized,
+            model_metadata=model_data['model_metadata'],
+            param_size=model_data['param_size']
+        )
     
     def seed_derived_models(
         self,
@@ -819,24 +982,81 @@ class Database_Seeder:
             db = SessionLocal()
         
         try:
-            results = {}
+            results = {
+                "base_models_added": 0,
+                "derived_models_added": 0,
+                "jobs_cleaned": {},
+                "hardware_initialized": False,
+                "startup_vars_initialized": False,
+                "offline_mode": False,
+                "models_seeded": False
+            }
             
-            # Seed base models
-            logger.info("Seeding base models...")
-            model_seeder = Model_Seeder(db, HF_API)
-            results["base_models_added"] = model_seeder.seed_base_models(
-                self.DEFAULT_BASE_MODELS
-            )
+            # Initialize startup variables first
+            logger.info("Initializing startup variables...")
+            startup_init = Startup_Initializer(db)
+            results["startup_vars_initialized"] = startup_init.initialize_if_needed()
             
-            # Seed derived models
-            logger.info("Seeding derived models...")
-            results["derived_models_added"] = model_seeder.seed_derived_models(
-                self.DEFAULT_SEARCH_CONFIGS,
-                top_per_search=30,
-                max_checked=200
-            )
+            # Get or create startup variables singleton
+            startup_vars = db.query(StartupVariables).first()
+            if not startup_vars:
+                startup_vars = StartupVariables()
+                db.add(startup_vars)
+                db.commit()
+                db.refresh(startup_vars)
             
-            # Cleanup jobs
+            # Determine if we need to seed models
+            needs_seeding = False
+            if not startup_vars.models_seeded:
+                needs_seeding = True
+                logger.info("First-time seeding required (models_seeded=False)")
+            elif startup_vars.last_seeded_at is None:
+                needs_seeding = True
+                logger.info("Seeding required (last_seeded_at is None)")
+            else:
+                days_since_last_seed = (datetime.utcnow() - startup_vars.last_seeded_at).days
+                if days_since_last_seed >= 3:
+                    needs_seeding = True
+                    logger.info(f"Reseed required (last seeded {days_since_last_seed} days ago)")
+                else:
+                    logger.info(f"Skipping seed (last seeded {days_since_last_seed} days ago, threshold=3)")
+            
+            # Seed models if needed
+            if needs_seeding:
+                logger.info("Starting model seeding...")
+                online_status = is_online()
+                
+                if online_status:
+                    logger.info("Online mode: seeding from Hugging Face API")
+                    model_seeder = Model_Seeder(db, get_hf_api(), offline_mode=False)
+                    results["base_models_added"] = model_seeder.seed_base_models(
+                        self.DEFAULT_BASE_MODELS
+                    )
+                    results["derived_models_added"] = model_seeder.seed_derived_models(
+                        self.DEFAULT_SEARCH_CONFIGS,
+                        top_per_search=30,
+                        max_checked=200
+                    )
+                    results["offline_mode"] = False
+                else:
+                    logger.warning("Offline mode: seeding from fallback JSON (base models only)")
+                    model_seeder = Model_Seeder(db, offline_mode=True)
+                    results["base_models_added"] = model_seeder.seed_base_models_offline()
+                    results["derived_models_added"] = 0  # Skip derived in offline mode
+                    results["offline_mode"] = True
+                
+                # Update startup variables after successful seeding
+                startup_vars.models_seeded = True
+                startup_vars.last_seeded_at = datetime.utcnow()
+                startup_vars.offline_mode = results["offline_mode"]
+                db.commit()
+                results["models_seeded"] = True
+            else:
+                logger.info("Skipping model seeding (already seeded recently)")
+                results["offline_mode"] = startup_vars.offline_mode
+                results["models_seeded"] = False
+            
+            # Cleanup jobs (always run)
             logger.info("Cleaning up unfinished jobs...")
             job_cleanup = Job_Cleanup_Service(db)
             results["jobs_cleaned"] = job_cleanup.cleanup_all_unfinished_jobs()
@@ -846,16 +1066,13 @@ class Database_Seeder:
             hw_init = Hardware_Initializer(db)
             results["hardware_initialized"] = hw_init.initialize_if_needed()
             
-            # Initialize startup variables
-            logger.info("Initializing startup variables...")
-            startup_init = Startup_Initializer(db)
-            results["startup_vars_initialized"] = startup_init.initialize_if_needed()
-            
             logger.info(
                 f"Startup population completed: "
                 f"base={results['base_models_added']}, "
                 f"derived={results['derived_models_added']}, "
-                f"jobs_cleaned={sum(results['jobs_cleaned'].values())}"
+                f"jobs_cleaned={sum(results['jobs_cleaned'].values())}, "
+                f"offline_mode={results['offline_mode']}, "
+                f"models_seeded={results['models_seeded']}"
             )
             
             return results
