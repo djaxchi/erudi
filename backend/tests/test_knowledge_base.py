@@ -10,14 +10,21 @@ Architecture:
     Tests follow the 3-layer architecture (Repository -> Service -> Endpoints).
     Uses mocks for heavy operations (embeddings, FAISS indexing).
 """
-import os
 import json
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 
-import numpy as np
-import faiss
+import os, sys
+if sys.platform == "darwin":
+    os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1") # Accelerate/vecLib (macOS)
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+import faiss, numpy
+if sys.platform == "darwin":
+    faiss.omp_set_num_threads(1)
 
 from src.domains.knowledge_base.repository import KB_Repository
 from src.domains.knowledge_base.services import KB_Service, KB_Indexer
