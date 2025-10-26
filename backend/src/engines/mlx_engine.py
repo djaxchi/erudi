@@ -78,14 +78,6 @@ from src.core.exceptions import (
 )
 from pathlib import Path
 
-# Import required modules for hardware detection
-try:
-    import psutil
-    import cpuinfo
-    import torch
-except ImportError as e:
-    logging.warning(f"Optional hardware detection dependency missing: {e}")
-
 class MLX_Engine(BaseEngine):
     """Singleton Engine for MLX models and tokenizers runtimes.
     Built for Apple Silicon Backends.
@@ -523,6 +515,12 @@ class MLX_Engine(BaseEngine):
         Returns:
             bool: True if MPS backend is available in PyTorch.
         """
+        # Import required modules for hardware detection
+        try:
+            import torch
+        except ImportError as e:
+            logging.warning(f"Optional hardware detection dependency missing: {e}")
+
         try:
             return torch.backends.mps.is_available()
         except:
@@ -560,6 +558,14 @@ class MLX_Engine(BaseEngine):
             >>> print(f"GPU Cores: {hw_info['gpu']['mlx_gpu_cores']}")
         """
         try:
+            
+            # Import required modules for hardware detection
+            try:
+                import psutil
+                import cpuinfo
+            except ImportError as e:
+                logging.warning(f"Optional hardware detection dependency missing: {e}")
+
             # Detect chip model
             chip_model = cls._detect_apple_silicon_chip()
             
@@ -677,6 +683,14 @@ class MLX_Engine(BaseEngine):
             return False
         
         try:
+            
+            # Import required modules for hardware detection
+            try:
+                import torch
+            except ImportError as e:
+                logging.warning(f"Optional hardware detection dependency missing: {e}")
+                
+
             logging.info(f"Warming up MPS device for {duration_seconds}s...")
             start_time = time.time()
             
