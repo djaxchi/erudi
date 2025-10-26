@@ -227,4 +227,8 @@ data/db/
 # Logs and temporary files
 *.log
 
+# Builds and artifacts
+artifacts/llama-cpp/
+forks/llama-cpp/build-*/
+
 # End of https://www.toptal.com/developers/gitignore/api/python,terraform,ansible
