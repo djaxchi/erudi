@@ -464,29 +464,28 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         machine = platform.machine().lower()   # arm64, x86_64, etc.
         llm_engine = None
 
-        return CPU_Engine # Commenting everything out to test CPU Engine on a M4 Mac (which should use MLX Engine)
-        # try:
-        #     if system == "darwin": # MacOS
-        #         if "arm" in machine:
-        #             llm_engine = MLX_Engine
-        #         elif "x86" in machine:
-        #             llm_engine = CPU_Engine
-        #     elif system in ("linux", "windows"):
-        #         try:
-        #             torch = importlib.import_module("torch")
-        #         except:
-        #             raise
-        #         if torch.backends.cuda.is_built() and torch.cuda.is_available():
-        #             llm_engine = CUDA_Engine
-        #         else:
-        #             llm_engine = CPU_Engine
-        #             logger.info(f"System: {system} and CUDA not availabl.")
-        #     logger.info(f"Engine chosen: {llm_engine}")
-        #     if llm_engine is None:
-        #         raise
-        #     return llm_engine
-        # except Exception as e:
-        #     raise EngineException(message="Error selecting the LLM Engine.", trace=e)
+        try:
+            if system == "darwin": # MacOS
+                if "arm" in machine:
+                    llm_engine = MLX_Engine
+                elif "x86" in machine:
+                    llm_engine = CPU_Engine
+            elif system in ("linux", "windows"):
+                try:
+                    torch = importlib.import_module("torch")
+                except:
+                    raise
+                if torch.backends.cuda.is_built() and torch.cuda.is_available():
+                    llm_engine = CUDA_Engine
+                else:
+                    llm_engine = CPU_Engine
+                    logger.info(f"System: {system} and CUDA not availabl.")
+            logger.info(f"Engine chosen: {llm_engine}")
+            if llm_engine is None:
+                raise
+            return llm_engine
+        except Exception as e:
+            raise EngineException(message="Error selecting the LLM Engine.", trace=e)
 
     @classmethod
     def _should_cleanup(cls) -> bool:
