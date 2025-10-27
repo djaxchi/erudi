@@ -84,6 +84,7 @@ class MLX_Engine(BaseEngine):
     """
     # Mapping of original model links to MLX-quantized versions (same as in llm_downloader.py)
     MODEL_MAPPING : dict = {
+        "google/gemma-3-270m-it": "mlx-community/gemma-3-270m-it-4bit",
         "mistralai/Mistral-7B-Instruct-v0.3": "mlx-community/Mistral-7B-Instruct-v0.3-4bit",
         "mistralai/Mistral-7B-v0.3": "mlx-community/Mistral-7B-v0.3-4bit",
         "google/gemma-2-2b-it": "mlx-community/gemma-2-2b-it-4bit",
@@ -99,7 +100,7 @@ class MLX_Engine(BaseEngine):
         local_hf_path: Union[str, Path],
         local_dest_path: Union[str, Path],
         quantize: bool = True,
-        q_bits: str = "4",
+        q_bits: int = 4,
     ) -> None:
         """Convert HuggingFace model to MLX 4-bit quantized format.
 
@@ -159,7 +160,45 @@ class MLX_Engine(BaseEngine):
             raise QuantizationException(
                 f"MLX quantization failed: {e}",
                 trace=str(e)
-            ) 
+            )
+
+    @classmethod
+    def _add_stop_sequences_to_tokenizer(cls, tokenizer: Any) -> None:
+        """Add model-specific stop sequences to tokenizer's EOS token ID set.
+        
+        Args:
+            tokenizer: The MLX TokenizerWrapper to modify.
+            
+        Note:
+            Reads model_type from cls._model.model_type attribute.
+            Uses tokenizer.add_eos_token() which converts string to token ID.
+        """
+        # Check if model is loaded
+        if not cls._model:
+            logging.warning("Model not loaded, cannot detect model type for stop sequences")
+            return
+        
+        # Get model_type from the loaded model
+        model_type = None
+        if hasattr(cls._model, 'model_type'):
+            model_type = str(cls._model.model_type).lower()
+        elif hasattr(cls._model, '__class__'):
+            # Fallback: check module name
+            module_name = cls._model.__class__.__module__.lower()
+            if 'gemma' in module_name:
+                model_type = 'gemma'
+        
+        if not model_type:
+            logging.debug("Could not determine model type for stop sequences")
+            return
+        
+        # Gemma models need explicit <end_of_turn> as EOS token
+        if "gemma" in model_type:
+            try:
+                tokenizer.add_eos_token("<end_of_turn>")
+                logging.info(f"Added '<end_of_turn>' to EOS token IDs for {model_type}")
+            except Exception as e:
+                logging.warning(f"Failed to add EOS token for {model_type}: {e}")
 
     @classmethod
     def generate_stream(
@@ -194,12 +233,19 @@ class MLX_Engine(BaseEngine):
         
         Raises:
             Exception: If model loading or generation fails
+        
+        Note:
+            Detects and handles model-specific stop sequences for models where
+            tokenizer EOS detection is insufficient (e.g., some Gemmas (270M)).
         """
 
         mlx_lm = importlib.import_module("mlx_lm")
 
         with cls._lock:
             try:
+                # Add model-specific stop sequences to tokenizer if needed
+                cls._add_stop_sequences_to_tokenizer(tokenizer)
+                
                 # Tokenize prompt
                 prompt_tokens = tokenizer.apply_chat_template(prompt, add_generation_prompt=True)
             except Exception as e:
@@ -225,6 +271,7 @@ class MLX_Engine(BaseEngine):
                 # Generate stream
                 text = ""
                 logging.info("=" * 10)
+                
                 for response in mlx_lm.stream_generate(
                     model,
                     tokenizer,
@@ -237,6 +284,7 @@ class MLX_Engine(BaseEngine):
                     if response:
                         token_repr = response.text.replace('\n', '\\n').replace('\t', '\\t')
                         logging.info(f"Yielding token: {token_repr}")
+                        
                         text += response.text
                         yield response.text
 

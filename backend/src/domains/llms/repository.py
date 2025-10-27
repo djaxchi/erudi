@@ -190,6 +190,7 @@ class Llm_Repository:
             Does not commit. Caller must handle db.commit() and file cleanup.
         """
         logger.info(f"Deleting LLM {llm.id}: {llm.name}")
+        
         self.db.delete(llm)
         self.db.flush()
 

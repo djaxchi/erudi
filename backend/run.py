@@ -118,7 +118,7 @@ def force_mp_spawn():
 force_mp_spawn()
 
 # ---------- Import the FastAPI app AFTER env/path setup ----------
-from app.main import app as fastapi_app  # noqa: E402
+from src.main import app as fastapi_app  # noqa: E402
 import uvicorn  # noqa: E402
 
 def port_open(host: str, port: int, timeout: float = 0.4) -> bool:

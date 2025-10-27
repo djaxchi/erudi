@@ -930,6 +930,7 @@ class Database_Seeder:
     
     # Default base models
     DEFAULT_BASE_MODELS = [
+        Model_Config("Gemma-270M", "google/gemma-3-270m-it", "gemma"),
         Model_Config("Gemma-1B", "google/gemma-3-1b-it", "gemma"),
         Model_Config("Gemma-2B", "google/gemma-2-2b-it", "gemma"),
         Model_Config("Gemma-4B", "google/gemma-3-4b-it", "gemma"),
