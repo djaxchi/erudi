@@ -94,6 +94,24 @@ echo "[build] Compiling..."
 echo "[install] Installing to $INSTALL_DIR..."
 "$VENV_CMAKE" --install "$BUILD_DIR" --config Release
 
+# -------- install Python conversion tools --------
+PYTHON_TOOLS_SRC="${SRC_DIR}/gguf-py"
+PYTHON_TOOLS_DEST="${INSTALL_DIR}/bin/gguf-py"
+
+if [ -d "$PYTHON_TOOLS_SRC" ]; then
+  echo "[install] Copying Python gguf-py module..."
+  cp -r "$PYTHON_TOOLS_SRC" "$PYTHON_TOOLS_DEST"
+  echo "[install] Python tools available at: $PYTHON_TOOLS_DEST"
+else
+  echo "[warning] gguf-py not found at $PYTHON_TOOLS_SRC"
+  echo "[warning] HF→GGUF conversion will not work without it"
+fi
+
+# Copy conversion scripts
+echo "[install] Copying conversion scripts..."
+cp "${SRC_DIR}"/convert*.py "${INSTALL_DIR}/bin/" 2>/dev/null || true
+
 echo "[done] llama.cpp CPU artifacts available under: $INSTALL_DIR"
 echo "[done] test with:"
 echo "       backend/artifacts/llama-cpp/cpu/bin/llama-cli -h"
+echo "       backend/artifacts/llama-cpp/cpu/bin/convert_hf_to_gguf.py --help"

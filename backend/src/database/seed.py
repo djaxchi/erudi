@@ -1145,7 +1145,7 @@ class Database_Seeder:
 
 # ============ Legacy API Compatibility ============
 
-async def createTables() -> None:
+async def create_tables() -> None:
     """Legacy API: Create database tables.
     
     Deprecated: Use Database_Seeder().create_tables() instead.
