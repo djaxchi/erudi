@@ -1,7 +1,7 @@
 // See the Electron documentation for details on how to use preload scripts:
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 
-const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const { contextBridge, ipcRenderer, webUtils, shell} = require('electron');
 
 // Vérifie si preload.js est bien chargé
 console.log("Le script preload.js est chargé");
@@ -20,6 +20,10 @@ contextBridge.exposeInMainWorld('electron', {
     
     console.log('Falling back to file.path:', file.path);
     return file.path;
+  },
+  openExternal: (url) => {
+    console.log("Ouverture du lien externe :", url);
+    shell.openExternal(url);
   }
 });
 
@@ -28,4 +32,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openDataFolder: () => ipcRenderer.invoke('data:openFolder'),
   clearAllData: () => ipcRenderer.invoke('data:clearAll')
 });
+
+
 

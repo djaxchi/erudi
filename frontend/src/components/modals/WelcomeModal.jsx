@@ -60,7 +60,7 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
         >
             <div 
                 className={[
-                    "rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto",
+                    "rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto custom-scroll",
                     "border border-white/10",
                     "bg-[rgba(22,40,36,0.45)] backdrop-blur-[18px] saturate-[1.4]",
                     "shadow-[0_8px_30px_-4px_rgba(0,0,0,0.45),0_2px_6px_-1px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]",

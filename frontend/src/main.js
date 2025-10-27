@@ -4,7 +4,7 @@ const { spawn } = require("child_process");
 const fs = require('fs');
 const os = require('os');
 
-// Add this line to define the entry point
+// define the entry point
 const MAIN_WINDOW_WEBPACK_ENTRY = process.env.MAIN_WINDOW_WEBPACK_ENTRY || 'http://localhost:3000';
 
 let backendProcess = null;
@@ -515,6 +515,11 @@ const createWindow = () => {
     titleBarStyle: 'default',
     frame: true,
     icon: process.platform !== 'darwin' ? path.join(__dirname, '..', 'assets', 'icons', 'icon.png') : undefined,
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
   });
 
   mainWindow.on('closed', () => {
