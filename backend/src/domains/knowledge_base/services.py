@@ -27,19 +27,12 @@ Examples:
     ...     file_paths=["/uploads/q1.pdf"]
     ... )
 """
-import os, sys
-if sys.platform == "darwin":
-    os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1") # Accelerate/vecLib (macOS)
-    os.environ.setdefault("OMP_NUM_THREADS", "1")
-    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-    os.environ.setdefault("MKL_NUM_THREADS", "1")
-    os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
-import faiss, numpy
-if sys.platform == "darwin":
-    faiss.omp_set_num_threads(1)
-
+import os
 from typing import List, Dict, Tuple, Optional, Any
 from datetime import datetime
+
+import faiss
+import numpy
 
 from sqlalchemy.orm import Session
 

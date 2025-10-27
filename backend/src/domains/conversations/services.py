@@ -397,6 +397,9 @@ class ConversationService:
         # Update conversation timestamp
         self.conversation_repo.update_last_message_time(conversation_id)
         
+        # Commit user message immediately so it's visible
+        self.db.commit()
+        
         # Get prompting strategy
         strategy = get_prompting_strategy(llm.param_size)
         logger.info(f"Using prompting strategy for {llm.param_size}B model: {strategy}")
@@ -472,6 +475,9 @@ class ConversationService:
             
             # Update conversation timestamp
             self.conversation_repo.update_last_message_time(conversation_id)
+            
+            # Commit all changes (user message + assistant message + timestamp)
+            self.db.commit()
 
     async def _stream_blocking_generator(
         self,

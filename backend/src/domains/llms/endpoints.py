@@ -310,6 +310,12 @@ async def delete_llm(
         if llm.link and os.path.exists(llm.link):
             shutil.rmtree(llm.link, ignore_errors=True)
             logger.info(f"Deleted model files: {llm.link}")
+            
+            # Check and delete residual temp files (e.g., temp_36 for llm.link = data/models/36)
+            temp_path = config.LLM_DIR / f"temp_{llm.id}"
+            if os.path.exists(str(temp_path)):
+                shutil.rmtree(str(temp_path), ignore_errors=True)
+                logger.warning(f"Deleting residual temp files associated to llm: {temp_path}")
         
         # Delete database record
         llm_repo.delete(llm)
