@@ -192,7 +192,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         max_tokens: int,
         temperature: float,
         top_p: float,
-        *args
+        **kwargs
     ) -> Generator[str, None, None]:
         """Generate text tokens in streaming fashion.
         
@@ -206,7 +206,9 @@ class BaseEngine(ABC, metaclass=EngineMeta):
             max_tokens: Maximum tokens to generate.
             temperature: Sampling temperature (0.0 = greedy, higher = more random).
             top_p: Nucleus sampling threshold (0.0-1.0).
-            *args: Engine-specific generation parameters.
+            **kwargs: Engine-specific generation parameters (e.g., repetition_penalty, 
+                     top_k, min_p). Unsupported parameters are silently ignored by
+                     individual engine implementations.
             
         Yields:
             String tokens as they are generated.
@@ -214,6 +216,11 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         Raises:
             EngineException: If inference fails (OOM, model error, etc.).
             RuntimeError: If model or tokenizer is not initialized.
+            
+        Note:
+            Each engine logs which parameters it consumes and which it ignores.
+            This allows service layer to pass all desired parameters without
+            conditional logic based on engine type.
             
         Examples:
             for token in engine.generate_stream(
@@ -457,28 +464,29 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         machine = platform.machine().lower()   # arm64, x86_64, etc.
         llm_engine = None
 
-        try:
-            if system == "darwin": # MacOS
-                if "arm" in machine:
-                    llm_engine = MLX_Engine
-                elif "x86" in machine:
-                    llm_engine = CPU_Engine
-            elif system in ("linux", "windows"):
-                try:
-                    torch = importlib.import_module("torch")
-                except:
-                    raise
-                if torch.backends.cuda.is_built() and torch.cuda.is_available():
-                    llm_engine = CUDA_Engine
-                else:
-                    llm_engine = CPU_Engine
-                    logger.info(f"System: {system} and CUDA not availabl.")
-            logger.info(f"Engine chosen: {llm_engine}")
-            if llm_engine is None:
-                raise
-            return llm_engine
-        except Exception as e:
-            raise EngineException(message="Error selecting the LLM Engine.", trace=e)
+        return CPU_Engine # Commenting everything out to test CPU Engine on a M4 Mac (which should use MLX Engine)
+        # try:
+        #     if system == "darwin": # MacOS
+        #         if "arm" in machine:
+        #             llm_engine = MLX_Engine
+        #         elif "x86" in machine:
+        #             llm_engine = CPU_Engine
+        #     elif system in ("linux", "windows"):
+        #         try:
+        #             torch = importlib.import_module("torch")
+        #         except:
+        #             raise
+        #         if torch.backends.cuda.is_built() and torch.cuda.is_available():
+        #             llm_engine = CUDA_Engine
+        #         else:
+        #             llm_engine = CPU_Engine
+        #             logger.info(f"System: {system} and CUDA not availabl.")
+        #     logger.info(f"Engine chosen: {llm_engine}")
+        #     if llm_engine is None:
+        #         raise
+        #     return llm_engine
+        # except Exception as e:
+        #     raise EngineException(message="Error selecting the LLM Engine.", trace=e)
 
     @classmethod
     def _should_cleanup(cls) -> bool:
@@ -488,7 +496,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         return idle_time > timedelta(seconds=cls._max_idle_time)
 
     @classmethod
-    def _should_reload_model(cls, llm_id: str) -> bool:
+    def _should_not_reload_model(cls, llm_id: str) -> bool:
         return llm_id == cls._model_id and cls._model is not None and cls._tokenizer is not None
 
     @classmethod

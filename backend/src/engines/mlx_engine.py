@@ -213,6 +213,7 @@ class MLX_Engine(BaseEngine):
         repetition_penalty: Optional[float] = None,
         repetition_context_size: Optional[int] = 1024,
         min_p: float = 0.0,
+        **kwargs
     ) -> Generator[str, None, None]:
         """Generate streaming response from the model.
         
@@ -240,6 +241,20 @@ class MLX_Engine(BaseEngine):
         """
 
         mlx_lm = importlib.import_module("mlx_lm")
+        
+        # Log consumed parameters
+        consumed_params = {
+            'max_tokens': max_tokens,
+            'temperature': temperature,
+            'top_p': top_p,
+            'top_k': top_k,
+            'repetition_penalty': repetition_penalty,
+            'repetition_context_size': repetition_context_size,
+            'min_p': min_p
+        }
+        if kwargs:
+            logging.debug(f"MLX_Engine ignoring unsupported params: {list(kwargs.keys())}")
+        logging.debug(f"MLX_Engine consuming params: {consumed_params}")
 
         with cls._lock:
             try:
@@ -330,7 +345,7 @@ class MLX_Engine(BaseEngine):
         """
 
         with cls._lock:
-            if cls._should_reload_model(llm_id=llm_id):
+            if cls._should_not_reload_model(llm_id=llm_id):
                 return cls._return_cached_model_and_tokenizer()
             
             # Need to load new model

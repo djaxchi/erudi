@@ -87,6 +87,7 @@ except Exception as _e:
 from src.engines.base_engine import BaseEngine
 from src.core.exceptions import EngineException
 from src.core.logging import logger
+from src.core.config import ROOT_DIR
 
 
 class CPU_Engine(BaseEngine):
@@ -114,16 +115,15 @@ class CPU_Engine(BaseEngine):
     @classmethod
     def _default_install_dir(cls) -> Path:
         # Where your build script installs llama.cpp artifacts
-        # Overridable with ERUDI_LLAMA_CPP_INSTALL_DIR
-        p = os.environ.get("ERUDI_LLAMA_CPP_INSTALL_DIR", "backend/artifacts/llama-cpp/cpu")
-        return Path(p).resolve()
+        llama_root = ROOT_DIR / "artifacts" / "llama-cpp" / "cpu" / "bin"
+        return llama_root
 
     @classmethod
     def _find_llama_server(cls, install_dir: Path) -> Path:
         exe = "llama-server.exe" if os.name == "nt" else "llama-server"
-        p = install_dir / "bin" / exe
+        p = install_dir / exe
         if not p.exists():
-            raise EngineException(f"llama-server not found at {p}. Rebuild with LLAMA_BUILD_SERVER=ON and install.")
+            raise EngineException(f"llama-server not found at {p}. Make sure you built llama.cpp correctly.")
         return p
 
     @classmethod
@@ -137,18 +137,6 @@ class CPU_Engine(BaseEngine):
                 except OSError:
                     continue
         raise EngineException("No free TCP port found for llama-server.")
-
-    @classmethod
-    def _wrap_arch_if_needed(cls, argv: List[str], server_path: Path) -> List[str]:
-        # On Apple Silicon, if server is x86_64 only, run under Rosetta: arch -x86_64 <cmd>
-        if platform.system() == "Darwin" and platform.machine() == "arm64":
-            try:
-                out = subprocess.check_output(["file", str(server_path)], text=True)
-                if "x86_64" in out and "arm64" not in out:
-                    return ["arch", "-x86_64", *argv]
-            except Exception:
-                pass
-        return argv
 
     @classmethod
     def _probe_ready(cls, base_url: str, model_alias: str, timeout_s: float = 90.0) -> None:
@@ -196,11 +184,9 @@ class CPU_Engine(BaseEngine):
         if extra_args:
             args += extra_args
 
-        argv = cls._wrap_arch_if_needed(args, server_path)
-
         # Start detached but keep handle to terminate later
         proc = subprocess.Popen(
-            argv,
+            args,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
@@ -353,11 +339,9 @@ class CPU_Engine(BaseEngine):
                 # → Converts to GGUF + quantizes to Q4_K_M (5-10 min)
         
         Note:
-            Requires llama.cpp tools installed in ERUDI_LLAMA_CPP_ROOT:
-            - convert-hf-to-gguf.py (Python script in llama.cpp repo)
+            Requires llama.cpp tools installed :
+            - convert_hf_to_gguf.py (Python script in llama.cpp repo)
             - llama-quantize (compiled binary in bin/)
-            
-            Set ERUDI_LLAMA_CPP_ROOT env var to override default path.
             
             Disk Space Optimization:
             - HF source files (~7GB) deleted after conversion to save space
@@ -396,12 +380,11 @@ class CPU_Engine(BaseEngine):
         logger.info(f"[CPU_Engine] Detected SafeTensors model with {len(safetensors)} shard(s), converting to GGUF...")
         
         # Find llama.cpp converter script
-        llama_root = Path(os.environ.get("ERUDI_LLAMA_CPP_ROOT", "backend/forks/llama-cpp")).resolve()
-        converter = llama_root / "convert-hf-to-gguf.py"
+        converter = cls._default_install_dir() / "convert_hf_to_gguf.py"
         if not converter.exists():
             raise EngineException(
                 f"Converter script not found: {converter}. "
-                "Ensure llama.cpp is cloned and ERUDI_LLAMA_CPP_ROOT is set correctly."
+                f"Ensure llama.cpp is cloned and scripts installed at {cls._default_install_dir()}."
             )
         
         # Convert HF → FP16 GGUF
@@ -428,14 +411,14 @@ class CPU_Engine(BaseEngine):
             q_method = "q4_k_m" if q_bits.startswith("4") else "q8_0"
             
             # Find quantizer binary
-            quant_bin = cls._default_install_dir() / "bin" / ("llama-quantize.exe" if os.name == "nt" else "llama-quantize")
+            quant_bin = cls._default_install_dir() / ("llama-quantize.exe" if os.name == "nt" else "llama-quantize")
             if not quant_bin.exists():
                 # Fallback to legacy name
-                quant_bin = cls._default_install_dir() / "bin" / ("quantize.exe" if os.name == "nt" else "quantize")
+                quant_bin = cls._default_install_dir() / ("quantize.exe" if os.name == "nt" else "quantize")
             if not quant_bin.exists():
                 raise EngineException(
                     f"Quantizer binary not found: {quant_bin}. "
-                    "Ensure llama.cpp was built with LLAMA_BUILD_SERVER=ON and installed correctly."
+                    "Ensure llama.cpp was built and installed correctly."
                 )
             
             # Quantize FP16 → Q4_K_M or Q8_0
@@ -471,9 +454,10 @@ class CPU_Engine(BaseEngine):
         Starts llama-server for the given GGUF and returns (model_handle, tokenizer_placeholder).
         Idempotent: if the same llm_id is already loaded, returns cached.
         """
+        logger.info(f"[CPU_Engine] Loading model '{llm_id}' from {llm_local_path} via llama-server...")
         with cls._lock:
             # If model is already loaded and matches llm_id, return cached
-            if not cls._should_reload_model(llm_id):
+            if cls._should_not_reload_model(llm_id):
                 return cls._return_cached_model_and_tokenizer()
 
             cls._assert_requests()
@@ -515,11 +499,15 @@ class CPU_Engine(BaseEngine):
         max_tokens: int,
         temperature: float,
         top_p: float,
-        *args
+        **kwargs
     ) -> Generator[str, None, None]:
         """
         Streams tokens from llama-server (/v1/chat/completions, stream=True).
         Yields token deltas as strings.
+        
+        Note:
+            CPU_Engine only supports max_tokens, temperature, and top_p.
+            All other parameters in **kwargs are ignored.
         """
         if not isinstance(model, dict) or "base_url" not in model:
             raise RuntimeError("Invalid model handle for CPU_Engine. Call get_model_and_tokenizer() first.")
@@ -528,6 +516,16 @@ class CPU_Engine(BaseEngine):
         base_url = model["base_url"]
         alias = model["alias"]
         url = f"{base_url}/v1/chat/completions"
+        
+        # Log consumed parameters
+        consumed_params = {
+            'max_tokens': max_tokens,
+            'temperature': temperature,
+            'top_p': top_p
+        }
+        if kwargs:
+            logger.debug(f"CPU_Engine ignoring unsupported params: {list(kwargs.keys())}")
+        logger.debug(f"CPU_Engine consuming params: {consumed_params}")
 
         payload = {
             "model": alias,

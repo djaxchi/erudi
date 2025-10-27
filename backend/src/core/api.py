@@ -59,7 +59,7 @@ Note:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from src.database.seed import createTables, startup_populate_database
+from src.database.seed import create_tables, startup_populate_database
 
 from src.core.exceptions import AppBaseException, app_base_exception_handler
 from src.core import config
@@ -217,7 +217,7 @@ async def lifespan(app: FastAPI):
     # Before yield comes the startup code
     logger.info("==== Starting up... ====")
     config.LLM_Engine = BaseEngine.get_engine()
-    await createTables()
+    await create_tables()
     #await delete_all_data()
     await startup_populate_database()
     config.LLM_Engine.start_cleanup_task()
