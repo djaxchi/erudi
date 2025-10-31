@@ -14,22 +14,37 @@ export default function DragDropArea({ onFilesAdded }) {
   const inputRef = useRef(null);
 
   /* -------------------------------- helpers -------------------------------- */
+  const isAllowedFileType = (fileName) => {
+    const allowedExtensions = ['.pdf', '.txt'];
+    const extension = '.' + fileName.split('.').pop()?.toLowerCase();
+    return allowedExtensions.includes(extension);
+  };
+
   const extractPaths = (fileList) => {
-    return Array.from(fileList).map((file) => {
-      console.log('Processing file:', file);
-      
-      // Use the preload API if available
-      if (window.electron?.getFilePath) {
-        console.log('Using window.electron.getFilePath');
-        const path = window.electron.getFilePath(file);
-        console.log('Got path from electron API:', path);
-        return path;
-      }
-      
-      // Fallback to direct access
-      console.log('Using direct file.path access');
-      return file.path || file.name;
-    });
+    return Array.from(fileList)
+      .filter((file) => {
+        const fileName = file.name || file.path?.split(/[/\\]/).pop() || '';
+        const isAllowed = isAllowedFileType(fileName);
+        if (!isAllowed) {
+          console.warn(`File "${fileName}" rejected: only PDF and TXT files are allowed`);
+        }
+        return isAllowed;
+      })
+      .map((file) => {
+        console.log('Processing file:', file);
+        
+        // Use the preload API if available
+        if (window.electron?.getFilePath) {
+          console.log('Using window.electron.getFilePath');
+          const path = window.electron.getFilePath(file);
+          console.log('Got path from electron API:', path);
+          return path;
+        }
+        
+        // Fallback to direct access
+        console.log('Using direct file.path access');
+        return file.path || file.name;
+      });
   };
 
   const getFileName = (path) => {
@@ -189,7 +204,7 @@ export default function DragDropArea({ onFilesAdded }) {
           </div>
 
           {/* File list - scrollable with fixed height */}
-          <div className="flex-1 overflow-y-auto space-y-2 max-h-[300px] scrollbar-thin scrollbar-track-gray-800/50 scrollbar-thumb-gray-600 hover:scrollbar-thumb-gray-500 scrollbar-corner-gray-800">
+          <div className="flex-1 overflow-y-auto space-y-2 max-h-[300px] custom-scroll">
             {selectedFiles.map((filePath, index) => (
               <div
                 key={index}
@@ -245,6 +260,7 @@ export default function DragDropArea({ onFilesAdded }) {
         ref={inputRef}
         type="file"
         multiple
+        accept=".pdf,.txt,application/pdf,text/plain"
         onChange={handleSelect}
         style={{ display: "none" }}
       />

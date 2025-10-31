@@ -1,17 +1,17 @@
 """Structured logging configuration with console and file output.
 
 This module provides a centralized logging system with:
-- Color-coded console output for development
-- Rotating file handlers to prevent log bloat
-- Customizable formatters with pathname shortening
-- Singleton logger instance for application-wide use
+- Color-coded console output for development.
+- Rotating file handlers to prevent log bloat.
+- Customizable formatters with pathname shortening.
+- Singleton logger instance for application-wide use.
 
 Log Levels:
-    - DEBUG: Internal diagnostics (token generation, model loading steps)
-    - INFO: Lifecycle transitions (startup, shutdown, model switched)
-    - WARNING: Recoverable issues (fallback to CPU, missing KB)
-    - ERROR: Operation failures (model not found, CUDA OOM)
-    - CRITICAL: System failures (database corruption, engine crash)
+    - DEBUG: Internal diagnostics (token generation, model loading steps).
+    - INFO: Lifecycle transitions (startup, shutdown, model switched).
+    - WARNING: Recoverable issues (fallback to CPU, missing KB).
+    - ERROR: Operation failures (model not found, CUDA OOM).
+    - CRITICAL: System failures (database corruption, engine crash).
 
 Log Format:
     Console::
@@ -23,10 +23,11 @@ Log Format:
         [INFO] 2025-10-24 14:32:10 - erudi - main.py:42 - Server started
 
 File Management:
-    - Logs written to: logs/backend_YYYY-MM-DD.log
-    - Rotation: 10 MB max file size
-    - Retention: 10 backup files (logs.1, logs.2, ...)
-    - Encoding: UTF-8 for multilingual support
+    - Logs written to the runtime log directory configured by
+      ``src.launcher.runtime_paths`` (typically ``backend/logs`` in dev).
+    - Rotation: 10 MB max file size.
+    - Retention: 10 backup files (logs.1, logs.2, ...).
+    - Encoding: UTF-8 for multilingual support.
 
 Example:
     Use the global logger instance::
@@ -58,6 +59,8 @@ import logging, sys
 from pathlib import Path
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
+
+from src.launcher import ensure_runtime_paths_initialized
 
 # ----------------------------
 # Formatter
@@ -92,13 +95,13 @@ class CustomFormatter(logging.Formatter):
         Note:
             Pathnames are shortened to start from "backend/" for readability.
         """
-        # Shorten pathname to start from "backend/"
         backend_idx = record.pathname.find("backend/")
         if backend_idx != -1:
             record.pathname = record.pathname[backend_idx:]
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt, datefmt="%Y-%m-%d %H:%M:%S")
         return formatter.format(record)
+
 
 # ----------------------------
 # Logger setup
@@ -108,7 +111,9 @@ def get_logger(name: str = "erudi") -> logging.Logger:
 
     Configures a logger with both console (colored) and file (rotating) handlers.
     If a logger with the given name already exists, returns the existing instance
-    to prevent duplicate handler registration.
+    to prevent duplicate handler registration. The log directory is resolved via
+    ``src.launcher.runtime_paths`` so bundles and development runs share the
+    same location computation.
 
     Args:
         name: Logger name, typically "erudi" or "erudi.<module>".
@@ -134,14 +139,12 @@ def get_logger(name: str = "erudi") -> logging.Logger:
         Loggers are singletons. Repeated calls with the same name return the
         same instance. Handlers are only attached on first call.
     """
-    # ----------------------------
-    # LOGGING CONFIG
-    # ----------------------------
-    LOG_DIR = Path("logs")
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    LOG_FILE = LOG_DIR / f"backend_{datetime.now().strftime('%Y-%m-%d')}.log"
-    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
-    BACKUP_COUNT = 10  # Keep 10 rotated files
+    runtime_paths = ensure_runtime_paths_initialized()
+    log_dir = runtime_paths.log_dir
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"backend_{datetime.now().strftime('%Y-%m-%d')}.log"
+    max_file_size = 10 * 1024 * 1024  # 10 MB
+    backup_count = 10  # Keep 10 rotated files
 
     logger = logging.getLogger(name)
     if logger.hasHandlers():
@@ -157,9 +160,9 @@ def get_logger(name: str = "erudi") -> logging.Logger:
 
     # File handler (rotating)
     fh = RotatingFileHandler(
-        filename=LOG_FILE,
-        maxBytes=MAX_FILE_SIZE,
-        backupCount=BACKUP_COUNT,
+        filename=log_file,
+        maxBytes=max_file_size,
+        backupCount=backup_count,
         encoding="utf-8"
     )
     file_formatter = logging.Formatter(
@@ -171,6 +174,7 @@ def get_logger(name: str = "erudi") -> logging.Logger:
     logger.addHandler(fh)
 
     return logger
+
 
 # ----------------------------
 # Global logger instance

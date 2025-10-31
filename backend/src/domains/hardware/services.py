@@ -195,48 +195,68 @@ class Hardware_Service:
             )
 
     def calculate_boosted_scores(self, profile: HardwareProfile) -> Dict[str, Any]:
-        """Calculate UI-friendly scores with +20 boost.
+        """Calculate UI-friendly scores with +20 boost for frontend display.
 
-        Applies +20 point boost to all scores for frontend display. This is
-        a presentation concern to make scores more user-friendly.
+        Returns both raw scores (actual hardware capability) and boosted scores
+        (UI-friendly display with +20 point boost, capped at 100). This makes
+        the boost transparent while maintaining user-friendly presentation.
 
         Args:
             profile: HardwareProfile entity with original scores.
 
         Returns:
-            Dict[str, Any]: Dictionary with boosted scores and labels.
+            Dict[str, Any]: Dictionary with both raw and boosted scores/labels.
 
         Example:
             >>> profile = service.get_or_create_profile()
-            >>> boosted = service.calculate_boosted_scores(profile)
-            >>> print(boosted)
+            >>> scores = service.calculate_boosted_scores(profile)
+            >>> print(scores)
             {
-                "global_inference_score": 85.0,  # Original 65 + 20
-                "global_inference_label": "Excellent",
-                "global_finetuning_score": 75.0,
+                "raw_inference_score": 65.0,
+                "boosted_inference_score": 85.0,  # min(65 + 20, 100)
+                "global_inference_label": "Excellent",  # Based on boosted
+                "raw_finetuning_score": 55.0,
+                "boosted_finetuning_score": 75.0,
                 "global_finetuning_label": "Good",
-                "cpu_score": 80.0,
-                "memory_score": 90.0,
-                "gpu_score": 95.0
+                ...
             }
         """
-        logger.debug("Calculating boosted scores")
+        logger.debug("Calculating raw and boosted scores")
         
-        boosted = {
-            # Global scores with +20 boost
-            "global_inference_score": profile.global_inference_score + 20,
-            "global_inference_label": self._get_label(profile.global_inference_score + 20),
-            "global_finetuning_score": profile.global_finetuning_score + 20,
-            "global_finetuning_label": self._get_label(profile.global_finetuning_score + 20),
+        # Raw scores (actual hardware capability)
+        raw_inf = profile.global_inference_score
+        raw_ft = profile.global_finetuning_score
+        
+        # Boosted scores for UI (+ 20 points, capped at 100)
+        boosted_inf = min(100.0, raw_inf + 20.0)
+        boosted_ft = min(100.0, raw_ft + 20.0)
+        
+        result = {
+            # Raw scores (engine output, no modification)
+            "raw_inference_score": raw_inf,
+            "raw_finetuning_score": raw_ft,
             
-            # Component scores with +20 boost
-            "cpu_score": profile.cpu_score + 20,
-            "memory_score": profile.memory_score + 20,
-            "gpu_score": (profile.gpu_score + 20) if profile.gpu_score else None,
+            # Boosted scores for UI display
+            "boosted_inference_score": boosted_inf,
+            "boosted_finetuning_score": boosted_ft,
+            "global_inference_score": boosted_inf,  # Alias for backward compat
+            "global_finetuning_score": boosted_ft,  # Alias for backward compat
+            
+            # Labels based on boosted scores
+            "global_inference_label": self._get_label(boosted_inf),
+            "global_finetuning_label": self._get_label(boosted_ft),
+            
+            # Component scores (raw, no boost needed for internal metrics)
+            "cpu_score": profile.cpu_score,
+            "memory_score": profile.memory_score,
+            "gpu_score": profile.gpu_score if profile.gpu_score is not None else 0.0,
         }
         
-        logger.debug(f"Boosted scores calculated: inference={boosted['global_inference_score']}")
-        return boosted
+        logger.debug(
+            f"Scores calculated: raw_inf={raw_inf:.1f}, boosted_inf={boosted_inf:.1f}, "
+            f"raw_ft={raw_ft:.1f}, boosted_ft={boosted_ft:.1f}"
+        )
+        return result
 
     def _get_label(self, score: float) -> str:
         """Convert numeric score to performance label.

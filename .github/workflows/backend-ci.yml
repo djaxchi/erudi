@@ -1,0 +1,56 @@
+name: Backend CI
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+
+jobs:
+  backend-ci:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUNBUFFERED: 1
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pip, wheel, setuptools
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+
+      - name: Create venv & install requirements
+        run: |
+          python -m venv backend/venv
+          backend/venv/bin/pip install -r backend/requirements/entrypoints/dev.txt
+
+      - name: Lint (ruff)
+        run: backend/venv/bin/ruff backend/src
+
+      - name: Type check (mypy)
+        run: backend/venv/bin/mypy backend/src
+
+      - name: Run tests (pytest)
+        run: backend/venv/bin/pytest --cov=backend/src --cov-report=xml backend/tests
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          fail_ci_if_error: true
+
+      - name: Build backend (PyInstaller)
+        run: backend/venv/bin/pyinstaller backend/backend.spec
+
+      - name: Check backend binary
+        run: backend/dist/backend/backend --help
+        continue-on-error: true

@@ -179,9 +179,9 @@ def build_system_prompt(
     if size_category == "tiny":
         # Minimal system prompt for tiny models (<2B)
         sys_prompt = (
-            "Tu es un assistant concis et utile. Répond toujours dans la même langue "
-            "que la question de l'utilisateur. Ne donne que le contenu pertinent - "
-            "sans commentaires ni répétition des consignes."
+            "You are a concise and helpful assistant. Always respond in the same "
+            "language as the user's question. Provide only the relevant content - "
+            "no commentary or repetition of the instructions."
         )
     elif size_category == "small":
         # Concise system prompt for small models (2-3B)

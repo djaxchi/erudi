@@ -1,107 +1,146 @@
-import sys, json, socket, time, threading, logging, os, shutil, platform, sqlite3
+"""Cross-platform launcher for the Erudi FastAPI backend.
+
+This module boots the FastAPI application in a background thread while
+emitting newline-delimited JSON events for the Electron frontend. The
+launcher is designed to run identically in development (editable source
+tree) and in PyInstaller bundles targeting macOS, Windows, and Linux across
+CUDA, MLX, and CPU builds.
+
+**Lifecycle events (newline-delimited JSON to stdout):**
+    - {"event": "starting", "arch": "...", "mode": "dev|prod", "data_path": "...", "port": N}
+    - {"event": "ready", "port": N}
+    - {"event": "shutdown"}
+    - {"event": "startup_error", "code": "ERROR_CODE", "message": "..."}
+
+**Supported error codes:**
+    - PORT_IN_USE: Port already bound by another process
+    - CRASH_BEFORE_READY: Backend thread exited before binding port
+    - PORT_TIMEOUT: Server did not bind within startup window (120s)
+    - IMPORT_ERROR: Failed to import FastAPI application
+    - DATA_PREP_ERROR: Failed to prepare data directories
+    - UNEXPECTED_ERROR: Unhandled exception in server thread
+    - POLLING_ERROR: Unhandled exception in startup polling loop
+
+**Key responsibilities:**
+    * Parse command-line arguments (--port) for flexible port binding.
+    * Normalize environment variables for deterministic third-party libs (TOKENIZERS_PARALLELISM, etc.).
+    * Configure asyncio selector policy on Windows for library compatibility.
+    * Redirect data/log directories to user-writable locations on bundled builds.
+    * Preserve macOS symlink behavior while adopting OS-appropriate folders on Windows/Linux.
+    * Initialize multiprocessing spawn settings before importing heavy modules.
+    * Guard startup with readiness polling (127.0.0.1:PORT), crash detection, and 120s timeout.
+    * Support all build variants (CPU, CUDA, MLX) transparently via ERUDI_BUILD_VARIANT env var.
+
+**Usage:**
+    Development:
+        PYTHONPATH=backend python backend/run.py --port 8000
+
+    Packaged (PyInstaller):
+        ./backend --port 8000
+
+    From Electron (frontend/src/main.js):
+        spawn('./backend/backend', ['--port', '8000'])
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+import platform
+import socket
+import sys
+import threading
+import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-# ---------- Tame noisy libs ----------
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-os.environ.setdefault("PYTHONNOUSERSITE", "1")
+if TYPE_CHECKING:  # pragma: no cover - import for type checking only
+    from fastapi import FastAPI
+    from src.launcher import RuntimePaths
 
-# ---------- Line-buffered logs ----------
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(line_buffering=True)
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(line_buffering=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+import argparse
 
-APP_NAME = "erudi"
-HOST, PORT = "127.0.0.1", 8000
+STARTUP_TIMEOUT_SECONDS = 120
+READINESS_POLL_SECONDS = 0.25
+
+def parse_args():
+    """Parse command-line arguments for launcher."""
+    parser = argparse.ArgumentParser(description="Erudi backend launcher")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind FastAPI server (default: 8000)")
+    return parser.parse_args()
+
+
+def configure_library_env() -> None:
+    """Set environment defaults to tame noisy third-party libraries."""
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("PYTHONNOUSERSITE", "1")
+
+
+def set_event_loop_policy() -> None:
+    """Force selector event loop on Windows for broader library compatibility."""
+    if platform.system() == "Windows":
+        from asyncio import WindowsSelectorEventLoopPolicy
+
+        asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
+
+
+def configure_stdio() -> None:
+    """Enable line buffering on stdout/stderr for immediate event emission."""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(line_buffering=True)
+
 
 def is_frozen() -> bool:
+    """Return True when running from a PyInstaller bundle."""
     return getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
 
+
 def backend_root_dir() -> Path:
-    # dev: repo/backend ; frozen: .../Contents/Resources/backend
+    """Resolve the backend root directory for both dev and bundled modes."""
     if is_frozen():
-        return Path(sys.executable).resolve().parent
+        exe_dir = Path(sys.executable).resolve().parent
+        bundle_dir = Path(getattr(sys, "_MEIPASS", exe_dir))
+
+        candidates = [
+            exe_dir / "backend",
+            bundle_dir / "backend",
+            bundle_dir,
+        ]
+        for candidate in candidates:
+            if (candidate / "src").exists():
+                return candidate
+        return exe_dir
+
     return Path(__file__).resolve().parent
 
-BACKEND_DIR = backend_root_dir()
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
-try:
-    os.chdir(BACKEND_DIR)
-except Exception:
-    pass
 
-# ---------- Data location rules ----------
-# DEV: use real folder repo/backend/data (no symlink)
-# PROD (frozen): create App Support dir and symlink backend/data -> that dir
-def prod_data_dir() -> Path:
-    return Path.home() / "Library" / "Application Support" / APP_NAME / "backend" / "prod" / "data"
+def ensure_backend_on_path(backend_dir: Path) -> None:
+    """Insert the backend directory on sys.path if needed."""
+    backend_str = str(backend_dir)
+    if backend_str not in sys.path:
+        sys.path.insert(0, backend_str)
 
-DATA_LINK = BACKEND_DIR / "data"
 
-def ensure_dev_data_dir():
-    if DATA_LINK.exists():
-        if DATA_LINK.is_symlink():
-            target = None
-            try:
-                target = Path(os.readlink(DATA_LINK))
-            except OSError:
-                pass
-            DATA_LINK.unlink(missing_ok=True)
-    DATA_LINK.mkdir(parents=True, exist_ok=True)
+def ensure_working_directory(backend_dir: Path) -> None:
+    """Switch the process working directory to the backend root."""
+    try:
+        os.chdir(backend_dir)
+    except Exception:
+        pass
 
-def ensure_prod_symlink():
-    real_data = prod_data_dir()
-    real_data.mkdir(parents=True, exist_ok=True)
 
-    if DATA_LINK.exists() or DATA_LINK.is_symlink():
-        if DATA_LINK.is_dir() and not DATA_LINK.is_symlink():
-            for p in DATA_LINK.iterdir():
-                tgt = real_data / p.name
-                if not tgt.exists():
-                    if p.is_dir():
-                        shutil.copytree(p, tgt)
-                    else:
-                        shutil.copy2(p, tgt)
-            shutil.rmtree(DATA_LINK)
-        elif DATA_LINK.is_symlink():
-            try:
-                target = Path(os.readlink(DATA_LINK)).resolve()
-            except OSError:
-                target = None
-            if target and target != real_data:
-                DATA_LINK.unlink()
-        else:
-            DATA_LINK.unlink()
-
-    if not DATA_LINK.exists():
-        os.symlink(real_data, DATA_LINK)
-
-    db_path = real_data / "erudi.db"
-    if not db_path.exists():
-        try:
-            conn = sqlite3.connect(str(db_path))
-            conn.execute("PRAGMA journal_mode=WAL;")
-            conn.close()
-        except Exception as e:
-            print(json.dumps({
-                "event": "startup_error",
-                "code": "SQLITE_PREP_ERROR",
-                "message": f"Failed to prepare sqlite file: {e}"
-            }), flush=True)
-
-# ---------- Multiprocessing safety before heavy imports ----------
-def force_mp_spawn():
+def force_mp_spawn() -> None:
+    """Configure multiprocessing to use spawn start method safely."""
     try:
         import multiprocessing as mp
+
         mp.freeze_support()
         try:
             mp.set_start_method("spawn", force=True)
@@ -109,117 +148,176 @@ def force_mp_spawn():
             pass
         try:
             import torch.multiprocessing as tmp
+
             tmp.set_start_method("spawn", force=True)
         except Exception:
             pass
     except Exception:
         pass
 
-force_mp_spawn()
 
-# ---------- Import the FastAPI app AFTER env/path setup ----------
-from src.main import app as fastapi_app  # noqa: E402
-import uvicorn  # noqa: E402
+def emit_event(payload: dict) -> None:
+    """Print a structured JSON event for the Electron frontend."""
+    print(json.dumps(payload), flush=True)
+
 
 def port_open(host: str, port: int, timeout: float = 0.4) -> bool:
+    """Return True when a TCP connection to the host:port succeeds."""
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
     except OSError:
         return False
 
-def run_server():
+
+def run_server(app: "FastAPI", host: str, port: int) -> None:
+    """Run uvicorn in the current thread and surface unexpected failures."""
+    import uvicorn
+
     try:
-        uvicorn.run(
-            fastapi_app,
-            host=HOST,
-            port=PORT,
-            log_level="info",
-            workers=1,      
-            reload=False
-        )
+        uvicorn.run(app, host=host, port=port, log_level="info", workers=1, reload=False)
     except SystemExit:
         pass
     except KeyboardInterrupt:
         pass
-    except Exception as e:
-        print(json.dumps({
-            "event": "startup_error",
-            "code": "UNEXPECTED_ERROR",
-            "message": f"Server thread crashed: {str(e)}"
-        }), flush=True)
+    except Exception as exc:  # pragma: no cover - defensive
+        emit_event(
+            {
+                "event": "startup_error",
+                "code": "UNEXPECTED_ERROR",
+                "message": f"Server thread crashed: {exc}",
+            }
+        )
         sys.exit(1)
 
-if __name__ == "__main__":
-    force_mp_spawn()
+
+def main() -> None:
+    """Launch the backend, supervising readiness and emitting lifecycle events."""
+    args = parse_args()
+    port = args.port
+    host = "127.0.0.1"
+
+    configure_library_env()
+    set_event_loop_policy()
+    configure_stdio()
+
+    backend_dir = backend_root_dir()
+    ensure_backend_on_path(backend_dir)
+    ensure_working_directory(backend_dir)
 
     mode = "prod" if is_frozen() else "dev"
     try:
-        if is_frozen():
-            ensure_prod_symlink()
-        else:
-            ensure_dev_data_dir()
-    except Exception as e:
-        print(json.dumps({
-            "event": "startup_error",
-            "code": "DATA_PREP_ERROR",
-            "message": f"Failed to prepare data dir: {e}"
-        }), flush=True)
+        from src.launcher import get_runtime_paths, initialize_runtime_paths
 
-    print(json.dumps({
-        "event": "starting",
-        "arch": platform.machine(),
-        "mode": mode,
-        "data_path": str(DATA_LINK.resolve() if DATA_LINK.exists() else DATA_LINK)
-    }), flush=True)
+        runtime_paths: "RuntimePaths"
+        try:
+            runtime_paths = initialize_runtime_paths(
+                mode=mode,
+                backend_root=backend_dir,
+                packaged_data_dir=backend_dir / "data",
+            )
+        except ValueError:
+            runtime_paths = get_runtime_paths()
+    except Exception as exc:
+        emit_event(
+            {
+                "event": "startup_error",
+                "code": "DATA_PREP_ERROR",
+                "message": f"Failed to prepare data directories: {exc}",
+            }
+        )
+        sys.exit(1)
+    else:
+        data_dir = runtime_paths.data_dir
 
-    if port_open(HOST, PORT):
-        print(json.dumps({
-            "event": "startup_error",
-            "code": "PORT_IN_USE",
-            "message": f"Port {PORT} already in use"
-        }), flush=True)
+    force_mp_spawn()
+
+    try:
+        from src.main import app as fastapi_app
+    except Exception as exc:  # pragma: no cover - defensive
+        emit_event(
+            {
+                "event": "startup_error",
+                "code": "IMPORT_ERROR",
+                "message": f"Failed to import FastAPI application: {exc}",
+            }
+        )
         sys.exit(1)
 
-    t = threading.Thread(target=run_server, daemon=True)
-    t.start()
 
-    deadline = time.time() + 120
+    emit_event(
+        {
+            "event": "starting",
+            "arch": platform.machine(),
+            "mode": mode,
+            "data_path": str(data_dir),
+            "port": port,
+        }
+    )
+
+    if port_open(host, port):
+        emit_event(
+            {
+                "event": "startup_error",
+                "code": "PORT_IN_USE",
+                "message": f"Port {port} already in use",
+            }
+        )
+        sys.exit(1)
+
+    server_thread = threading.Thread(target=run_server, args=(fastapi_app, host, port), daemon=True)
+    server_thread.start()
+
+    deadline = time.time() + STARTUP_TIMEOUT_SECONDS
     try:
         while time.time() < deadline:
-            if port_open(HOST, PORT):
-                print(json.dumps({"event": "ready", "port": PORT}), flush=True)
-                t.join(timeout=1.0)
-                while t.is_alive():
+            if port_open(host, port):
+                emit_event({"event": "ready", "port": port})
+                server_thread.join(timeout=1.0)
+                while server_thread.is_alive():
                     time.sleep(1.0)
-                    t.join(timeout=1.0)
-                print(json.dumps({"event": "shutdown"}), flush=True)
+                    server_thread.join(timeout=1.0)
+                emit_event({"event": "shutdown"})
                 break
 
-            if not t.is_alive():
-                print(json.dumps({
-                    "event": "startup_error",
-                    "code": "CRASH_BEFORE_READY",
-                    "message": "Backend thread exited early"
-                }), flush=True)
+            if not server_thread.is_alive():
+                emit_event(
+                    {
+                        "event": "startup_error",
+                        "code": "CRASH_BEFORE_READY",
+                        "message": "Backend thread exited before binding the port",
+                    }
+                )
                 sys.exit(1)
 
-            time.sleep(0.25)
+            time.sleep(READINESS_POLL_SECONDS)
         else:
-            print(json.dumps({
-                "event": "startup_error",
-                "code": "PORT_TIMEOUT",
-                "message": "Server did not bind in time"
-            }), flush=True)
+            emit_event(
+                {
+                    "event": "startup_error",
+                    "code": "PORT_TIMEOUT",
+                    "message": "Server did not bind in time",
+                }
+            )
             sys.exit(1)
-
     except KeyboardInterrupt:
-        print(json.dumps({"event": "shutdown"}), flush=True)
+        emit_event({"event": "shutdown"})
         sys.exit(0)
-    except Exception as e:
-        print(json.dumps({
-            "event": "startup_error",
-            "code": "POLLING_ERROR",
-            "message": f"Main polling loop crashed: {str(e)}"
-        }), flush=True)
+    except Exception as exc:  # pragma: no cover - defensive
+        emit_event(
+            {
+                "event": "startup_error",
+                "code": "POLLING_ERROR",
+                "message": f"Startup polling loop crashed: {exc}",
+            }
+        )
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
+    main()

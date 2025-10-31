@@ -18,7 +18,7 @@ Architecture:
     ┌─────────────────────────────────────────────────────────┐
     │ Specialized Seeders                                     │
     │  ├─> Model_Seeder: Base + derived models               │
-    │  ├─> Job_Cleanup_Service: Unfinished job recovery      │
+    │  ├─> Job_Cleanup_Service: Jobs + orphaned models       │
     │  ├─> Hardware_Initializer: System profiling            │
     │  └─> Startup_Initializer: First-run flags              │
     └─────────────────────────────────────────────────────────┘
@@ -53,6 +53,7 @@ Note:
 import os
 import shutil
 import json
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass
@@ -648,7 +649,13 @@ class Model_Seeder:
 # ============ Job Cleanup Service ============
 
 class Job_Cleanup_Service:
-    """Handles cleanup of interrupted jobs from previous sessions."""
+    """Handles cleanup of interrupted jobs and orphaned resources.
+    
+    Responsibilities:
+    - Mark interrupted jobs (download, training, KB) as failed
+    - Remove incomplete model files and temp directories
+    - Cleanup orphaned model directories without database entries
+    """
     
     def __init__(self, db: Session):
         """Initialize job cleanup service.
@@ -662,12 +669,13 @@ class Job_Cleanup_Service:
         """Mark all interrupted jobs as failed and cleanup resources.
         
         Returns:
-            Dictionary with counts: {"download": N, "training": N, "kb": N}
+            Dictionary with counts: {"download": N, "training": N, "kb": N, "orphaned": N}
         """
         counts = {
             "download": self._cleanup_download_jobs(),
             "training": self._cleanup_training_jobs(),
-            "kb": self._cleanup_kb_jobs()
+            "kb": self._cleanup_kb_jobs(),
+            "orphaned": self._cleanup_orphaned_models()
         }
         
         total = sum(counts.values())
@@ -676,7 +684,8 @@ class Job_Cleanup_Service:
                 f"Cleaned up {total} unfinished jobs: "
                 f"download={counts['download']}, "
                 f"training={counts['training']}, "
-                f"kb={counts['kb']}"
+                f"kb={counts['kb']}, "
+                f"orphaned={counts['orphaned']}"
             )
         
         return counts
@@ -806,6 +815,82 @@ class Job_Cleanup_Service:
             self.db.commit()
         
         return count
+    
+    def _cleanup_orphaned_models(self) -> int:
+        """Cleanup orphaned model files without corresponding database entries.
+        
+        This handles cases where:
+        - The app is reinstalled but Application Support data persists
+        - Temp directories from interrupted downloads remain
+        
+        Returns:
+            Total count of orphaned models and temp directories removed.
+        
+        Raises:
+            FileSystemException: If critical filesystem operations fail.
+        """
+        models_dir = config.LLM_DIR
+        
+        # Return early if models directory doesn't exist
+        if not models_dir.exists():
+            logger.debug("Models directory doesn't exist, nothing to clean up")
+            return 0
+        
+        # Get all valid model IDs from database
+        try:
+            local_models = self.db.query(Llm).filter(Llm.local == 1).all()
+            valid_model_ids = {str(model.id) for model in local_models}
+        except DatabaseException as e:
+            logger.error(f"Database error fetching local models: {e}")
+            return 0
+        
+        # Scan and cleanup orphaned directories
+        cleaned_count = 0
+        temp_cleaned_count = 0
+        
+        try:
+            for item in models_dir.iterdir():
+                if not item.is_dir():
+                    continue
+                
+                dir_name = item.name
+                
+                # Cleanup temp directories (they start with "temp_")
+                if dir_name.startswith("temp_"):
+                    logger.info(f"Removing temporary model directory: {dir_name}")
+                    try:
+                        shutil.rmtree(item, ignore_errors=True)
+                        temp_cleaned_count += 1
+                    except Exception as e:
+                        logger.error(f"Failed to remove temp model {dir_name}: {e}")
+                    continue
+                
+                # Cleanup orphaned model directories
+                if dir_name not in valid_model_ids:
+                    logger.info(f"Removing orphaned model directory: {dir_name}")
+                    try:
+                        shutil.rmtree(item, ignore_errors=True)
+                        cleaned_count += 1
+                    except Exception as e:
+                        logger.error(f"Failed to remove orphaned model {dir_name}: {e}")
+            
+            total_cleaned = cleaned_count + temp_cleaned_count
+            if total_cleaned > 0:
+                logger.info(
+                    f"Cleaned up {cleaned_count} orphaned model(s) and "
+                    f"{temp_cleaned_count} temp directory(ies)"
+                )
+            else:
+                logger.debug("No orphaned models or temp directories found")
+            
+            return total_cleaned
+            
+        except FileSystemException as e:
+            logger.error(f"Filesystem error during orphaned model cleanup: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during orphaned model cleanup: {e}")
+            return cleaned_count + temp_cleaned_count
 
 
 # ============ Hardware Initialization Service ============
