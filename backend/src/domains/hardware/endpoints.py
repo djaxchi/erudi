@@ -1,8 +1,17 @@
 """REST API endpoints for backend-agnostic hardware information.
 
 Provides hardware detection, scoring, and monitoring endpoints across all backends
-(MLX/Apple Silicon, CUDA/NVIDIA, CPU fallback). Follows clean architecture with
-service layer abstraction.
+(MLX/Apple Silicon, CUDA/NVIDIA, CPU fallback). Uses discriminated unions and
+transparent score boosting for optimal type safety and user experience.
+
+Endpoints:
+    GET /hardware/training_info: Full backend-specific hardware profile
+    GET /hardware/app_startup: Minimal UI data with boosted scores
+    GET /hardware/detailed: Comprehensive diagnostics with raw/boosted scores
+    POST /hardware/refresh: Force hardware re-detection
+
+Architecture:
+    Endpoints → Service → Repository → Entity → Database
 """
 from fastapi import Depends, APIRouter, HTTPException
 from sqlalchemy.orm import Session
@@ -13,10 +22,15 @@ from src.domains.hardware.services import Hardware_Service
 from src.domains.hardware.schemas import (
     HardwareTrainingInfo,
     HardwareAppStartupInfo,
-    DetailedHardwareInfo
+    DetailedHardwareInfo,
+    PerformanceBreakdown,
+    MLXHardwareInfo,
+    CUDAHardwareInfo,
+    CPUHardwareInfo,
 )
 from src.core.logging import logger
 from src.core.exceptions import HardwareException, DatabaseException
+from src.entities.HardwareProfile import HardwareProfile
 
 router = APIRouter(prefix="/hardware", tags=["hardware"])
 
@@ -27,41 +41,122 @@ def _get_service(db: Session) -> Hardware_Service:
     return Hardware_Service(repository)
 
 
+def _build_backend_specific_schema(profile: HardwareProfile, scores: dict):
+    """Build backend-specific schema instance based on backend_type.
+    
+    Args:
+        profile: HardwareProfile entity
+        scores: Dict with raw scores from service.calculate_boosted_scores()
+        
+    Returns:
+        Union[MLXHardwareInfo, CUDAHardwareInfo, CPUHardwareInfo]
+    """
+    # Common base fields
+    base_data = {
+        "backend_type": profile.backend_type,
+        "cpu_model": profile.cpu_model,
+        "total_memory_gb": profile.total_memory_gb,
+        "available_memory_gb": profile.available_memory_gb,
+        "disk_total_gb": profile.disk_total_gb,
+        "disk_available_gb": profile.disk_available_gb,
+        "raw_inference_score": scores["raw_inference_score"],
+        "raw_finetuning_score": scores["raw_finetuning_score"],
+        "global_inference_label": profile.global_inference_label,
+        "global_finetuning_label": profile.global_finetuning_label,
+        "cpu_score": scores["cpu_score"],
+        "memory_score": scores["memory_score"],
+        "architecture": profile.architecture,
+        "system_platform": profile.system_platform,
+    }
+    
+    if profile.backend_type == "mlx":
+        return MLXHardwareInfo(
+            **base_data,
+            mlx_chip_model=profile.mlx_chip_model,
+            mlx_gpu_cores=profile.mlx_gpu_cores or 0,
+            mps_available=profile.mps_available or False,
+            neural_engine_tops=profile.neural_engine_tops or 0.0,
+            unified_memory=True,
+            estimated_tflops=profile.estimated_tflops,
+            memory_bandwidth_gbs=profile.memory_bandwidth_gbs,
+            gpu_score=scores["gpu_score"],
+        )
+    elif profile.backend_type == "cuda":
+        return CUDAHardwareInfo(
+            **base_data,
+            gpu_name=profile.gpu_name or "Unknown NVIDIA GPU",
+            cuda_cores=profile.cuda_cores or 0,
+            cuda_version=profile.cuda_version or "Unknown",
+            compute_capability=profile.compute_capability or "Unknown",
+            vram_total_gb=profile.vram_total_gb or 0.0,
+            vram_available_gb=profile.vram_available_gb or 0.0,
+            estimated_tflops=profile.estimated_tflops or 0.0,
+            memory_bandwidth_gbs=profile.memory_bandwidth_gbs,
+            gpu_score=scores["gpu_score"],
+            unified_memory=False,
+        )
+    else:  # cpu
+        return CPUHardwareInfo(
+            **base_data,
+            compute_units=profile.compute_units or profile.cpu_performance_units or 1,
+            cpu_performance_units=profile.cpu_performance_units or 1,
+            accelerator_available=False,
+            gpu_score=0.0,
+            unified_memory=False,
+        )
+
+
+def _build_performance_breakdown(profile: HardwareProfile) -> PerformanceBreakdown:
+    """Build typed PerformanceBreakdown from entity's JSON field."""
+    pb = profile.performance_breakdown or {}
+    return PerformanceBreakdown(
+        compute_score=pb.get("compute_score", 0.0),
+        memory_bandwidth_score=pb.get("memory_bandwidth_score", 0.0),
+        memory_capacity_score=pb.get("memory_capacity_score", 0.0),
+        cpu_performance_score=pb.get("cpu_performance_score", 0.0),
+        disk_score=pb.get("disk_score"),
+    )
+
+
 @router.get("/training_info", response_model=HardwareTrainingInfo)
 def get_hardware_training_info(db: Session = Depends(get_db)):
-    """Get detailed hardware specs for fine-tuning UI (backend-agnostic)."""
+    """Get full backend-specific hardware profile for training page UI.
+    
+    Returns complete hardware information with backend-specific fields via
+    discriminated union. Frontend uses backend_type to determine available fields.
+    
+    Response structure (example for MLX):
+        {
+            "hardware": {
+                "backend_type": "mlx",
+                "mlx_chip_model": "M3 Max",
+                "mlx_gpu_cores": 40,
+                "cpu_model": "Apple M3 Max",
+                "total_memory_gb": 128.0,
+                "raw_inference_score": 85.0,
+                ...
+            },
+            "performance_breakdown": {
+                "compute_score": 95.0,
+                "memory_bandwidth_score": 90.0,
+                ...
+            }
+        }
+    
+    Raises:
+        HTTPException: 500 if hardware detection fails
+    """
     try:
         service = _get_service(db)
         profile = service.get_or_create_profile()
+        scores = service.calculate_boosted_scores(profile)
+        
+        backend_schema = _build_backend_specific_schema(profile, scores)
+        perf_breakdown = _build_performance_breakdown(profile)
         
         response = HardwareTrainingInfo(
-            backend_type=profile.backend_type,
-            cpu_model=profile.cpu_model,
-            total_memory_gb=profile.total_memory_gb,
-            available_memory_gb=profile.available_memory_gb,
-            disk_total_gb=profile.disk_total_gb,
-            disk_available_gb=profile.disk_available_gb,
-            global_finetuning_score=profile.global_finetuning_score,
-            global_finetuning_label=profile.global_finetuning_label,
-            global_inference_score=profile.global_inference_score,
-            global_inference_label=profile.global_inference_label,
-            cpu_score=profile.cpu_score,
-            memory_score=profile.memory_score,
-            gpu_name=profile.gpu_name,
-            estimated_tflops=profile.estimated_tflops,
-            memory_bandwidth_gbs=profile.memory_bandwidth_gbs,
-            architecture=profile.architecture,
-            gpu_score=profile.gpu_score,
-            mlx_chip_model=profile.mlx_chip_model,
-            mlx_gpu_cores=profile.mlx_gpu_cores,
-            mps_available=profile.mps_available,
-            neural_engine_tops=profile.neural_engine_tops,
-            unified_memory=profile.unified_memory,
-            cuda_cores=profile.cuda_cores,
-            cuda_version=profile.cuda_version,
-            compute_capability=profile.compute_capability,
-            vram_total_gb=profile.vram_total_gb,
-            vram_available_gb=profile.vram_available_gb
+            hardware=backend_schema,
+            performance_breakdown=perf_breakdown,
         )
         
         db.commit()
@@ -80,22 +175,47 @@ def get_hardware_training_info(db: Session = Depends(get_db)):
 
 @router.get("/app_startup", response_model=HardwareAppStartupInfo)
 def get_app_startup_info(db: Session = Depends(get_db)):
-    """Get boosted performance scores for application startup dashboard."""
+    """Get minimal performance scores for application startup dashboard.
+    
+    Returns boosted scores (+20 points, capped at 100) for user-friendly display
+    alongside raw scores for transparency. This endpoint is optimized for quick
+    loading on app startup.
+    
+    Response structure:
+        {
+            "backend_type": "cuda",
+            "global_finetuning_score": 95.0,    # Boosted (raw 75 + 20)
+            "global_finetuning_label": "Excellent",
+            "global_inference_score": 100.0,     # Boosted, capped at 100
+            "global_inference_label": "Excellent",
+            "raw_finetuning_score": 75.0,        # Actual hardware score
+            "raw_inference_score": 82.0
+        }
+    
+    Raises:
+        HTTPException: 500 if hardware detection fails
+    """
     try:
         service = _get_service(db)
         profile = service.get_or_create_profile()
-        boosted = service.calculate_boosted_scores(profile)
+        scores = service.calculate_boosted_scores(profile)
         
         response = HardwareAppStartupInfo(
             backend_type=profile.backend_type,
-            global_finetuning_score=boosted["global_finetuning_score"],
-            global_finetuning_label=boosted["global_finetuning_label"],
-            global_inference_score=boosted["global_inference_score"],
-            global_inference_label=boosted["global_inference_label"]
+            global_finetuning_score=scores["boosted_finetuning_score"],
+            global_finetuning_label=scores["global_finetuning_label"],
+            global_inference_score=scores["boosted_inference_score"],
+            global_inference_label=scores["global_inference_label"],
+            raw_finetuning_score=scores["raw_finetuning_score"],
+            raw_inference_score=scores["raw_inference_score"],
         )
         
         db.commit()
-        logger.info(f"App startup info retrieved: backend={profile.backend_type}")
+        logger.info(
+            f"App startup info retrieved: backend={profile.backend_type}, "
+            f"boosted_inf={scores['boosted_inference_score']:.1f}, "
+            f"raw_inf={scores['raw_inference_score']:.1f}"
+        )
         return response
         
     except (HardwareException, DatabaseException) as e:
@@ -110,42 +230,38 @@ def get_app_startup_info(db: Session = Depends(get_db)):
 
 @router.get("/detailed", response_model=DetailedHardwareInfo)
 def get_detailed_hardware_info(db: Session = Depends(get_db)):
-    """Get comprehensive hardware info with all specs for debugging."""
+    """Get comprehensive hardware diagnostics with raw/boosted score comparison.
+    
+    Returns complete backend-specific hardware profile plus performance breakdown
+    and both raw/boosted scores for debugging and diagnostics.
+    
+    Response structure:
+        {
+            "hardware": { ...full backend-specific fields... },
+            "performance_breakdown": { ...typed scores... },
+            "boosted_inference_score": 85.0,
+            "boosted_finetuning_score": 75.0
+        }
+    
+    Note:
+        Raw scores available in hardware.raw_inference_score / hardware.raw_finetuning_score
+    
+    Raises:
+        HTTPException: 500 if hardware detection fails
+    """
     try:
         service = _get_service(db)
         profile = service.get_or_create_profile()
+        scores = service.calculate_boosted_scores(profile)
+        
+        backend_schema = _build_backend_specific_schema(profile, scores)
+        perf_breakdown = _build_performance_breakdown(profile)
         
         response = DetailedHardwareInfo(
-            backend_type=profile.backend_type,
-            cpu_model=profile.cpu_model,
-            total_memory_gb=profile.total_memory_gb,
-            available_memory_gb=profile.available_memory_gb,
-            disk_total_gb=profile.disk_total_gb,
-            disk_available_gb=profile.disk_available_gb,
-            global_inference_score=profile.global_inference_score,
-            global_inference_label=profile.global_inference_label,
-            global_finetuning_score=profile.global_finetuning_score,
-            global_finetuning_label=profile.global_finetuning_label,
-            cpu_score=profile.cpu_score,
-            memory_score=profile.memory_score,
-            system_platform=profile.system_platform,
-            cpu_performance_units=profile.cpu_performance_units,
-            performance_breakdown=profile.performance_breakdown,
-            gpu_name=profile.gpu_name,
-            estimated_tflops=profile.estimated_tflops,
-            memory_bandwidth_gbs=profile.memory_bandwidth_gbs,
-            architecture=profile.architecture,
-            gpu_score=profile.gpu_score,
-            mlx_chip_model=profile.mlx_chip_model,
-            mlx_gpu_cores=profile.mlx_gpu_cores,
-            mps_available=profile.mps_available,
-            neural_engine_tops=profile.neural_engine_tops,
-            unified_memory=profile.unified_memory,
-            cuda_cores=profile.cuda_cores,
-            cuda_version=profile.cuda_version,
-            compute_capability=profile.compute_capability,
-            vram_total_gb=profile.vram_total_gb,
-            vram_available_gb=profile.vram_available_gb
+            hardware=backend_schema,
+            performance_breakdown=perf_breakdown,
+            boosted_inference_score=scores["boosted_inference_score"],
+            boosted_finetuning_score=scores["boosted_finetuning_score"],
         )
         
         db.commit()
@@ -159,4 +275,45 @@ def get_detailed_hardware_info(db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         logger.exception(f"Unexpected error in get_detailed_hardware_info: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/refresh")
+def refresh_hardware_profile(db: Session = Depends(get_db)):
+    """Force hardware re-detection and update cached profile.
+    
+    Performs fresh hardware detection through engine and updates database profile.
+    Useful for detecting hardware changes (RAM upgrade, new GPU) or refreshing
+    dynamic fields (available_memory_gb, disk_available_gb) without app restart.
+    
+    Returns:
+        dict: Confirmation message with backend_type
+        
+    Example response:
+        {
+            "message": "Hardware profile refreshed successfully",
+            "backend_type": "mlx"
+        }
+    
+    Raises:
+        HTTPException: 500 if refresh fails
+    """
+    try:
+        service = _get_service(db)
+        profile = service.refresh_profile()
+        db.commit()
+        
+        logger.info(f"Hardware profile refreshed: backend={profile.backend_type}")
+        return {
+            "message": "Hardware profile refreshed successfully",
+            "backend_type": profile.backend_type
+        }
+        
+    except (HardwareException, DatabaseException) as e:
+        db.rollback()
+        logger.exception(f"Failed to refresh hardware profile: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Unexpected error in refresh_hardware_profile: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

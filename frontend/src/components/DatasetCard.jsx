@@ -3,7 +3,8 @@ import DragDropArea from "./DragDropArea";
 import { Loader, X } from "lucide-react";
 import ErrorModal from "./modals/ErrorModal";
 import ComingSoonModal from "./modals/ComingSoonModal";
-import { API_BASE_URL } from "../config/api.js"
+import { API_BASE_URL } from "../config/api.js";
+import { transformTrainingInfo } from "../utils/hardwareTransform";
 
 /* ─────────────── Recap small table ─────────────── */
 function RecapTable({ recap }) {
@@ -77,42 +78,41 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.json();
+        const hw = transformTrainingInfo(data);
         
-        // Determine device to use: Apple Silicon GPU with MPS if available, otherwise CPU
+        // Determine device to use based on backend type
         let deviceUsed = "CPU";
         let memoryInfo = "Unknown";
         
-        if (data.is_apple_silicon && data.mps_available) {
+        if (hw.backend_type === "mlx" && hw.mps_available) {
           // Apple Silicon with MPS support
-          deviceUsed = data.gpu_model || "Apple Silicon GPU";
-          if (data.unified_memory) {
-            memoryInfo = `${data.total_ram_gb} GB Unified Memory`;
-          } else {
-            memoryInfo = `${data.available_ram_gb} GB`;
-          }
-        } else if (data.gpu_model && data.gpu_model !== "No GPU detected" && !data.gpu_model.includes("fetching")) {
-          // Traditional GPU
-          deviceUsed = `${data.gpu_model}`;
-          memoryInfo = data.gpu_vram_total_gb ? `${data.gpu_vram_total_gb} GB VRAM` : "Unknown";
-        } else if (data.cpu_model && !data.cpu_model.includes("fetching")) {
+          deviceUsed = hw.gpu_model || "Apple Silicon GPU";
+          memoryInfo = hw.unified_memory ? `${hw.total_ram_gb} Unified Memory` : `${hw.ram_available} RAM`;
+        } else if (hw.backend_type === "cuda") {
+          // NVIDIA GPU
+          deviceUsed = hw.gpu_model;
+          memoryInfo = hw.gpu_vram_total || "Unknown";
+        } else {
           // CPU fallback
-          deviceUsed = `${data.cpu_model}`;
-          memoryInfo = data.available_ram_gb ? `${data.available_ram_gb} GB RAM` : "Unknown";
+          deviceUsed = hw.cpu_model;
+          memoryInfo = hw.ram_available || "Unknown";
         }
         
         setHardwareInfo({
           available_vram: memoryInfo,
           device_used: deviceUsed,
-          is_apple_silicon: data.is_apple_silicon || false,
-          mps_available: data.mps_available || false,
-          unified_memory: data.unified_memory || false,
-          chip_model: data.chip_model || null,
+          backend_type: hw.backend_type,
+          is_apple_silicon: hw.is_mlx,
+          mps_available: hw.mps_available,
+          unified_memory: hw.unified_memory,
+          chip_model: hw.chip_model,
         });
       } catch (error) {
         console.error("Error fetching hardware info:", error);
         setHardwareInfo({
           available_vram: "Error fetching",
           device_used: "Error fetching",
+          backend_type: "unknown",
           is_apple_silicon: false,
           mps_available: false,
           unified_memory: false,

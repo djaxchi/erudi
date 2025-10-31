@@ -23,3 +23,8 @@ contextBridge.exposeInMainWorld('electron', {
   }
 });
 
+// Expose additional API for data management
+contextBridge.exposeInMainWorld('electronAPI', {
+  openDataFolder: () => ipcRenderer.invoke('data:openFolder'),
+  clearAllData: () => ipcRenderer.invoke('data:clearAll')
+});

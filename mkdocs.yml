@@ -33,6 +33,7 @@ nav:
       - Conversations: guides/conversations.md
       - LLMs: guides/llms.md
       - Knowledge Base: guides/knowledge_base.md
+      - Hardware Detection: guides/hardware.md
   - ⚙️ API Reference:
       - Core: reference/core.md
       - Engines: reference/engines.md

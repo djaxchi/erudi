@@ -12,6 +12,7 @@ import { RefreshCcw, Search, MonitorCheck, SearchCode, Blocks, Star, Users } fro
 import WelcomeModal from "../components/modals/WelcomeModal";
 import logoErudi from "../img/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api";
+import { transformAppStartupInfo } from "../utils/hardwareTransform";
 
 export default function LandingPage() {
   const { open } = useDownloadModal();
@@ -80,9 +81,11 @@ export default function LandingPage() {
           throw new Error(`HTTP ${response.status}`);
         }
         const data = await response.json();
-        setHardwareInfo(data);
+        const transformed = transformAppStartupInfo(data);
+        setHardwareInfo(transformed);
       } catch (error) {
         setHardwareInfo({
+          backend_type: "unknown",
           error: "Failed to evaluate hardware capabilities. Please contact the Erudi team for support."
         });
       } finally {
@@ -441,7 +444,7 @@ fetchWelcomePopupStatus();
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 bg-[#071b18] relative overflow-auto">
+      <main className="flex-1 bg-[#071b18] relative custom-scroll overflow-auto">
         <div className="p-8 space-y-8">
           {/* Local Models Section */}
           <section>

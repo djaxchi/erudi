@@ -12,13 +12,14 @@
     "lint": "echo \"No linting configured\""
   },
   "keywords": [],
-  "author": "Nabil Dakkoune <nabil.dakkoune.86@hotmail.com>",
-  "license": "MIT",
+  "author": "Djalil Chikhi, Rayan Hanader, Sami Taider, Youssef Chaouki, Youssef Laatar",
+  "license": "SEE LICENSE IN LICENSE",
   "devDependencies": {
     "@babel/core": "^7.27.1",
     "@babel/preset-react": "^7.27.1",
     "@electron-forge/cli": "^7.8.0",
     "@electron-forge/maker-deb": "^7.8.0",
+    "@electron-forge/maker-dmg": "^7.10.2",
     "@electron-forge/maker-rpm": "^7.8.0",
     "@electron-forge/maker-squirrel": "^7.8.0",
     "@electron-forge/maker-zip": "^7.8.0",

@@ -1,34 +1,43 @@
 """Global application configuration and environment management.
 
-This module centralizes all configuration constants, environment variables,
-and directory paths used across the Erudi  It ensures consistent
-path resolution and provides a single source of truth for deployment settings.
+This module centralizes configuration constants, environment variables,
+and directory paths used across Erudi. It ensures consistent path resolution
+in both editable source checkouts and PyInstaller bundles.
 
 Configuration Categories:
-    - **Authentication**: HuggingFace token for model downloads
-    - **Directories**: Data storage, model cache, logs, vector indexes
-    - **Database**: SQLite connection string
-    - **Engine**: Runtime LLM engine instance (MLX/CUDA/CPU)
+    - **Authentication**: HuggingFace token for model downloads.
+    - **Directories**: Data storage, model cache, logs, vector indexes.
+    - **Database**: SQLite connection string.
+    - **Engine**: Runtime LLM engine instance (MLX/CUDA/CPU).
 
 Directory Structure:
-    ::
+    Development mode (backend/)::
 
         backend/
         ├── data/
         │   ├── erudi.db              # SQLite database
         │   ├── indexes/              # FAISS vector indexes
-        │   ├── models/               # Quantized models (MLX/GGUF)
-        │   └── models_cache/         # HuggingFace download cache
+        │   ├── models/               # Downloaded models
+        │   ├── models_cache/         # HuggingFace download cache
+        │   └── training_datasets/    # Fine-tuning datasets
         └── logs/                     # Structured application logs
+
+    Production mode (PyInstaller bundle):
+        Runtime directories are resolved dynamically by
+        ``src.launcher.runtime_paths`` so packaged builds write to
+        user-writable locations (AppData on Windows, Library folders on macOS,
+        XDG paths on Linux).
 
 Environment Variables:
     HF_TOKEN (optional):
         HuggingFace API token for downloading gated models.
         If not set, only public models are accessible.
 
-        Example in .env::
-
-            HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxx
+Path Resolution:
+    ROOT_DIR:
+        Populated from the runtime path registry. In development it points to
+        the ``backend/`` folder; in bundled builds it matches the PyInstaller
+        resource directory.
 
 Global State:
     LLM_Engine:
@@ -47,7 +56,8 @@ Example:
 
         # Check HuggingFace authentication
         if config.HF_TOKEN:
-            config.HF_API.whoami()  # Verify token validity
+            api = config.get_hf_api()
+            api.whoami()  # Verify token validity
 
         # Use engine (after lifespan startup)
         async for token in config.LLM_Engine.generate_stream(prompt, params):
@@ -62,52 +72,69 @@ Warning:
     CACHE_DIR, etc.). Ensure paths are configured before first import.
 """
 
-# TO COMPLETE WITH BUILDTIME VARS
-
-
 from dotenv import load_dotenv
 import os
 from typing import Optional, Type
 from pathlib import Path
-from src.engines.base_engine import BaseEngine
 
 from huggingface_hub import HfApi
 
+from src.engines.base_engine import BaseEngine
+from src.launcher import ensure_runtime_paths_initialized
+
+# ============ Environment Variables ============
+
 load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN", None)
-ROOT_DIR = Path(__file__).resolve().parents[2]
-INDEXES_DIR = ROOT_DIR / "data" / "indexes"
-LLM_DIR = ROOT_DIR / "data" / "models"
-CACHE_DIR = ROOT_DIR / "data" / "models_cache"
-TRAINING_DATASETS_DIR = ROOT_DIR / "data" / "training_datasets"
-LOG_DIR = ROOT_DIR / "logs"
-db_dir = ROOT_DIR / "data"
-db_dir.mkdir(parents=True, exist_ok=True)
-db_path = db_dir / "erudi.db"
+
+# ============ Runtime Paths ============
+
+_RUNTIME_PATHS = ensure_runtime_paths_initialized()
+ROOT_DIR = _RUNTIME_PATHS.backend_root
+DATA_ROOT = _RUNTIME_PATHS.data_dir
+LOG_DIR = _RUNTIME_PATHS.log_dir
+
+# ============ Directory Paths ============
+
+INDEXES_DIR = DATA_ROOT / "indexes"
+LLM_DIR = DATA_ROOT / "models"
+CACHE_DIR = DATA_ROOT / "models_cache"
+TRAINING_DATASETS_DIR = DATA_ROOT / "training_datasets"
+
+# ============ Database Configuration ============
+
+DATA_ROOT.mkdir(parents=True, exist_ok=True)
+db_path = DATA_ROOT / "erudi.db"
 DATABASE_URL = f"sqlite:///{db_path}"
+
+# ============ Directory Creation ============
+
 INDEXES_DIR.mkdir(parents=True, exist_ok=True)
 LLM_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 TRAINING_DATASETS_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-# Lazy-loaded HuggingFace API client
+# ============ HuggingFace API Client ============
+
+# Lazy-loaded HuggingFace API client singleton
 _HF_API: Optional[HfApi] = None
+
 
 def get_hf_api() -> HfApi:
     """Get or initialize HuggingFace API client (lazy-loaded singleton).
-    
+
     Provides thread-safe lazy initialization of HfApi client. The client is
     created only when first requested, avoiding unnecessary initialization
     during imports or when working offline.
-    
+
     Returns:
         HfApi: Configured HuggingFace API client with authentication token.
-    
+
     Note:
         Thread-safe through Python's GIL. Multiple calls return same instance.
         Token is loaded from HF_TOKEN environment variable.
-    
+
     Example:
         >>> from src.core import config
         >>> api = config.get_hf_api()
@@ -118,4 +145,9 @@ def get_hf_api() -> HfApi:
         _HF_API = HfApi(token=HF_TOKEN)
     return _HF_API
 
-LLM_Engine : Optional[Type[BaseEngine]] = None # It is defined in the lifespan at FastAPI init.
+
+# ============ LLM Engine (Runtime State) ============
+
+# Runtime engine instance initialized during FastAPI lifespan startup
+# Set by BaseEngine.get_engine() based on platform detection
+LLM_Engine: Optional[Type[BaseEngine]] = None

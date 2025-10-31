@@ -1,29 +1,164 @@
 const { FusesPlugin } = require("@electron-forge/plugin-fuses");
 const { FuseV1Options, FuseVersion } = require("@electron/fuses");
+const path = require("path");
 
 module.exports = {
   packagerConfig: {
     asar: true,
+    prune: true,
+    
+    // Unpack native modules & backend for runtime access (critical for CUDA/MLX)
+    asarUnpack: ["**/*.node"],
+    
+    // Resource bundling: include backend for all platforms
+    extraResource: [
+      "../backend/dist/backend"
+    ],
+    
+    // Exclude unnecessary files to reduce bundle size
+    ignore: [
+      "^/tests($|/)",
+      "^/\\.github($|/)",
+      "^/docs($|/)",
+      "^/\\.gitignore$",
+      "^/\\.env($|/)",
+      "\\.map$",
+      "\\.md$",
+      "\\.ts$"
+    ],
+    
+    // Application metadata (cross-platform)
+    name: "erudi",
+    executableName: "erudi",
+    appBundleId: "com.erudi.app",
+    appCategoryType: "public.app-category.productivity",
+    icon: "./assets/icons/icon",
+    appCopyright: "Copyright © 2025 Erudi Team",
+    appVersion: "1.0.0",
+    buildVersion: "1.0.0",
+    
+    // macOS-specific code signing & notarization
+    ...(process.platform === "darwin" && {
+      ...(process.env.APPLE_SIGNING_IDENTITY && {
+        osxSign: {
+          identity: process.env.APPLE_SIGNING_IDENTITY,
+          hardenedRuntime: true,
+          entitlements: "./entitlements.plist",
+          entitlementsInherit: "./entitlements.plist",
+          gatekeeper: false,
+        },
+      }),
+      ...(process.env.APPLE_ID && {
+        osxNotarize: {
+          tool: "notarytool",
+          appleId: process.env.APPLE_ID,
+          appleIdPassword: process.env.APPLE_ID_PASSWORD,
+          teamId: process.env.APPLE_TEAM_ID,
+        },
+      }),
+    }),
+    
+    // Windows-specific metadata
+    ...(process.platform === "win32" && {
+      win32metadata: {
+        CompanyName: "Erudi AI",
+        FileDescription: "Erudi: Local LLM Specialization Desktop App",
+        OriginalFilename: "erudi.exe",
+        ProductName: "Erudi",
+        InternalName: "erudi",
+      },
+    }),
   },
-  rebuildConfig: {},
+
+  rebuildConfig: {
+    // Rebuild native modules for the target platform
+    buildPath: path.resolve(__dirname, "forge-local-build"),
+  },
+
   makers: [
+    // macOS: DMG installer
     {
-      name: "@electron-forge/maker-squirrel",
-      config: {},
+      name: "@electron-forge/maker-dmg",
+      platforms: ["darwin"],
+      config: {
+        name: "erudi-Installer",
+        icon: "./assets/icons/icon.icns",
+        background: "./assets/dmg-background.png",
+        format: "UDZO",
+        window: {
+          x: 420,
+          y: 200,
+          width: 640,
+          height: 440,
+        },
+        contents: [
+          {
+            x: 200,
+            y: 200,
+            type: "file",
+            path: "./out/erudi-darwin-arm64/erudi.app",
+          },
+          {
+            x: 400,
+            y: 200,
+            type: "link",
+            path: "/Applications",
+          },
+        ],
+        iconSize: 80,
+        textColor: "#FFFFFF",
+      },
     },
+    
+    // macOS: ZIP archive
     {
       name: "@electron-forge/maker-zip",
       platforms: ["darwin"],
     },
+    
+    // Windows: NSIS installer
+    {
+      name: "@electron-forge/maker-nsis",
+      platforms: ["win32"],
+      config: {
+        installerIcon: "./assets/icons/icon.ico",
+        uninstallerIcon: "./assets/icons/icon.ico",
+        installerHeader: "./assets/nsis/installerHeader.bmp",
+        installerSidebar: "./assets/nsis/installerSidebar.bmp",
+        warningIcon: "./assets/icons/icon.ico",
+        oneClick: false,
+        allowToChangeInstallationDirectory: true,
+        createDesktopShortcut: true,
+        createStartMenuShortcut: true,
+        shortcutName: "Erudi",
+      },
+    },
+    
+    // Windows: ZIP portable (optional)
+    {
+      name: "@electron-forge/maker-zip",
+      platforms: ["win32"],
+    },
+    
+    // Linux: DEB
     {
       name: "@electron-forge/maker-deb",
-      config: {},
+      platforms: ["linux"],
+      config: {
+        icon: "./assets/icons/icon.png",
+      },
     },
+    
+    // Linux: RPM
     {
       name: "@electron-forge/maker-rpm",
-      config: {},
+      platforms: ["linux"],
+      config: {
+        icon: "./assets/icons/icon.png",
+      },
     },
   ],
+
   plugins: [
     {
       name: "@electron-forge/plugin-auto-unpack-natives",
