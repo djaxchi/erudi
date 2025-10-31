@@ -7,7 +7,7 @@ import { Trash, Plus } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import MarkdownRenderer from "../components/MarkdownRenderer";
-import { API_BASE_URL } from "../config/api.js"
+import { API_BASE_URL } from "../config/api.js";
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
@@ -45,7 +45,9 @@ export default function ArenaPage() {
 
   useEffect(() => {
     return () => {
-      if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
+      if (flushIntervalRef.current) {
+        clearInterval(flushIntervalRef.current);
+      }
     };
   }, []);
 
@@ -54,32 +56,26 @@ export default function ArenaPage() {
       .then((res) => res.json())
       .then((data) => {
         setModels(data);
-        setPanels(
-          [0, 1].map((i) => makePanel(i, data[i % data.length]?.name, data))
-        );
+        setPanels([0, 1].map((i) => makePanel(i, data[i % data.length]?.name, data)));
       })
       .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
   }, []);
 
   const handleModelChange = (panelId, newModel) =>
     setPanels((prev) =>
-      prev.map((p) =>
-        p.id === panelId ? { ...p, selectedModel: newModel } : p
-      )
+      prev.map((p) => (p.id === panelId ? { ...p, selectedModel: newModel } : p)),
     );
 
   const handleSettingsChange = (panelId, newSettings) =>
-    setPanels((prev) =>
-      prev.map((p) => (p.id === panelId ? { ...p, ...newSettings } : p))
-    );
+    setPanels((prev) => prev.map((p) => (p.id === panelId ? { ...p, ...newSettings } : p)));
 
   const handleCustomizePrompt = (panelId, show) =>
-    setPanels((prev) =>
-      prev.map((p) => (p.id === panelId ? { ...p, showPromptModal: show } : p))
-    );
+    setPanels((prev) => prev.map((p) => (p.id === panelId ? { ...p, showPromptModal: show } : p)));
 
   const handleAsk = async (inputValue) => {
-    if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
+    if (flushIntervalRef.current) {
+      clearInterval(flushIntervalRef.current);
+    }
     setLoading(true);
 
     const withPlaceholders = panels.map((panel) => ({
@@ -108,7 +104,9 @@ export default function ArenaPage() {
         ? activeIds.every((id) => buffersRef.current[id].length > 0)
         : activeIds.some((id) => buffersRef.current[id].length > 0);
 
-      if (!ready) return;
+      if (!ready) {
+        return;
+      }
 
       setPanels((prev) =>
         prev.map((p) => {
@@ -123,13 +121,10 @@ export default function ArenaPage() {
             return { ...p, messages: msgs };
           }
           return p;
-        })
+        }),
       );
 
-      if (
-        !stillStreaming &&
-        activeIds.every((id) => buffersRef.current[id].length === 0)
-      ) {
+      if (!stillStreaming && activeIds.every((id) => buffersRef.current[id].length === 0)) {
         clearInterval(flushIntervalRef.current);
         flushIntervalRef.current = null;
         setLoading(false);
@@ -142,7 +137,9 @@ export default function ArenaPage() {
       if (!llm) {
         buffersRef.current[panel.id].push("[Model not found]");
         streamingPanels.current.delete(panel.id);
-        if (streamingPanels.current.size === 0) setLoading(false);
+        if (streamingPanels.current.size === 0) {
+          setLoading(false);
+        }
         return;
       }
 
@@ -159,12 +156,16 @@ export default function ArenaPage() {
       })
         .then(() => {
           streamingPanels.current.delete(panel.id);
-          if (streamingPanels.current.size === 0) setLoading(false);
+          if (streamingPanels.current.size === 0) {
+            setLoading(false);
+          }
         })
         .catch(() => {
           buffersRef.current[panel.id].push("[Erreur]");
           streamingPanels.current.delete(panel.id);
-          if (streamingPanels.current.size === 0) setLoading(false);
+          if (streamingPanels.current.size === 0) {
+            setLoading(false);
+          }
         });
     });
 
@@ -172,7 +173,9 @@ export default function ArenaPage() {
   };
 
   const handleAddPanel = () => {
-    if (panels.length >= MAX_PANELS) return;
+    if (panels.length >= MAX_PANELS) {
+      return;
+    }
 
     // Animate the button
     setAddButtonAnimating(true);
@@ -189,18 +192,16 @@ export default function ArenaPage() {
 
     // Trigger animation
     setTimeout(() => {
-      setPanels((prev) =>
-        prev.map((p) => (p.id === nextId ? { ...p, isAnimating: false } : p))
-      );
+      setPanels((prev) => prev.map((p) => (p.id === nextId ? { ...p, isAnimating: false } : p)));
     }, 50);
   };
 
   const handleDeletePanel = (panelId) => {
-    if (panels.length <= 1) return;
+    if (panels.length <= 1) {
+      return;
+    }
 
-    setPanels((prev) =>
-      prev.map((p) => (p.id === panelId ? { ...p, isRemoving: true } : p))
-    );
+    setPanels((prev) => prev.map((p) => (p.id === panelId ? { ...p, isRemoving: true } : p)));
 
     setTimeout(() => {
       setPanels((prev) => prev.filter((p) => p.id !== panelId));
@@ -225,8 +226,8 @@ export default function ArenaPage() {
         panel.isAnimating
           ? "opacity-0 transform scale-95 translate-y-4"
           : panel.isRemoving
-          ? "opacity-0 transform scale-95 translate-y-4"
-          : "opacity-100 transform scale-100 translate-y-0"
+            ? "opacity-0 transform scale-95 translate-y-4"
+            : "opacity-100 transform scale-100 translate-y-0"
       }`}
     >
       <div className="flex items-start justify-between pb-2 gap-2">
@@ -252,11 +253,7 @@ export default function ArenaPage() {
             }`}
             onClick={() => handleDeletePanel(panel.id)}
             disabled={panels.length <= 1}
-            title={
-              panels.length <= 1
-                ? "Cannot delete the last panel"
-                : "Delete this panel"
-            }
+            title={panels.length <= 1 ? "Cannot delete the last panel" : "Delete this panel"}
           >
             <Trash className="w-5 h-5 mt-2" />
           </button>
@@ -286,8 +283,8 @@ export default function ArenaPage() {
                 isUser
                   ? "bg-emerald-900/40 text-white self-end"
                   : isError
-                  ? "text-red-400 self-start"
-                  : "text-white self-start"
+                    ? "text-red-400 self-start"
+                    : "text-white self-start"
               }`}
             >
               {isUser || isError ? (
@@ -309,32 +306,22 @@ export default function ArenaPage() {
         className="flex-1 flex flex-col bg-[#071b18] relative overflow-auto custom-scroll"
         style={{ paddingBottom: "4rem" }}
       >
-        <div className={`flex-1 p-8 ${gridClass}`}>
-          {panels.map(renderChatPanel)}
-        </div>
+        <div className={`flex-1 p-8 ${gridClass}`}>{panels.map(renderChatPanel)}</div>
       </main>
       <div className="fixed bottom-0 left-0 right-0 flex justify-center align-center z-30">
         <div className="max-w-lg w-full mb-8 px-4 py-2 flex items-center gap-3">
           <div className="flex-1">
-            <QuestionInput
-              onSend={handleAsk}
-              backgroundClass="bg-emerald-900"
-              disabled={loading}
-            />
+            <QuestionInput onSend={handleAsk} backgroundClass="bg-emerald-900" disabled={loading} />
           </div>
-          
+
           {/* Add Panel Button */}
           <button
             className={`rounded-full transition-all duration-200 -mb-1 ${
               panels.length >= MAX_PANELS ? "opacity-50 cursor-not-allowed" : ""
-            } ${
-              addButtonAnimating ? "transform scale-110" : "transform scale-100"
-            }`}
+            } ${addButtonAnimating ? "transform scale-110" : "transform scale-100"}`}
             onClick={handleAddPanel}
             disabled={panels.length >= MAX_PANELS}
-            title={
-              panels.length >= MAX_PANELS ? "Maximum 4 panels" : "Add chat panel"
-            }
+            title={panels.length >= MAX_PANELS ? "Maximum 4 panels" : "Add chat panel"}
           >
             {/* Glassy effect container */}
             <div
@@ -346,13 +333,32 @@ export default function ArenaPage() {
               ].join(" ")}
             >
               {/* Frost overlays with emerald tint */}
-              <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full mix-blend-overlay"
-                   style={{background:"linear-gradient(180deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.06) 28%, rgba(16,185,129,0.02) 60%, rgba(16,185,129,0) 100%)"}}/>
-              <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full opacity-20 mix-blend-overlay"
-                   style={{backgroundImage:'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")', backgroundSize:"200px 200px"}}/>
-              <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full"
-                   style={{boxShadow:"inset 0 1px 0 rgba(16,185,129,0.15), inset 0 -1px 0 rgba(16,185,129,0.08)"}}/>
-              
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-full mix-blend-overlay"
+                style={{
+                  background:
+                    "linear-gradient(180deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.06) 28%, rgba(16,185,129,0.02) 60%, rgba(16,185,129,0) 100%)",
+                }}
+              />
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-full opacity-20 mix-blend-overlay"
+                style={{
+                  backgroundImage:
+                    'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")',
+                  backgroundSize: "200px 200px",
+                }}
+              />
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-full"
+                style={{
+                  boxShadow:
+                    "inset 0 1px 0 rgba(16,185,129,0.15), inset 0 -1px 0 rgba(16,185,129,0.08)",
+                }}
+              />
+
               {/* Plus icon from Lucide */}
               <Plus className="w-6 h-6 text-white relative z-10" strokeWidth={2} />
             </div>
@@ -375,7 +381,7 @@ export default function ArenaPage() {
                 })
               }
             />
-          )
+          ),
       )}
     </div>
   );

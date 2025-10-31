@@ -10,7 +10,7 @@ import ErrorModal from "../components/modals/ErrorModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";
 import logoErudi from "../img/logoerudifinal.png";
-import { API_BASE_URL } from "../config/api.js"
+import { API_BASE_URL } from "../config/api.js";
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -65,9 +65,7 @@ export default function ChatPage() {
       })
       .catch((err) => {
         console.error("Erreur lors du fetch des modèles:", err);
-        setErrorMessage(
-          `Failed to load models: ${err.message || "Network error"}`
-        );
+        setErrorMessage(`Failed to load models: ${err.message || "Network error"}`);
       });
   }, []);
 
@@ -77,15 +75,12 @@ export default function ChatPage() {
         const res = await fetch(`${API_BASE_URL}/conversations/`);
         const data = await res.json();
         const sorted = data.sort(
-          (a, b) =>
-            new Date(b.last_message_time) - new Date(a.last_message_time)
+          (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time),
         );
         setConversations(sorted);
       } catch (err) {
         console.error("Failed to fetch conversations:", err);
-        setErrorMessage(
-          `Failed to load conversations: ${err.message || "Network error"}`
-        );
+        setErrorMessage(`Failed to load conversations: ${err.message || "Network error"}`);
       }
     };
 
@@ -101,7 +96,7 @@ export default function ChatPage() {
         (model) =>
           model.name === modelParam ||
           model.id === modelParam ||
-          model.name.toLowerCase() === modelParam.toLowerCase()
+          model.name.toLowerCase() === modelParam.toLowerCase(),
       );
 
       if (foundModel) {
@@ -137,7 +132,9 @@ export default function ChatPage() {
             custom_prompt: customPrompt,
           }),
         });
-        if (!res.ok) throw new Error("Failed to create conversation");
+        if (!res.ok) {
+          throw new Error("Failed to create conversation");
+        }
         const conversation = await res.json();
 
         // 2. Redirect to ConversationPage and pass the question AND parameters
@@ -150,18 +147,14 @@ export default function ChatPage() {
         });
       } catch (err) {
         console.error("Failed to start conversation:", err);
-        setErrorMessage(
-          `Failed to start conversation: ${err.message || "Network error"}`
-        );
+        setErrorMessage(`Failed to start conversation: ${err.message || "Network error"}`);
       }
     },
-    [models, selectedModel, navigate, settings, customPrompt]
+    [models, selectedModel, navigate, settings, customPrompt],
   );
 
   const handleRename = (id, newName) => {
-    setConversations((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, name: newName } : c))
-    );
+    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, name: newName } : c)));
   };
 
   const handleDelete = (id) => {
@@ -173,14 +166,12 @@ export default function ChatPage() {
       const res = await fetch(`${API_BASE_URL}/conversations/`);
       const data = await res.json();
       const sorted = data.sort(
-        (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
+        (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time),
       );
       setConversations(sorted);
     } catch (err) {
       console.error("Failed to refresh conversations:", err);
-      setErrorMessage(
-        `Failed to refresh conversations: ${err.message || "Network error"}`
-      );
+      setErrorMessage(`Failed to refresh conversations: ${err.message || "Network error"}`);
     }
   };
 
@@ -190,10 +181,10 @@ export default function ChatPage() {
       id === "temperature"
         ? "Controls creativity. Lower = focused, higher = creative."
         : id === "top-p"
-        ? "Controls word variety. Lower = predictable, higher = diverse."
-        : id === "prompt"
-        ? "Customize system instructions that guide AI behavior."
-        : "";
+          ? "Controls word variety. Lower = predictable, higher = diverse."
+          : id === "prompt"
+            ? "Customize system instructions that guide AI behavior."
+            : "";
     return (
       <Tooltip content={text} side={side} width="w-64">
         <HelpCircle className="w-4 h-4 text-gray-400 hover:text-emerald-400 transition-colors cursor-help" />
@@ -210,11 +201,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar
-        showCollapsible={true}
-        onToggleSidebar={toggleSidebar}
-        collapsed={collapsed}
-      />
+      <Sidebar showCollapsible={true} onToggleSidebar={toggleSidebar} collapsed={collapsed} />
 
       {/* barre latérale */}
       <aside
@@ -251,59 +238,56 @@ export default function ChatPage() {
               No current local models found, please add local models to proceed.
             </div>
             {/* Language Warning */}
-              <div className="flex justify-center px-2 pb-1">
-                <div className="w-[700px] max-w-full">
+            <div className="flex justify-center px-2 pb-1">
+              <div className="w-[700px] max-w-full">
+                <div
+                  className={[
+                    "relative w-full rounded-[26px] overflow-hidden",
+                    "bg-[rgba(64,35,22,0.45)] backdrop-blur-[18px] saturate-[1.4]",
+                    "shadow-[0_8px_30px_-4px_rgba(0,0,0,0.45),0_2px_6px_-1px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,200,150,0.06)]",
+                  ].join(" ")}
+                >
                   <div
-                    className={[
-                      "relative w-full rounded-[26px] overflow-hidden",
-                      "bg-[rgba(64,35,22,0.45)] backdrop-blur-[18px] saturate-[1.4]",
-                      "shadow-[0_8px_30px_-4px_rgba(0,0,0,0.45),0_2px_6px_-1px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,200,150,0.06)]",
-                    ].join(" ")}
-                  >
-                    <div
-                      aria-hidden
-                      className="absolute inset-0 pointer-events-none rounded-[26px] mix-blend-overlay"
-                      style={{
-                        background:
-                          "linear-gradient(to bottom, rgba(255,180,100,0.18), rgba(255,180,100,0) 40%)",
-                      }}
-                    />
-                    <div
-                      aria-hidden
-                      className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
-                      style={{
-                        backgroundImage:
-                          'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")',
-                        backgroundSize: "200px 200px",
-                      }}
-                    />
+                    aria-hidden
+                    className="absolute inset-0 pointer-events-none rounded-[26px] mix-blend-overlay"
+                    style={{
+                      background:
+                        "linear-gradient(to bottom, rgba(255,180,100,0.18), rgba(255,180,100,0) 40%)",
+                    }}
+                  />
+                  <div
+                    aria-hidden
+                    className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
+                    style={{
+                      backgroundImage:
+                        'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")',
+                      backgroundSize: "200px 200px",
+                    }}
+                  />
 
-            {/* Content */}
-              <div className="relative z-10 p-6">
-                <h2 className="text-lg font-semibold tracking-tight text-orange-100 mb-3">
-                  Note on Language
-                </h2>
-                <p className="text-sm text-orange-200/80 mb-3">
-                  Base models have been massively trained on English data. You will get significantly better results by chatting in English.
-                </p>
-                <p className="text-sm text-orange-200/70 italic">
-                  Pour les français, ça vous fera de l'entraînement :)
-                </p>
+                  {/* Content */}
+                  <div className="relative z-10 p-6">
+                    <h2 className="text-lg font-semibold tracking-tight text-orange-100 mb-3">
+                      Note on Language
+                    </h2>
+                    <p className="text-sm text-orange-200/80 mb-3">
+                      Base models have been massively trained on English data. You will get
+                      significantly better results by chatting in English.
+                    </p>
+                    <p className="text-sm text-orange-200/70 italic">
+                      Pour les français, ça vous fera de l'entraînement :)
+                    </p>
+                  </div>
+                </div>
               </div>
-          </div>
-        </div>
-      </div>
+            </div>
           </GradientBox>
         ) : (
           /* Interface de création de chat avec design HeaderBar */
           <div className="w-[700px] max-w-full">
             {/* Logo Erudi */}
             <div className="flex justify-center mb-8">
-              <img 
-                src={logoErudi} 
-                alt="Erudi" 
-                className="h-20 w-auto" 
-              />
+              <img src={logoErudi} alt="Erudi" className="h-20 w-auto" />
             </div>
 
             {/* HeaderBar-like container */}
@@ -518,16 +502,12 @@ export default function ChatPage() {
                                   onChange={(e) =>
                                     setSettings((prev) => ({
                                       ...prev,
-                                      maxTokens: parseInt(
-                                        e.target.value || "0",
-                                        10
-                                      ),
+                                      maxTokens: parseInt(e.target.value || "0", 10),
                                     }))
                                   }
                                   className="bg-transparent border-0 outline-none w-28 text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 />
                               </div>
-
                             </div>
                           </div>
 
@@ -559,77 +539,75 @@ export default function ChatPage() {
 
                 {/* Question Input - Always visible */}
                 <div className="mt-6">
-                  <QuestionInput 
-                    onSend={handleAsk} 
-                    placeholder="Ask me anything..."
-                  />
+                  <QuestionInput onSend={handleAsk} placeholder="Ask me anything..." />
                 </div>
                 {/* Language Warning */}
-              <div className="flex justify-center mt-6 px-2 pb-1">
-                <div className="w-[700px] max-w-full">
-                  <div
-                    className={[
-                      "relative w-full rounded-[26px] overflow-hidden cursor-pointer transition-all duration-300",
-                      "bg-[rgba(64,35,22,0.45)] backdrop-blur-[18px] saturate-[1.4]",
-                      "shadow-[0_8px_30px_-4px_rgba(0,0,0,0.45),0_2px_6px_-1px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,200,150,0.06)]",
-                      "hover:border-orange-600/40",
-                    ].join(" ")}
-                    onClick={() => setIsLanguageWarningExpanded(!isLanguageWarningExpanded)}
-                  >
+                <div className="flex justify-center mt-6 px-2 pb-1">
+                  <div className="w-[700px] max-w-full">
                     <div
-                      aria-hidden
-                      className="absolute inset-0 pointer-events-none rounded-[26px] mix-blend-overlay"
-                      style={{
-                        background:
-                          "linear-gradient(to bottom, rgba(255,180,100,0.18), rgba(255,180,100,0) 40%)",
-                      }}
-                    />
-                    <div
-                      aria-hidden
-                      className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
-                      style={{
-                        backgroundImage:
-                          'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")',
-                        backgroundSize: "200px 200px",
-                      }}
-                    />
-
-            {/* Content */}
-              <div className="relative z-10 p-4 px-6">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-base font-semibold tracking-tight text-orange-100">
-                    Note on Language
-                  </h2>
-                  <motion.div
-                    animate={{ rotate: isLanguageWarningExpanded ? 180 : 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <ChevronDown className="w-5 h-5 text-orange-100" />
-                  </motion.div>
-                </div>
-                
-                <AnimatePresence>
-                  {isLanguageWarningExpanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="overflow-hidden"
+                      className={[
+                        "relative w-full rounded-[26px] overflow-hidden cursor-pointer transition-all duration-300",
+                        "bg-[rgba(64,35,22,0.45)] backdrop-blur-[18px] saturate-[1.4]",
+                        "shadow-[0_8px_30px_-4px_rgba(0,0,0,0.45),0_2px_6px_-1px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,200,150,0.06)]",
+                        "hover:border-orange-600/40",
+                      ].join(" ")}
+                      onClick={() => setIsLanguageWarningExpanded(!isLanguageWarningExpanded)}
                     >
-                      <p className="text-sm text-orange-200/80 mb-3 mt-3">
-                        Base models have been massively trained on English data. You will get significantly better results by chatting in English.
-                      </p>
-                      <p className="text-sm text-orange-200/70 italic">
-                        Pour les français, ça vous fera de l'entraînement :)
-                      </p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-          </div>
-        </div>
-      </div>
+                      <div
+                        aria-hidden
+                        className="absolute inset-0 pointer-events-none rounded-[26px] mix-blend-overlay"
+                        style={{
+                          background:
+                            "linear-gradient(to bottom, rgba(255,180,100,0.18), rgba(255,180,100,0) 40%)",
+                        }}
+                      />
+                      <div
+                        aria-hidden
+                        className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
+                        style={{
+                          backgroundImage:
+                            'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")',
+                          backgroundSize: "200px 200px",
+                        }}
+                      />
+
+                      {/* Content */}
+                      <div className="relative z-10 p-4 px-6">
+                        <div className="flex items-center justify-between">
+                          <h2 className="text-base font-semibold tracking-tight text-orange-100">
+                            Note on Language
+                          </h2>
+                          <motion.div
+                            animate={{ rotate: isLanguageWarningExpanded ? 180 : 0 }}
+                            transition={{ duration: 0.3 }}
+                          >
+                            <ChevronDown className="w-5 h-5 text-orange-100" />
+                          </motion.div>
+                        </div>
+
+                        <AnimatePresence>
+                          {isLanguageWarningExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.3 }}
+                              className="overflow-hidden"
+                            >
+                              <p className="text-sm text-orange-200/80 mb-3 mt-3">
+                                Base models have been massively trained on English data. You will
+                                get significantly better results by chatting in English.
+                              </p>
+                              <p className="text-sm text-orange-200/70 italic">
+                                Pour les français, ça vous fera de l'entraînement :)
+                              </p>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -637,10 +615,7 @@ export default function ChatPage() {
       </main>
 
       {/* Error Popup */}
-      <ErrorModal
-        errorMessage={errorMessage}
-        onClose={() => setErrorMessage("")}
-      />
+      <ErrorModal errorMessage={errorMessage} onClose={() => setErrorMessage("")} />
 
       {/* Customize Prompt Modal */}
       <CustomizePromptModal

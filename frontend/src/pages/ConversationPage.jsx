@@ -8,7 +8,7 @@ import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import { Copy, Check, Star } from "lucide-react";
 import TypingIndicator from "../components/TypingIndicator";
 import MarkdownRenderer from "../components/MarkdownRenderer";
-import { API_BASE_URL } from "../config/api.js"
+import { API_BASE_URL } from "../config/api.js";
 
 export default function ConversationPage() {
   const { id } = useParams();
@@ -51,14 +51,16 @@ export default function ConversationPage() {
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/llms/local`)
-      .then(res => res.json())
-      .then(data => {
+      .then((res) => res.json())
+      .then((data) => {
         setModels(data);
         if (conversations.length > 0) {
-          const conv = conversations.find(c => c.id === Number(id));
+          const conv = conversations.find((c) => c.id === Number(id));
           if (conv) {
-            const model = data.find(m => m.id === conv.llm_id);
-            if (model) setCurrentModel(model.name);
+            const model = data.find((m) => m.id === conv.llm_id);
+            if (model) {
+              setCurrentModel(model.name);
+            }
           }
         }
       });
@@ -66,8 +68,10 @@ export default function ConversationPage() {
 
   const handleModelChange = async (modelName) => {
     setCurrentModel(modelName);
-    const model = models.find(m => m.name === modelName);
-    if (!model) return;
+    const model = models.find((m) => m.name === modelName);
+    if (!model) {
+      return;
+    }
     // Call API to update conversation's llm_id
     await fetch(`${API_BASE_URL}/conversations/${id}`, {
       method: "PATCH",
@@ -105,13 +109,14 @@ export default function ConversationPage() {
       const msgs = await msgRes.json();
       // initialize starred state from backend
       const starredMap = {};
-      msgs.forEach(m => { if (m.starred) starredMap[m.id] = true; });
+      msgs.forEach((m) => {
+        if (m.starred) {
+          starredMap[m.id] = true;
+        }
+      });
       setStarredIds(starredMap);
       const convs = await convRes.json();
-      convs.sort(
-        (a, b) =>
-          new Date(b.last_message_time) - new Date(a.last_message_time)
-      );
+      convs.sort((a, b) => new Date(b.last_message_time) - new Date(a.last_message_time));
       setMessages(msgs);
       setConversations(convs);
     } catch (err) {
@@ -122,13 +127,12 @@ export default function ConversationPage() {
   const handleAskWithParams = useCallback(
     async (question, explicitSettings = null, explicitCustomPrompt = null) => {
       const settingsToUse = explicitSettings || settings;
-      const customPromptToUse =
-        explicitCustomPrompt !== null ? explicitCustomPrompt : customPrompt;
+      const customPromptToUse = explicitCustomPrompt !== null ? explicitCustomPrompt : customPrompt;
 
       setLoading(true);
-      
+
       const isFirstMessage = messages.length === 0;
-      
+
       if (isFirstMessage) {
         setCurrentTitle("");
         setFirstReplyPending(true);
@@ -153,14 +157,11 @@ export default function ConversationPage() {
         if (isFirstMessage) {
           (async () => {
             try {
-              const titleRes = await fetch(
-                `${API_BASE_URL}/conversations/${id}/generate_title`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ question }),
-                }
-              );
+              const titleRes = await fetch(`${API_BASE_URL}/conversations/${id}/generate_title`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ question }),
+              });
 
               if (titleRes.ok) {
                 const reader = titleRes.body.getReader();
@@ -169,19 +170,21 @@ export default function ConversationPage() {
 
                 while (true) {
                   const { done, value } = await reader.read();
-                  if (done) break;
+                  if (done) {
+                    break;
+                  }
 
                   const chunk = decoder.decode(value, { stream: true });
                   fullTitle += chunk;
-                  
-                  setCurrentTitle(prev => {
+
+                  setCurrentTitle((prev) => {
                     const newTitle = prev + chunk;
-                    setConversations(prevConvs => 
-                      prevConvs.map(conv => 
-                        conv.id === Number(id) 
+                    setConversations((prevConvs) =>
+                      prevConvs.map((conv) =>
+                        conv.id === Number(id)
                           ? { ...conv, name: newTitle.trim() || "New Conversation" }
-                          : conv
-                      )
+                          : conv,
+                      ),
                     );
                     return newTitle;
                   });
@@ -193,20 +196,17 @@ export default function ConversationPage() {
           })();
         }
 
-        const responseRes = await fetch(
-          `${API_BASE_URL}/conversations/${id}/query`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              question,
-              temperature: settingsToUse.temperature,
-              top_p: settingsToUse.topP,
-              max_new_tokens: settingsToUse.maxTokens,
-              custom_prompt: customPromptToUse,
-            }),
-          }
-        );
+        const responseRes = await fetch(`${API_BASE_URL}/conversations/${id}/query`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question,
+            temperature: settingsToUse.temperature,
+            top_p: settingsToUse.topP,
+            max_new_tokens: settingsToUse.maxTokens,
+            custom_prompt: customPromptToUse,
+          }),
+        });
 
         if (responseRes.ok) {
           const reader = responseRes.body.getReader();
@@ -216,7 +216,9 @@ export default function ConversationPage() {
           try {
             while (true) {
               const { done, value } = await reader.read();
-              if (done) break;
+              if (done) {
+                break;
+              }
 
               const chunk = decoder.decode(value, { stream: true });
 
@@ -231,22 +233,22 @@ export default function ConversationPage() {
                 prev.map((msg) =>
                   msg.id === assistantMessage.id
                     ? { ...msg, content: assistantMessage.content }
-                    : msg
-                )
+                    : msg,
+                ),
               );
-            }          } catch (streamError) {
+            }
+          } catch (streamError) {
             console.error("Streaming error:", streamError);
-            
+
             // If streaming failed mid-way, append an error note with robust header
-            assistantMessage.content += "\n\n[ERROR_MESSAGE_SYSTEM] Connection interrupted while generating response.";
+            assistantMessage.content +=
+              "\n\n[ERROR_MESSAGE_SYSTEM] Connection interrupted while generating response.";
             setMessages((prev) =>
               prev.map((msg) =>
-                msg.id === assistantMessage.id
-                  ? { ...msg, content: assistantMessage.content }
-                  : msg
-              )
+                msg.id === assistantMessage.id ? { ...msg, content: assistantMessage.content } : msg,
+              ),
             );
-            
+
             try {
               await fetch(`${API_BASE_URL}/conversations/${id}/store_error_message`, {
                 method: "POST",
@@ -258,7 +260,7 @@ export default function ConversationPage() {
           }
         } else {
           console.error("Server error during response generation:", responseRes.status);
-          
+
           try {
             await fetch(`${API_BASE_URL}/conversations/${id}/store_error_message`, {
               method: "POST",
@@ -268,43 +270,43 @@ export default function ConversationPage() {
           } catch (storeError) {
             console.error("Failed to store error message:", storeError);
           }
-            // Update the assistant message with error content using robust header
-          assistantMessage.content = "[ERROR_MESSAGE_SYSTEM] I apologize, but I encountered an error while generating a response. Please try asking your question again.";
+          // Update the assistant message with error content using robust header
+          assistantMessage.content =
+            "[ERROR_MESSAGE_SYSTEM] I apologize, but I encountered an error while generating a response. Please try asking your question again.";
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === assistantMessage.id
-                ? { ...msg, content: assistantMessage.content }
-                : msg
-            )
+              msg.id === assistantMessage.id ? { ...msg, content: assistantMessage.content } : msg,
+            ),
           );
         }
-
       } catch (err) {
         console.error("Failed to send message:", err);
       }
 
       await fetchMessagesAndConversations();
-      
+
       if (isFirstMessage) {
         setTimeout(() => setCurrentTitle(""), 3000);
         setFirstReplyPending(false);
       }
-      
+
       setLoading(false);
     },
-    [id, fetchMessagesAndConversations, messages.length]
+    [id, fetchMessagesAndConversations, messages.length],
   );
 
   const handleAsk = useCallback(
     async (question) => {
       return handleAskWithParams(question, settings, customPrompt);
     },
-    [handleAskWithParams, settings, customPrompt]
+    [handleAskWithParams, settings, customPrompt],
   );
 
   // Load conversation data when ID changes
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      return;
+    }
 
     const loadConversationData = async () => {
       try {
@@ -316,17 +318,16 @@ export default function ConversationPage() {
 
         // Load conversations
         const convs = await convRes.json();
-        convs.sort(
-          (a, b) =>
-            new Date(b.last_message_time) - new Date(a.last_message_time)
-        );
+        convs.sort((a, b) => new Date(b.last_message_time) - new Date(a.last_message_time));
         setConversations(convs);
 
         // Load messages
         const msgs = await msgRes.json();
         const starredMap = {};
         msgs.forEach((m) => {
-          if (m.starred) starredMap[m.id] = true;
+          if (m.starred) {
+            starredMap[m.id] = true;
+          }
         });
         setStarredIds(starredMap);
         setMessages(msgs);
@@ -344,7 +345,9 @@ export default function ConversationPage() {
           // Set current model
           if (models.length > 0) {
             const model = models.find((m) => m.id === conversation.llm_id);
-            if (model) setCurrentModel(model.name);
+            if (model) {
+              setCurrentModel(model.name);
+            }
           }
         }
       } catch (err) {
@@ -355,8 +358,7 @@ export default function ConversationPage() {
         setInitialHandled(true);
 
         const settingsToUse = location.state.initialSettings || settings;
-        const customPromptToUse =
-          location.state.initialCustomPrompt || customPrompt;
+        const customPromptToUse = location.state.initialCustomPrompt || customPrompt;
 
         if (location.state.initialSettings) {
           setSettings(location.state.initialSettings);
@@ -366,11 +368,7 @@ export default function ConversationPage() {
           setCustomPrompt(location.state.initialCustomPrompt);
         }
 
-        await handleAskWithParams(
-          location.state.initialQuestion,
-          settingsToUse,
-          customPromptToUse
-        );
+        await handleAskWithParams(location.state.initialQuestion, settingsToUse, customPromptToUse);
         navigate(location.pathname, { replace: true, state: {} });
       } else if (!location.state || !location.state.initialQuestion) {
         try {
@@ -378,7 +376,11 @@ export default function ConversationPage() {
           const msgs = await msgRes.json();
           // initialize starred state on initial load
           const starredMap = {};
-          msgs.forEach(m => { if (m.starred) starredMap[m.id] = true; });
+          msgs.forEach((m) => {
+            if (m.starred) {
+              starredMap[m.id] = true;
+            }
+          });
           setStarredIds(starredMap);
           setMessages(msgs);
         } catch (err) {
@@ -393,29 +395,31 @@ export default function ConversationPage() {
   // Detect when user manually scrolls
   useEffect(() => {
     const scrollContainer = scrollRef.current;
-    if (!scrollContainer) return;
+    if (!scrollContainer) {
+      return;
+    }
 
     let scrollTimeout;
     let lastScrollTop = scrollContainer.scrollTop;
-    
+
     const handleScroll = () => {
       const currentScrollTop = scrollContainer.scrollTop;
-      
+
       // If user scrolled up (not down), immediately stop auto-scrolling
       if (currentScrollTop < lastScrollTop) {
         setUserScrolledUp(true);
       }
-      
+
       lastScrollTop = currentScrollTop;
-      
+
       // Clear any pending timeout
       clearTimeout(scrollTimeout);
-      
+
       // Wait a bit before checking position to avoid false positives during auto-scroll
       scrollTimeout = setTimeout(() => {
         const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
         const isAtBottom = scrollHeight - scrollTop - clientHeight < 100; // Increased threshold to 100px
-        
+
         // Only mark as scrolled up if user is significantly away from bottom
         if (!isAtBottom) {
           setUserScrolledUp(true);
@@ -425,10 +429,10 @@ export default function ConversationPage() {
       }, 100); // Small delay to debounce
     };
 
-    scrollContainer.addEventListener('scroll', handleScroll);
+    scrollContainer.addEventListener("scroll", handleScroll);
     return () => {
       clearTimeout(scrollTimeout);
-      scrollContainer.removeEventListener('scroll', handleScroll);
+      scrollContainer.removeEventListener("scroll", handleScroll);
     };
   }, []);
 
@@ -444,13 +448,10 @@ export default function ConversationPage() {
     }
   }, [messages, userScrolledUp]);
 
-  const handleConversationClick = (newId) =>
-    navigate(`erudi/conversations/${newId}`);
+  const handleConversationClick = (newId) => navigate(`erudi/conversations/${newId}`);
 
   const handleRename = (cid, newName) =>
-    setConversations((prev) =>
-      prev.map((c) => (c.id === cid ? { ...c, name: newName } : c))
-    );
+    setConversations((prev) => prev.map((c) => (c.id === cid ? { ...c, name: newName } : c)));
 
   const handleDelete = async (cid) => {
     setConversations((prev) => prev.filter((conv) => conv.id !== cid));
@@ -464,31 +465,33 @@ export default function ConversationPage() {
   // Toggle star state and send appropriate POST
   const toggleStar = async (msgId) => {
     const isStarred = starredIds[msgId];
-    const url = `${API_BASE_URL}/conversations/${isStarred ? 'unstar_message' : 'star_message'}`;
+    const url = `${API_BASE_URL}/conversations/${isStarred ? "unstar_message" : "star_message"}`;
     try {
       await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message_id: msgId }),
       });
-      setStarredIds(prev => ({ ...prev, [msgId]: !isStarred }));
+      setStarredIds((prev) => ({ ...prev, [msgId]: !isStarred }));
     } catch (err) {
-      console.error('Star toggle failed:', err);
+      console.error("Star toggle failed:", err);
     }
   };
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar 
-        disabled={loading} 
+      <Sidebar
+        disabled={loading}
         showCollapsible={true}
         onToggleSidebar={toggleSidebar}
         collapsed={collapsed}
       />
 
-      <aside className={`relative bg-[#272727] text-white transition-all duration-300 ease-in-out ${
-        collapsed ? "w-0 p-0" : "w-80 p-6 flex flex-col"
-      }`}>
+      <aside
+        className={`relative bg-[#272727] text-white transition-all duration-300 ease-in-out ${
+          collapsed ? "w-0 p-0" : "w-80 p-6 flex flex-col"
+        }`}
+      >
         {!collapsed && (
           <>
             <h1 className="text-3xl font-bold mb-6 flex-shrink-0">History</h1>
@@ -526,7 +529,7 @@ export default function ConversationPage() {
             onModelChange={handleModelChange}
           />
         </div>
-        
+
         <div
           ref={scrollRef}
           className="flex-1 overflow-y-auto px-10 pt-10 pb-4"
@@ -535,22 +538,22 @@ export default function ConversationPage() {
             msOverflowStyle: "none",
           }}
         >
-          <style>{`::-webkit-scrollbar { display: none; }`}</style>
+          <style>{"::-webkit-scrollbar { display: none; }"}</style>
           <div className="flex flex-col gap-6">
             {messages.map((msg) => {
-              const isUser = msg.sender === 'user';
-              const alignmentClass = isUser ? 'items-end' : 'items-start';
+              const isUser = msg.sender === "user";
+              const alignmentClass = isUser ? "items-end" : "items-start";
               const bubbleClass = isUser
-                ? 'bg-[#191919] ml-auto rounded-tr-none text-white'
-                : msg.content.includes('[ERROR_MESSAGE_SYSTEM]')
-                ? 'text-red-400 mr-auto rounded-tl-none'
-                : ' text-white mr-auto rounded-tl-none';
-              
+                ? "bg-[#191919] ml-auto rounded-tr-none text-white"
+                : msg.content.includes("[ERROR_MESSAGE_SYSTEM]")
+                  ? "text-red-400 mr-auto rounded-tl-none"
+                  : " text-white mr-auto rounded-tl-none";
+
               // Show TypingIndicator for assistant messages that are loading
               const showTypingIndicator = !isUser && loading && !msg.content;
-              
+
               return (
-                <div key={msg.id} className={`group flex flex-col mb-2 ${alignmentClass}`}>  
+                <div key={msg.id} className={`group flex flex-col mb-2 ${alignmentClass}`}>
                   <div
                     className={`break-words w-fit max-w-[75%] p-4 rounded-2xl overflow-wrap break-word ${bubbleClass}`}
                   >
@@ -561,20 +564,19 @@ export default function ConversationPage() {
                         </div>
                         {firstReplyPending && (
                           <div className="text-xs text-gray-400 italic mt-1">
-                            First response may take a bit longer while loading the model into memory...
+                            First response may take a bit longer while loading the model into
+                            memory...
                           </div>
                         )}
                       </div>
+                    ) : isUser || msg.content.includes("[ERROR_MESSAGE_SYSTEM]") ? (
+                      // Keep user messages and error messages as plain text
+                      <pre className="whitespace-pre-wrap font-sans">
+                        {getDisplayContent(msg.content)}
+                      </pre>
                     ) : (
-                      isUser || msg.content.includes('[ERROR_MESSAGE_SYSTEM]') ? (
-                        // Keep user messages and error messages as plain text
-                        <pre className="whitespace-pre-wrap font-sans">
-                          {getDisplayContent(msg.content)}
-                        </pre>
-                      ) : (
-                        // Assistant normal messages: render markdown
-                        <MarkdownRenderer content={msg.content} />
-                      )
+                      // Assistant normal messages: render markdown
+                      <MarkdownRenderer content={msg.content} />
                     )}
                   </div>
                   <div className="flex mt-1 space-x-2 opacity-0 group-hover:opacity-100">
@@ -603,23 +605,19 @@ export default function ConversationPage() {
                     >
                       <Star
                         size={16}
-                        className={starredIds[msg.id] ? 'text-yellow-400' : ''}
-                        fill={starredIds[msg.id] ? 'currentColor' : 'none'}
+                        className={starredIds[msg.id] ? "text-yellow-400" : ""}
+                        fill={starredIds[msg.id] ? "currentColor" : "none"}
                       />
                     </button>
                   </div>
-                 </div>
-               );
-             })}
+                </div>
+              );
+            })}
           </div>
         </div>
         <div className="sticky bottom-0 left-0 right-0 px-10 py-10 backdrop-blur-md flex justify-center w-full">
           <div className="w-full max-w-lg">
-            <QuestionInput
-              onSend={handleAsk}
-              backgroundClass="bg-emerald-900"
-              disabled={loading}
-            />
+            <QuestionInput onSend={handleAsk} backgroundClass="bg-emerald-900" disabled={loading} />
           </div>
         </div>
       </main>

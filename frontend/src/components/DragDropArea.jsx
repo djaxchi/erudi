@@ -10,20 +10,20 @@ import GradientBox from "./GradientBox";
 export default function DragDropArea({ onFilesAdded }) {
   const [isOver, setIsOver] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
-  const [dragCounter, setDragCounter] = useState(0); 
+  const [dragCounter, setDragCounter] = useState(0);
   const inputRef = useRef(null);
 
   /* -------------------------------- helpers -------------------------------- */
   const isAllowedFileType = (fileName) => {
-    const allowedExtensions = ['.pdf', '.txt'];
-    const extension = '.' + fileName.split('.').pop()?.toLowerCase();
+    const allowedExtensions = [".pdf", ".txt"];
+    const extension = "." + fileName.split(".").pop()?.toLowerCase();
     return allowedExtensions.includes(extension);
   };
 
   const extractPaths = (fileList) => {
     return Array.from(fileList)
       .filter((file) => {
-        const fileName = file.name || file.path?.split(/[/\\]/).pop() || '';
+        const fileName = file.name || file.path?.split(/[/\\]/).pop() || "";
         const isAllowed = isAllowedFileType(fileName);
         if (!isAllowed) {
           console.warn(`File "${fileName}" rejected: only PDF and TXT files are allowed`);
@@ -31,47 +31,51 @@ export default function DragDropArea({ onFilesAdded }) {
         return isAllowed;
       })
       .map((file) => {
-        console.log('Processing file:', file);
-        
+        console.log("Processing file:", file);
+
         // Use the preload API if available
         if (window.electron?.getFilePath) {
-          console.log('Using window.electron.getFilePath');
+          console.log("Using window.electron.getFilePath");
           const path = window.electron.getFilePath(file);
-          console.log('Got path from electron API:', path);
+          console.log("Got path from electron API:", path);
           return path;
         }
-        
+
         // Fallback to direct access
-        console.log('Using direct file.path access');
+        console.log("Using direct file.path access");
         return file.path || file.name;
       });
   };
 
   const getFileName = (path) => {
-    if (!path) return "";
+    if (!path) {
+      return "";
+    }
     // Handle both Windows and Unix path separators
     const parts = path.split(/[/\\]/);
     return parts[parts.length - 1] || path;
   };
 
   const getFileType = (path) => {
-    if (!path) return "other";
-    const fileName = getFileName(path);
-    
-    // Check if it's a folder (no file extension)
-    if (!fileName.includes('.')) {
-      return 'Folder';
+    if (!path) {
+      return "other";
     }
-    
-    const extension = fileName.split('.').pop()?.toLowerCase();
-    
+    const fileName = getFileName(path);
+
+    // Check if it's a folder (no file extension)
+    if (!fileName.includes(".")) {
+      return "Folder";
+    }
+
+    const extension = fileName.split(".").pop()?.toLowerCase();
+
     switch (extension) {
-      case 'pdf':
-        return 'PDF';
-      case 'txt':
-        return 'TXT';
-      default:
-        return 'Other';
+    case "pdf":
+      return "PDF";
+    case "txt":
+      return "TXT";
+    default:
+      return "Other";
     }
   };
 
@@ -80,7 +84,7 @@ export default function DragDropArea({ onFilesAdded }) {
   const removeFile = (indexToRemove) => {
     const updatedFiles = selectedFiles.filter((_, index) => index !== indexToRemove);
     setSelectedFiles(updatedFiles);
-    
+
     // Call the parent callback with the updated list
     if (onFilesAdded) {
       onFilesAdded(updatedFiles);
@@ -123,20 +127,20 @@ export default function DragDropArea({ onFilesAdded }) {
         isOver ? "border-emerald-400 bg-emerald-400/10" : "border-white/20"
       }`}
       onDragOver={(e) => {
-        console.log('🔄 REACT DRAG OVER triggered');
+        console.log("🔄 REACT DRAG OVER triggered");
         e.preventDefault(); // required for windows
-        e.dataTransfer.dropEffect = 'copy'; // ← Chrome/Edge need this line
+        e.dataTransfer.dropEffect = "copy"; // ← Chrome/Edge need this line
       }}
       onDragEnter={(e) => {
-        console.log('➡️ REACT DRAG ENTER triggered');
+        console.log("➡️ REACT DRAG ENTER triggered");
         e.preventDefault(); // required for Windows
-        setDragCounter(prev => prev + 1);
+        setDragCounter((prev) => prev + 1);
         setIsOver(true);
       }}
       onDragLeave={(e) => {
-        console.log('⬅️ REACT DRAG LEAVE triggered');
+        console.log("⬅️ REACT DRAG LEAVE triggered");
         e.preventDefault();
-        setDragCounter(prev => {
+        setDragCounter((prev) => {
           const newCounter = prev - 1;
           if (newCounter === 0) {
             setIsOver(false);
@@ -145,20 +149,20 @@ export default function DragDropArea({ onFilesAdded }) {
         });
       }}
       onDrop={(e) => {
-        console.log('📦 REACT DROP EVENT triggered!', e.dataTransfer.files);
+        console.log("📦 REACT DROP EVENT triggered!", e.dataTransfer.files);
         e.preventDefault();
         setDragCounter(0);
         setIsOver(false);
-        
+
         const files = Array.from(e.dataTransfer.files);
-        console.log('Files array:', files);
-        
+        console.log("Files array:", files);
+
         const paths = extractPaths(e.dataTransfer.files);
-        console.log('Extracted paths:', paths);
-        
+        console.log("Extracted paths:", paths);
+
         if (paths.length) {
           const newFiles = [...selectedFiles, ...paths];
-          console.log('New files array:', newFiles);
+          console.log("New files array:", newFiles);
           setSelectedFiles(newFiles);
           onFilesAdded?.(newFiles);
         }
@@ -184,9 +188,13 @@ export default function DragDropArea({ onFilesAdded }) {
         </div>
       ) : (
         /* Files selected state - show file list */
-        <div className="w-full h-full p-4 flex flex-col max-h-[400px]"> {/* Add max-h constraint */}
+        <div className="w-full h-full p-4 flex flex-col max-h-[400px]">
+          {" "}
+          {/* Add max-h constraint */}
           {/* Header with file count and add more button */}
-          <div className="flex items-center justify-between mb-4 flex-shrink-0"> {/* Add flex-shrink-0 */}
+          <div className="flex items-center justify-between mb-4 flex-shrink-0">
+            {" "}
+            {/* Add flex-shrink-0 */}
             <h3 className="text-white text-lg font-medium">
               Selected Files ({selectedFiles.length})
             </h3>
@@ -202,7 +210,6 @@ export default function DragDropArea({ onFilesAdded }) {
               Add More
             </button>
           </div>
-
           {/* File list - scrollable with fixed height */}
           <div className="flex-1 overflow-y-auto space-y-2 max-h-[300px] custom-scroll">
             {selectedFiles.map((filePath, index) => (
@@ -211,7 +218,7 @@ export default function DragDropArea({ onFilesAdded }) {
                 className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10 group hover:bg-white/10 transition flex-shrink-0" // Add flex-shrink-0
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  {getFileType(filePath) === 'Folder' ? (
+                  {getFileType(filePath) === "Folder" ? (
                     <Folder className="w-5 h-5 text-blue-400 flex-shrink-0" />
                   ) : (
                     <File className="w-5 h-5 text-emerald-400 flex-shrink-0" />
@@ -221,19 +228,24 @@ export default function DragDropArea({ onFilesAdded }) {
                       <p className="text-white text-sm font-medium truncate">
                         {getFileName(filePath)}
                       </p>
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                        getFileType(filePath) === 'PDF' 
-                          ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                          : getFileType(filePath) === 'TXT'
-                          ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                          : getFileType(filePath) === 'Folder'
-                          ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                          : 'bg-gray-500/20 text-gray-300 border border-gray-500/30'
-                      }`}>
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          getFileType(filePath) === "PDF"
+                            ? "bg-red-500/20 text-red-300 border border-red-500/30"
+                            : getFileType(filePath) === "TXT"
+                              ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                              : getFileType(filePath) === "Folder"
+                                ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                                : "bg-gray-500/20 text-gray-300 border border-gray-500/30"
+                        }`}
+                      >
                         {getFileType(filePath)}
                       </span>
                     </div>
-                    <p className="text-white/60 text-xs truncate" style={{ direction: 'rtl', textAlign: 'left' }}>
+                    <p
+                      className="text-white/60 text-xs truncate"
+                      style={{ direction: "rtl", textAlign: "left" }}
+                    >
                       {filePath}
                     </p>
                   </div>

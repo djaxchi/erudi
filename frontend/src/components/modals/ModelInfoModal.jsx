@@ -1,14 +1,6 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  X,
-  Download,
-  Users,
-  Heart,
-  Calendar,
-  Tag,
-  ChevronDown,
-} from "lucide-react";
+import { X, Download, Users, Heart, Calendar, Tag, ChevronDown } from "lucide-react";
 
 /**
  * Props:
@@ -17,12 +9,7 @@ import {
  * - onClose: () => void
  * - onDownload: (modelInfo) => void
  */
-export default function ModelInfoModal({
-  modelInfo,
-  isOpen,
-  onClose,
-  onDownload,
-}) {
+export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload }) {
   const [showRawMetadata, setShowRawMetadata] = useState(false);
 
   return (
@@ -101,42 +88,25 @@ export default function ModelInfoModal({
                       </h3>
                       <div className="space-y-3 text-sm">
                         <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                          <span className="text-emerald-400 font-medium">
-                            Size:
-                          </span>
-                          <span className="text-gray-200 ml-2">
-                            {modelInfo.size}
-                          </span>
+                          <span className="text-emerald-400 font-medium">Size:</span>
+                          <span className="text-gray-200 ml-2">{modelInfo.size}</span>
                         </div>
                         <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                          <span className="text-emerald-400 font-medium">
-                            Parameters:
-                          </span>
-                          <span className="text-gray-200 ml-2">
-                            {modelInfo.parameters}
-                          </span>
+                          <span className="text-emerald-400 font-medium">Parameters:</span>
+                          <span className="text-gray-200 ml-2">{modelInfo.parameters}</span>
                         </div>
                         {modelInfo.author && modelInfo.author !== "Unknown" && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                            <span className="text-emerald-400 font-medium">
-                              Author:
-                            </span>
-                            <span className="text-gray-200 ml-2">
-                              {modelInfo.author}
-                            </span>
+                            <span className="text-emerald-400 font-medium">Author:</span>
+                            <span className="text-gray-200 ml-2">{modelInfo.author}</span>
                           </div>
                         )}
-                        {modelInfo.library &&
-                          modelInfo.library !== "Unknown" && (
-                            <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                              <span className="text-emerald-400 font-medium">
-                                Library:
-                              </span>
-                              <span className="text-gray-200 ml-2">
-                                {modelInfo.library}
-                              </span>
-                            </div>
-                          )}
+                        {modelInfo.library && modelInfo.library !== "Unknown" && (
+                          <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                            <span className="text-emerald-400 font-medium">Library:</span>
+                            <span className="text-gray-200 ml-2">{modelInfo.library}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -146,52 +116,33 @@ export default function ModelInfoModal({
                         Stats
                       </h3>
                       <div className="space-y-3 text-sm">
-                        {modelInfo.downloads &&
-                          modelInfo.downloads !== "Unknown" && (
-                            <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex items-center gap-2">
-                              <Download className="w-4 h-4 text-emerald-400" />
-                              <span className="text-emerald-400 font-medium">
-                                Downloads:
-                              </span>
-                              <span className="text-gray-200">
-                                {modelInfo.downloads}
-                              </span>
-                            </div>
-                          )}
+                        {modelInfo.downloads && modelInfo.downloads !== "Unknown" && (
+                          <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex items-center gap-2">
+                            <Download className="w-4 h-4 text-emerald-400" />
+                            <span className="text-emerald-400 font-medium">Downloads:</span>
+                            <span className="text-gray-200">{modelInfo.downloads}</span>
+                          </div>
+                        )}
                         {modelInfo.likes && modelInfo.likes !== "Unknown" && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex items-center gap-2">
                             <Heart className="w-4 h-4 text-emerald-400" />
-                            <span className="text-emerald-400 font-medium">
-                              Likes:
-                            </span>
-                            <span className="text-gray-200">
-                              {modelInfo.likes}
-                            </span>
+                            <span className="text-emerald-400 font-medium">Likes:</span>
+                            <span className="text-gray-200">{modelInfo.likes}</span>
                           </div>
                         )}
-                        {modelInfo.lastUpdate &&
-                          modelInfo.lastUpdate !== "Unknown" && (
-                            <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex items-center gap-2">
-                              <Calendar className="w-4 h-4 text-emerald-400" />
-                              <span className="text-emerald-400 font-medium">
-                                Last Update:
-                              </span>
-                              <span className="text-gray-200">
-                                {modelInfo.lastUpdate}
-                              </span>
-                            </div>
-                          )}
-                        {modelInfo.pipeline &&
-                          modelInfo.pipeline !== "Unknown" && (
-                            <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                              <span className="text-emerald-400 font-medium">
-                                Pipeline:
-                              </span>
-                              <span className="text-gray-200 ml-2">
-                                {modelInfo.pipeline}
-                              </span>
-                            </div>
-                          )}
+                        {modelInfo.lastUpdate && modelInfo.lastUpdate !== "Unknown" && (
+                          <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-emerald-400" />
+                            <span className="text-emerald-400 font-medium">Last Update:</span>
+                            <span className="text-gray-200">{modelInfo.lastUpdate}</span>
+                          </div>
+                        )}
+                        {modelInfo.pipeline && modelInfo.pipeline !== "Unknown" && (
+                          <div className="bg-white/5 rounded-xl p-3 border border-white/10">
+                            <span className="text-emerald-400 font-medium">Pipeline:</span>
+                            <span className="text-gray-200 ml-2">{modelInfo.pipeline}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

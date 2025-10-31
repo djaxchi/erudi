@@ -21,35 +21,42 @@ function RecapTable({ recap }) {
       <table className="w-full text-[10px] sm:text-xs lg:text-sm leading-3 sm:leading-4 lg:leading-5 bg-transparent">
         <tbody>
           {rows.map(([label, val], idx) => (
-          <tr
-            key={label}
-            className={`${idx % 2 === 0 ? "bg-[#3B3B3B]" : "bg-black/20"}`}
-          >
-            <th className="px-1.5 sm:px-2 lg:px-3 py-0.5 sm:py-1 lg:py-1.5 text-left font-semibold text-white w-[44%]">{label}</th>
-            <td className="px-1.5 sm:px-2 lg:px-3 py-0.5 sm:py-1 lg:py-1.5 text-center text-white/90 truncate">{val}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+            <tr key={label} className={`${idx % 2 === 0 ? "bg-[#3B3B3B]" : "bg-black/20"}`}>
+              <th className="px-1.5 sm:px-2 lg:px-3 py-0.5 sm:py-1 lg:py-1.5 text-left font-semibold text-white w-[44%]">
+                {label}
+              </th>
+              <td className="px-1.5 sm:px-2 lg:px-3 py-0.5 sm:py-1 lg:py-1.5 text-center text-white/90 truncate">
+                {val}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
 /* ─────────────── Main component ─────────────── */
-export default function DatasetCard({ selectedModel, modelName, onStartTraining, isTraining = false, onReset }) {
+export default function DatasetCard({
+  selectedModel,
+  modelName,
+  onStartTraining,
+  isTraining = false,
+  onReset,
+}) {
   /* Paths - now handling objects with metadata */
   const [paths, setPaths] = useState([]);
   /* Modal state */
   const [showComingSoonModal, setShowComingSoonModal] = useState(false);
-  
+
   const addDroppedFiles = (newPathObjects) => {
-    console.log('DatasetCard received files:', newPathObjects);
-    
+    console.log("DatasetCard received files:", newPathObjects);
+
     // Handle complete replacement of the file list (for when files are removed)
     // or addition of new files (for when files are added)
     setPaths(() => {
-      const newPaths = newPathObjects.map(pathObj => pathObj.path || pathObj);
-      console.log('Setting paths to:', newPaths);
+      const newPaths = newPathObjects.map((pathObj) => pathObj.path || pathObj);
+      console.log("Setting paths to:", newPaths);
       return Array.from(new Set(newPaths)); // Remove duplicates but don't merge with previous
     });
   };
@@ -75,19 +82,23 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
     const fetchHardwareInfo = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/hardware/training_info`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
         const data = await response.json();
         const hw = transformTrainingInfo(data);
-        
+
         // Determine device to use based on backend type
         let deviceUsed = "CPU";
         let memoryInfo = "Unknown";
-        
+
         if (hw.backend_type === "mlx" && hw.mps_available) {
           // Apple Silicon with MPS support
           deviceUsed = hw.gpu_model || "Apple Silicon GPU";
-          memoryInfo = hw.unified_memory ? `${hw.total_ram_gb} Unified Memory` : `${hw.ram_available} RAM`;
+          memoryInfo = hw.unified_memory
+            ? `${hw.total_ram_gb} Unified Memory`
+            : `${hw.ram_available} RAM`;
         } else if (hw.backend_type === "cuda") {
           // NVIDIA GPU
           deviceUsed = hw.gpu_model;
@@ -97,7 +108,7 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
           deviceUsed = hw.cpu_model;
           memoryInfo = hw.ram_available || "Unknown";
         }
-        
+
         setHardwareInfo({
           available_vram: memoryInfo,
           device_used: deviceUsed,
@@ -126,7 +137,7 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
 
   /* Handle reset from parent component */
   const resetDatasetCardState = () => {
-    console.log('Resetting DatasetCard state');
+    console.log("Resetting DatasetCard state");
     setPaths([]);
     setTrainingStatus(null);
     setTrainingError("");
@@ -161,7 +172,9 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
   const checkTrainingStatus = async (id) => {
     try {
       const res = await fetch(`${API_BASE_URL}/training/${id}/status`);
-      if (!res.ok) throw new Error(res.status);
+      if (!res.ok) {
+        throw new Error(res.status);
+      }
       const d = await res.json();
       setTrainingStatus(d.status);
       setProgress(d.progress || 0);
@@ -177,15 +190,18 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
   const startPolling = (id) => {
     pollingRef.current && clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
-      (await checkTrainingStatus(id)) && (clearInterval(pollingRef.current), (pollingRef.current = null));
+      (await checkTrainingStatus(id)) &&
+        (clearInterval(pollingRef.current), (pollingRef.current = null));
     }, 30_000);
   };
   useEffect(() => () => pollingRef.current && clearInterval(pollingRef.current), []);
 
   /* Launch training */
   const submitTrain = async () => {
-    if (!selectedModel || !modelName || !paths.length || modelName.trim() === "") return;
-    
+    if (!selectedModel || !modelName || !paths.length || modelName.trim() === "") {
+      return;
+    }
+
     if (onStartTraining) {
       onStartTraining(paths);
     }
@@ -215,7 +231,6 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
 
             {isTraining ? (
               <div className="flex-1 flex flex-col items-center gap-3 py-2">
-                
                 {/* Status text with enhanced styling */}
                 <div className="flex items-center gap-2 bg-emerald-950/30 px-3 py-2 rounded-full border border-emerald-500/20">
                   <div className="relative">
@@ -223,7 +238,9 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
                     <div className="absolute inset-0 w-4 h-4 bg-emerald-400/20 rounded-full animate-pulse"></div>
                   </div>
                   <span className="text-emerald-300 font-medium text-sm">
-                    {trainingStatus === "running" ? "Training in Progress" : "Initializing Training"}
+                    {trainingStatus === "running"
+                      ? "Training in Progress"
+                      : "Initializing Training"}
                   </span>
                 </div>
               </div>
@@ -243,7 +260,7 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
 
         {/* RIGHT */}
         <div className="h-[100%] w-3/5">
-          <DragDropArea onFilesAdded={addDroppedFiles}/>
+          <DragDropArea onFilesAdded={addDroppedFiles} />
         </div>
       </div>
 

@@ -13,22 +13,22 @@ export default function TrainingPage() {
   const { open: openProgressModal, isTraining } = useDownloadModal();
   const [errorMessage, setErrorMessage] = useState("");
   const datasetCardResetRef = useRef(null);
-  
+
   const [hw, setHw] = useState({
     storage_path: "soon...",
     disk_available: "fetching…",
     cpu_model: "fetching…",
     gpu_model: "fetching…",
-    chip_model: "fetching…",  // Apple Silicon chip (M1, M2, M3, etc.)
-    gpu_cores: "fetching…",  // Number of GPU cores
-    estimated_gpu_tflops: "fetching…",  // Estimated GPU performance
-    memory_bandwidth_gbs: "fetching…",  // Unified memory bandwidth
-    neural_engine_tops: "fetching…",  // Neural Engine performance
-    architecture: "fetching…",  // 3nm, 5nm, etc.
+    chip_model: "fetching…", // Apple Silicon chip (M1, M2, M3, etc.)
+    gpu_cores: "fetching…", // Number of GPU cores
+    estimated_gpu_tflops: "fetching…", // Estimated GPU performance
+    memory_bandwidth_gbs: "fetching…", // Unified memory bandwidth
+    neural_engine_tops: "fetching…", // Neural Engine performance
+    architecture: "fetching…", // 3nm, 5nm, etc.
     is_apple_silicon: false,
-    mps_available: false,  // Metal Performance Shaders
-    unified_memory: false,  // Unified memory architecture
-    gpu_vram_total: "N/A",  // Not applicable for unified memory
+    mps_available: false, // Metal Performance Shaders
+    unified_memory: false, // Unified memory architecture
+    gpu_vram_total: "N/A", // Not applicable for unified memory
     ram_available: "fetching…",
     total_ram_gb: "fetching…",
     cpu_eval_score: "fetching…",
@@ -44,35 +44,47 @@ export default function TrainingPage() {
 
   const fetchModels = () => {
     fetch(`${API_BASE_URL}/llms/local`)
-      .then(res => {
-        if (!res.ok) setErrorMessage("Failed to fetch your local models. Please try again. If the issue persists, contact the Erudi team for support.");
+      .then((res) => {
+        if (!res.ok) {
+          setErrorMessage(
+            "Failed to fetch your local models. Please try again. If the issue persists, contact the Erudi team for support.",
+          );
+        }
         return res.json();
       })
-      .then(data => {
+      .then((data) => {
         console.log("Fetched models:", data, "Count:", data ? data.length : 0);
         setModels(data || []);
       })
-      .catch(err => {
+      .catch((err) => {
         console.error("Erreur models:", err);
-        setErrorMessage("Failed to fetch your local models. Please try again. If the issue persists, contact the Erudi team for support.");
+        setErrorMessage(
+          "Failed to fetch your local models. Please try again. If the issue persists, contact the Erudi team for support.",
+        );
         setModels([]);
       });
   };
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/hardware/training_info`)
-      .then(res => {
-        if (!res.ok) setErrorMessage("Failed to fetch hardware information. Please try again. If the issue persists, contact the Erudi team for support.");
+      .then((res) => {
+        if (!res.ok) {
+          setErrorMessage(
+            "Failed to fetch hardware information. Please try again. If the issue persists, contact the Erudi team for support.",
+          );
+        }
         return res.json();
       })
-      .then(data => {
+      .then((data) => {
         // Transform new API structure to UI format
         const transformed = transformTrainingInfo(data);
         setHw(transformed);
       })
-      .catch(err => {
+      .catch((err) => {
         console.error("Erreur hardware:", err);
-        setErrorMessage("Failed to fetch hardware information. Please try again. If the issue persists, contact the Erudi team for support.");
+        setErrorMessage(
+          "Failed to fetch hardware information. Please try again. If the issue persists, contact the Erudi team for support.",
+        );
         // Set default values in case of error
         setHw({
           backend_type: "unknown",
@@ -124,7 +136,7 @@ export default function TrainingPage() {
     const fineTuningTask = {
       id: `finetuning_${Date.now()}`,
       name: `${modelName}`,
-      size: 'Variable',
+      size: "Variable",
       description: `Fine-tuning with ${trainingFiles.length} files`,
       downloadUrl: null,
       trainingFiles: trainingFiles,
@@ -140,7 +152,7 @@ export default function TrainingPage() {
   };
 
   const handleFineTuningComplete = () => {
-    console.log('Fine-tuning completed!');
+    console.log("Fine-tuning completed!");
     setSelectedModel(null);
     setModelName("");
     resetDatasetCard();
@@ -151,8 +163,10 @@ export default function TrainingPage() {
   };
 
   const handleFineTuningError = (error) => {
-    console.error('Fine-tuning error:', error);
-    setErrorMessage("Fine-tuning failed. Please try again. If the issue persists, contact the Erudi team for support.");
+    console.error("Fine-tuning error:", error);
+    setErrorMessage(
+      "Fine-tuning failed. Please try again. If the issue persists, contact the Erudi team for support.",
+    );
   };
 
   const resetDatasetCard = () => {
@@ -166,7 +180,7 @@ export default function TrainingPage() {
     setSelectedModel(null);
     setModelName("");
     resetDatasetCard();
-    console.log('Closing error modal and resetting state');
+    console.log("Closing error modal and resetting state");
     // Force page refresh with a small delay to ensure state reset completes
     setTimeout(() => {
       window.location.href = window.location.href;
@@ -177,16 +191,16 @@ export default function TrainingPage() {
     <>
       <div className="flex h-screen bg-[#071b18]">
         <Sidebar disabled={isTraining} />
-        
+
         <main className="flex-1 p-4 md:p-8 space-y-8 overflow-auto custom-scroll">
           {/* Top Section: Hardware + Model Library */}
           <div className="flex flex-col lg:flex-row 2xl:h-[40%] gap-8">
             <div className="lg:w-3/5">
               <HardwareInfo hw={hw} />
             </div>
-            
+
             <div className="lg:w-2/5">
-              <ModelLibrary 
+              <ModelLibrary
                 models={models}
                 selectedModel={selectedModel}
                 modelName={modelName}
@@ -199,8 +213,8 @@ export default function TrainingPage() {
 
           {/* Bottom Section: Dataset */}
           <div className="flex flex-col lg:h-[50%] 2xl:h-[56%] gap-8">
-            <DatasetCard 
-              selectedModel={selectedModel} 
+            <DatasetCard
+              selectedModel={selectedModel}
               modelName={modelName}
               onStartTraining={handleStartTraining}
               isTraining={isTraining}
@@ -210,7 +224,7 @@ export default function TrainingPage() {
         </main>
       </div>
 
-      <ErrorModal errorMessage={errorMessage} onClose={closeErrorModal}/>
+      <ErrorModal errorMessage={errorMessage} onClose={closeErrorModal} />
     </>
   );
 }

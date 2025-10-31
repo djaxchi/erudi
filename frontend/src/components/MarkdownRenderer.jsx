@@ -31,7 +31,12 @@ export default function MarkdownRenderer({ content }) {
           },
           a({ children, ...props }) {
             return (
-              <a className="text-emerald-300 underline hover:text-emerald-200" target="_blank" rel="noreferrer" {...props}>
+              <a
+                className="text-emerald-300 underline hover:text-emerald-200"
+                target="_blank"
+                rel="noreferrer"
+                {...props}
+              >
                 {children}
               </a>
             );
@@ -46,7 +51,11 @@ export default function MarkdownRenderer({ content }) {
             );
           },
           th({ children }) {
-            return <th className="border border-neutral-700 bg-neutral-800 px-2 py-1 text-left">{children}</th>;
+            return (
+              <th className="border border-neutral-700 bg-neutral-800 px-2 py-1 text-left">
+                {children}
+              </th>
+            );
           },
           td({ children }) {
             return <td className="border border-neutral-700 px-2 py-1">{children}</td>;

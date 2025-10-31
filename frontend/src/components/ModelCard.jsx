@@ -1,20 +1,32 @@
 import React from "react";
+import PropTypes from "prop-types";
 import GradientBox from "./GradientBox";
 import { Download, Info, BookOpen, MessageSquare, Plus, Trash2 } from "lucide-react";
 
-export default function ModelCard({ 
+/**
+ * ModelCard component - displays model information with actions
+ * @param {Object} model - Model object with name, size, description, etc.
+ * @param {string} type - Card type: "base" (available), "local" (installed), "add" (add new)
+ * @param {Function} onDownload - Callback when download button clicked
+ * @param {Function} onInfo - Callback when info button clicked
+ * @param {Function} onChat - Callback when chat button clicked
+ * @param {Function} onKnowledgeBase - Callback when knowledge base button clicked
+ * @param {Function} onDelete - Callback when delete button clicked
+ * @param {Function} onClick - Callback when card clicked
+ */
+function ModelCard({
   model,
-  type = "base", // "base", "local", "add"
+  type = "base",
   onDownload,
   onInfo,
   onChat,
   onKnowledgeBase,
   onDelete,
-  onClick
+  onClick,
 }) {
   if (type === "add") {
     return (
-      <GradientBox 
+      <GradientBox
         className="bg-[#1a1a1a]/60 backdrop-blur-sm border border-white/10 border-dashed cursor-pointer hover:border-white/30 transition-colors"
         onClick={onDownload}
       >
@@ -34,63 +46,59 @@ export default function ModelCard({
           <h3 className="text-lg font-semibold text-white">{model.name}</h3>
           {type === "local" && (
             <button
-                className="p-1 bg-red-500/20 hover:bg-red-500/40 rounded-lg transition-colors ml-8"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete && onDelete(model);
-                }}
-                title="Delete model"
-              >
-                <Trash2 className="w-4 h-4 text-red-400" />
-              </button>
+              className="p-1 bg-red-500/20 hover:bg-red-500/40 rounded-lg transition-colors ml-8"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete && onDelete(model);
+              }}
+              title="Delete model"
+            >
+              <Trash2 className="w-4 h-4 text-red-400" />
+            </button>
           )}
         </div>
-        
+
         <div className="space-y-1 text-xs text-gray-300 mb-4">
           {/* Show description if available */}
           {model.description && (
             <p className="text-blue-300 font-medium mb-2 text-xs">{model.description}</p>
           )}
-          
+
           {/* Core metadata */}
           <p>Size: {model.size}</p>
-          
+
           {/* Additional metadata for remote models */}
           {type !== "local" && (
             <>
               {model.downloads && model.downloads !== "Unknown" && (
                 <p>Downloads: {model.downloads}</p>
               )}
-              {model.likes && model.likes !== "Unknown" && (
-                <p>Likes: {model.likes}</p>
-              )}
-              {model.author && model.author !== "Unknown" && (
-                <p>Author: {model.author}</p>
-              )}
-              {model.library && model.library !== "Unknown" && (
-                <p>Library: {model.library}</p>
-              )}
+              {model.likes && model.likes !== "Unknown" && <p>Likes: {model.likes}</p>}
+              {model.author && model.author !== "Unknown" && <p>Author: {model.author}</p>}
+              {model.library && model.library !== "Unknown" && <p>Library: {model.library}</p>}
             </>
           )}
-          
+
           {/* Local model specific info */}
           {type === "local" && model.lastUpdate && model.lastUpdate !== "Unknown" && (
-            <p>Parameters: {model.parameters}</p>,
-            <p>Last update: {model.lastUpdate}</p>
+            <>
+              <p>Parameters: {model.parameters}</p>
+              <p>Last update: {model.lastUpdate}</p>
+            </>
           )}
         </div>
-        
+
         <div className="flex items-center gap-2 mt-auto">
           {type === "local" ? (
             <>
-              <button 
+              <button
                 className="p-1 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
                 onClick={() => onKnowledgeBase && onKnowledgeBase(model)}
                 title="Knowledge Base"
               >
                 <BookOpen className="w-4 h-4 text-white" />
               </button>
-              <button 
+              <button
                 className="p-1 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
                 onClick={() => onChat && onChat(model)}
                 title="Chat"
@@ -100,14 +108,14 @@ export default function ModelCard({
             </>
           ) : (
             <>
-              <button 
+              <button
                 className="p-1 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
                 onClick={() => onDownload && onDownload(model)}
                 title="Download"
               >
                 <Download className="w-5 h-5 text-white" />
               </button>
-              <button 
+              <button
                 className="p-1 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
                 onClick={() => onInfo && onInfo(model)}
                 title="Info"
@@ -121,3 +129,26 @@ export default function ModelCard({
     </GradientBox>
   );
 }
+
+ModelCard.propTypes = {
+  model: PropTypes.shape({
+    name: PropTypes.string.isRequired,
+    size: PropTypes.string,
+    description: PropTypes.string,
+    downloads: PropTypes.string,
+    likes: PropTypes.string,
+    author: PropTypes.string,
+    library: PropTypes.string,
+    parameters: PropTypes.string,
+    lastUpdate: PropTypes.string,
+  }).isRequired,
+  type: PropTypes.oneOf(["base", "local", "add"]),
+  onDownload: PropTypes.func,
+  onInfo: PropTypes.func,
+  onChat: PropTypes.func,
+  onKnowledgeBase: PropTypes.func,
+  onDelete: PropTypes.func,
+  onClick: PropTypes.func,
+};
+
+export default ModelCard;
