@@ -4,6 +4,8 @@ import ReactDOM from "react-dom";
 import SpinnerDots from "../components/Spinner";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { API_BASE_URL } from "../config/api";
+import { createLogger } from "../utils/logger";
+const log = createLogger("KnowledgeBaseContext");
 
 const KnowledgeBaseContext = createContext();
 
@@ -25,12 +27,12 @@ export function KnowledgeBaseProvider({ children }) {
   }, []);
 
   const open = useCallback((knowledgeBaseTask, { onComplete, onError } = {}) => {
-    console.log("KnowledgeBase context open function called with:", knowledgeBaseTask);
+    log.log("KnowledgeBase context open function called with:", knowledgeBaseTask);
     setTask(knowledgeBaseTask);
     callbacksRef.current = { onComplete, onError };
     setErrorMessage("");
     setIsConfirmOpen(true);
-    console.log("setIsConfirmOpen set to true");
+    log.log("setIsConfirmOpen set to true");
   }, []);
 
   const cancelConfirm = useCallback(() => setIsConfirmOpen(false), []);
@@ -58,7 +60,7 @@ export function KnowledgeBaseProvider({ children }) {
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(
-          `Failed to start assistant creation (${response.status}): ${errorData.detail || "Unknown error"}`,
+          `Failed to start assistant creation (${response.status}): ${errorData.detail || "Unknown error"}`
         );
       }
 
@@ -78,7 +80,7 @@ export function KnowledgeBaseProvider({ children }) {
         checkCreationStatus(newAssistantId);
       }, 2000);
     } catch (err) {
-      console.error("Knowledge base creation error:", err);
+      log.error("Knowledge base creation error:", err);
       setIsStarting(false);
       setErrorMessage(err.message || "Failed to start assistant creation");
       callbacksRef.current.onError?.(err.message);
@@ -108,7 +110,7 @@ export function KnowledgeBaseProvider({ children }) {
         }
       }
     } catch (err) {
-      console.error("Status check error:", err);
+      log.error("Status check error:", err);
       clearInterval(intervalRef.current);
       setIsCreating(false);
       setShowSpinner(false);
@@ -177,7 +179,7 @@ export function KnowledgeBaseProvider({ children }) {
               </div>
             </div>
           </div>,
-          document.body,
+          document.body
         )}
 
       {/* Bottom-left spinner - only show when creating (after API call succeeds) */}
@@ -187,7 +189,7 @@ export function KnowledgeBaseProvider({ children }) {
           <div className="fixed bottom-7 left-[1.5%]">
             <SpinnerDots className="w-6 h-6 text-emerald-400 animate-spin" />
           </div>,
-          document.body,
+          document.body
         )}
     </KnowledgeBaseContext.Provider>
   );

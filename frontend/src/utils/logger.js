@@ -9,6 +9,7 @@
  * log.warn("Warning"); // Logs: ComponentName Warning
  * log.error("Error"); // Logs: ComponentName Error
  */
+/* eslint-disable no-console */
 
 const IS_DEV = process.env.NODE_ENV === "development";
 

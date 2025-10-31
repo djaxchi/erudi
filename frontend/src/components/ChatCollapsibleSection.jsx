@@ -3,6 +3,8 @@ import { ChevronDown, ChevronRight, Cog, RefreshCcw, Plus, Edit3, X } from "luci
 import { useNavigate } from "react-router-dom";
 import ErrorModal from "./modals/ErrorModal";
 import { API_BASE_URL } from "../config/api.js";
+import { createLogger } from "../utils/logger";
+const log = createLogger("ChatCollapsibleSection");
 
 export default function ChatCollapsibleSection({
   title,
@@ -36,7 +38,7 @@ export default function ChatCollapsibleSection({
       }
       onRename?.(id, name);
     } catch (err) {
-      console.error(err);
+      log.error(err);
       alert("Could not rename conversation, try again: " + err.message);
     } finally {
       setEditingId(null);
@@ -56,7 +58,7 @@ export default function ChatCollapsibleSection({
 
       onDelete?.(id);
     } catch (err) {
-      console.error(err);
+      log.error(err);
       alert("Deleting conversation failed: " + err.message);
     } finally {
       setEditingId(null);
@@ -166,9 +168,9 @@ export default function ChatCollapsibleSection({
               try {
                 await onRefresh?.();
               } catch (err) {
-                console.error("Failed to refresh conversations:", err);
+                log.error("Failed to refresh conversations:", err);
                 setErrorMessage(
-                  `Failed to refresh conversations: ${err.message || "Network error"}`,
+                  `Failed to refresh conversations: ${err.message || "Network error"}`
                 );
               } finally {
                 setLoading(false);

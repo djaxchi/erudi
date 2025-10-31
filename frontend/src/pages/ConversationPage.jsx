@@ -9,6 +9,9 @@ import { Copy, Check, Star } from "lucide-react";
 import TypingIndicator from "../components/TypingIndicator";
 import MarkdownRenderer from "../components/MarkdownRenderer";
 import { API_BASE_URL } from "../config/api.js";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("ConversationPage");
 
 export default function ConversationPage() {
   const { id } = useParams();
@@ -96,7 +99,7 @@ export default function ConversationPage() {
         }),
       });
     } catch (error) {
-      console.error("Failed to save conversation parameters:", error);
+      log.error("Failed to save conversation parameters", error);
     }
   };
 
@@ -120,7 +123,7 @@ export default function ConversationPage() {
       setMessages(msgs);
       setConversations(convs);
     } catch (err) {
-      console.error("Fetch error:", err);
+      log.error("Failed to fetch messages and conversations", err);
     }
   }, [id]);
 
@@ -183,15 +186,15 @@ export default function ConversationPage() {
                       prevConvs.map((conv) =>
                         conv.id === Number(id)
                           ? { ...conv, name: newTitle.trim() || "New Conversation" }
-                          : conv,
-                      ),
+                          : conv
+                      )
                     );
                     return newTitle;
                   });
                 }
               }
             } catch (err) {
-              console.error("Title generation failed:", err);
+              log.error("Title generation failed", err);
             }
           })();
         }
@@ -233,20 +236,20 @@ export default function ConversationPage() {
                 prev.map((msg) =>
                   msg.id === assistantMessage.id
                     ? { ...msg, content: assistantMessage.content }
-                    : msg,
-                ),
+                    : msg
+                )
               );
             }
           } catch (streamError) {
-            console.error("Streaming error:", streamError);
+            log.error("Streaming error during response generation", streamError);
 
             // If streaming failed mid-way, append an error note with robust header
             assistantMessage.content +=
               "\n\n[ERROR_MESSAGE_SYSTEM] Connection interrupted while generating response.";
             setMessages((prev) =>
               prev.map((msg) =>
-                msg.id === assistantMessage.id ? { ...msg, content: assistantMessage.content } : msg,
-              ),
+                msg.id === assistantMessage.id ? { ...msg, content: assistantMessage.content } : msg
+              )
             );
 
             try {
@@ -255,32 +258,32 @@ export default function ConversationPage() {
                 headers: { "Content-Type": "application/json" },
               });
             } catch (storeError) {
-              console.error("Failed to store error message:", storeError);
+              log.error("Failed to store error message", storeError);
             }
           }
         } else {
-          console.error("Server error during response generation:", responseRes.status);
+          log.error("Server error during response generation", { status: responseRes.status });
 
           try {
             await fetch(`${API_BASE_URL}/conversations/${id}/store_error_message`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
             });
-            console.log("Error message stored in database");
+            log.log("Error message stored in database");
           } catch (storeError) {
-            console.error("Failed to store error message:", storeError);
+            log.error("Failed to store error message", storeError);
           }
           // Update the assistant message with error content using robust header
           assistantMessage.content =
             "[ERROR_MESSAGE_SYSTEM] I apologize, but I encountered an error while generating a response. Please try asking your question again.";
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === assistantMessage.id ? { ...msg, content: assistantMessage.content } : msg,
-            ),
+              msg.id === assistantMessage.id ? { ...msg, content: assistantMessage.content } : msg
+            )
           );
         }
       } catch (err) {
-        console.error("Failed to send message:", err);
+        log.error("Failed to send message", err);
       }
 
       await fetchMessagesAndConversations();
@@ -292,14 +295,14 @@ export default function ConversationPage() {
 
       setLoading(false);
     },
-    [id, fetchMessagesAndConversations, messages.length],
+    [id, fetchMessagesAndConversations, messages.length]
   );
 
   const handleAsk = useCallback(
     async (question) => {
       return handleAskWithParams(question, settings, customPrompt);
     },
-    [handleAskWithParams, settings, customPrompt],
+    [handleAskWithParams, settings, customPrompt]
   );
 
   // Load conversation data when ID changes
@@ -351,7 +354,7 @@ export default function ConversationPage() {
           }
         }
       } catch (err) {
-        console.error("Fetch error (conversations):", err);
+        log.error("Failed to fetch conversations", err);
       }
 
       if (location.state && location.state.initialQuestion && !initialHandled) {
@@ -384,7 +387,7 @@ export default function ConversationPage() {
           setStarredIds(starredMap);
           setMessages(msgs);
         } catch (err) {
-          console.error("Fetch error (messages):", err);
+          log.error("Failed to fetch messages", err);
         }
       }
     };
@@ -474,7 +477,7 @@ export default function ConversationPage() {
       });
       setStarredIds((prev) => ({ ...prev, [msgId]: !isStarred }));
     } catch (err) {
-      console.error("Star toggle failed:", err);
+      log.error("Failed to toggle message star", err);
     }
   };
 

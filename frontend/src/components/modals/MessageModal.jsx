@@ -14,12 +14,12 @@ export default function MessageModal({
 
   const getContentStyles = () => {
     switch (type) {
-    case "success":
-      return "text-green-400";
-    case "error":
-      return "text-red-400 bg-red-900/20 border border-red-600/30";
-    default:
-      return "text-white";
+      case "success":
+        return "text-green-400";
+      case "error":
+        return "text-red-400 bg-red-900/20 border border-red-600/30";
+      default:
+        return "text-white";
     }
   };
 

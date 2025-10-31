@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import PropTypes from "prop-types";
 import { ArrowRight } from "lucide-react";
 
 export default function QuestionInput({

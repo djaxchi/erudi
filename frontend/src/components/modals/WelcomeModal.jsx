@@ -10,16 +10,16 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
   // Helper function to get color based on label
   const getColorForLabel = (label) => {
     switch (label) {
-    case "Very Good":
-      return "bg-emerald-700/30 text-white";
-    case "Good":
-      return "bg-green-600/30 text-white";
-    case "Medium":
-      return "bg-yellow-600/30 text-white";
-    case "Poor":
-      return "bg-red-600/30 text-white";
-    default:
-      return "bg-gray-600/30 text-white";
+      case "Very Good":
+        return "bg-emerald-700/30 text-white";
+      case "Good":
+        return "bg-green-600/30 text-white";
+      case "Medium":
+        return "bg-yellow-600/30 text-white";
+      case "Poor":
+        return "bg-red-600/30 text-white";
+      default:
+        return "bg-gray-600/30 text-white";
     }
   };
 

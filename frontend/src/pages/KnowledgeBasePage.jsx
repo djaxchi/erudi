@@ -11,6 +11,9 @@ import Dropdown from "../components/Dropdown";
 import { useKnowledgeBase } from "../contexts/KnowledgeBaseContext";
 import ErrorModal from "../components/modals/ErrorModal";
 import { API_BASE_URL } from "../config/api.js";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("KnowledgeBasePage");
 
 export default function KnowledgeBasePage() {
   const { open: openKnowledgeBase, isCreating, isStarting } = useKnowledgeBase();
@@ -48,13 +51,13 @@ export default function KnowledgeBasePage() {
 
   // Handle files dropped from DragDropArea
   const addDroppedFiles = (newPathObjects) => {
-    console.log("KnowledgeBasePage received files:", newPathObjects);
+    log.log("Received files from drag-drop area", newPathObjects);
 
     // Handle complete replacement of the file list (for when files are removed)
     // or addition of new files (for when files are added)
     setPaths(() => {
       const newPaths = newPathObjects.map((pathObj) => pathObj.path || pathObj);
-      console.log("Setting paths to:", newPaths);
+      log.log("Setting file paths", newPaths);
       return Array.from(new Set(newPaths)); // Remove duplicates but don't merge with previous
     });
   };
@@ -65,8 +68,6 @@ export default function KnowledgeBasePage() {
 
   /* helper to determine bullet or icon for rating field */
   const getRatingBulletOrIcon = (rating) => {
-    console.log("Rating received:", rating);
-
     // If it's still "fetching..." show question mark icon
     if (rating && rating.includes("fetching")) {
       return {
@@ -86,17 +87,18 @@ export default function KnowledgeBasePage() {
   };
 
   const submitTrainForm = async () => {
-    console.log("submitTrainForm called");
-    console.log("selectedModel:", selectedModel);
-    console.log("modelName:", modelName);
-    console.log("paths:", paths);
-    console.log("paths.length:", paths.length);
+    log.log("Submitting knowledge base form", {
+      selectedModel,
+      modelName,
+      pathCount: paths.length,
+    });
 
     if (!selectedModel || !modelName.trim() || paths.length === 0) {
-      console.log("Validation failed:");
-      console.log("  !selectedModel:", !selectedModel);
-      console.log("  !modelName.trim():", !modelName.trim());
-      console.log("  paths.length === 0:", paths.length === 0);
+      log.warn("Knowledge base form validation failed", {
+        selectedModel: !selectedModel,
+        modelNameEmpty: !modelName.trim(),
+        noPaths: paths.length === 0,
+      });
       setErrorMessage("Please fill in all required fields");
       return;
     }
@@ -113,7 +115,7 @@ export default function KnowledgeBasePage() {
 
     openKnowledgeBase(task, {
       onComplete: () => {
-        console.log("Assistant created successfully");
+        log.log("Knowledge base assistant created successfully");
         setIsValidated(true);
         // Reset form after a delay
         setTimeout(() => {
@@ -124,14 +126,14 @@ export default function KnowledgeBasePage() {
         }, 3000);
       },
       onError: (error) => {
-        console.error("Assistant creation failed:", error);
+        log.error("Knowledge base creation failed", error);
         setErrorMessage(error);
       },
     });
   };
 
   const handleKnowledgeBaseComplete = () => {
-    console.log("Knowledge base creation completed!");
+    log.log("Knowledge base creation completed successfully");
     setSelectedModel(null);
     setModelName("");
     setDescription("");
@@ -144,9 +146,9 @@ export default function KnowledgeBasePage() {
   };
 
   const handleKnowledgeBaseError = (error) => {
-    console.error("Knowledge base creation error:", error);
+    log.error("Knowledge base creation error", error);
     setErrorMessage(
-      "Assistant creation failed. Please try again. If the issue persists, contact the Erudi team for support.",
+      "Assistant creation failed. Please try again. If the issue persists, contact the Erudi team for support."
     );
   };
 
@@ -159,11 +161,11 @@ export default function KnowledgeBasePage() {
         return res.json();
       })
       .then((data) => {
-        console.log("Fetched models:", data, "Count:", data ? data.length : 0);
+        log.log("Fetched models", { count: data ? data.length : 0 });
         setModels(data || []);
       })
       .catch((err) => {
-        console.error("Erreur models:", err);
+        log.error("Failed to fetch models", err);
         setModels([]);
       });
   };
@@ -186,7 +188,7 @@ export default function KnowledgeBasePage() {
         }));
       })
       .catch((err) => {
-        console.error("Erreur hardware:", err);
+        log.error("Failed to fetch hardware info", err);
         setHw((prevHw) => ({
           ...prevHw,
           global_inference_score: "Error fetching",
@@ -205,15 +207,15 @@ export default function KnowledgeBasePage() {
         (model) =>
           model.name === modelParam ||
           model.id === modelParam ||
-          model.name.toLowerCase() === modelParam.toLowerCase(),
+          model.name.toLowerCase() === modelParam.toLowerCase()
       );
 
       if (foundModel) {
-        console.log("Setting model from URL parameter:", foundModel);
+        log.log("Setting model from URL parameter", { name: foundModel.name });
         setSelectedModel(foundModel.id);
         setModelName(foundModel.name);
       } else {
-        console.warn("Model not found for parameter:", modelParam);
+        log.warn("Model not found for parameter", { modelParam });
       }
     }
   }, [searchParams, models]); // Re-run when searchParams or models change
@@ -336,7 +338,6 @@ export default function KnowledgeBasePage() {
                   <button
                     className="py-2 md:py-3 px-6 md:px-8 rounded-full bg-emerald-500 text-white font-semibold shadow-lg hover:bg-emerald-400 transition disabled:opacity-50 text-sm sm:text-base"
                     onClick={() => {
-                      console.log("Button clicked!");
                       submitTrainForm();
                     }}
                     disabled={isCreating || isStarting}

@@ -1,6 +1,8 @@
 import React, { useState, useRef } from "react";
 import { Upload, File, X, Plus, Folder } from "lucide-react";
 import GradientBox from "./GradientBox";
+import { createLogger } from "../utils/logger";
+const log = createLogger("DragDropArea");
 
 /**
  * Drag‑and‑drop zone with optional file picker.
@@ -26,23 +28,23 @@ export default function DragDropArea({ onFilesAdded }) {
         const fileName = file.name || file.path?.split(/[/\\]/).pop() || "";
         const isAllowed = isAllowedFileType(fileName);
         if (!isAllowed) {
-          console.warn(`File "${fileName}" rejected: only PDF and TXT files are allowed`);
+          log.warn(`File "${fileName}" rejected: only PDF and TXT files are allowed`);
         }
         return isAllowed;
       })
       .map((file) => {
-        console.log("Processing file:", file);
+        log.log("Processing file:", file);
 
         // Use the preload API if available
         if (window.electron?.getFilePath) {
-          console.log("Using window.electron.getFilePath");
+          log.log("Using window.electron.getFilePath");
           const path = window.electron.getFilePath(file);
-          console.log("Got path from electron API:", path);
+          log.log("Got path from electron API:", path);
           return path;
         }
 
         // Fallback to direct access
-        console.log("Using direct file.path access");
+        log.log("Using direct file.path access");
         return file.path || file.name;
       });
   };
@@ -70,12 +72,12 @@ export default function DragDropArea({ onFilesAdded }) {
     const extension = fileName.split(".").pop()?.toLowerCase();
 
     switch (extension) {
-    case "pdf":
-      return "PDF";
-    case "txt":
-      return "TXT";
-    default:
-      return "Other";
+      case "pdf":
+        return "PDF";
+      case "txt":
+        return "TXT";
+      default:
+        return "Other";
     }
   };
 
@@ -127,18 +129,18 @@ export default function DragDropArea({ onFilesAdded }) {
         isOver ? "border-emerald-400 bg-emerald-400/10" : "border-white/20"
       }`}
       onDragOver={(e) => {
-        console.log("🔄 REACT DRAG OVER triggered");
+        log.log("🔄 REACT DRAG OVER triggered");
         e.preventDefault(); // required for windows
         e.dataTransfer.dropEffect = "copy"; // ← Chrome/Edge need this line
       }}
       onDragEnter={(e) => {
-        console.log("➡️ REACT DRAG ENTER triggered");
+        log.log("➡️ REACT DRAG ENTER triggered");
         e.preventDefault(); // required for Windows
         setDragCounter((prev) => prev + 1);
         setIsOver(true);
       }}
       onDragLeave={(e) => {
-        console.log("⬅️ REACT DRAG LEAVE triggered");
+        log.log("⬅️ REACT DRAG LEAVE triggered");
         e.preventDefault();
         setDragCounter((prev) => {
           const newCounter = prev - 1;
@@ -149,20 +151,20 @@ export default function DragDropArea({ onFilesAdded }) {
         });
       }}
       onDrop={(e) => {
-        console.log("📦 REACT DROP EVENT triggered!", e.dataTransfer.files);
+        log.log("📦 REACT DROP EVENT triggered!", e.dataTransfer.files);
         e.preventDefault();
         setDragCounter(0);
         setIsOver(false);
 
         const files = Array.from(e.dataTransfer.files);
-        console.log("Files array:", files);
+        log.log("Files array:", files);
 
         const paths = extractPaths(e.dataTransfer.files);
-        console.log("Extracted paths:", paths);
+        log.log("Extracted paths:", paths);
 
         if (paths.length) {
           const newFiles = [...selectedFiles, ...paths];
-          console.log("New files array:", newFiles);
+          log.log("New files array:", newFiles);
           setSelectedFiles(newFiles);
           onFilesAdded?.(newFiles);
         }

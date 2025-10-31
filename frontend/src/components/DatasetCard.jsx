@@ -5,6 +5,8 @@ import ErrorModal from "./modals/ErrorModal";
 import ComingSoonModal from "./modals/ComingSoonModal";
 import { API_BASE_URL } from "../config/api.js";
 import { transformTrainingInfo } from "../utils/hardwareTransform";
+import { createLogger } from "../utils/logger";
+const log = createLogger("DatasetCard");
 
 /* ─────────────── Recap small table ─────────────── */
 function RecapTable({ recap }) {
@@ -50,13 +52,13 @@ export default function DatasetCard({
   const [showComingSoonModal, setShowComingSoonModal] = useState(false);
 
   const addDroppedFiles = (newPathObjects) => {
-    console.log("DatasetCard received files:", newPathObjects);
+    log.log("DatasetCard received files:", newPathObjects);
 
     // Handle complete replacement of the file list (for when files are removed)
     // or addition of new files (for when files are added)
     setPaths(() => {
       const newPaths = newPathObjects.map((pathObj) => pathObj.path || pathObj);
-      console.log("Setting paths to:", newPaths);
+      log.log("Setting paths to:", newPaths);
       return Array.from(new Set(newPaths)); // Remove duplicates but don't merge with previous
     });
   };
@@ -119,7 +121,7 @@ export default function DatasetCard({
           chip_model: hw.chip_model,
         });
       } catch (error) {
-        console.error("Error fetching hardware info:", error);
+        log.error("Error fetching hardware info:", error);
         setHardwareInfo({
           available_vram: "Error fetching",
           device_used: "Error fetching",
@@ -137,7 +139,7 @@ export default function DatasetCard({
 
   /* Handle reset from parent component */
   const resetDatasetCardState = () => {
-    console.log("Resetting DatasetCard state");
+    log.log("Resetting DatasetCard state");
     setPaths([]);
     setTrainingStatus(null);
     setTrainingError("");
