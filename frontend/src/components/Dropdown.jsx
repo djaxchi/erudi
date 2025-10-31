@@ -9,7 +9,9 @@ export default function Dropdown({ options, value, onChange }) {
   // close when clicking outside
   useEffect(() => {
     function onClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
     }
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
@@ -29,9 +31,7 @@ export default function Dropdown({ options, value, onChange }) {
 
       {/* Options */}
       {open && (
-        <ul
-          className="absolute left-0 right-0 bg-gray-800 text-white rounded-xl shadow-lg max-h-60 overflow-auto z-20 "
-        >
+        <ul className="absolute left-0 right-0 bg-gray-800 text-white rounded-xl shadow-lg max-h-60 overflow-auto z-20 ">
           {options.map((opt) => (
             <li
               key={opt}

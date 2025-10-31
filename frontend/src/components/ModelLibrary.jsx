@@ -3,7 +3,7 @@ import { RefreshCcw, Check, X } from "lucide-react";
 
 /**
  * Model Library component for selecting and managing local models
- * 
+ *
  * @param {Object} props
  * @param {Array} props.models - Array of available models
  * @param {string|null} props.selectedModel - Currently selected model ID
@@ -47,11 +47,11 @@ export default function ModelLibrary({
           title="Refresh models"
         />
       </div>
-      <div 
-        className="bg-[#242323] rounded-lg p-3 overflow-y-auto max-h-40 shadow-lg border border-white/20 border-[0.5px]" 
+      <div
+        className="bg-[#242323] rounded-lg p-3 overflow-y-auto max-h-40 shadow-lg border border-white/20 border-[0.5px]"
         style={{
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#9CA3AF #374151'
+          scrollbarWidth: "thin",
+          scrollbarColor: "#9CA3AF #374151",
         }}
       >
         {models.length === 0 ? (
@@ -64,27 +64,24 @@ export default function ModelLibrary({
                 onClick={() => onModelSelect(model.id)}
                 className={`
                   relative px-3 py-2 rounded-lg border transition-all duration-200 cursor-pointer
-                  ${selectedModel === model.id
-                    ? 'bg-emerald-400/10 border-emerald-400/30 text-emerald-300'
-                    : 'bg-[#3A3A3A] border-gray-600/50 text-gray-300 hover:bg-[#404040] hover:border-gray-500/70'
-                  }
+                  ${
+              selectedModel === model.id
+                ? "bg-emerald-400/10 border-emerald-400/30 text-emerald-300"
+                : "bg-[#3A3A3A] border-gray-600/50 text-gray-300 hover:bg-[#404040] hover:border-gray-500/70"
+              }
                 `}
               >
                 {/* Selection indicator */}
                 {selectedModel === model.id && (
                   <div className="absolute left-1 top-1/2 transform -translate-y-1/2 w-1 h-6 bg-emerald-400 rounded-full" />
                 )}
-                
+
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0 ml-2">
-                    <h5 className="font-medium text-sm truncate">
-                      {model.name}
-                    </h5>
+                    <h5 className="font-medium text-sm truncate">{model.name}</h5>
                     {/* Show model type if available */}
                     {model.type && (
-                      <span className="text-xs text-gray-400 mt-0.5 block">
-                        {model.type}
-                      </span>
+                      <span className="text-xs text-gray-400 mt-0.5 block">{model.type}</span>
                     )}
                   </div>
                 </div>
@@ -103,9 +100,9 @@ export default function ModelLibrary({
         <div className="flex gap-2">
           <input
             className={`flex-1 border rounded-lg px-3 py-2 text-sm placeholder-white/40 focus:ring-0 focus:outline-none transition-colors ${
-              isLocked 
-                ? 'bg-gray-700/50 border-gray-600/50 text-gray-400 cursor-not-allowed' 
-                : 'bg-[#3A3A3A] border-gray-600/50 text-white focus:border-emerald-400/50 focus:bg-[#404040]'
+              isLocked
+                ? "bg-gray-700/50 border-gray-600/50 text-gray-400 cursor-not-allowed"
+                : "bg-[#3A3A3A] border-gray-600/50 text-white focus:border-emerald-400/50 focus:bg-[#404040]"
             }`}
             placeholder={selectedModel ? "Enter model name..." : "Select a model first"}
             value={isLocked ? modelName : localModelName}
@@ -118,8 +115,8 @@ export default function ModelLibrary({
             disabled={!selectedModel || (!isLocked && !localModelName.trim())}
             className={`p-2 rounded-lg transition-colors ${
               isLocked
-                ? 'bg-red-500 hover:bg-red-600 text-white'
-                : 'bg-emerald-500 hover:bg-emerald-600 text-white disabled:bg-gray-600 disabled:cursor-not-allowed'
+                ? "bg-red-500 hover:bg-red-600 text-white"
+                : "bg-emerald-500 hover:bg-emerald-600 text-white disabled:bg-gray-600 disabled:cursor-not-allowed"
             }`}
             title={isLocked ? "Cancel and unlock" : "Validate and lock name"}
           >

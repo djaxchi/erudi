@@ -19,12 +19,12 @@ import { API_BASE_URL } from "../config/api";
 // Icon mapping for different section types
 const getIconForSection = (title) => {
   switch (title) {
-    case "Local Models":
-      return <Database className="w-5 h-5 font-bold text-white" />;
-    case "Remote Models":
-      return <Globe className="w-5 h-5 font-bold text-white" />;
-    default:
-      return <Database className="w-5 h-5 font-bold text-white" />;
+  case "Local Models":
+    return <Database className="w-5 h-5 font-bold text-white" />;
+  case "Remote Models":
+    return <Globe className="w-5 h-5 font-bold text-white" />;
+  default:
+    return <Database className="w-5 h-5 font-bold text-white" />;
   }
 };
 
@@ -41,14 +41,15 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
 
   // Expose reloadLocalModels to parent via ref
   useImperativeHandle(ref, () => ({
-    reloadLocalModels
+    reloadLocalModels,
   }));
 
   // TooltipIcon component - Simple CSS-based tooltip
   const TooltipIcon = () => {
-    const tooltipText = title === "Local Models" 
-      ? "Models downloaded and ready to use on your computer. These are available for chat, and specialization!"
-      : "Models available for download. Click on any model to download it to your local storage.";
+    const tooltipText =
+      title === "Local Models"
+        ? "Models downloaded and ready to use on your computer. These are available for chat, and specialization!"
+        : "Models available for download. Click on any model to download it to your local storage.";
 
     return (
       <Tooltip content={tooltipText} side="right" width="w-80">
@@ -63,16 +64,16 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
       setLoading(true);
       try {
         const url =
-          title === "Local Models"
-            ? `${API_BASE_URL}/llms/local`
-            : `${API_BASE_URL}/llms/remote`;
+          title === "Local Models" ? `${API_BASE_URL}/llms/local` : `${API_BASE_URL}/llms/remote`;
         const res = await fetch(url);
         if (res.ok) {
           setModels(await res.json());
         }
       } catch (err) {
         console.error("Failed to fetch models:", err);
-        setErrorMessage("Failed to fetch available models. Please try again and contact the Erudi team for support.");
+        setErrorMessage(
+          "Failed to fetch available models. Please try again and contact the Erudi team for support.",
+        );
       } finally {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         setLoading(false);
@@ -80,20 +81,25 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
     }
     fetchModels();
   }, [title]);
-  
+
   const reloadLocalModels = async () => {
     setLoading(true);
     try {
       const url = `${API_BASE_URL}/llms/local`;
       const res = await fetch(url);
-      if (res.ok) setModels(await res.json());
-      else setErrorMessage("Failed to fetch local models. Please try again and contact the Erudi team for support.");
-    } 
-    catch (err) {
+      if (res.ok) {
+        setModels(await res.json());
+      } else {
+        setErrorMessage(
+          "Failed to fetch local models. Please try again and contact the Erudi team for support.",
+        );
+      }
+    } catch (err) {
       console.error("Failed to fetch local models:", err);
-      setErrorMessage("Failed to fetch local models. Please try again and contact the Erudi team for support.");
-    } 
-    finally {
+      setErrorMessage(
+        "Failed to fetch local models. Please try again and contact the Erudi team for support.",
+      );
+    } finally {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setLoading(false);
     }
@@ -120,17 +126,19 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
   };
 
   const confirmDelete = async () => {
-    if (!deleteConfirmation.model) return;
-    
+    if (!deleteConfirmation.model) {
+      return;
+    }
+
     // Store model reference and close modal immediately to prevent double-clicks
     const modelToDelete = deleteConfirmation.model;
     setDeleteConfirmation({ show: false, model: null });
-    
+
     try {
       const response = await fetch(`${API_BASE_URL}/llms/${modelToDelete.id}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
-      
+
       if (response.ok) {
         setSuccessMessage(`Model ${modelToDelete.name} has been successfully deleted.`);
         // Reload models in this component
@@ -144,7 +152,9 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
       }
     } catch (error) {
       console.error("Failed to delete model:", error);
-      setErrorMessage("Failed to delete the model. Please try again and contact the Erudi team for support.");
+      setErrorMessage(
+        "Failed to delete the model. Please try again and contact the Erudi team for support.",
+      );
     }
   };
 
@@ -161,13 +171,15 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
   };
 
   // Filter models based on search term
-  const filteredModels = models.filter(model =>
-    model.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredModels = models.filter((model) =>
+    model.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
     <>
-      <div className={`text-gray-200 w-full flex flex-col ${title === "Remote Models" ? "h-full" : ""}`}>
+      <div
+        className={`text-gray-200 w-full flex flex-col ${title === "Remote Models" ? "h-full" : ""}`}
+      >
         {/* Section header */}
         <div
           className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30 transition-colors flex-shrink-0"
@@ -178,22 +190,26 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
             <span className="font-bold text-lg text-gray-200">{title}</span>
             <TooltipIcon />
             {title === "Local Models" && (
-              <RefreshCcw 
-                className="w-4 h-4 text-gray-400 hover:text-gray-200 cursor-pointer transition-colors" 
+              <RefreshCcw
+                className="w-4 h-4 text-gray-400 hover:text-gray-200 cursor-pointer transition-colors"
                 onClick={(e) => {
                   e.stopPropagation();
                   reloadLocalModels();
-                }} 
+                }}
               />
             )}
           </div>
           <div className="flex items-center gap-2">
-            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${!openSection ? '-rotate-90' : ''}`} />
+            <ChevronDown
+              className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${!openSection ? "-rotate-90" : ""}`}
+            />
           </div>
         </div>
 
         {/* Collapsible content */}
-        <div className={`grid transition-all duration-300 ease-in-out ${title === "Remote Models" ? "flex-1 min-h-0" : ""} ${openSection ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+        <div
+          className={`grid transition-all duration-300 ease-in-out ${title === "Remote Models" ? "flex-1 min-h-0" : ""} ${openSection ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+        >
           <div className="overflow-hidden flex flex-col">
             {/* Search bar for Remote Models only */}
             {hasSearch && title !== "Local Models" && openSection && (
@@ -210,18 +226,19 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
                 </div>
               </div>
             )}
-                  
 
             {/* Models list */}
-            <div className={`pl-4 pr-4 overflow-y-auto custom-scroll ${title === "Remote Models" ? "flex-1 min-h-0" : "max-h-[40vh]"}`}>
+            <div
+              className={`pl-4 pr-4 overflow-y-auto custom-scroll ${title === "Remote Models" ? "flex-1 min-h-0" : "max-h-[40vh]"}`}
+            >
               {loading ? (
                 <div className="flex items-center gap-2 py-2 text-gray-400">
                   <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
                   <span className="text-sm">Loading models...</span>
                 </div>
-              ) : (filteredModels.length > 0 || models.length > 0) ? (
+              ) : filteredModels.length > 0 || models.length > 0 ? (
                 (hasSearch ? filteredModels : models).length > 0 ? (
-                  (hasSearch ? filteredModels : models).map((m) => (
+                  (hasSearch ? filteredModels : models).map((m) =>
                     title === "Local Models" ? (
                       <div
                         key={m.id}
@@ -244,8 +261,8 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
                       >
                         {m.name}
                       </div>
-                    )
-                  ))
+                    ),
+                  )
                 ) : (
                   <p className="text-gray-500 text-sm italic py-2">No models found...</p>
                 )

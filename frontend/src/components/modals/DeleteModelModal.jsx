@@ -2,12 +2,7 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trash2 } from "lucide-react";
 
-export default function DeleteModelModal({ 
-  isOpen, 
-  model, 
-  onConfirm, 
-  onCancel 
-}) {
+export default function DeleteModelModal({ isOpen, model, onConfirm, onCancel }) {
   return (
     <AnimatePresence>
       {isOpen && (
@@ -80,9 +75,7 @@ export default function DeleteModelModal({
                       Are you sure you want to delete the model{" "}
                       <span className="font-semibold text-red-400">{model?.name}</span>?
                     </p>
-                    <p className="text-gray-300/80 text-xs mt-2">
-                      This action cannot be undone.
-                    </p>
+                    <p className="text-gray-300/80 text-xs mt-2">This action cannot be undone.</p>
                   </div>
                 </div>
 

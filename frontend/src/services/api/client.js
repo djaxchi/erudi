@@ -160,7 +160,7 @@ class APIClient {
     }
 
     const error = new Error(
-      errorData.detail || errorData.message || `API Error: ${response.status}`
+      errorData.detail || errorData.message || `API Error: ${response.status}`,
     );
     error.status = response.status;
     error.code = `HTTP_${response.status}`;

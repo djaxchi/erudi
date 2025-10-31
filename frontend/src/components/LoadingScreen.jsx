@@ -1,25 +1,21 @@
-import React from 'react';
+import React from "react";
 
 export default function LoadingScreen() {
   return (
-    <div 
+    <div
       className="fixed top-0 left-0 w-screen h-screen flex flex-col justify-center items-center z-[9999]"
-      style={{ backgroundColor: '#02130e' }}
+      style={{ backgroundColor: "#02130e" }}
     >
-      <img 
-        src={require('../img/logoerudifinal.png')}
+      <img
+        src={require("../img/logoerudifinal.png")}
         alt="erudi Logo"
         className="mb-2 object-contain"
-        style={{ maxWidth: '14rem', maxHeight: '14rem' }}
+        style={{ maxWidth: "14rem", maxHeight: "14rem" }}
       />
-      <p 
-        className="text-xl mt-1 mb-8"
-        style={{ color: '#e0e0e0' }}
-      >
+      <p className="text-xl mt-1 mb-8" style={{ color: "#e0e0e0" }}>
         AI with you, for you
       </p>
-      <div className="w-12 h-12 border-4 border-gray-200/20 border-t-gray-200/80 rounded-full animate-spin">
-      </div>
+      <div className="w-12 h-12 border-4 border-gray-200/20 border-t-gray-200/80 rounded-full animate-spin"></div>
     </div>
   );
 }

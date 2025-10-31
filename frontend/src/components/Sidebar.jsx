@@ -1,28 +1,36 @@
 import React, { useState } from "react";
-import { Brain, MessageSquare, Swords, BookOpen, PanelLeftClose, PanelLeftOpen, Bug } from "lucide-react";
+import {
+  Brain,
+  MessageSquare,
+  Swords,
+  BookOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Bug,
+} from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 
 /**
  * Sidebar with icons that highlight based on the current route.
  */
-export default function Sidebar({ 
-  disabled = false, 
-  onToggleSidebar, 
-  showCollapsible = false, 
+export default function Sidebar({
+  disabled = false,
+  onToggleSidebar,
+  showCollapsible = false,
   collapsed = false,
   showBrainCollapsible = false,
   onToggleBrainSidebar,
-  brainCollapsed = false
+  brainCollapsed = false,
 }) {
   const [isHovering, setIsHovering] = useState(false);
   const [isBrainHovering, setIsBrainHovering] = useState(false);
   const { isDownloading } = useDownloadModal();
   const location = useLocation();
   const isModelsActive =
-    location.pathname === "/erudi/models" ||
-    location.pathname === "/erudi/new-training";
-  const isChatActive = location.pathname.startsWith("/erudi/chat") ||
+    location.pathname === "/erudi/models" || location.pathname === "/erudi/new-training";
+  const isChatActive =
+    location.pathname.startsWith("/erudi/chat") ||
     location.pathname.startsWith("/erudi/conversations");
   const isArenaActive = location.pathname === "/erudi/arena";
   const isKnowledgeBaseActive = location.pathname === "/erudi/attach_knowledge_base";
@@ -153,15 +161,12 @@ export default function Sidebar({
       <div className="flex-1" />
       {!isDownloading && (
         <button
-          onClick={() => window.open('https://erudi.app/contact', '_blank')}
+          onClick={() => window.open("https://erudi.app/contact", "_blank")}
           className="w-full flex justify-center items-center py-4 border-l-4 border-transparent mb-4"
         >
-          <Bug
-            className="w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 text-gray-400 hover:text-red-400"
-          />
+          <Bug className="w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 text-gray-400 hover:text-red-400" />
         </button>
       )}
-
-      
     </div>
-  );}
+  );
+}

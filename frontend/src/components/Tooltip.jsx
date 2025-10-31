@@ -1,12 +1,7 @@
 import React from "react";
 
 // Reusable Tooltip component
-export default function Tooltip({
-  children,
-  content,
-  side = "right",
-  width = "w-64",
-}) {
+export default function Tooltip({ children, content, side = "right", width = "w-64" }) {
   const positionClasses =
     {
       top: "bottom-full left-1/2 -translate-x-1/2 mb-2",

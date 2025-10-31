@@ -1,57 +1,51 @@
 // src/contexts/KnowledgeBaseContext.jsx
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useRef,
-} from 'react'
-import ReactDOM from 'react-dom'
-import SpinnerDots from '../components/Spinner'
-import { X, ChevronLeft, ChevronRight } from 'lucide-react'
-import { API_BASE_URL } from '../config/api'
+import React, { createContext, useContext, useState, useCallback, useRef } from "react";
+import ReactDOM from "react-dom";
+import SpinnerDots from "../components/Spinner";
+import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { API_BASE_URL } from "../config/api";
 
-const KnowledgeBaseContext = createContext()
+const KnowledgeBaseContext = createContext();
 
 export function KnowledgeBaseProvider({ children }) {
-  const [task, setTask] = useState(null)
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false)
-  const [isCreating, setIsCreating] = useState(false)
-  const [isStarting, setIsStarting] = useState(false) // For the initial API call
-  const [showSpinner, setShowSpinner] = useState(false) // For bottom-left spinner
-  const [status, setStatus] = useState('idle')
-  const [errorMessage, setErrorMessage] = useState('')
-  const [assistantId, setAssistantId] = useState(null)
+  const [task, setTask] = useState(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isStarting, setIsStarting] = useState(false); // For the initial API call
+  const [showSpinner, setShowSpinner] = useState(false); // For bottom-left spinner
+  const [status, setStatus] = useState("idle");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [assistantId, setAssistantId] = useState(null);
 
-  const intervalRef = useRef(null)
-  const callbacksRef = useRef({ onComplete: null, onError: null })
+  const intervalRef = useRef(null);
+  const callbacksRef = useRef({ onComplete: null, onError: null });
 
   const toggleCollapse = useCallback(() => {
     // Remove toggle functionality since we're not using the popup modal
-  }, [])
+  }, []);
 
   const open = useCallback((knowledgeBaseTask, { onComplete, onError } = {}) => {
-    console.log('KnowledgeBase context open function called with:', knowledgeBaseTask)
-    setTask(knowledgeBaseTask)
-    callbacksRef.current = { onComplete, onError }
-    setErrorMessage('')
-    setIsConfirmOpen(true)
-    console.log('setIsConfirmOpen set to true')
-  }, [])
+    console.log("KnowledgeBase context open function called with:", knowledgeBaseTask);
+    setTask(knowledgeBaseTask);
+    callbacksRef.current = { onComplete, onError };
+    setErrorMessage("");
+    setIsConfirmOpen(true);
+    console.log("setIsConfirmOpen set to true");
+  }, []);
 
-  const cancelConfirm = useCallback(() => setIsConfirmOpen(false), [])
+  const cancelConfirm = useCallback(() => setIsConfirmOpen(false), []);
 
   const startCreation = useCallback(async () => {
-    setIsConfirmOpen(false)
-    setIsStarting(true) // Show spinner in button place
-    setErrorMessage('')
+    setIsConfirmOpen(false);
+    setIsStarting(true); // Show spinner in button place
+    setErrorMessage("");
 
     try {
       // Start the knowledge base creation API call
       const response = await fetch(`${API_BASE_URL}/knowledge_base/create`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           paths: task.paths,
@@ -62,77 +56,82 @@ export function KnowledgeBaseProvider({ children }) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`Failed to start assistant creation (${response.status}): ${errorData.detail || 'Unknown error'}`)
+        const errorData = await response.json();
+        throw new Error(
+          `Failed to start assistant creation (${response.status}): ${errorData.detail || "Unknown error"}`,
+        );
       }
 
       const result = await response.json();
       const newAssistantId = result.model_id;
-      
+
       // Update the assistantId for status polling
       setAssistantId(newAssistantId);
-      
+
       // Switch from button spinner to bottom-left spinner
-      setIsStarting(false)
-      setIsCreating(true)
-      setShowSpinner(true)
-      setStatus('pending')
+      setIsStarting(false);
+      setIsCreating(true);
+      setShowSpinner(true);
+      setStatus("pending");
 
       intervalRef.current = setInterval(() => {
-        checkCreationStatus(newAssistantId)
-      }, 2000)
+        checkCreationStatus(newAssistantId);
+      }, 2000);
     } catch (err) {
-      console.error('Knowledge base creation error:', err)
-      setIsStarting(false)
-      setErrorMessage(err.message || 'Failed to start assistant creation')
-      callbacksRef.current.onError?.(err.message)
+      console.error("Knowledge base creation error:", err);
+      setIsStarting(false);
+      setErrorMessage(err.message || "Failed to start assistant creation");
+      callbacksRef.current.onError?.(err.message);
     }
-  }, [task])
+  }, [task]);
 
   const checkCreationStatus = useCallback(async (assistantId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/knowledge_base/${assistantId}/status`)
-      if (!res.ok) throw new Error(`Server responded with ${res.status}: ${res.statusText}`)
-      const data = await res.json()
-      
-      setStatus(data.status)
+      const res = await fetch(`${API_BASE_URL}/knowledge_base/${assistantId}/status`);
+      if (!res.ok) {
+        throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
+      }
+      const data = await res.json();
 
-      if (data.status === 'completed' || data.status === 'failed') {
-        clearInterval(intervalRef.current)
-        setIsCreating(false)
-        setShowSpinner(false)
-        if (data.status === 'completed') {
-          callbacksRef.current.onComplete?.()
+      setStatus(data.status);
+
+      if (data.status === "completed" || data.status === "failed") {
+        clearInterval(intervalRef.current);
+        setIsCreating(false);
+        setShowSpinner(false);
+        if (data.status === "completed") {
+          callbacksRef.current.onComplete?.();
         } else {
-          const errorMsg = data.error_message || 'Assistant creation failed unexpectedly'
-          setErrorMessage(errorMsg)
-          callbacksRef.current.onError?.(errorMsg)
+          const errorMsg = data.error_message || "Assistant creation failed unexpectedly";
+          setErrorMessage(errorMsg);
+          callbacksRef.current.onError?.(errorMsg);
         }
       }
     } catch (err) {
-      console.error('Status check error:', err)
-      clearInterval(intervalRef.current)
-      setIsCreating(false)
-      setShowSpinner(false)
-      const errorMsg = 'An error occurred during assistant creation. Please try again or contact the Erudi team.'
-      setErrorMessage(errorMsg)
-      callbacksRef.current.onError?.(errorMsg)
+      console.error("Status check error:", err);
+      clearInterval(intervalRef.current);
+      setIsCreating(false);
+      setShowSpinner(false);
+      const errorMsg =
+        "An error occurred during assistant creation. Please try again or contact the Erudi team.";
+      setErrorMessage(errorMsg);
+      callbacksRef.current.onError?.(errorMsg);
     }
-  }, [])
+  }, []);
 
   const closeModal = useCallback(() => {
     if (intervalRef.current) {
-      clearInterval(intervalRef.current)
+      clearInterval(intervalRef.current);
     }
-    setIsCreating(false)
-    setIsStarting(false)
-    setShowSpinner(false)
-    setIsConfirmOpen(false)
-    setTask(null)
-    setStatus('idle')
-    setErrorMessage('')
-    setAssistantId(null)
-  }, [])
+    setIsCreating(false);
+    setIsStarting(false);
+    setShowSpinner(false);
+    setIsConfirmOpen(false);
+    setTask(null);
+    setStatus("idle");
+    setErrorMessage("");
+    setAssistantId(null);
+  }, []);
 
   return (
     <KnowledgeBaseContext.Provider
@@ -144,59 +143,60 @@ export function KnowledgeBaseProvider({ children }) {
       }}
     >
       {children}
-      
+
       {/* Confirmation Modal */}
-      {isConfirmOpen && task && ReactDOM.createPortal(
-        <div className="fixed inset-0 flex items-center justify-center z-50">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black bg-opacity-70"
-            onClick={cancelConfirm}
-          />
+      {isConfirmOpen &&
+        task &&
+        ReactDOM.createPortal(
+          <div className="fixed inset-0 flex items-center justify-center z-50">
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black bg-opacity-70" onClick={cancelConfirm} />
 
-          {/* Modal container */}
-          <div className="relative bg-[#313131] rounded-2xl px-20 py-12 w-[60%] shadow-lg shadow-emerald-500/10">
-            <h2 className="text-xl font-semibold text-white pr-4">
-              Are you sure you want to create <span className="font-bold">{task.modelName}</span>?
-            </h2>
-            <p className="mt-1 text-gray-300">
-              This will create a knowledge base assistant with {task.paths?.length || 0} files
-            </p>
+            {/* Modal container */}
+            <div className="relative bg-[#313131] rounded-2xl px-20 py-12 w-[60%] shadow-lg shadow-emerald-500/10">
+              <h2 className="text-xl font-semibold text-white pr-4">
+                Are you sure you want to create <span className="font-bold">{task.modelName}</span>?
+              </h2>
+              <p className="mt-1 text-gray-300">
+                This will create a knowledge base assistant with {task.paths?.length || 0} files
+              </p>
 
-            <div className="mt-4 flex justify-start gap-4">
-              <button
-                onClick={cancelConfirm}
-                className="px-4 py-1 border border-red-500 text-red-500 rounded-full hover:bg-red-500/10 transition-shadow shadow-none hover:shadow-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={startCreation}
-                className="px-4 py-2 border border-emerald-500 text-emerald-500 rounded-full hover:bg-emerald-500/10 transition-shadow shadow-none hover:shadow-lg"
-              >
-                Create Assistant
-              </button>
+              <div className="mt-4 flex justify-start gap-4">
+                <button
+                  onClick={cancelConfirm}
+                  className="px-4 py-1 border border-red-500 text-red-500 rounded-full hover:bg-red-500/10 transition-shadow shadow-none hover:shadow-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={startCreation}
+                  className="px-4 py-2 border border-emerald-500 text-emerald-500 rounded-full hover:bg-emerald-500/10 transition-shadow shadow-none hover:shadow-lg"
+                >
+                  Create Assistant
+                </button>
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body,
+        )}
 
       {/* Bottom-left spinner - only show when creating (after API call succeeds) */}
-      {showSpinner && (status === 'pending' || status === 'running') && ReactDOM.createPortal(
-        <div className="fixed bottom-7 left-[1.5%]">
-          <SpinnerDots className="w-6 h-6 text-emerald-400 animate-spin" />
-        </div>,
-        document.body
-      )}
+      {showSpinner &&
+        (status === "pending" || status === "running") &&
+        ReactDOM.createPortal(
+          <div className="fixed bottom-7 left-[1.5%]">
+            <SpinnerDots className="w-6 h-6 text-emerald-400 animate-spin" />
+          </div>,
+          document.body,
+        )}
     </KnowledgeBaseContext.Provider>
-  )
+  );
 }
 
 export const useKnowledgeBase = () => {
-  const context = useContext(KnowledgeBaseContext)
+  const context = useContext(KnowledgeBaseContext);
   if (!context) {
-    throw new Error('useKnowledgeBase must be used within a KnowledgeBaseProvider')
+    throw new Error("useKnowledgeBase must be used within a KnowledgeBaseProvider");
   }
-  return context
-}
+  return context;
+};

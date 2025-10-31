@@ -74,18 +74,12 @@ export default function ComingSoonModal({
                 {/* Content */}
                 <div className="text-center mb-6">
                   <p className="text-sm text-gray-300/80 mb-3">
-                    The{" "}
-                    <span className="font-semibold text-emerald-400">
-                      {featureName}
-                    </span>{" "}
-                    feature is currently under development and will be available
-                    in a future update.
+                    The <span className="font-semibold text-emerald-400">{featureName}</span>{" "}
+                    feature is currently under development and will be available in a future update.
                   </p>
                   {featureDescription && (
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
-                      <p className="text-xs text-gray-400">
-                        {featureDescription}
-                      </p>
+                      <p className="text-xs text-gray-400">{featureDescription}</p>
                     </div>
                   )}
                 </div>

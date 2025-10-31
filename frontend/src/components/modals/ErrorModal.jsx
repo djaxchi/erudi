@@ -54,9 +54,7 @@ export default function ErrorModal({ errorMessage, onClose }) {
                     <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center">
                       <AlertTriangle className="w-4 h-4 text-red-400" />
                     </div>
-                    <h2 className="text-xl font-semibold tracking-tight text-[#F2F7F4]">
-                      Error
-                    </h2>
+                    <h2 className="text-xl font-semibold tracking-tight text-[#F2F7F4]">Error</h2>
                   </div>
                   <button
                     onClick={onClose}

@@ -13,7 +13,9 @@ export default function QuestionInput({
 
   const handleSend = () => {
     const trimmed = value.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      return;
+    }
     onSend?.(trimmed);
     setValue("");
     resizeTextarea();
@@ -33,7 +35,9 @@ export default function QuestionInput({
       el.style.height = Math.min(el.scrollHeight, 160) + "px";
     }
   };
-  useEffect(() => { resizeTextarea(); }, [value]);
+  useEffect(() => {
+    resizeTextarea();
+  }, [value]);
 
   return (
     <div className={["relative w-full", className].join(" ")}>
@@ -47,12 +51,30 @@ export default function QuestionInput({
         ].join(" ")}
       >
         {/* Frost overlays with emerald tint */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 rounded-[20px] mix-blend-overlay"
-             style={{background:"linear-gradient(180deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.06) 28%, rgba(16,185,129,0.02) 60%, rgba(16,185,129,0) 100%)"}}/>
-        <div aria-hidden className="pointer-events-none absolute inset-0 rounded-[20px] opacity-20 mix-blend-overlay"
-             style={{backgroundImage:'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")', backgroundSize:"200px 200px"}}/>
-        <div aria-hidden className="pointer-events-none absolute inset-0 rounded-[20px]"
-             style={{boxShadow:"inset 0 1px 0 rgba(16,185,129,0.15), inset 0 -1px 0 rgba(16,185,129,0.08)"}}/>
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-[20px] mix-blend-overlay"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.06) 28%, rgba(16,185,129,0.02) 60%, rgba(16,185,129,0) 100%)",
+          }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-[20px] opacity-20 mix-blend-overlay"
+          style={{
+            backgroundImage:
+              'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")',
+            backgroundSize: "200px 200px",
+          }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-[20px]"
+          style={{
+            boxShadow: "inset 0 1px 0 rgba(16,185,129,0.15), inset 0 -1px 0 rgba(16,185,129,0.08)",
+          }}
+        />
 
         <textarea
           ref={textareaRef}

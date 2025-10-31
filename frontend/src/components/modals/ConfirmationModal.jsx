@@ -65,14 +65,12 @@ export default function ConfirmationModal({
                   {isFineTuning ? (
                     <>
                       Are you sure you want to start training{" "}
-                      <span className="font-bold text-emerald-400">{text}</span>
-                      ?
+                      <span className="font-bold text-emerald-400">{text}</span>?
                     </>
                   ) : (
                     <>
                       Are you sure you want to download{" "}
-                      <span className="font-bold text-emerald-400">{text}</span>
-                      ?
+                      <span className="font-bold text-emerald-400">{text}</span>?
                     </>
                   )}
                 </h2>

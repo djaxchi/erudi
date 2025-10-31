@@ -39,13 +39,21 @@ export default function HeaderBar({
   const [tier, setTier] = useState("lg");
 
   useEffect(() => {
-    if (!rootRef.current) return;
+    if (!rootRef.current) {
+      return;
+    }
     const el = rootRef.current;
 
     const computeTier = (w) => {
-      if (w < 360) return "xs";
-      if (w < 520) return "sm";
-      if (w < 720) return "md";
+      if (w < 360) {
+        return "xs";
+      }
+      if (w < 520) {
+        return "sm";
+      }
+      if (w < 720) {
+        return "md";
+      }
       return "lg";
     };
 
@@ -89,10 +97,10 @@ export default function HeaderBar({
       id === "temperature"
         ? "Controls creativity. Lower = focused, higher = creative."
         : id === "top-p"
-        ? "Controls word variety. Lower = predictable, higher = diverse."
-        : id === "prompt"
-        ? "Customize system instructions that guide AI behavior."
-        : "";
+          ? "Controls word variety. Lower = predictable, higher = diverse."
+          : id === "prompt"
+            ? "Customize system instructions that guide AI behavior."
+            : "";
     const widthClass = isXs ? "w-40" : isSm ? "w-52" : "w-64";
     const iconSize = isXs ? "w-3 h-3" : isSm ? "w-3.5 h-3.5" : "w-4 h-4";
     return (
@@ -113,11 +121,7 @@ export default function HeaderBar({
 
   // Size-aware utility fragments
   const pad = isXs ? "p-3" : isSm ? "p-4" : "p-5";
-  const titleText = isXs
-    ? "text-[0.95rem]"
-    : isSm
-    ? "text-[1.02rem]"
-    : "text-[1.15rem]";
+  const titleText = isXs ? "text-[0.95rem]" : isSm ? "text-[1.02rem]" : "text-[1.15rem]";
   const pillPx = isXs ? "px-2.5" : isSm ? "px-3" : "px-3.5";
   const pillPy = isXs ? "py-1" : "py-1.5";
   const pillText = isXs ? "text-xs" : isSm ? "text-[0.8rem]" : "text-sm";
@@ -125,30 +129,24 @@ export default function HeaderBar({
   const toggleSize = isXs
     ? "w-8 h-8 rounded-lg"
     : isSm
-    ? "w-8 h-8 rounded-lg"
-    : "w-9 h-9 rounded-xl";
-  const labelText = isXs
-    ? "text-[0.65rem]"
-    : isSm
-    ? "text-[0.7rem]"
-    : "text-[0.72rem]";
+      ? "w-8 h-8 rounded-lg"
+      : "w-9 h-9 rounded-xl";
+  const labelText = isXs ? "text-[0.65rem]" : isSm ? "text-[0.7rem]" : "text-[0.72rem]";
   const statText = isXs ? "text-[10px]" : "text-[11px]";
   const numberWidth = isXs ? "w-20" : isSm ? "w-24" : "w-28";
   const primaryBtn = isXs
     ? "px-4 py-1.5 text-[0.8rem]"
     : isSm
-    ? "px-4 py-1.5 text-[0.85rem]"
-    : "px-5 py-2 text-[0.9rem]";
+      ? "px-4 py-1.5 text-[0.85rem]"
+      : "px-5 py-2 text-[0.9rem]";
   const secondaryBtn = isXs
     ? "px-3.5 py-1.5 text-[0.78rem]"
     : isSm
-    ? "px-4 py-1.5 text-[0.8rem]"
-    : "px-4 py-2 text-sm";
+      ? "px-4 py-1.5 text-[0.8rem]"
+      : "px-4 py-2 text-sm";
 
   // Stack buttons on narrow widths
-  const actionsLayout = isNarrow
-    ? "flex-col items-stretch"
-    : "flex-row items-center";
+  const actionsLayout = isNarrow ? "flex-col items-stretch" : "flex-row items-center";
 
   // One-column layout when narrow; two columns otherwise
   const gridColsClass = isNarrow ? "grid-cols-1" : "md:grid-cols-2";
@@ -199,8 +197,7 @@ export default function HeaderBar({
         aria-hidden
         className="absolute inset-0 pointer-events-none rounded-[26px] mix-blend-overlay"
         style={{
-          background:
-            "linear-gradient(to bottom, rgba(255,255,255,0.18), rgba(255,255,255,0) 40%)",
+          background: "linear-gradient(to bottom, rgba(255,255,255,0.18), rgba(255,255,255,0) 40%)",
         }}
       />
       <div
@@ -310,10 +307,7 @@ export default function HeaderBar({
                       >
                         Creativity
                       </span>
-                      <TooltipIcon
-                        id="temperature"
-                        side={isNarrow ? "bottom-right" : "right"}
-                      />
+                      <TooltipIcon id="temperature" side={isNarrow ? "bottom-right" : "right"} />
                       <span
                         className={`ml-auto ${statText} font-semibold text-emerald-200/90 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-400/25`}
                       >
@@ -328,9 +322,7 @@ export default function HeaderBar({
                         max="1"
                         step="0.01"
                         value={temperature}
-                        onChange={(e) =>
-                          setTemperature(parseFloat(e.target.value))
-                        }
+                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
                         className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
                         style={sliderBg(temperature)}
                       />
@@ -394,9 +386,7 @@ export default function HeaderBar({
                           min="1"
                           max="2000"
                           value={maxTokens}
-                          onChange={(e) =>
-                            setMaxTokens(parseInt(e.target.value || "0", 10))
-                          }
+                          onChange={(e) => setMaxTokens(parseInt(e.target.value || "0", 10))}
                           className={`bg-transparent border-0 outline-none ${numberWidth} text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                         />
                       </div>

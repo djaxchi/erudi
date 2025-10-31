@@ -1,23 +1,25 @@
 import React from "react";
 import { X } from "lucide-react";
 
-export default function MessageModal({ 
-  isOpen, 
-  title, 
-  message, 
+export default function MessageModal({
+  isOpen,
+  title,
+  message,
   type = "info", // "success", "error", "info"
-  onClose 
+  onClose,
 }) {
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   const getContentStyles = () => {
     switch (type) {
-      case "success":
-        return "text-green-400";
-      case "error":
-        return "text-red-400 bg-red-900/20 border border-red-600/30";
-      default:
-        return "text-white";
+    case "success":
+      return "text-green-400";
+    case "error":
+      return "text-red-400 bg-red-900/20 border border-red-600/30";
+    default:
+      return "text-white";
     }
   };
 
@@ -27,13 +29,8 @@ export default function MessageModal({
         {/* Header */}
         <div className="p-4 border-b border-white/10">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-white flex items-center gap-3">
-              {title}
-            </h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors"
-            >
+            <h2 className="text-xl font-bold text-white flex items-center gap-3">{title}</h2>
+            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
               <X className="w-6 h-6" />
             </button>
           </div>

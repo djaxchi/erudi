@@ -1,16 +1,8 @@
 import React, { useState } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  Cog,
-  RefreshCcw,
-  Plus,
-  Edit3,
-  X
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Cog, RefreshCcw, Plus, Edit3, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ErrorModal from "./modals/ErrorModal";
-import { API_BASE_URL } from "../config/api.js"
+import { API_BASE_URL } from "../config/api.js";
 
 export default function ChatCollapsibleSection({
   title,
@@ -39,7 +31,9 @@ export default function ChatCollapsibleSection({
         body: JSON.stringify({ name }),
       });
 
-      if (!res.ok) throw new Error(res.status);
+      if (!res.ok) {
+        throw new Error(res.status);
+      }
       onRename?.(id, name);
     } catch (err) {
       console.error(err);
@@ -56,7 +50,9 @@ export default function ChatCollapsibleSection({
         headers: { "Content-Type": "application/json" },
       });
 
-      if (!res.ok) throw new Error("Delete failed");
+      if (!res.ok) {
+        throw new Error("Delete failed");
+      }
 
       onDelete?.(id);
     } catch (err) {
@@ -68,11 +64,13 @@ export default function ChatCollapsibleSection({
   };
 
   const renderItems = () => {
-    if (loading) return (
-      <div className="flex items-center justify-center py-4">
-        <div className="w-5 h-5 border-2 border-gray-400 border-t-emerald-400 rounded-full animate-spin"></div>
-      </div>
-    );
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-4">
+          <div className="w-5 h-5 border-2 border-gray-400 border-t-emerald-400 rounded-full animate-spin"></div>
+        </div>
+      );
+    }
 
     if (title === "Previous Chats" && items.length > 0) {
       return items.map((conv) => {
@@ -154,11 +152,7 @@ export default function ChatCollapsibleSection({
         onClick={() => setOpen(!open)}
       >
         <div className="flex items-center gap-2">
-          {open ? (
-            <ChevronDown className="w-4 h-4" />
-          ) : (
-            <ChevronRight className="w-4 h-4" />
-          )}
+          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           <span className="font-semibold">{title}</span>
         </div>
 
@@ -173,7 +167,9 @@ export default function ChatCollapsibleSection({
                 await onRefresh?.();
               } catch (err) {
                 console.error("Failed to refresh conversations:", err);
-                setErrorMessage(`Failed to refresh conversations: ${err.message || 'Network error'}`);
+                setErrorMessage(
+                  `Failed to refresh conversations: ${err.message || "Network error"}`,
+                );
               } finally {
                 setLoading(false);
               }
@@ -183,13 +179,15 @@ export default function ChatCollapsibleSection({
             className="w-6 h-6 hover:opacity-70 hover:bg-gray-600/30 rounded-full p-1 -m-1 cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
-              navigate('/erudi/chat');
+              navigate("/erudi/chat");
             }}
           />
         </div>
       </div>
 
-      <div className={`grid transition-all duration-300 ease-in-out flex-1 min-h-0 ${open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'} `}>
+      <div
+        className={`grid transition-all duration-300 ease-in-out flex-1 min-h-0 ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"} `}
+      >
         <div className="px-4 py-2 overflow-y-auto overflow-x-visible custom-scroll">
           {renderItems()}
         </div>
@@ -198,7 +196,9 @@ export default function ChatCollapsibleSection({
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-[#272727] text-white rounded-lg p-6 w-full max-w-sm shadow-lg">
-            <h2 className="text-lg font-semibold mb-4">Are you sure to delete this conversation ?</h2>
+            <h2 className="text-lg font-semibold mb-4">
+              Are you sure to delete this conversation ?
+            </h2>
             <p className="text-sm mb-6">This action is irreversible.</p>
             <div className="flex justify-end gap-3">
               <button
@@ -222,7 +222,7 @@ export default function ChatCollapsibleSection({
       )}
 
       {/* Error Popup */}
-      <ErrorModal errorMessage={errorMessage} onClose={closeErrorModal}/>
+      <ErrorModal errorMessage={errorMessage} onClose={closeErrorModal} />
     </div>
   );
 }

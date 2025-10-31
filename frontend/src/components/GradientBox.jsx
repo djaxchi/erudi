@@ -29,11 +29,7 @@ export default function GradientBox({
       <div className="absolute inset-0 mix-blend-overlay pointer-events-none" />
 
       {/* content retains full opacity, customizable wrapper */}
-      <div
-        className={`relative z-10 ${contentClassName || defaultContentClasses}`}
-      >
-        {children}
-      </div>
+      <div className={`relative z-10 ${contentClassName || defaultContentClasses}`}>{children}</div>
     </div>
   );
 }
