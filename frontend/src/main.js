@@ -371,7 +371,7 @@ const startRealBackend = () => {
             // If we've had 3 consecutive failures, try to restart backend
             if (consecutiveFailures >= 3) {
               log(
-                `${consecutiveFailures} consecutive health check failures. Attempting backend restart...`,
+                `${consecutiveFailures} consecutive health check failures. Attempting backend restart...`
               );
 
               // Kill current backend
@@ -435,21 +435,21 @@ const createApplicationMenu = () => {
     // App menu (macOS only)
     ...(isMac
       ? [
-        {
-          label: app.name,
-          submenu: [
-            { role: "about" },
-            { type: "separator" },
-            { role: "services" },
-            { type: "separator" },
-            { role: "hide" },
-            { role: "hideOthers" },
-            { role: "unhide" },
-            { type: "separator" },
-            { role: "quit" },
-          ],
-        },
-      ]
+          {
+            label: app.name,
+            submenu: [
+              { role: "about" },
+              { type: "separator" },
+              { role: "services" },
+              { type: "separator" },
+              { role: "hide" },
+              { role: "hideOthers" },
+              { role: "unhide" },
+              { type: "separator" },
+              { role: "quit" },
+            ],
+          },
+        ]
       : []),
 
     // File menu
@@ -470,15 +470,15 @@ const createApplicationMenu = () => {
         { role: "paste" },
         ...(isMac
           ? [
-            { role: "pasteAndMatchStyle" },
-            { role: "delete" },
-            { role: "selectAll" },
-            { type: "separator" },
-            {
-              label: "Speech",
-              submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }],
-            },
-          ]
+              { role: "pasteAndMatchStyle" },
+              { role: "delete" },
+              { role: "selectAll" },
+              { type: "separator" },
+              {
+                label: "Speech",
+                submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }],
+              },
+            ]
           : [{ role: "delete" }, { type: "separator" }, { role: "selectAll" }]),
       ],
     },
@@ -860,7 +860,7 @@ app.whenReady().then(async () => {
         await tryStartBackend();
       } else {
         log(
-          `Backend startup failed after ${maxRetries} attempts. Creating window without backend.`,
+          `Backend startup failed after ${maxRetries} attempts. Creating window without backend.`
         );
         createWindow();
       }

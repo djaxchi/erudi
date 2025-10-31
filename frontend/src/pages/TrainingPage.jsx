@@ -8,8 +8,11 @@ import { X } from "lucide-react";
 import ErrorModal from "../components/modals/ErrorModal";
 import { API_BASE_URL } from "../config/api";
 import { transformTrainingInfo } from "../utils/hardwareTransform";
+import { createLogger } from "../utils/logger";
 
 export default function TrainingPage() {
+  const log = createLogger("TrainingPage");
+
   const { open: openProgressModal, isTraining } = useDownloadModal();
   const [errorMessage, setErrorMessage] = useState("");
   const datasetCardResetRef = useRef(null);
@@ -47,19 +50,19 @@ export default function TrainingPage() {
       .then((res) => {
         if (!res.ok) {
           setErrorMessage(
-            "Failed to fetch your local models. Please try again. If the issue persists, contact the Erudi team for support.",
+            "Failed to fetch your local models. Please try again. If the issue persists, contact the Erudi team for support."
           );
         }
         return res.json();
       })
       .then((data) => {
-        console.log("Fetched models:", data, "Count:", data ? data.length : 0);
+        log.log("Fetched models:", data, "Count:", data ? data.length : 0);
         setModels(data || []);
       })
       .catch((err) => {
-        console.error("Erreur models:", err);
+        log.error("Erreur models:", err);
         setErrorMessage(
-          "Failed to fetch your local models. Please try again. If the issue persists, contact the Erudi team for support.",
+          "Failed to fetch your local models. Please try again. If the issue persists, contact the Erudi team for support."
         );
         setModels([]);
       });
@@ -70,7 +73,7 @@ export default function TrainingPage() {
       .then((res) => {
         if (!res.ok) {
           setErrorMessage(
-            "Failed to fetch hardware information. Please try again. If the issue persists, contact the Erudi team for support.",
+            "Failed to fetch hardware information. Please try again. If the issue persists, contact the Erudi team for support."
           );
         }
         return res.json();
@@ -81,9 +84,9 @@ export default function TrainingPage() {
         setHw(transformed);
       })
       .catch((err) => {
-        console.error("Erreur hardware:", err);
+        log.error("Erreur hardware:", err);
         setErrorMessage(
-          "Failed to fetch hardware information. Please try again. If the issue persists, contact the Erudi team for support.",
+          "Failed to fetch hardware information. Please try again. If the issue persists, contact the Erudi team for support."
         );
         // Set default values in case of error
         setHw({
@@ -152,7 +155,7 @@ export default function TrainingPage() {
   };
 
   const handleFineTuningComplete = () => {
-    console.log("Fine-tuning completed!");
+    log.log("Fine-tuning completed!");
     setSelectedModel(null);
     setModelName("");
     resetDatasetCard();
@@ -163,9 +166,9 @@ export default function TrainingPage() {
   };
 
   const handleFineTuningError = (error) => {
-    console.error("Fine-tuning error:", error);
+    log.error("Fine-tuning error:", error);
     setErrorMessage(
-      "Fine-tuning failed. Please try again. If the issue persists, contact the Erudi team for support.",
+      "Fine-tuning failed. Please try again. If the issue persists, contact the Erudi team for support."
     );
   };
 
@@ -180,7 +183,7 @@ export default function TrainingPage() {
     setSelectedModel(null);
     setModelName("");
     resetDatasetCard();
-    console.log("Closing error modal and resetting state");
+    log.log("Closing error modal and resetting state");
     // Force page refresh with a small delay to ensure state reset completes
     setTimeout(() => {
       window.location.href = window.location.href;

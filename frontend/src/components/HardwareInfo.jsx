@@ -1,7 +1,10 @@
 import React, { useState } from "react";
+import PropTypes from "prop-types";
 import InfoRow from "./InfoRow";
 import Tooltip from "./Tooltip";
 import { Check, X, HelpCircle, Folder } from "lucide-react";
+import { createLogger } from "../utils/logger";
+const log = createLogger("HardwareInfo");
 
 export default function HardwareInfo({ hw }) {
   const [storagePath, setStoragePath] = useState(hw.storage_path || "");
@@ -12,7 +15,7 @@ export default function HardwareInfo({ hw }) {
       // Use the Electron API from preload.js
       if (window.electron && window.electron.openDirectory) {
         const result = await window.electron.openDirectory();
-        console.log("Storage directory selection result:", result); // Debug log
+        log.log("Storage directory selection result:", result); // Debug log
 
         // Handle different possible result structures
         if (result && !result.canceled) {
@@ -29,15 +32,15 @@ export default function HardwareInfo({ hw }) {
 
           if (selectedPath) {
             setStoragePath(selectedPath);
-            console.log("Selected storage path:", selectedPath);
+            log.log("Selected storage path:", selectedPath);
           } else {
-            console.log("No directory selected or invalid result structure");
+            log.log("No directory selected or invalid result structure");
           }
         } else {
-          console.log("Directory selection was canceled or failed");
+          log.log("Directory selection was canceled or failed");
         }
       } else {
-        console.warn("Electron API not available for selecting directory");
+        log.warn("Electron API not available for selecting directory");
         // Fallback for web environment - create hidden file input
         const input = document.createElement("input");
         input.type = "file";
@@ -61,7 +64,7 @@ export default function HardwareInfo({ hw }) {
         input.click();
       }
     } catch (error) {
-      console.error("Error selecting storage directory:", error);
+      log.error("Error selecting storage directory:", error);
     }
   };
 
@@ -69,20 +72,20 @@ export default function HardwareInfo({ hw }) {
   const TooltipIcon = ({ id }) => {
     const getTooltipText = (id) => {
       switch (id) {
-      case "storage":
-        return "Hard drive space for saving your work. More space = bigger models.";
-      case "ram":
-        return "Computer memory for faster processing. More memory = quicker results.";
-      case "cpu":
-        return "Main processor that prepares data and keeps training smooth.";
-      case "gpu":
-        return "Graphics card that does the AI training. Powerful card = faster training.";
-      case "gpu-memory":
-        return "Graphics memory that sets max model size. More memory = bigger models.";
-      case "rating":
-        return "Overall system capability for AI model fine-tuning based on your hardware specs.";
-      default:
-        return "";
+        case "storage":
+          return "Hard drive space for saving your work. More space = bigger models.";
+        case "ram":
+          return "Computer memory for faster processing. More memory = quicker results.";
+        case "cpu":
+          return "Main processor that prepares data and keeps training smooth.";
+        case "gpu":
+          return "Graphics card that does the AI training. Powerful card = faster training.";
+        case "gpu-memory":
+          return "Graphics memory that sets max model size. More memory = bigger models.";
+        case "rating":
+          return "Overall system capability for AI model fine-tuning based on your hardware specs.";
+        default:
+          return "";
       }
     };
     return (

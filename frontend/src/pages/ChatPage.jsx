@@ -11,6 +11,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";
 import logoErudi from "../img/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api.js";
+import { createLogger } from "../utils/logger";
+
+const log = createLogger("ChatPage");
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -64,7 +67,7 @@ export default function ChatPage() {
         }
       })
       .catch((err) => {
-        console.error("Erreur lors du fetch des modèles:", err);
+        log.error("Erreur lors du fetch des modèles:", err);
         setErrorMessage(`Failed to load models: ${err.message || "Network error"}`);
       });
   }, []);
@@ -75,11 +78,11 @@ export default function ChatPage() {
         const res = await fetch(`${API_BASE_URL}/conversations/`);
         const data = await res.json();
         const sorted = data.sort(
-          (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time),
+          (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
         );
         setConversations(sorted);
       } catch (err) {
-        console.error("Failed to fetch conversations:", err);
+        log.error("Failed to fetch conversations:", err);
         setErrorMessage(`Failed to load conversations: ${err.message || "Network error"}`);
       }
     };
@@ -96,14 +99,14 @@ export default function ChatPage() {
         (model) =>
           model.name === modelParam ||
           model.id === modelParam ||
-          model.name.toLowerCase() === modelParam.toLowerCase(),
+          model.name.toLowerCase() === modelParam.toLowerCase()
       );
 
       if (foundModel) {
-        console.log("Setting model from URL parameter:", foundModel);
+        log.log("Setting model from URL parameter:", foundModel);
         setSelectedModel(foundModel.name);
       } else {
-        console.warn("Model not found for parameter:", modelParam);
+        log.warn("Model not found for parameter:", modelParam);
       }
     }
   }, [searchParams, models]); // Re-run when searchParams or models change
@@ -116,7 +119,7 @@ export default function ChatPage() {
     async (question) => {
       const llm = models.find((m) => m.name === selectedModel);
       if (!llm) {
-        console.error("Selected model not found");
+        log.error("Selected model not found");
         return;
       }
       try {
@@ -146,11 +149,11 @@ export default function ChatPage() {
           },
         });
       } catch (err) {
-        console.error("Failed to start conversation:", err);
+        log.error("Failed to start conversation:", err);
         setErrorMessage(`Failed to start conversation: ${err.message || "Network error"}`);
       }
     },
-    [models, selectedModel, navigate, settings, customPrompt],
+    [models, selectedModel, navigate, settings, customPrompt]
   );
 
   const handleRename = (id, newName) => {
@@ -166,11 +169,11 @@ export default function ChatPage() {
       const res = await fetch(`${API_BASE_URL}/conversations/`);
       const data = await res.json();
       const sorted = data.sort(
-        (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time),
+        (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
       );
       setConversations(sorted);
     } catch (err) {
-      console.error("Failed to refresh conversations:", err);
+      log.error("Failed to refresh conversations:", err);
       setErrorMessage(`Failed to refresh conversations: ${err.message || "Network error"}`);
     }
   };

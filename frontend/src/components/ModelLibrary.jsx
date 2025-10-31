@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { RefreshCcw, Check, X } from "lucide-react";
+import { createLogger } from "../utils/logger";
+const log = createLogger("ModelLibrary");
 
 /**
  * Model Library component for selecting and managing local models
@@ -26,7 +28,7 @@ export default function ModelLibrary({
   const handleToggleLock = () => {
     if (!isLocked && localModelName.trim()) {
       // Locking: validate the name and send it to parent
-      console.log("Model name locked and validated:", localModelName);
+      log.log("Model name locked and validated:", localModelName);
       setIsLocked(true);
       onModelNameChange(localModelName.trim());
     } else {
@@ -65,10 +67,10 @@ export default function ModelLibrary({
                 className={`
                   relative px-3 py-2 rounded-lg border transition-all duration-200 cursor-pointer
                   ${
-              selectedModel === model.id
-                ? "bg-emerald-400/10 border-emerald-400/30 text-emerald-300"
-                : "bg-[#3A3A3A] border-gray-600/50 text-gray-300 hover:bg-[#404040] hover:border-gray-500/70"
-              }
+                    selectedModel === model.id
+                      ? "bg-emerald-400/10 border-emerald-400/30 text-emerald-300"
+                      : "bg-[#3A3A3A] border-gray-600/50 text-gray-300 hover:bg-[#404040] hover:border-gray-500/70"
+                  }
                 `}
               >
                 {/* Selection indicator */}

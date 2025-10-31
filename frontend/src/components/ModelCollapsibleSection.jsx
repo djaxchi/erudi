@@ -15,16 +15,18 @@ import {
 } from "lucide-react";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { API_BASE_URL } from "../config/api";
+import { createLogger } from "../utils/logger";
+const log = createLogger("ModelCollapsibleSection");
 
 // Icon mapping for different section types
 const getIconForSection = (title) => {
   switch (title) {
-  case "Local Models":
-    return <Database className="w-5 h-5 font-bold text-white" />;
-  case "Remote Models":
-    return <Globe className="w-5 h-5 font-bold text-white" />;
-  default:
-    return <Database className="w-5 h-5 font-bold text-white" />;
+    case "Local Models":
+      return <Database className="w-5 h-5 font-bold text-white" />;
+    case "Remote Models":
+      return <Globe className="w-5 h-5 font-bold text-white" />;
+    default:
+      return <Database className="w-5 h-5 font-bold text-white" />;
   }
 };
 
@@ -70,9 +72,9 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
           setModels(await res.json());
         }
       } catch (err) {
-        console.error("Failed to fetch models:", err);
+        log.error("Failed to fetch models:", err);
         setErrorMessage(
-          "Failed to fetch available models. Please try again and contact the Erudi team for support.",
+          "Failed to fetch available models. Please try again and contact the Erudi team for support."
         );
       } finally {
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -91,13 +93,13 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
         setModels(await res.json());
       } else {
         setErrorMessage(
-          "Failed to fetch local models. Please try again and contact the Erudi team for support.",
+          "Failed to fetch local models. Please try again and contact the Erudi team for support."
         );
       }
     } catch (err) {
-      console.error("Failed to fetch local models:", err);
+      log.error("Failed to fetch local models:", err);
       setErrorMessage(
-        "Failed to fetch local models. Please try again and contact the Erudi team for support.",
+        "Failed to fetch local models. Please try again and contact the Erudi team for support."
       );
     } finally {
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -151,9 +153,9 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
         throw new Error(`Failed to delete model: ${response.status}`);
       }
     } catch (error) {
-      console.error("Failed to delete model:", error);
+      log.error("Failed to delete model:", error);
       setErrorMessage(
-        "Failed to delete the model. Please try again and contact the Erudi team for support.",
+        "Failed to delete the model. Please try again and contact the Erudi team for support."
       );
     }
   };
@@ -172,7 +174,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
 
   // Filter models based on search term
   const filteredModels = models.filter((model) =>
-    model.name.toLowerCase().includes(searchTerm.toLowerCase()),
+    model.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -261,7 +263,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
                       >
                         {m.name}
                       </div>
-                    ),
+                    )
                   )
                 ) : (
                   <p className="text-gray-500 text-sm italic py-2">No models found...</p>

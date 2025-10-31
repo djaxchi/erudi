@@ -8,6 +8,7 @@ import HeaderBar from "../components/HeaderBar";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import MarkdownRenderer from "../components/MarkdownRenderer";
 import { API_BASE_URL } from "../config/api.js";
+import { createLogger } from "../utils/logger";
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
@@ -33,6 +34,8 @@ function makePanel(id, modelName = "", models = []) {
 }
 
 export default function ArenaPage() {
+  const log = createLogger("ArenaPage");
+
   const [models, setModels] = useState([]);
   const [panels, setPanels] = useState([]);
   const [inputValue, setInputValue] = useState("");
@@ -58,12 +61,12 @@ export default function ArenaPage() {
         setModels(data);
         setPanels([0, 1].map((i) => makePanel(i, data[i % data.length]?.name, data)));
       })
-      .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
+      .catch((err) => log.error("Erreur lors du fetch des modèles:", err));
   }, []);
 
   const handleModelChange = (panelId, newModel) =>
     setPanels((prev) =>
-      prev.map((p) => (p.id === panelId ? { ...p, selectedModel: newModel } : p)),
+      prev.map((p) => (p.id === panelId ? { ...p, selectedModel: newModel } : p))
     );
 
   const handleSettingsChange = (panelId, newSettings) =>
@@ -121,7 +124,7 @@ export default function ArenaPage() {
             return { ...p, messages: msgs };
           }
           return p;
-        }),
+        })
       );
 
       if (!stillStreaming && activeIds.every((id) => buffersRef.current[id].length === 0)) {
@@ -381,7 +384,7 @@ export default function ArenaPage() {
                 })
               }
             />
-          ),
+          )
       )}
     </div>
   );

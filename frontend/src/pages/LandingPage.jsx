@@ -13,8 +13,11 @@ import WelcomeModal from "../components/modals/WelcomeModal";
 import logoErudi from "../img/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api";
 import { transformAppStartupInfo } from "../utils/hardwareTransform";
+import { createLogger } from "../utils/logger";
 
 export default function LandingPage() {
+  const log = createLogger("LandingPage");
+
   const { open } = useDownloadModal();
   const navigate = useNavigate();
   const [showWelcome, setShowWelcome] = useState(false);
@@ -71,7 +74,7 @@ export default function LandingPage() {
         const data = await response.json();
         setShowWelcome(!data.has_already_displayed);
       } catch (error) {
-        console.error("Error fetching welcome popup status:", error);
+        log.error("Error fetching welcome popup status:", error);
       }
     };
 
@@ -150,7 +153,7 @@ export default function LandingPage() {
         }
       } catch (error) {
         // Error fetching models
-        console.error("Error fetching models:", error);
+        log.error("Error fetching models:", error);
       } finally {
         setModelsLoading(false);
       }
@@ -211,12 +214,12 @@ export default function LandingPage() {
         setLocalModels(transformedLocalModels);
       } else {
         setErrorMessage(
-          "Failed to fetch local models. Please try again and contact the Erudi team for support.",
+          "Failed to fetch local models. Please try again and contact the Erudi team for support."
         );
       }
     } catch (err) {
       setErrorMessage(
-        "Failed to fetch local models. Please try again and contact the Erudi team for support.",
+        "Failed to fetch local models. Please try again and contact the Erudi team for support."
       );
     } finally {
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -229,7 +232,7 @@ export default function LandingPage() {
     if (exploreSection) {
       exploreSection.scrollIntoView({ behavior: "smooth" });
     } else {
-      console.warn("Explore models section not found");
+      log.warn("Explore models section not found");
     }
   };
 
@@ -318,7 +321,7 @@ export default function LandingPage() {
       (model) =>
         model.name.toLowerCase().includes(query.toLowerCase()) ||
         (model.parameters && model.parameters.toLowerCase().includes(query.toLowerCase())) ||
-        (model.size && model.size.toLowerCase().includes(query.toLowerCase())),
+        (model.size && model.size.toLowerCase().includes(query.toLowerCase()))
     );
   };
 
@@ -397,9 +400,9 @@ export default function LandingPage() {
         throw new Error(`Failed to delete model: ${response.status}`);
       }
     } catch (error) {
-      console.error("Failed to delete model:", error);
+      log.error("Failed to delete model:", error);
       setErrorMessage(
-        "Failed to delete the model. Please try again and contact the Erudi team for support.",
+        "Failed to delete the model. Please try again and contact the Erudi team for support."
       );
     }
   };
@@ -432,9 +435,9 @@ export default function LandingPage() {
             className="h-[40px] ml-2 w-auto cursor-pointer hover:opacity-80 transition-opacity"
             onClick={() => setShowWelcome(true)}
             onError={(e) => {
-              console.error("Failed to load logo:", e.target.src);
+              log.error("Failed to load logo:", e.target.src);
             }}
-            onLoad={() => console.log("Logo loaded successfully")}
+            onLoad={() => log.log("Logo loaded successfully")}
           />
         </div>
         <div className="mb-6 flex-shrink-0">

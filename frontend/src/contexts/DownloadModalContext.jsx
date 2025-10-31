@@ -5,6 +5,8 @@ import ConfirmationModal from "../components/modals/ConfirmationModal";
 import SpinnerDots from "../components/Spinner";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { API_BASE_URL } from "../config/api.js";
+import { createLogger } from "../utils/logger";
+const log = createLogger("DownloadModalContext");
 
 const DownloadModalContext = createContext();
 
@@ -53,7 +55,7 @@ export function DownloadModalProvider({ children }) {
   const open = useCallback(
     (
       selectedModel,
-      { onComplete, onError, isFineTuning: fineTuning, llmId: trainingLlmId } = {},
+      { onComplete, onError, isFineTuning: fineTuning, llmId: trainingLlmId } = {}
     ) => {
       setModel(selectedModel);
       callbacksRef.current = { onComplete, onError };
@@ -63,7 +65,7 @@ export function DownloadModalProvider({ children }) {
       setCurrentStep(fineTuning ? "Preparing training..." : "");
       setIsConfirmOpen(true);
     },
-    [],
+    []
   );
 
   const cancelConfirm = useCallback(() => setIsConfirmOpen(false), []);
@@ -104,7 +106,7 @@ export function DownloadModalProvider({ children }) {
           }
         }
       } catch (err) {
-        console.error("Status check error:", err);
+        log.error("Status check error:", err);
         clearInterval(intervalRef.current);
         setIsDownloading(false);
         const errorMsg = isFineTuning
@@ -114,7 +116,7 @@ export function DownloadModalProvider({ children }) {
         callbacksRef.current.onError?.(errorMsg);
       }
     },
-    [isFineTuning],
+    [isFineTuning]
   );
 
   const handleConfirm = useCallback(async () => {
@@ -168,7 +170,7 @@ export function DownloadModalProvider({ children }) {
         }, 2000);
       }
     } catch (err) {
-      console.error("Download/Training start error:", err);
+      log.error("Download/Training start error:", err);
       const errorMsg = err.message || err.toString() || "An unexpected error occurred";
       setErrorMessage(errorMsg);
       setIsDownloading(false);
@@ -289,7 +291,7 @@ export function DownloadModalProvider({ children }) {
               </>
             )}
           </>,
-          document.getElementById("modal-root"),
+          document.getElementById("modal-root")
         )}
     </DownloadModalContext.Provider>
   );

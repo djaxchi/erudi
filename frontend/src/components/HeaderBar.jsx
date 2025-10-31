@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, HelpCircle, SlidersHorizontal } from "lucide-react";
 import Tooltip from "./Tooltip";

@@ -1,4 +1,5 @@
 import React from "react";
+import PropTypes from "prop-types";
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown } from "lucide-react";
 
