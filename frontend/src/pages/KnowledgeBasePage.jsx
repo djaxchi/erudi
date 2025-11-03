@@ -1,5 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
-import PropTypes from "prop-types";
+import React, { useEffect, useState } from "react";
 import { HelpCircle, X } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";

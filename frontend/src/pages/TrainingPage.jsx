@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef } from "react";
-import PropTypes from "prop-types";
 import Sidebar from "../components/Sidebar";
 import DatasetCard from "../components/DatasetCard";
 import HardwareInfo from "../components/HardwareInfo";
