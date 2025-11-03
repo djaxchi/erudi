@@ -1,6 +1,17 @@
 import React from "react";
+import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Construction } from "lucide-react";
+
+ComingSoonModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  feature: PropTypes.string,
+  onClose: PropTypes.func.isRequired,
+};
+
+ComingSoonModal.defaultProps = {
+  feature: "Feature",
+};
 
 export default function ComingSoonModal({
   showComingSoonModal,

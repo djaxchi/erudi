@@ -1,6 +1,18 @@
 import React from "react";
+import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trash2 } from "lucide-react";
+
+DeleteModelModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  modelName: PropTypes.string,
+  onConfirm: PropTypes.func.isRequired,
+  onCancel: PropTypes.func.isRequired,
+};
+
+DeleteModelModal.defaultProps = {
+  modelName: "Model",
+};
 
 export default function DeleteModelModal({ isOpen, model, onConfirm, onCancel }) {
   return (

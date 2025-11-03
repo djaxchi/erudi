@@ -1,4 +1,5 @@
 import React from "react";
+import PropTypes from "prop-types";
 
 export default function SpinnerDots({ size = 30, dotSize = 6, colorClass = "bg-emerald-500" }) {
   const dotCount = 8;
@@ -27,3 +28,6 @@ export default function SpinnerDots({ size = 30, dotSize = 6, colorClass = "bg-e
     </div>
   );
 }
+Spinner.propTypes = {
+  size: PropTypes.oneOf(["sm", "md", "lg"]),
+};

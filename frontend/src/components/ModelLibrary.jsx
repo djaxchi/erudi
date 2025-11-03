@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import PropTypes from "prop-types";
 import { RefreshCcw, Check, X } from "lucide-react";
 import { createLogger } from "../utils/logger";
 const log = createLogger("ModelLibrary");
@@ -14,6 +15,21 @@ const log = createLogger("ModelLibrary");
  * @param {function} props.onModelNameChange - Callback when model name changes
  * @param {function} props.onRefresh - Callback to refresh the models list
  */
+
+ModelLibrary.propTypes = {
+  models: PropTypes.arrayOf(PropTypes.object),
+  isLoading: PropTypes.bool,
+  onModelClick: PropTypes.func,
+  onModelDownload: PropTypes.func,
+};
+
+ModelLibrary.defaultProps = {
+  models: [],
+  isLoading: false,
+  onModelClick: null,
+  onModelDownload: null,
+};
+
 export default function ModelLibrary({
   models = [],
   selectedModel,

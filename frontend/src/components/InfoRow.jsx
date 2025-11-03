@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import PropTypes from "prop-types";
 
 export default function InfoRow({ label, children, bullet, icon, isHeader = false }) {
   return (
@@ -24,3 +25,17 @@ export default function InfoRow({ label, children, bullet, icon, isHeader = fals
     </div>
   );
 }
+
+InfoRow.propTypes = {
+  label: PropTypes.string.isRequired,
+  children: PropTypes.node.isRequired,
+  bullet: PropTypes.string,
+  icon: PropTypes.node,
+  isHeader: PropTypes.bool,
+};
+
+InfoRow.defaultProps = {
+  isHeader: false,
+  bullet: null,
+  icon: null,
+};

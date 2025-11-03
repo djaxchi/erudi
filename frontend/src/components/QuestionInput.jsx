@@ -113,3 +113,11 @@ export default function QuestionInput({
     </div>
   );
 }
+
+QuestionInput.propTypes = {
+  placeholder: PropTypes.string,
+  onSend: PropTypes.func.isRequired,
+  disabled: PropTypes.bool,
+  backgroundClass: PropTypes.string,
+  className: PropTypes.string,
+};

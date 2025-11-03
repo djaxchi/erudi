@@ -171,3 +171,9 @@ export default function Sidebar({
     </div>
   );
 }
+
+Sidebar.propTypes = {
+  disabled: PropTypes.bool,
+  onToggleSidebar: PropTypes.func,
+  isSidebarCollapsed: PropTypes.bool,
+};

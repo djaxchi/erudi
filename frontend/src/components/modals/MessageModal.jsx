@@ -1,5 +1,16 @@
 import React from "react";
+import PropTypes from "prop-types";
 import { X } from "lucide-react";
+
+MessageModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  message: PropTypes.string,
+  onClose: PropTypes.func.isRequired,
+};
+
+MessageModal.defaultProps = {
+  message: "",
+};
 
 export default function MessageModal({
   isOpen,

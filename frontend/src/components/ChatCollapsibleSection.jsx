@@ -1,10 +1,37 @@
 import React, { useState } from "react";
+import PropTypes from "prop-types";
 import { ChevronDown, ChevronRight, Cog, RefreshCcw, Plus, Edit3, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ErrorModal from "./modals/ErrorModal";
 import { API_BASE_URL } from "../config/api.js";
 import { createLogger } from "../utils/logger";
 const log = createLogger("ChatCollapsibleSection");
+
+ChatCollapsibleSection.propTypes = {
+  title: PropTypes.string.isRequired,
+  items: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.string.isRequired,
+      title: PropTypes.string.isRequired,
+    })
+  ),
+  selectedId: PropTypes.string,
+  onSelect: PropTypes.func,
+  onRename: PropTypes.func,
+  onDelete: PropTypes.func,
+  onRefresh: PropTypes.func,
+  disabled: PropTypes.bool,
+};
+
+ChatCollapsibleSection.defaultProps = {
+  items: [],
+  selectedId: null,
+  onSelect: null,
+  onRename: null,
+  onDelete: null,
+  onRefresh: null,
+  disabled: false,
+};
 
 export default function ChatCollapsibleSection({
   title,

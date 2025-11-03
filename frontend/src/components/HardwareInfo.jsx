@@ -339,3 +339,27 @@ export default function HardwareInfo({ hw }) {
     </div>
   );
 }
+
+HardwareInfo.propTypes = {
+  hw: PropTypes.shape({
+    storage_path: PropTypes.string,
+    disk_available: PropTypes.string,
+    cpu_model: PropTypes.string,
+    gpu_model: PropTypes.string,
+    chip_model: PropTypes.string,
+    gpu_cores: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    estimated_gpu_tflops: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    memory_bandwidth_gbs: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    neural_engine_tops: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    architecture: PropTypes.string,
+    is_apple_silicon: PropTypes.bool,
+    mps_available: PropTypes.bool,
+    unified_memory: PropTypes.bool,
+    gpu_vram_total: PropTypes.string,
+    gpu_vram_free: PropTypes.string,
+    ram_available: PropTypes.string,
+    total_ram_gb: PropTypes.string,
+    global_inference_score: PropTypes.string,
+    global_inference_label: PropTypes.string,
+  }).isRequired,
+};

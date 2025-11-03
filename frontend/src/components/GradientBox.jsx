@@ -34,3 +34,10 @@ export default function GradientBox({
     </div>
   );
 }
+
+GradientBox.propTypes = {
+  children: PropTypes.node.isRequired,
+  className: PropTypes.string,
+  contentClassName: PropTypes.string,
+  onClick: PropTypes.func,
+};

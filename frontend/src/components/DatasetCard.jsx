@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import PropTypes from "prop-types";
 import DragDropArea from "./DragDropArea";
 import { Loader, X } from "lucide-react";
 import ErrorModal from "./modals/ErrorModal";
@@ -39,6 +40,17 @@ function RecapTable({ recap }) {
 }
 
 /* ─────────────── Main component ─────────────── */
+
+DatasetCard.propTypes = {
+  onFilesAdded: PropTypes.func,
+  onReset: PropTypes.func,
+};
+
+DatasetCard.defaultProps = {
+  onFilesAdded: null,
+  onReset: null,
+};
+
 export default function DatasetCard({
   selectedModel,
   modelName,
