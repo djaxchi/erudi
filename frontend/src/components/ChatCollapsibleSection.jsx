@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import PropTypes from "prop-types";
-import { ChevronDown, ChevronRight, Cog, RefreshCcw, Plus, Edit3, X } from "lucide-react";
+import { ChevronDown, ChevronRight, RefreshCcw, Plus, Edit3, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ErrorModal from "./modals/ErrorModal";
 import { API_BASE_URL } from "../config/api.js";

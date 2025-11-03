@@ -113,3 +113,11 @@ export default function ConfirmationModal({
     </AnimatePresence>
   );
 }
+
+ConfirmationModal.propTypes = {
+  text: PropTypes.string.isRequired,
+  isOpen: PropTypes.bool.isRequired,
+  onConfirm: PropTypes.func.isRequired,
+  onCancel: PropTypes.func.isRequired,
+  isFineTuning: PropTypes.bool,
+};

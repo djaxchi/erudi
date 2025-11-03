@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import PropTypes from "prop-types";
 import InfoRow from "./InfoRow";
 import Tooltip from "./Tooltip";
-import { Check, X, HelpCircle, Folder } from "lucide-react";
+import { HelpCircle } from "lucide-react";
 import { createLogger } from "../utils/logger";
 const log = createLogger("HardwareInfo");
 

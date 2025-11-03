@@ -6,7 +6,6 @@ export default function QuestionInput({
   placeholder = "Ask a question…",
   onSend,
   disabled = false,
-  backgroundClass = "", // (legacy) ignoré, on force le style glassy
   className = "",
 }) {
   const [value, setValue] = useState("");
@@ -118,6 +117,5 @@ QuestionInput.propTypes = {
   placeholder: PropTypes.string,
   onSend: PropTypes.func.isRequired,
   disabled: PropTypes.bool,
-  backgroundClass: PropTypes.string,
   className: PropTypes.string,
 };
