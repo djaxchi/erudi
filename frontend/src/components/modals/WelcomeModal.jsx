@@ -1,6 +1,12 @@
 import React from "react";
+import PropTypes from "prop-types";
 import { HelpCircle, Cpu, AlertTriangle } from "lucide-react";
 import logoErudi from "../../img/logoerudifinal.png";
+
+WelcomeModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+};
 
 export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading }) {
   if (!isOpen) {

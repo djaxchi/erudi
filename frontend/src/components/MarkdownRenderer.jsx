@@ -1,9 +1,20 @@
 import React from "react";
+import PropTypes from "prop-types";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 // Renders markdown safely with GitHub-flavored features (tables, lists, code blocks)
 // Tailwind Typography is used for nice defaults on dark backgrounds
+
+MarkdownRenderer.propTypes = {
+  content: PropTypes.string.isRequired,
+  className: PropTypes.string,
+};
+
+MarkdownRenderer.defaultProps = {
+  className: "",
+};
+
 export default function MarkdownRenderer({ content }) {
   return (
     <div className="prose prose-invert max-w-none whitespace-normal">

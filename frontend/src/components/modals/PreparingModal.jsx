@@ -1,6 +1,16 @@
 import React, { useEffect, useState } from "react";
+import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
 import { Cpu } from "lucide-react";
+
+PreparingModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  message: PropTypes.string,
+};
+
+PreparingModal.defaultProps = {
+  message: "Preparing...",
+};
 
 export default function PreparingModal({ isOpen, onClose }) {
   const [visible, setVisible] = useState(isOpen);

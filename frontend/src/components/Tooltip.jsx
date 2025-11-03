@@ -1,4 +1,5 @@
 import React from "react";
+import PropTypes from "prop-types";
 
 // Reusable Tooltip component
 export default function Tooltip({ children, content, side = "right", width = "w-64" }) {
@@ -42,3 +43,7 @@ export default function Tooltip({ children, content, side = "right", width = "w-
     </span>
   );
 }
+Tooltip.propTypes = {
+  text: PropTypes.string.isRequired,
+  children: PropTypes.node.isRequired,
+};

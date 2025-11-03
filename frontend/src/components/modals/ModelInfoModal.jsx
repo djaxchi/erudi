@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Download, Users, Heart, Calendar, Tag, ChevronDown } from "lucide-react";
 
@@ -9,6 +10,22 @@ import { X, Download, Users, Heart, Calendar, Tag, ChevronDown } from "lucide-re
  * - onClose: () => void
  * - onDownload: (modelInfo) => void
  */
+
+ModelInfoModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  model: PropTypes.shape({
+    name: PropTypes.string,
+    description: PropTypes.string,
+    size: PropTypes.string,
+    parameters: PropTypes.string,
+  }),
+  onClose: PropTypes.func.isRequired,
+};
+
+ModelInfoModal.defaultProps = {
+  model: null,
+};
+
 export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload }) {
   const [showRawMetadata, setShowRawMetadata] = useState(false);
 

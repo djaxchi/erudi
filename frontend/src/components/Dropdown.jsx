@@ -52,3 +52,9 @@ export default function Dropdown({ options, value, onChange }) {
     </div>
   );
 }
+
+Dropdown.propTypes = {
+  options: PropTypes.arrayOf(PropTypes.string).isRequired,
+  value: PropTypes.string.isRequired,
+  onChange: PropTypes.func.isRequired,
+};

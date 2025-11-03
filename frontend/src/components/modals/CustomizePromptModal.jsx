@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from "react";
+import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
+
+CustomizePromptModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onSave: PropTypes.func.isRequired,
+  initialPrompt: PropTypes.string,
+};
+
+CustomizePromptModal.defaultProps = {
+  initialPrompt: "",
+};
 
 export default function CustomizePromptModal({
   isOpen,

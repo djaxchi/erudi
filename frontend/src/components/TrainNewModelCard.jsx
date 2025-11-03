@@ -1,7 +1,16 @@
 import React from "react";
+import PropTypes from "prop-types";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import GradientBox from "./GradientBox";
+
+TrainNewModelCard.propTypes = {
+  onAdd: PropTypes.func,
+};
+
+TrainNewModelCard.defaultProps = {
+  onAdd: null,
+};
 
 export default function TrainNewModelCard() {
   const navigate = useNavigate();

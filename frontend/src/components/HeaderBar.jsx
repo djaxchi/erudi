@@ -460,3 +460,20 @@ export default function HeaderBar({
     </div>
   );
 }
+
+HeaderBar.propTypes = {
+  initialTemperature: PropTypes.number,
+  initialTopP: PropTypes.number,
+  initialMaxTokens: PropTypes.number,
+  onApply: PropTypes.func.isRequired,
+  onCustomizePrompt: PropTypes.func.isRequired,
+  disabled: PropTypes.bool,
+  models: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+      name: PropTypes.string.isRequired,
+    })
+  ),
+  currentModel: PropTypes.string,
+  onModelChange: PropTypes.func,
+};

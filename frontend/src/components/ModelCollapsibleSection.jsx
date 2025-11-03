@@ -1,5 +1,6 @@
 // src/components/CollapsibleSection.jsx
 import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from "react";
+import PropTypes from "prop-types";
 import Tooltip from "./Tooltip";
 import DeleteModelModal from "./modals/DeleteModelModal";
 import MessageModal from "./modals/MessageModal";
@@ -306,5 +307,18 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
     </>
   );
 });
+
+ModelCollapsibleSection.propTypes = {
+  title: PropTypes.string.isRequired,
+  items: PropTypes.array,
+  onAction: PropTypes.func,
+  actionLabel: PropTypes.string,
+};
+
+ModelCollapsibleSection.defaultProps = {
+  items: [],
+  onAction: null,
+  actionLabel: "Action",
+};
 
 export default CollapsibleSection;
