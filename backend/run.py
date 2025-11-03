@@ -69,7 +69,7 @@ READINESS_POLL_SECONDS = 0.25
 def parse_args():
     """Parse command-line arguments for launcher."""
     parser = argparse.ArgumentParser(description="Erudi backend launcher")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind FastAPI server (default: 8000)")
+    parser.add_argument("--port", type=int, default=8765, help="Port to bind FastAPI server (default: 8765)")
     return parser.parse_args()
 
 
@@ -170,6 +170,35 @@ def port_open(host: str, port: int, timeout: float = 0.4) -> bool:
         return False
 
 
+def find_available_port(start_port: int, host: str) -> int | None:
+    """Find available port from start_port to start_port+34. Returns None if all busy."""
+    for port in range(start_port, start_port + 35):
+        if not port_open(host, port):
+            return port
+    return None
+
+
+def kill_port_process(port: int) -> bool:
+    """Attempt to kill process on given port. Returns True if successful."""
+    import subprocess
+    
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        pid = result.stdout.strip()
+        if pid:
+            subprocess.run(["kill", "-9", pid], timeout=2)
+            time.sleep(0.5)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def run_server(app: "FastAPI", host: str, port: int) -> None:
     """Run uvicorn in the current thread and surface unexpected failures."""
     import uvicorn
@@ -194,7 +223,7 @@ def run_server(app: "FastAPI", host: str, port: int) -> None:
 def main() -> None:
     """Launch the backend, supervising readiness and emitting lifecycle events."""
     args = parse_args()
-    port = args.port
+    requested_port = args.port
     host = "127.0.0.1"
 
     configure_library_env()
@@ -244,6 +273,26 @@ def main() -> None:
         )
         sys.exit(1)
 
+    # Find available port
+    port = find_available_port(requested_port, host)
+    
+    if port is None:
+        # All ports busy, try killing 8777 (middle of range)
+        fallback_port = 8777
+        if kill_port_process(fallback_port):
+            time.sleep(1)
+            if not port_open(host, fallback_port):
+                port = fallback_port
+        
+        if port is None:
+            emit_event(
+                {
+                    "event": "startup_error",
+                    "code": "NO_PORT_AVAILABLE",
+                    "message": f"Ports {requested_port}-{requested_port+34} all busy, failed to free {fallback_port}",
+                }
+            )
+            sys.exit(1)
 
     emit_event(
         {
@@ -254,16 +303,6 @@ def main() -> None:
             "port": port,
         }
     )
-
-    if port_open(host, port):
-        emit_event(
-            {
-                "event": "startup_error",
-                "code": "PORT_IN_USE",
-                "message": f"Port {port} already in use",
-            }
-        )
-        sys.exit(1)
 
     server_thread = threading.Thread(target=run_server, args=(fastapi_app, host, port), daemon=True)
     server_thread.start()
