@@ -9,7 +9,7 @@ import Tooltip from "../components/Tooltip";
 import ErrorModal from "../components/modals/ErrorModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";
-import logoErudi from "../img/logoerudifinal.png";
+import logoErudi from "../assets/icons/icon.png";
 import { API_BASE_URL } from "../config/api.js";
 import { createLogger } from "../utils/logger";
 

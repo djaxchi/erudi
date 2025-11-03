@@ -8,7 +8,7 @@ export default function LoadingScreen() {
       style={{ backgroundColor: "#02130e" }}
     >
       <img
-        src={require("../img/logoerudifinal.png")}
+        src={require("../assets/icons/icon.png")}
         alt="erudi Logo"
         className="mb-2 object-contain"
         style={{ maxWidth: "14rem", maxHeight: "14rem" }}

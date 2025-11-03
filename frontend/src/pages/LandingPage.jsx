@@ -10,7 +10,7 @@ import { useDownloadModal } from "../contexts/DownloadModalContext";
 import HardwareLoadingPopup from "../components/LoadingPopup";
 import { RefreshCcw, Search, MonitorCheck, SearchCode, Blocks, Star, Users } from "lucide-react";
 import WelcomeModal from "../components/modals/WelcomeModal";
-import logoErudi from "../img/logoerudifinal.png";
+import logoErudi from "../assets/icons/icon.png";
 import { API_BASE_URL } from "../config/api";
 import { transformAppStartupInfo } from "../utils/hardwareTransform";
 import { createLogger } from "../utils/logger";
