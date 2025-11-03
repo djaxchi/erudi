@@ -75,7 +75,7 @@ const startRealBackend = () => {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-            const response = await fetch("http://127.0.0.1:8000/main_window/health", {
+            const response = await fetch("http://127.0.0.1:8765/main_window/health", {
               signal: controller.signal,
             });
             clearTimeout(timeoutId);
@@ -96,7 +96,7 @@ const startRealBackend = () => {
 
         // If we get here, backend is not responding
         log("Backend is not responding. Make sure to run: ./build-scripts/dev-start.sh");
-        reject(new Error("Backend is not responding on localhost:8000"));
+        reject(new Error("Backend is not responding on localhost:8765"));
       };
 
       checkDevBackendHealth();
@@ -104,78 +104,45 @@ const startRealBackend = () => {
     }
 
     // Production mode: spawn packaged backend
-    const PORT = 8000;
+    const PORT = 8765;
 
-    // Kill any existing process on the port first
-    const killExistingBackend = () => {
-      return new Promise((killResolve) => {
-        log("Checking for existing backend process...");
+    // Backend will handle port selection (8765-8799)
+    let backendPath;
+    if (app.isPackaged) {
+      backendPath = resolvePackagedBackendPath();
+    } else {
+      const devCandidates = [path.join(__dirname, "..", "..", "backend", "backend")];
+      backendPath = devCandidates.find((p) => fs.existsSync(p)) || null;
+    }
 
-        // Kill our tracked process
-        if (backendProcess) {
-          log("Killing tracked backend process...");
-          try {
-            process.kill(-backendProcess.pid); // Kill process group
-          } catch (e) {
-            log(`Could not kill process group: ${e.message}`);
-          }
-          backendProcess = null;
-          setTimeout(killResolve, 800);
-        } else {
-          // Try to kill any process on port 8000
-          const { execSync } = require("child_process");
-          try {
-            const result = execSync("lsof -ti:8000", { encoding: "utf-8" }).trim();
-            if (result) {
-              log(`Found process on port 8000: ${result}`);
-              execSync(`kill -9 ${result}`, { stdio: "ignore" });
-              log("Killed process on port 8000");
-            }
-          } catch (e) {
-            log("No existing process on port 8000 or lsof not available");
-          }
-          setTimeout(killResolve, 800);
-        }
-      });
+    if (!backendPath || !fs.existsSync(backendPath)) {
+      const error =
+        `Backend executable not found. Checked path: ${backendPath || "None"}\n` +
+        "You likely need to build it first (e.g. 'pyinstaller backend.spec').";
+      log(error);
+      reject(new Error(error));
+      return;
+    }
+
+    log(`Spawning backend: ${backendPath} --port ${PORT}`);
+    const workingDir = path.dirname(backendPath);
+    log(`Working directory: ${workingDir}`);
+
+    const backendEnv = {
+      ...process.env,
+      DATABASE_URL: "sqlite:///./data/erudi.db",
+      CACHE_DIR: "./data/models_cache",
+      INDEXES_DIR: "./data/indexes",
     };
 
-    killExistingBackend().then(() => {
-      let backendPath;
-      if (app.isPackaged) {
-        backendPath = resolvePackagedBackendPath();
-      } else {
-        const devCandidates = [path.join(__dirname, "..", "..", "backend", "backend")];
-        backendPath = devCandidates.find((p) => fs.existsSync(p)) || null;
-      }
+    backendProcess = spawn(backendPath, ["--port", PORT.toString()], {
+      stdio: ["pipe", "pipe", "pipe"],
+      cwd: workingDir,
+      env: backendEnv,
+      detached: false, // Don't detach, so we can properly kill it
+    });
 
-      if (!backendPath || !fs.existsSync(backendPath)) {
-        const error =
-          `Backend executable not found. Checked path: ${backendPath || "None"}\n` +
-          "You likely need to build it first (e.g. 'pyinstaller backend.spec').";
-        log(error);
-        reject(new Error(error));
-        return;
-      }
-
-      log(`Spawning backend: ${backendPath} --port ${PORT}`);
-      const workingDir = path.dirname(backendPath);
-      log(`Working directory: ${workingDir}`);
-
-      const backendEnv = {
-        ...process.env,
-        DATABASE_URL: "sqlite:///./data/erudi.db",
-        CACHE_DIR: "./data/models_cache",
-        INDEXES_DIR: "./data/indexes",
-      };
-
-      backendProcess = spawn(backendPath, ["--port", PORT.toString()], {
-        stdio: ["pipe", "pipe", "pipe"],
-        cwd: workingDir,
-        env: backendEnv,
-        detached: false, // Don't detach, so we can properly kill it
-      });
-
-      log(`Backend process spawned with PID: ${backendProcess.pid}`);
+    log(`Backend process spawned with PID: ${backendProcess.pid}`);
 
       backendProcess.stdout.on("data", (data) => {
         const output = data.toString().trim();
@@ -343,15 +310,28 @@ const startRealBackend = () => {
 
       const checkHealth = async () => {
         let lastError = null;
-        let consecutiveFailures = 0;
+        let actualPort = PORT; // Will be updated from backend event
+
+        // Listen for port changes from backend
+        backendProcess.stdout.on("data", (data) => {
+          try {
+            const event = JSON.parse(data.toString().trim());
+            if (event.event === "starting" && event.port) {
+              actualPort = event.port;
+              log(`Backend selected port: ${actualPort}`);
+            }
+          } catch (_) {
+            // Not JSON
+          }
+        });
 
         for (let i = 0; i < 30; i++) {
           try {
-            log(`Health check attempt ${i + 1}/30`);
+            log(`Health check attempt ${i + 1}/30 on port ${actualPort}`);
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-            const response = await fetch("http://127.0.0.1:8000/main_window/health", {
+            const response = await fetch(`http://127.0.0.1:${actualPort}/main_window/health`, {
               signal: controller.signal,
             });
             clearTimeout(timeoutId);
@@ -359,51 +339,11 @@ const startRealBackend = () => {
             if (response.ok) {
               const data = await response.json();
               log(`Backend is ready: ${data.message}`);
-              consecutiveFailures = 0; // Reset on success
               resolve();
               return;
             }
-            consecutiveFailures++;
           } catch (error) {
             lastError = error.message;
-            consecutiveFailures++;
-
-            // If we've had 3 consecutive failures, try to restart backend
-            if (consecutiveFailures >= 3) {
-              log(
-                `${consecutiveFailures} consecutive health check failures. Attempting backend restart...`
-              );
-
-              // Kill current backend
-              if (backendProcess) {
-                try {
-                  process.kill(-backendProcess.pid);
-                } catch (e) {
-                  log(`Could not kill process: ${e.message}`);
-                }
-                backendProcess = null;
-              }
-
-              // Kill any process on port 8000
-              const { execSync } = require("child_process");
-              try {
-                const result = execSync("lsof -ti:8000", { encoding: "utf-8" }).trim();
-                if (result) {
-                  log(`Killing process on port 8000: ${result}`);
-                  execSync(`kill -9 ${result}`, { stdio: "ignore" });
-                }
-              } catch (e) {
-                // Ignore errors
-              }
-
-              // Wait and restart
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-              consecutiveFailures = 0;
-
-              log("Restarting backend after failures...");
-              reject(new Error("Backend restart needed"));
-              return;
-            }
           }
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
@@ -423,7 +363,6 @@ const startRealBackend = () => {
       };
 
       setTimeout(checkHealth, 2000);
-    });
   });
 };
 
@@ -688,7 +627,7 @@ const createWindow = () => {
       responseHeaders: {
         ...details.responseHeaders,
         "Content-Security-Policy": [
-          "default-src 'self'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https://script.google.com https://script.googleusercontent.com; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;",
+          "default-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* https://script.google.com https://script.googleusercontent.com; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;",
         ],
       },
     });

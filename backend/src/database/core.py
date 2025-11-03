@@ -73,14 +73,7 @@ Warning:
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import os
-from dotenv import load_dotenv
-from pathlib import Path
-
-load_dotenv()
-# SQLite database URL
-Path(".", "data").mkdir(parents=True, exist_ok=True)
-DATABASE_URL = os.getenv("DATABASE_URL")
+from src.core.config import DATABASE_URL
 
 # Create the SQLite engine
 db_engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
