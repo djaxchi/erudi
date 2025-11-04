@@ -1,8 +1,7 @@
 import { createLogger } from "../../utils/logger";
+import { API_BASE_URL } from "../../config/api";
 
 const log = createLogger("APIClient");
-
-const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8000/api";
 
 /**
  * API client with built-in retry logic, timeout handling, and error normalization
