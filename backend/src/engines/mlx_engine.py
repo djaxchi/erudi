@@ -967,3 +967,20 @@ class MLX_Engine(BaseEngine):
                 "Failed to evaluate Apple Silicon performance",
                 trace=str(e)
             )
+
+    @classmethod
+    def get_flat_hardware_data(cls) -> Dict[str, Any]:
+        """Get hardware data in flat format compatible with HardwareProfile entity.
+        
+        Returns hardware specifications as a flat dictionary ready for database
+        insertion. For MLX backend, get_performance_evaluation() already returns
+        data in the correct flat format.
+        
+        Returns:
+            Flat dict with all fields matching HardwareProfile columns.
+            
+        Raises:
+            HardwareException: If hardware data collection fails.
+        """
+        # get_performance_evaluation() already returns flat structure
+        return cls.get_performance_evaluation()

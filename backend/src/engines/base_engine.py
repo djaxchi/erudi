@@ -433,6 +433,72 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         """
         pass
 
+    @classmethod
+    @abstractmethod
+    def get_flat_hardware_data(cls) -> Dict[str, Any]:
+        """Get hardware data in flat format compatible with HardwareProfile entity.
+        
+        Returns hardware specifications as a flat dictionary ready for direct
+        insertion into the HardwareProfile database entity. Combines and flattens
+        data from get_hardware_info() and get_performance_evaluation().
+        
+        Returns:
+            Dict with keys matching HardwareProfile columns:
+            {
+                # Common fields (all backends)
+                "backend_type": str,  # "mlx", "cuda", "cpu"
+                "cpu_model": str,
+                "total_memory_gb": float,
+                "available_memory_gb": float,
+                "disk_total_gb": float,
+                "disk_available_gb": float,
+                "global_inference_score": float,
+                "global_inference_label": str,
+                "global_finetuning_score": float,
+                "global_finetuning_label": str,
+                "cpu_score": float,
+                "memory_score": float,
+                "gpu_score": float,
+                "system_platform": str,
+                "architecture": Optional[str],
+                "estimated_tflops": Optional[float],
+                "memory_bandwidth_gbs": Optional[float],
+                "cpu_performance_units": Optional[float],
+                "performance_breakdown": dict,
+                
+                # MLX-specific fields
+                "mlx_chip_model": Optional[str],
+                "mlx_gpu_cores": Optional[int],
+                "mps_available": Optional[bool],
+                "neural_engine_tops": Optional[float],
+                "unified_memory": Optional[bool],
+                "gpu_name": Optional[str],
+                
+                # CUDA-specific fields
+                "cuda_cores": Optional[int],
+                "cuda_version": Optional[str],
+                "compute_capability": Optional[str],
+                "vram_total_gb": Optional[float],
+                "vram_available_gb": Optional[float],
+            }
+            
+        Raises:
+            EngineException: If hardware data collection fails.
+            
+        Note:
+            This method provides a single point of access for hardware data
+            in the format expected by the database layer, eliminating the need
+            for manual flattening in service layers.
+            
+        Examples:
+            >>> engine = BaseEngine.get_engine()
+            >>> data = engine.get_flat_hardware_data()
+            >>> profile = HardwareProfile(**data)  # Direct instantiation
+            >>> db.add(profile)
+
+        """
+        pass
+
     # ======================= COMMON INFRASTRUCTURE =======================
     @classmethod
     def get_engine(cls) -> Type["BaseEngine"]:

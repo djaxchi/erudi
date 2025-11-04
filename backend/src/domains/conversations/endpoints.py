@@ -629,6 +629,7 @@ async def delete_bulk(
 async def store_error_message(
     conversation_id: int,
     service: ConversationService = Depends(get_conversation_service),
+    db: Session = Depends(get_db),
 ):
     """Store an error message when AI generation fails (fallback mechanism).
 
@@ -638,6 +639,7 @@ async def store_error_message(
     Args:
         conversation_id: ID of the conversation where error occurred.
         service: Injected conversation service.
+        db: Database session for transaction control.
 
     Returns:
         dict: ID of the created error message record.
@@ -653,14 +655,19 @@ async def store_error_message(
         failure (e.g., "Generation failed due to system error").
     """
     """Store an error message in the conversation when generation fails."""
-    error_message_id = await run_in_threadpool(
-        service.store_error_message,
-        conversation_id,
-    )
-    return {
-        "message": "Error message stored successfully",
-        "error_message_id": error_message_id,
-    }
+    try:
+        error_message_id = await run_in_threadpool(
+            service.store_error_message,
+            conversation_id,
+        )
+        db.commit()
+        return {
+            "message": "Error message stored successfully",
+            "error_message_id": error_message_id,
+        }
+    except Exception as e:
+        db.rollback()
+        raise
 
 
 @router.post("/star_message")

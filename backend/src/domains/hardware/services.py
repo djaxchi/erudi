@@ -67,8 +67,9 @@ class Hardware_Service:
     def get_or_create_profile(self) -> HardwareProfile:
         """Get cached hardware profile or detect new one.
 
-        Retrieves existing hardware profile from database. If none exists,
-        performs hardware detection through engine and creates new profile.
+        Retrieves existing hardware profile from database. If none exists or
+        if the cached profile backend doesn't match the current engine,
+        performs hardware detection and creates new profile.
 
         Returns:
             HardwareProfile: Existing or newly created profile.
@@ -89,12 +90,21 @@ class Hardware_Service:
             
             # Try to get existing profile
             profile = self.repository.get_profile()
-            if profile:
-                logger.info(f"Using cached hardware profile: backend={profile.backend_type}")
-                return profile
             
-            # No profile exists, detect hardware
-            logger.info("No cached profile found, detecting hardware")
+            # Extract backend type from current engine name
+            current_backend = config.LLM_Engine.__name__.lower().replace('_engine', '')
+            
+            if profile:
+                if profile.backend_type == current_backend:
+                    logger.info(f"Using cached hardware profile: backend={profile.backend_type}")
+                    return profile
+                else:
+                    # No profile exists or backend mismatch, detect hardware
+                    logger.info(f"Backend mismatch: cached={profile.backend_type}, current={current_backend}. Re-detecting.")
+                    self.repository.delete_profile(profile)      
+            else:
+                logger.info("No cached profile found, detecting hardware")
+            
             hardware_data = self._detect_hardware()
             
             # Create new profile
@@ -113,11 +123,11 @@ class Hardware_Service:
     def _detect_hardware(self) -> Dict[str, Any]:
         """Perform hardware detection through LLM_Engine.
 
-        Calls engine's get_hardware_info() and get_performance_evaluation() methods
-        directly and merges the results.
+        Calls engine's get_flat_hardware_data() method to retrieve hardware
+        specifications in flat format ready for HardwareProfile entity creation.
 
         Returns:
-            Dict[str, Any]: Complete hardware data ready for entity creation.
+            Dict[str, Any]: Flat hardware data ready for entity creation.
 
         Raises:
             HardwareException: If hardware detection fails.
@@ -131,14 +141,8 @@ class Hardware_Service:
             if not config.LLM_Engine:
                 raise HardwareException("LLM_Engine not initialized")
             
-            # Get basic hardware info (backend_type, cpu, memory, disk)
-            basic_info = config.LLM_Engine.get_hardware_info()
-            
-            # Get performance evaluation (scores, labels, accelerator details)
-            performance_info = config.LLM_Engine.get_performance_evaluation()
-            
-            # Merge dictionaries
-            hardware_data = {**basic_info, **performance_info}
+            # Get flat hardware data from engine
+            hardware_data = config.LLM_Engine.get_flat_hardware_data()
             
             logger.debug(f"Hardware detection complete: backend={hardware_data.get('backend_type')}")
             return hardware_data
