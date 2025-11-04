@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ChatCollapsibleSection from "../components/ChatCollapsibleSection";

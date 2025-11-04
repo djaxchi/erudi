@@ -70,7 +70,8 @@ class Hardware_Repository:
         """Retrieve hardware profile from database (singleton).
 
         Returns existing hardware profile if present. Since hardware profile
-        is singleton, returns first (and only) row.
+        is singleton, returns first (and only) row. -> Delete less recent if
+        more than one exists.
 
         Returns:
             Optional[HardwareProfile]: Existing profile or None if not found.
@@ -86,7 +87,21 @@ class Hardware_Repository:
         """
         try:
             logger.debug("Querying hardware profile")
-            profile = self.db.query(HardwareProfile).first()
+            profiles = (
+                self.db.query(HardwareProfile)
+                .order_by(
+                    HardwareProfile.updated_at.desc(),
+                    HardwareProfile.created_at.desc(),
+                    HardwareProfile.id.desc()
+                )
+                .all()
+            )
+            profile = profiles[0] if profiles else None
+
+            if len(profiles) > 1:
+                logger.warning(f"Multiple hardware profiles detected ({len(profiles)}); pruning older entries")
+                for stale_profile in profiles[1:]:
+                    self.delete_profile(stale_profile)
             
             if profile:
                 logger.debug(f"Found existing hardware profile: backend={profile.backend_type}")
