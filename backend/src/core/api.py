@@ -218,7 +218,7 @@ async def lifespan(app: FastAPI):
     logger.info("==== Starting up... ====")
     config.LLM_Engine = BaseEngine.get_engine()
     await create_tables()
-    await delete_all_data()
+    # await delete_all_data()
     await startup_populate_database()
     config.LLM_Engine.start_cleanup_task()
     yield
