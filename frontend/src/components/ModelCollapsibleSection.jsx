@@ -308,17 +308,15 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
   );
 });
 
-ModelCollapsibleSection.propTypes = {
+CollapsibleSection.propTypes = {
   title: PropTypes.string.isRequired,
-  items: PropTypes.array,
-  onAction: PropTypes.func,
-  actionLabel: PropTypes.string,
+  onLocalModelRefresh: PropTypes.func,
+  hasSearch: PropTypes.bool,
 };
 
-ModelCollapsibleSection.defaultProps = {
-  items: [],
-  onAction: null,
-  actionLabel: "Action",
+CollapsibleSection.defaultProps = {
+  onLocalModelRefresh: null,
+  hasSearch: false,
 };
 
 export default CollapsibleSection;

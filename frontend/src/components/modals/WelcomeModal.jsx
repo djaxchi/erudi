@@ -1,7 +1,7 @@
 import React from "react";
 import PropTypes from "prop-types";
 import { HelpCircle, Cpu, AlertTriangle } from "lucide-react";
-import logoErudi from "../../assets/icons/icon.png";
+import logoErudi from "../../assets/images/logos/logoerudifinal.png";
 
 WelcomeModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,

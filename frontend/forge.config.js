@@ -83,7 +83,7 @@ module.exports = {
       config: {
         name: "erudi-Installer",
         icon: "./assets/icons/icon.icns",
-        background: "./assets/dmg-background.png",
+        background: "./assets/installers/dmg-background.png",
         format: "UDZO",
         window: {
           x: 420,

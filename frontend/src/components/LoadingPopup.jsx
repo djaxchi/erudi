@@ -1,15 +1,6 @@
 import React from "react";
 import PropTypes from "prop-types";
 
-LoadingPopup.propTypes = {
-  isOpen: PropTypes.bool.isRequired,
-  message: PropTypes.string,
-};
-
-LoadingPopup.defaultProps = {
-  message: "Loading...",
-};
-
 export default function HardwareLoadingPopup({ show, loading, onClose }) {
   if (!show) {
     return null;
@@ -70,3 +61,9 @@ export default function HardwareLoadingPopup({ show, loading, onClose }) {
     </div>
   );
 }
+
+HardwareLoadingPopup.propTypes = {
+  show: PropTypes.bool.isRequired,
+  loading: PropTypes.bool,
+  onClose: PropTypes.func,
+};

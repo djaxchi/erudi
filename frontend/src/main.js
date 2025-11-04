@@ -6,6 +6,7 @@ const os = require("os");
 
 // Add this line to define the entry point
 const MAIN_WINDOW_WEBPACK_ENTRY = process.env.MAIN_WINDOW_WEBPACK_ENTRY || "http://localhost:3000";
+const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY = process.env.MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY;
 
 let backendProcess = null;
 let mainWindow = null;
@@ -75,7 +76,7 @@ const startRealBackend = () => {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-            const response = await fetch("http://127.0.0.1:8765/main_window/health", {
+            const response = await fetch("http://127.0.0.1:8765/erudi/health/", {
               signal: controller.signal,
             });
             clearTimeout(timeoutId);
@@ -331,7 +332,7 @@ const startRealBackend = () => {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-            const response = await fetch(`http://127.0.0.1:${actualPort}/main_window/health`, {
+            const response = await fetch(`http://127.0.0.1:${actualPort}/erudi/health/`, {
               signal: controller.signal,
             });
             clearTimeout(timeoutId);
@@ -578,7 +579,7 @@ const createWindow = () => {
     height: 800,
     title: "erudi - BETA",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
@@ -753,25 +754,10 @@ ipcMain.handle("data:clearAll", async () => {
 });
 
 app.whenReady().then(async () => {
-  log("App ready. Attempting to start backend...");
+  log("App ready. Starting backend...");
 
   // Create application menu
   createApplicationMenu();
-
-  // Kill any lingering backend processes before starting
-  try {
-    const { execSync } = require("child_process");
-    try {
-      execSync("lsof -ti:8000 | xargs kill -9", { stdio: "ignore" });
-      log("Killed any existing process on port 8000");
-      // Wait a bit for port to be released
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    } catch (e) {
-      log("No existing process on port 8000");
-    }
-  } catch (error) {
-    log("Error killing existing process: " + error.message);
-  }
 
   // Retry logic for backend startup
   let retries = 0;
@@ -779,15 +765,16 @@ app.whenReady().then(async () => {
 
   const tryStartBackend = async () => {
     try {
-      // In development mode, skip backend startup - assume user runs it separately
+      // In development mode, open window immediately (backend runs separately)
       if (!app.isPackaged) {
-        log("Development mode: skipping backend startup (run backend separately)");
+        log("Development mode: opening window immediately (backend should be running separately)");
         createWindow();
         return;
       }
 
+      // Production mode: check backend health before opening window
       await startRealBackend();
-      log("Real backend started successfully, creating window...");
+      log("Backend is ready, creating window...");
       createWindow();
     } catch (error) {
       retries++;

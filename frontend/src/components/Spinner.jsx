@@ -28,6 +28,9 @@ export default function SpinnerDots({ size = 30, dotSize = 6, colorClass = "bg-e
     </div>
   );
 }
-Spinner.propTypes = {
-  size: PropTypes.oneOf(["sm", "md", "lg"]),
+
+SpinnerDots.propTypes = {
+  size: PropTypes.number,
+  dotSize: PropTypes.number,
+  colorClass: PropTypes.string,
 };
