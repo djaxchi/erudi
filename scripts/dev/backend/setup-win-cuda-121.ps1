@@ -1,7 +1,25 @@
 # Erudi Backend Setup Script - Windows CUDA 12.1
 # Supports both development and production environments
 # Compatible with interactive use and CI/CD pipelines
-# Requirements: Python 3.9+, CUDA 12.1
+# Requi# Success message
+Write-Host ''
+Write-Success '? Environment setup complete!'
+Write-Host ''
+Write-Host "Environment: $($installTypeChoice.ToUpper())"
+Write-Host "Python: $version"
+Write-Host "Virtual env: $venvPath"
+Write-Host ''
+if ($currentDir -ne 'backend') {
+    Write-Host 'Next steps:'
+    Write-Host '  1. cd backend'
+    Write-Host '  2. .\venv\Scripts\Activate.ps1'
+    Write-Host '  3. uvicorn src.main:app --reload'
+} else {
+    Write-Host 'Next steps:'
+    Write-Host '  1. .\venv\Scripts\Activate.ps1'
+    Write-Host '  2. uvicorn src.main:app --reload'
+}
+Write-Host ''+, CUDA 12.1
 
 param(
     [string]$InstallType = ""
@@ -169,7 +187,7 @@ if (Is-CIMode) {
 
 # Success message
 Write-Host ""
-Write-Success "✓ Environment setup complete!"
+Write-Success "? Environment setup complete!"
 Write-Host ""
 Write-Host "Environment: $($installTypeChoice.ToUpper())"
 Write-Host "Python: $version"
@@ -178,11 +196,11 @@ Write-Host ""
 if ($currentDir -ne "backend") {
     Write-Host "Next steps:"
     Write-Host "  1. cd backend"
-    Write-Host "  2. .\venv\Scripts\Activate.ps1"
+    Write-Host '  2. .\venv\Scripts\Activate.ps1'
     Write-Host "  3. uvicorn src.main:app --reload"
 } else {
     Write-Host "Next steps:"
-    Write-Host "  1. .\venv\Scripts\Activate.ps1"
-    Write-Host "  2. uvicorn src.main:app --reload"
+    Write-Host '  1. .\venv\Scripts\Activate.ps1'
+    Write-Host '  2. uvicorn src.main:app --reload'
 }
 Write-Host ""
