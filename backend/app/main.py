@@ -6,12 +6,13 @@ from pathlib import Path
 
 from .utils.inference_utils import ModelManager
 from .utils.hardware_info import get_hardware_eval_for_apple_silicon
+from .utils.telemetry import init_telemetry
 
 from .models.StaticHardwareInfos import StaticHardwareInfo
 from .routes import knowledgeBase_routes
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routes import basic_routes, llm_routes, conversation_routes, bd_routes, hardware_routes, training_routes, arena_routes
+from .routes import basic_routes, llm_routes, conversation_routes, bd_routes, hardware_routes, training_routes, arena_routes, telemetry_routes
 from .database import Base, engine
 from .models.Llm import Llm
 from sqlalchemy.orm import Session
@@ -637,6 +638,12 @@ async def lifespan(app: FastAPI):
     #await delete_all_data()
     await startup_populate_database()
     await cleanup_orphaned_models()  # Clean up models from previous installations
+    
+    # Initialize telemetry service
+    data_dir = Path("data")
+    init_telemetry(data_dir)
+    print("Telemetry service initialized")
+    
     ModelManager.start_cleanup_task()
     yield
     print("__________________________________ Shutting down... __________________________________")
@@ -662,3 +669,4 @@ app.include_router(hardware_routes.router)
 app.include_router(training_routes.router)
 app.include_router(arena_routes.router)
 app.include_router(knowledgeBase_routes.router)
+app.include_router(telemetry_routes.router)

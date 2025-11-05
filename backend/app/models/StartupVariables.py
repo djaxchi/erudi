@@ -8,3 +8,6 @@ class StartupVariables(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     welcome_popup_has_already_displayed = Column(Boolean, default=False, nullable=True)
+    beta_consent_accepted = Column(Boolean, default=False, nullable=True)
+    beta_consent_timestamp = Column(DateTime, nullable=True)
+    user_id = Column(String, nullable=True)  # Anonymous user identifier

@@ -8,6 +8,7 @@ import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import { Copy, Check, Star } from "lucide-react";
 import TypingIndicator from "../components/TypingIndicator";
 import MarkdownRenderer from "../components/MarkdownRenderer";
+import telemetry from "../services/telemetry";
 
 export default function ConversationPage() {
   const { id } = useParams();
@@ -20,6 +21,11 @@ export default function ConversationPage() {
   const [conversations, setConversations] = useState([]);
   const scrollRef = useRef(null);
   const [currentTitle, setCurrentTitle] = useState("");
+  
+  // Track page view
+  useEffect(() => {
+    telemetry.trackPageView('conversation_page');
+  }, []);
 
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
@@ -129,6 +135,18 @@ export default function ConversationPage() {
       setLoading(true);
       
       const isFirstMessage = messages.length === 0;
+      const messageStartTime = Date.now();
+      let responseStartTime = null;
+      
+      // Count user vs assistant messages for context
+      const userMessageCount = messages.filter(m => m.sender === 'user').length + 1;
+      const assistantMessageCount = messages.filter(m => m.sender === 'llm').length;
+      
+      // Collect message metadata (privacy-friendly)
+      const userMessageLength = question.length;
+      const messagePreview = telemetry.createMessagePreview(question, 50);
+      const containsCode = telemetry.detectCode(question);
+      const messageLanguage = telemetry.detectLanguage(question);
       
       if (isFirstMessage) {
         setCurrentTitle("");
@@ -224,6 +242,7 @@ export default function ConversationPage() {
 
               if (!gotFirstChunk) {
                 gotFirstChunk = true;
+                responseStartTime = Date.now(); // Record when first token arrived
                 setLoading(false);
                 setFirstReplyPending(false);
               }
@@ -283,9 +302,35 @@ export default function ConversationPage() {
 
       } catch (err) {
         console.error("Failed to send message:", err);
+        telemetry.trackError('conversation_message_failed', err.toString(), { 
+          conversation_id: id,
+          model_name: currentModel 
+        });
       }
 
       await fetchMessagesAndConversations();
+      
+      // Track conversation context after message exchange
+      const messageDuration = (Date.now() - messageStartTime) / 1000;
+      const responseTime = responseStartTime ? (responseStartTime - messageStartTime) / 1000 : null;
+      const currentModel_obj = models.find(m => m.name === currentModel);
+      
+      telemetry.trackConversationContext(currentModel_obj?.id, {
+        conversationId: id,
+        messageCount: messages.length + 2, // +2 for user and assistant messages just added
+        userMessageCount: userMessageCount,
+        assistantMessageCount: assistantMessageCount + 1,
+        duration: messageDuration,
+        hasCustomPrompt: !!customPromptToUse,
+        modelName: currentModel,
+        // Privacy-friendly metadata
+        userMessageLength: userMessageLength,
+        assistantMessageLength: assistantMessage.content.length,
+        responseTime: responseTime,
+        messagePreview: messagePreview,
+        containsCode: containsCode,
+        language: messageLanguage,
+      });
       
       if (isFirstMessage) {
         setTimeout(() => setCurrentTitle(""), 3000);
@@ -468,6 +513,15 @@ export default function ConversationPage() {
   const toggleStar = async (msgId, content) => {
     const isStarred = starredIds[msgId];
     const url = `http://127.0.0.1:8000/conversations/${isStarred ? 'unstar_message' : 'star_message'}`;
+    
+    // Track star interaction
+    const currentModel_obj = models.find(m => m.name === currentModel);
+    telemetry.trackMessageInteraction(
+      isStarred ? 'unstar' : 'star',
+      msgId,
+      currentModel_obj?.id
+    );
+    
     try {
       await fetch(url, {
         method: 'POST',
@@ -585,6 +639,10 @@ export default function ConversationPage() {
                     {/* Copy button */}
                     <button
                       onClick={() => {
+                        // Track copy interaction
+                        const currentModel_obj = models.find(m => m.name === currentModel);
+                        telemetry.trackMessageInteraction('copy', msg.id, currentModel_obj?.id);
+                        
                         navigator.clipboard.writeText(msg.content).then(() => {
                           setCopiedMessageId(msg.id);
                           setTimeout(() => setCopiedMessageId(null), 1000);

@@ -6,6 +6,7 @@ import ModelLibrary from "../components/ModelLibrary";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { X } from "lucide-react";
 import ErrorModal from "../components/modals/ErrorModal";
+import telemetry from "../services/telemetry";
 
 const API_BASE = "http://localhost:8000";
 
@@ -13,6 +14,11 @@ export default function TrainingPage() {
   const { open: openProgressModal, isTraining } = useDownloadModal();
   const [errorMessage, setErrorMessage] = useState("");
   const datasetCardResetRef = useRef(null);
+  
+  // Track page view
+  useEffect(() => {
+    telemetry.trackPageView('training_page');
+  }, []);
   
   const [hw, setHw] = useState({
     storage_path: "soon...",
@@ -142,6 +148,9 @@ export default function TrainingPage() {
       return;
     }
 
+    // Track training start
+    telemetry.trackTrainingStart(selectedModel, trainingFiles.length);
+
     const fineTuningTask = {
       id: `finetuning_${Date.now()}`,
       name: `${modelName}`,
@@ -162,6 +171,10 @@ export default function TrainingPage() {
 
   const handleFineTuningComplete = () => {
     console.log('Fine-tuning completed!');
+    
+    // Track training completion
+    telemetry.trackFeatureUsage('training_complete');
+    
     setSelectedModel(null);
     setModelName("");
     resetDatasetCard();
@@ -172,6 +185,8 @@ export default function TrainingPage() {
   };
 
   const handleFineTuningError = (error) => {
+    // Track training error
+    telemetry.trackError('training_failed', error.toString());
     console.error('Fine-tuning error:', error);
     setErrorMessage("Fine-tuning failed. Please try again. If the issue persists, contact the Erudi team for support.");
   };

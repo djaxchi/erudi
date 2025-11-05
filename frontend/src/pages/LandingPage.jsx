@@ -11,6 +11,7 @@ import HardwareLoadingPopup from "../components/LoadingPopup";
 import { RefreshCcw, Search, MonitorCheck, SearchCode, Blocks, Star, Users } from "lucide-react";
 import WelcomeModal from "../components/modals/WelcomeModal";
 import logoErudi from "../img/logoerudifinal.png";
+import telemetry from "../services/telemetry";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
 
@@ -31,6 +32,11 @@ export default function LandingPage() {
   const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
   const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
   const localModelsRef = useRef(null);
+
+  // Track page view on mount
+  useEffect(() => {
+    telemetry.trackPageView('models_page');
+  }, []);
 
   // Helper function to parse model metadata
   const parseMetadata = (metadataString) => {
@@ -330,10 +336,16 @@ fetchWelcomePopupStatus();
 
   // Event handlers
   const handleDownload = (model) => {
+    // Track model download
+    telemetry.trackModelDownload(model.id, model.name);
+    
     // Implement download logic or use existing download modal
     if (open) {
       open(model, {
         onComplete: async () => {
+          // Track successful download
+          telemetry.trackFeatureUsage('model_download_complete');
+          
           // Refresh local models on both main page and sidebar
           await reloadLocalModels();
           if (localModelsRef.current) {
@@ -342,21 +354,29 @@ fetchWelcomePopupStatus();
         },
         onError: (err) => {
           setErrorMessage("Download failed. Please try again.");
+          telemetry.trackError('download_failed', err.toString(), { model_id: model.id });
         }
       });
     }
   };
 
   const handleInfo = (model) => {
+    telemetry.trackFeatureUsage('view_model_info');
     setSelectedModelInfo(model);
   };
 
   const handleChat = (model) => {
+    // Track chat start
+    telemetry.trackChatStart(model.id, model.name);
+    
     // Navigate to chat page with model parameter
     navigate(`/main_window/chat?model=${encodeURIComponent(model.name)}`);
   };
 
   const handleKnowledgeBase = (model) => {
+    // Track knowledge base feature
+    telemetry.trackFeatureUsage('knowledge_base_navigation');
+    
     // Navigate to knowledge base page with model parameter
     navigate(`/main_window/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
   };

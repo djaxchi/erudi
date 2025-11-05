@@ -10,6 +10,7 @@ import ErrorModal from "../components/modals/ErrorModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";
 import logoErudi from "../img/logoerudifinal.png";
+import telemetry from "../services/telemetry";
 
 export default function ChatPage() {
   const navigate = useNavigate();
@@ -22,6 +23,11 @@ export default function ChatPage() {
   const [showErrorPopup, setShowErrorPopup] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [isLanguageWarningExpanded, setIsLanguageWarningExpanded] = useState(false);
+  
+  // Track page view
+  useEffect(() => {
+    telemetry.trackPageView('chat_page');
+  }, []);
 
   // Parameters state
   const [settings, setSettings] = useState({

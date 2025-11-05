@@ -10,6 +10,7 @@ import DragDropArea from "../components/DragDropArea";
 import Dropdown from "../components/Dropdown";
 import { useKnowledgeBase } from "../contexts/KnowledgeBaseContext";
 import ErrorModal from "../components/modals/ErrorModal";
+import telemetry from "../services/telemetry";
 
 const API_BASE = "http://127.0.0.1:8000";
 
@@ -18,6 +19,11 @@ export default function KnowledgeBasePage() {
   const [searchParams] = useSearchParams();
   const [errorMessage, setErrorMessage] = useState('');
   const [isValidated, setIsValidated] = useState(false);
+  
+  // Track page view
+  useEffect(() => {
+    telemetry.trackPageView('knowledge_base_page');
+  }, []);
   
   const [hw, setHw] = useState({
     storage_path: "soon...",
@@ -102,6 +108,9 @@ export default function KnowledgeBasePage() {
     console.log('Validation passed, proceeding with creation');
     setErrorMessage('');
     
+    // Track KB creation
+    telemetry.trackKnowledgeBaseCreate(selectedModel, paths.length);
+    
     const task = {
       paths,
       selectedModel,
@@ -112,6 +121,10 @@ export default function KnowledgeBasePage() {
     openKnowledgeBase(task, {
       onComplete: () => {
         console.log('Assistant created successfully');
+        
+        // Track successful KB creation
+        telemetry.trackFeatureUsage('knowledge_base_created');
+        
         setIsValidated(true);
         // Reset form after a delay
         setTimeout(() => {
@@ -123,6 +136,10 @@ export default function KnowledgeBasePage() {
       },
       onError: (error) => {
         console.error('Assistant creation failed:', error);
+        
+        // Track KB creation error
+        telemetry.trackError('knowledge_base_creation_failed', error);
+        
         setErrorMessage(error);
       }
     });

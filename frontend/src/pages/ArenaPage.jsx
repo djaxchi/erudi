@@ -7,6 +7,7 @@ import { Trash, Plus } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import MarkdownRenderer from "../components/MarkdownRenderer";
+import telemetry from "../services/telemetry";
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
@@ -44,6 +45,11 @@ export default function ArenaPage() {
   const buffersRef = useRef({});
   const flushIntervalRef = useRef(null);
 
+  // Track page view
+  useEffect(() => {
+    telemetry.trackPageView('arena_page');
+  }, []);
+
   useEffect(() => {
     return () => {
       if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
@@ -62,12 +68,16 @@ export default function ArenaPage() {
       .catch((err) => console.error("Erreur lors du fetch des modèles:", err));
   }, []);
 
-  const handleModelChange = (panelId, newModel) =>
+  const handleModelChange = (panelId, newModel) => {
+    // Track model selection in arena
+    telemetry.trackFeatureUsage('arena_model_change');
+    
     setPanels((prev) =>
       prev.map((p) =>
         p.id === panelId ? { ...p, selectedModel: newModel } : p
       )
     );
+  };;
 
   const handleSettingsChange = (panelId, newSettings) =>
     setPanels((prev) =>
@@ -82,6 +92,13 @@ export default function ArenaPage() {
   const handleAsk = async (inputValue) => {
     if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
     setLoading(true);
+
+    // Track arena comparison
+    const modelIds = panels.map(p => models.find(m => m.name === p.selectedModel)?.id).filter(Boolean);
+    telemetry.track('arena_comparison', {
+      model_count: panels.length,
+      model_ids: modelIds
+    });
 
     const withPlaceholders = panels.map((panel) => ({
       ...panel,
