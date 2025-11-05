@@ -247,47 +247,6 @@ class TelemetryService {
     });
   }
 
-  // Helper functions for privacy-friendly message metadata
-  createMessagePreview(text, maxLength = 50) {
-    if (!text) return '';
-    return text.substring(0, maxLength).replace(/\s+/g, ' ').trim() + (text.length > maxLength ? '...' : '');
-  }
-
-  detectCode(text) {
-    // Detect if message contains code patterns
-    const codePatterns = [
-      /```/,  // Code blocks
-      /`[^`]+`/,  // Inline code
-      /\bfunction\s+\w+/,  // JavaScript/TypeScript function
-      /\bclass\s+\w+/,  // Class definition
-      /\bdef\s+\w+/,  // Python function
-      /\bimport\s+/,  // Import statement
-      /\bfrom\s+.*\s+import/,  // Python import
-      /console\.log/,  // Console logging
-      /<\/?\w+>/,  // HTML tags
-    ];
-    return codePatterns.some(pattern => pattern.test(text));
-  }
-
-  detectLanguage(text) {
-    if (!text) return 'unknown';
-    
-    // Simple heuristic: if contains non-ASCII characters, likely non-English
-    const hasNonAscii = /[^\x00-\x7F]/.test(text);
-    
-    // Check for common non-English patterns
-    const hasCyrillic = /[а-яА-ЯёЁ]/.test(text);
-    const hasCJK = /[\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]/.test(text);  // Chinese/Japanese
-    const hasArabic = /[\u0600-\u06FF]/.test(text);
-    
-    if (hasCyrillic) return 'cyrillic';
-    if (hasCJK) return 'cjk';
-    if (hasArabic) return 'arabic';
-    if (hasNonAscii) return 'other-non-english';
-    
-    return 'english';
-  }
-
   calculateResponseTime(startTime, firstChunkTime) {
     if (!startTime || !firstChunkTime) return null;
     return (firstChunkTime - startTime) / 1000; // seconds

@@ -21,30 +21,74 @@ export default function DragDropArea({ onFilesAdded }) {
   };
 
   const extractPaths = (fileList) => {
-    return Array.from(fileList)
-      .filter((file) => {
-        const fileName = file.name || file.path?.split(/[/\\]/).pop() || '';
+    const filesArray = Array.from(fileList);
+    const validPaths = [];
+    
+    console.log('🔍 Checking window.electron availability:', {
+      hasElectron: !!window.electron,
+      hasGetFilePath: !!window.electron?.getFilePath,
+      electronKeys: window.electron ? Object.keys(window.electron) : 'N/A'
+    });
+    
+    filesArray.forEach((file) => {
+      console.log('🔍 Processing file object:', {
+        name: file.name,
+        path: file.path,
+        type: file.type,
+        webkitRelativePath: file.webkitRelativePath,
+        allKeys: Object.keys(file)
+      });
+      
+      const fileName = file.name || file.path?.split(/[/\\]/).pop() || '';
+      
+      // Check if it's a folder (no extension or has webkitRelativePath indicating folder structure)
+      const hasExtension = fileName.includes('.');
+      const isFolder = !hasExtension || (file.webkitRelativePath && file.webkitRelativePath.includes('/'));
+      
+      // If it's a file, check if it's allowed
+      if (hasExtension && !isFolder) {
         const isAllowed = isAllowedFileType(fileName);
         if (!isAllowed) {
           console.warn(`File "${fileName}" rejected: only PDF and TXT files are allowed`);
+          return;
         }
-        return isAllowed;
-      })
-      .map((file) => {
-        console.log('Processing file:', file);
-        
-        // Use the preload API if available
-        if (window.electron?.getFilePath) {
-          console.log('Using window.electron.getFilePath');
-          const path = window.electron.getFilePath(file);
-          console.log('Got path from electron API:', path);
-          return path;
+      }
+      
+      // For folders or allowed files, extract the path
+      let path;
+      
+      // Try webUtils API through electron
+      if (window.electron?.getFilePath) {
+        console.log('✅ Using window.electron.getFilePath');
+        try {
+          path = window.electron.getFilePath(file);
+          console.log('📍 Got path from electron API:', path);
+        } catch (error) {
+          console.error('❌ Error calling getFilePath:', error);
+          path = file.path || file.name;
         }
-        
+      } else {
         // Fallback to direct access
-        console.log('Using direct file.path access');
-        return file.path || file.name;
-      });
+        console.log('⚠️ Using fallback file.path access');
+        console.log('⚠️ window.electron exists?', !!window.electron);
+        console.log('⚠️ window.electron.getFilePath exists?', !!window.electron?.getFilePath);
+        path = file.path || file.name;
+        console.log('📍 Got fallback path:', path);
+      }
+      
+      // Only add allowed file types to the list
+      if (hasExtension && isAllowedFileType(fileName)) {
+        console.log(`✅ Adding file: ${path}`);
+        validPaths.push(path);
+      } else if (!hasExtension) {
+        // It's a folder, add it
+        console.log(`📁 Adding folder: ${path}`);
+        validPaths.push(path);
+      }
+    });
+    
+    console.log('📦 Final valid paths:', validPaths);
+    return validPaths;
   };
 
   const getFileName = (path) => {
@@ -75,7 +119,34 @@ export default function DragDropArea({ onFilesAdded }) {
     }
   };
 
-  const openPicker = () => inputRef.current?.click();
+  const openPicker = async () => {
+    // Use Electron dialog if available (works in both dev and production)
+    if (window.electron?.openFilesAndFolders) {
+      try {
+        console.log('🔵 Opening file/folder dialog...');
+        const paths = await window.electron.openFilesAndFolders();
+        console.log('📂 Raw paths from dialog:', paths);
+        console.log('📂 Paths type:', typeof paths, 'Is array:', Array.isArray(paths));
+        console.log('📂 Paths length:', paths?.length);
+        console.log('📂 First path:', paths?.[0]);
+        
+        if (paths && paths.length > 0) {
+          const newFiles = [...selectedFiles, ...paths];
+          console.log('📂 Combined files array:', newFiles);
+          setSelectedFiles(newFiles);
+          onFilesAdded?.(newFiles);
+        }
+      } catch (error) {
+        console.error('❌ Error opening file dialog:', error);
+        // Fall back to native input
+        inputRef.current?.click();
+      }
+    } else {
+      // Fallback to native input (shouldn't happen in Electron)
+      console.warn('⚠️ Electron dialog API not available, using native input');
+      inputRef.current?.click();
+    }
+  };
 
   const removeFile = (indexToRemove) => {
     const updatedFiles = selectedFiles.filter((_, index) => index !== indexToRemove);
@@ -87,12 +158,35 @@ export default function DragDropArea({ onFilesAdded }) {
     }
   };
 
-  const addMoreFiles = () => {
-    inputRef.current?.click();
+  const addMoreFiles = async () => {
+    // Use Electron dialog if available
+    if (window.electron?.openFilesAndFolders) {
+      try {
+        const paths = await window.electron.openFilesAndFolders();
+        console.log('📂 Got paths from dialog:', paths);
+        
+        if (paths && paths.length > 0) {
+          const newFiles = [...selectedFiles, ...paths];
+          setSelectedFiles(newFiles);
+          onFilesAdded?.(newFiles);
+        }
+      } catch (error) {
+        console.error('❌ Error opening file dialog:', error);
+        // Fall back to native input
+        inputRef.current?.click();
+      }
+    } else {
+      // Fallback to native input
+      inputRef.current?.click();
+    }
   };
 
   /* ------------------------------ event handlers --------------------------- */
-  const handleSelect = (e) => {
+  const handleSelect = async (e) => {
+    // In Electron, prefer using the dialog API instead of the native file input
+    // because the native input doesn't provide absolute paths
+    console.warn('⚠️ Native file input used - this may not provide absolute paths in Electron');
+    
     const paths = extractPaths(e.target.files);
     if (paths.length) {
       const newFiles = [...selectedFiles, ...paths];
@@ -107,9 +201,16 @@ export default function DragDropArea({ onFilesAdded }) {
     e.stopPropagation();
     setDragCounter(0);
     setIsOver(false);
+    
+    console.log('🎯 DROP EVENT - dataTransfer.files:', e.dataTransfer.files);
+    console.log('🎯 DROP EVENT - files count:', e.dataTransfer.files.length);
+    
     const paths = extractPaths(e.dataTransfer.files);
+    console.log('🎯 DROP EVENT - extracted paths:', paths);
+    
     if (paths.length) {
       const newFiles = [...selectedFiles, ...paths];
+      console.log('🎯 DROP EVENT - final newFiles array:', newFiles);
       setSelectedFiles(newFiles);
       onFilesAdded?.(newFiles);
     }
@@ -255,7 +356,7 @@ export default function DragDropArea({ onFilesAdded }) {
         </div>
       )}
 
-      {/* hidden native file input */}
+      {/* hidden native file input - only as fallback */}
       <input
         ref={inputRef}
         type="file"

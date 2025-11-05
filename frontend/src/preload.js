@@ -10,7 +10,10 @@ contextBridge.exposeInMainWorld('electron', {
   // Vérifie si l'API est exposée
   openDirectory: () => {
     return ipcRenderer.invoke('dialog:openDirectory');
-  }, 
+  },
+  openFilesAndFolders: () => {
+    return ipcRenderer.invoke('dialog:openFilesAndFolders');
+  },
   getFilePath: (file) => {
     if (webUtils?.getPathForFile) {
       const path = webUtils.getPathForFile(file);

@@ -10,6 +10,7 @@ import { useDownloadModal } from "../contexts/DownloadModalContext";
 import HardwareLoadingPopup from "../components/LoadingPopup";
 import { RefreshCcw, Search, MonitorCheck, SearchCode, Blocks, Star, Users } from "lucide-react";
 import WelcomeModal from "../components/modals/WelcomeModal";
+import BetaConsentModal from "../components/BetaConsentModal";
 import logoErudi from "../img/logoerudifinal.png";
 import telemetry from "../services/telemetry";
 
@@ -19,6 +20,7 @@ export default function LandingPage() {
   const { open } = useDownloadModal();
   const navigate = useNavigate();
   const [showWelcome, setShowWelcome] = useState(false);
+  const [showConsent, setShowConsent] = useState(false);
   const [showLoadingPopup, setShowLoadingPopup] = useState(false);
   const [hardwareInfo, setHardwareInfo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -161,19 +163,51 @@ fetchWelcomePopupStatus();
     fetchModels();
   }, []);
 
-  const closeWelcome = () => {
+  const closeWelcome = async () => {
     // If hardware info is still loading, show intermediate popup
     if (loading) {
       setShowLoadingPopup(true);
       return;
     }
-    // Otherwise, close normally
+    // Close welcome modal
     setShowWelcome(false);
+    
+    // Check if we need to show consent modal
+    try {
+      const consentData = await telemetry.initialize();
+      if (consentData && !consentData.beta_consent_accepted) {
+        setShowConsent(true);
+      }
+    } catch (error) {
+      console.error('Failed to check consent:', error);
+    }
   };
 
   const closeLoadingOnly = () => {
     // Close only the loading popup, keep welcome popup open
     setShowLoadingPopup(false);
+  };
+
+  const handleAcceptConsent = async () => {
+    const success = await telemetry.setConsent(true);
+    if (success) {
+      setShowConsent(false);
+      // Track app launch after consent
+      telemetry.track('app_launched', {
+        platform: navigator.platform,
+        user_agent: navigator.userAgent,
+      });
+    }
+  };
+
+  const handleDeclineConsent = async () => {
+    await telemetry.setConsent(false);
+    // User declined, exit the app
+    if (window.electronAPI && window.electronAPI.quit) {
+      window.electronAPI.quit();
+    } else {
+      alert('Please close the application. Data collection consent is required for the beta version.');
+    }
   };
 
   const handleLocalModelRefresh = () => {
@@ -700,6 +734,13 @@ fetchWelcomePopupStatus();
         onClose={closeWelcome}
         hardwareInfo={hardwareInfo}
         loading={loading}
+      />
+
+      {/* Beta Consent Modal */}
+      <BetaConsentModal
+        isOpen={showConsent}
+        onAccept={handleAcceptConsent}
+        onDecline={handleDeclineConsent}
       />
 
       {/* Model Info Modal */}

@@ -9,13 +9,9 @@ import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import { DownloadModalProvider } from "./contexts/DownloadModalContext";
 import { KnowledgeBaseProvider } from "./contexts/KnowledgeBaseContext";
 import LoadingScreen from "./components/LoadingScreen";
-import BetaConsentModal from "./components/BetaConsentModal";
-import telemetry from "./services/telemetry";
 
 export default function App() {
   const [isBackendReady, setIsBackendReady] = useState(false);
-  const [showConsentModal, setShowConsentModal] = useState(false);
-  const [consentChecked, setConsentChecked] = useState(false);
 
   
   useEffect(() => {
@@ -37,61 +33,8 @@ export default function App() {
     checkBackendHealth();
   }, []);
 
-  // Check beta consent after backend is ready
-  useEffect(() => {
-    if (isBackendReady && !consentChecked) {
-      checkConsent();
-    }
-  }, [isBackendReady, consentChecked]);
-
-  const checkConsent = async () => {
-    try {
-      const consentData = await telemetry.initialize();
-      
-      if (consentData && !consentData.beta_consent_accepted) {
-        setShowConsentModal(true);
-      }
-      
-      setConsentChecked(true);
-    } catch (error) {
-      console.error('Failed to check consent:', error);
-      setConsentChecked(true);
-    }
-  };
-
-  const handleAcceptConsent = async () => {
-    const success = await telemetry.setConsent(true);
-    if (success) {
-      setShowConsentModal(false);
-      // Track app launch after consent
-      telemetry.track('app_launched', {
-        platform: navigator.platform,
-        user_agent: navigator.userAgent,
-      });
-    }
-  };
-
-  const handleDeclineConsent = async () => {
-    await telemetry.setConsent(false);
-    // User declined, exit the app
-    if (window.electronAPI && window.electronAPI.quit) {
-      window.electronAPI.quit();
-    } else {
-      alert('Please close the application. Data collection consent is required for the beta version.');
-    }
-  };
-
-  if (!isBackendReady || !consentChecked) {
+  if (!isBackendReady) {
     return <LoadingScreen />;
-  }
-
-  if (showConsentModal) {
-    return (
-      <BetaConsentModal 
-        onAccept={handleAcceptConsent}
-        onDecline={handleDeclineConsent}
-      />
-    );
   }
 
   return (

@@ -93,12 +93,16 @@ export default function ArenaPage() {
     if (flushIntervalRef.current) clearInterval(flushIntervalRef.current);
     setLoading(true);
 
-    // Track arena comparison
-    const modelIds = panels.map(p => models.find(m => m.name === p.selectedModel)?.id).filter(Boolean);
-    telemetry.track('arena_comparison', {
-      model_count: panels.length,
-      model_ids: modelIds
-    });
+    // Track metadata - similar to ConversationPage
+    const messageStartTime = Date.now();
+    const responseStartTimes = {};
+    const panelMetadata = {}; // Store metadata for each panel
+    
+    // Collect message metadata (privacy-friendly)
+    const userMessageLength = inputValue.length;
+    const messagePreview = telemetry.createMessagePreview(inputValue, 50);
+    const containsCode = telemetry.detectCode(inputValue);
+    const messageLanguage = telemetry.detectLanguage(inputValue);
 
     const withPlaceholders = panels.map((panel) => ({
       ...panel,
@@ -164,6 +168,8 @@ export default function ArenaPage() {
         return;
       }
 
+      let firstChunkReceived = false;
+
       askArena({
         question: inputValue,
         llmId: llm.id,
@@ -173,16 +179,106 @@ export default function ArenaPage() {
         quantize: panel.quantize,
         customPrompt: panel.customPrompt,
         onStreamChunk: (chunk) => {
+          if (!firstChunkReceived) {
+            firstChunkReceived = true;
+            responseStartTimes[panel.id] = Date.now();
+          }
           buffersRef.current[panel.id].push(chunk);
         },
       })
         .then(() => {
           streamingPanels.current.delete(panel.id);
+          
+          // Collect metadata for this panel (don't send yet)
+          setTimeout(() => {
+            setPanels((currentPanels) => {
+              const currentPanel = currentPanels.find(p => p.id === panel.id);
+              if (!currentPanel) return currentPanels;
+              
+              const messageDuration = (Date.now() - messageStartTime) / 1000;
+              const responseTime = responseStartTimes[panel.id] 
+                ? (responseStartTimes[panel.id] - messageStartTime) / 1000 
+                : null;
+              
+              // Get the last assistant message content for this panel
+              const assistantMessage = currentPanel.messages[currentPanel.messages.length - 1];
+              const assistantMessageLength = assistantMessage?.content?.length || 0;
+              
+              // Count messages for this panel
+              const userMessageCount = currentPanel.messages.filter(m => m.role === 'user').length;
+              const assistantMessageCount = currentPanel.messages.filter(m => m.role === 'llm').length;
+              
+              // Store metadata for this panel
+              panelMetadata[panel.id] = {
+                model_id: llm.id,
+                model_name: panel.selectedModel,
+                messageCount: currentPanel.messages.length,
+                userMessageCount: userMessageCount,
+                assistantMessageCount: assistantMessageCount,
+                duration: messageDuration,
+                hasCustomPrompt: !!panel.customPrompt,
+                assistantMessageLength: assistantMessageLength,
+                responseTime: responseTime,
+              };
+              
+              // If all panels have finished, send combined telemetry
+              if (Object.keys(panelMetadata).length === withPlaceholders.length) {
+                // Prepare combined data for all panels
+                const modelsData = Object.values(panelMetadata).map(metadata => ({
+                  model_id: metadata.model_id,
+                  model_name: metadata.model_name,
+                  message_count: metadata.messageCount,
+                  user_message_count: metadata.userMessageCount,
+                  assistant_message_count: metadata.assistantMessageCount,
+                  has_custom_prompt: metadata.hasCustomPrompt,
+                  assistant_message_length: metadata.assistantMessageLength,
+                  response_time_seconds: metadata.responseTime,
+                }));
+                
+                // Send single combined telemetry event
+                telemetry.track('arena_comparison', {
+                  model_count: withPlaceholders.length,
+                  models: modelsData,
+                  // Common metadata for all models
+                  user_message_length: userMessageLength,
+                  message_preview: messagePreview,
+                  contains_code: containsCode,
+                  language: messageLanguage,
+                  total_duration_seconds: (Date.now() - messageStartTime) / 1000,
+                });
+              }
+              
+              return currentPanels;
+            });
+          }, 100);
+          
           if (streamingPanels.current.size === 0) setLoading(false);
         })
-        .catch(() => {
+        .catch((err) => {
           buffersRef.current[panel.id].push("[Erreur]");
           streamingPanels.current.delete(panel.id);
+          
+          // Store error metadata
+          panelMetadata[panel.id] = {
+            model_id: llm.id,
+            model_name: panel.selectedModel,
+            error: err.toString(),
+          };
+          
+          // Track error in combined log if all panels are done
+          if (Object.keys(panelMetadata).length === withPlaceholders.length) {
+            const modelsData = Object.values(panelMetadata).map(metadata => ({
+              model_id: metadata.model_id,
+              model_name: metadata.model_name,
+              error: metadata.error || null,
+            }));
+            
+            telemetry.trackError('arena_message_failed', 'One or more models failed', { 
+              models: modelsData,
+              user_message_length: userMessageLength,
+            });
+          }
+          
           if (streamingPanels.current.size === 0) setLoading(false);
         });
     });

@@ -17,14 +17,17 @@ from ..models.KnowledgeBase import KnowledgeBase
 from ..models.VectorStore import VectorStore
 from ..models.Llm import Llm
 from ..models.KBJob import KBJobModel
+from ..models.StartupVariables import StartupVariables
 from app.utils.inference_utils import EmbedderService
 from ..utils.file_processor import prepare_for_knowledge_base, chunk_by_tokens
+from ..utils.telemetry import get_telemetry
 
 import logging
 from typing import List
 import faiss
 faiss.omp_set_num_threads(1)
 import numpy as np
+import time
 
 from ..utils.path_utils import get_indexes_dir
 INDEXES_DIR = str(get_indexes_dir())
@@ -250,6 +253,19 @@ def populate_vector_store(start_counter: int, vectors_data: dict, texts: List[st
     return (index, vectors_data)
 
 def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[str], db: Session) -> Llm:
+    start_time = time.time()
+    num_files = len(texts)
+    total_chars = sum(len(text) for text in texts)
+    
+    # Get user ID for telemetry
+    user_id = None
+    try:
+        startup_vars = db.query(StartupVariables).first()
+        if startup_vars and startup_vars.beta_consent_accepted:
+            user_id = startup_vars.user_id
+    except Exception as e:
+        logger.warning(f"Could not get user ID for telemetry: {e}")
+    
     try:
         kb_job = db.query(KBJobModel).filter(KBJobModel.id == kb_job_id).first()
         if not kb_job:
@@ -339,6 +355,27 @@ def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[st
         kb_job.status = "completed"
         kb_job.updated_at = datetime.now()
         db.commit()
+        
+        # Track successful KB update
+        training_time = time.time() - start_time
+        num_new_vectors = len(new_vectors_data) - len(base_vectors_data)
+        if user_id:
+            telemetry = get_telemetry()
+            if telemetry:
+                telemetry.track_event(
+                    "knowledge_base_updated",
+                    user_id=user_id,
+                    properties={
+                        "num_files": num_files,
+                        "total_characters": total_chars,
+                        "num_new_vectors": num_new_vectors,
+                        "total_vectors": len(new_vectors_data),
+                        "training_time_seconds": round(training_time, 2),
+                        "llm_id": llm.id,
+                        "kb_id": kb.id,
+                        "success": True
+                    }
+                )
     except Exception as e:
         logging.error(f"Error during KB update for LLM {llm.id}: {e}")
         kb_job.status = "failed"
@@ -352,6 +389,25 @@ def update_kb_assistant_with_new_data(kb_job_id: int, kb_id: int, texts: List[st
             logging.error(f"Error writing index for KB {kb.id}: {e2}")
             raise HTTPException(status_code=404, detail=f"Error writing index for KB {kb.id}: {e2}")
         
+        # Track failed KB update
+        training_time = time.time() - start_time
+        if user_id:
+            telemetry = get_telemetry()
+            if telemetry:
+                telemetry.track_event(
+                    "knowledge_base_updated",
+                    user_id=user_id,
+                    properties={
+                        "num_files": num_files,
+                        "total_characters": total_chars,
+                        "training_time_seconds": round(training_time, 2),
+                        "llm_id": llm.id,
+                        "kb_id": kb.id,
+                        "success": False,
+                        "error": str(e)[:200]
+                    }
+                )
+        
     finally:
         db.close()
         
@@ -359,6 +415,19 @@ def init_new_kb_assistant(kb_job_id: int, new_llm_id: int, kb_id: int, vector_st
     """
     Initialize the knowledge base assistant by creating the FAISS index and storing vectors.
     """
+    start_time = time.time()
+    num_files = len(texts)
+    total_chars = sum(len(text) for text in texts)
+    
+    # Get user ID for telemetry
+    user_id = None
+    try:
+        startup_vars = db.query(StartupVariables).first()
+        if startup_vars and startup_vars.beta_consent_accepted:
+            user_id = startup_vars.user_id
+    except Exception as e:
+        logger.warning(f"Could not get user ID for telemetry: {e}")
+    
     try:
         kb_job = db.query(KBJobModel).filter(KBJobModel.id == kb_job_id).first()
         if not kb_job:
@@ -500,6 +569,25 @@ def init_new_kb_assistant(kb_job_id: int, new_llm_id: int, kb_id: int, vector_st
         db.commit()
         logger.info(f"🎉 Knowledge Base {kb.id} created successfully with {len(vectors_data)} vectors!")
         
+        # Track successful KB creation
+        training_time = time.time() - start_time
+        if user_id:
+            telemetry = get_telemetry()
+            if telemetry:
+                telemetry.track_event(
+                    "knowledge_base_created",
+                    user_id=user_id,
+                    properties={
+                        "num_files": num_files,
+                        "total_characters": total_chars,
+                        "num_vectors": len(vectors_data),
+                        "training_time_seconds": round(training_time, 2),
+                        "llm_id": new_llm.id,
+                        "kb_id": kb.id,
+                        "success": True
+                    }
+                )
+        
         return new_llm
     
     except Exception as e:
@@ -523,6 +611,23 @@ def init_new_kb_assistant(kb_job_id: int, new_llm_id: int, kb_id: int, vector_st
             kb_job.error_message = error_msg
             kb_job.updated_at = datetime.utcnow()
             db.commit()
+            
+            # Track failed KB creation
+            training_time = time.time() - start_time
+            if user_id:
+                telemetry = get_telemetry()
+                if telemetry:
+                    telemetry.track_event(
+                        "knowledge_base_created",
+                        user_id=user_id,
+                        properties={
+                            "num_files": num_files,
+                            "total_characters": total_chars,
+                            "training_time_seconds": round(training_time, 2),
+                            "success": False,
+                            "error": str(e)[:200]  # Truncate error message
+                        }
+                    )
         except Exception as ex:
             logging.error(f"Error updating KBJob status: {ex}")
 

@@ -4,8 +4,9 @@ const { spawn } = require("child_process");
 const fs = require('fs');
 const os = require('os');
 
-// define the entry point
+// define the entry points
 const MAIN_WINDOW_WEBPACK_ENTRY = process.env.MAIN_WINDOW_WEBPACK_ENTRY || 'http://localhost:3000';
+const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY = process.env.MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY;
 
 let backendProcess = null;
 let mainWindow = null;
@@ -504,7 +505,7 @@ const createWindow = () => {
     height: 800,
     title: "erudi - BETA",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY || path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
@@ -577,6 +578,25 @@ ipcMain.handle('dialog:openDirectory', async () => {
     properties: ['openDirectory']
   });
   return result.filePaths[0];
+});
+
+// Handler to open files and folders for knowledge base
+ipcMain.handle('dialog:openFilesAndFolders', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile', 'openDirectory', 'multiSelections'],
+    filters: [
+      { name: 'Documents', extensions: ['pdf', 'txt'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+  
+  log(`Dialog result - canceled: ${result.canceled}, filePaths: ${JSON.stringify(result.filePaths)}`);
+  
+  if (result.canceled) {
+    return [];
+  }
+  
+  return result.filePaths;
 });
 
 // Helper function to get Application Support data directory path
