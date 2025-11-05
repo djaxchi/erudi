@@ -40,6 +40,21 @@ PROJECT_ROOT="/Users/djadja/Code/erudi"
 
 echo -e "${YELLOW}📁 Project root: $PROJECT_ROOT${NC}"
 
+# Load notarization credentials if available
+if [ -f "$PROJECT_ROOT/.env.notarize" ]; then
+    echo -e "${GREEN}🔐 Loading notarization credentials from .env.notarize${NC}"
+    source "$PROJECT_ROOT/.env.notarize"
+    
+    # Verify credentials are loaded
+    if [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+        echo -e "${GREEN}✅ Notarization credentials loaded successfully${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Some notarization credentials are missing${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠️  No .env.notarize file found - build will not be notarized${NC}"
+fi
+
 # Step 1: Build backend with PyInstaller (unless skipped)
 if [ "$SKIP_BACKEND" = true ]; then
     echo -e "${YELLOW}⏭️  Skipping backend rebuild (--skip-backend flag set)${NC}"

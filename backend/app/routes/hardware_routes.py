@@ -1,7 +1,9 @@
 import logging
 from app.database import get_db
 from app.models.StaticHardwareInfos import StaticHardwareInfo
+from app.models.StartupVariables import StartupVariables
 from app.utils.hardware_info import get_hardware_eval_for_apple_silicon
+from app.utils.telemetry import get_telemetry
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.schemas.hardware_schemas import HardwareTrainingInfo, HardwareAppStartupInfo, DetailedHardwareInfo
@@ -232,6 +234,59 @@ def get_app_startup_info(
 
     finally:
         db.close()
+    
+    # Track hardware metrics in telemetry (only if user has consented)
+    try:
+        startup_vars = db.query(StartupVariables).first()
+        if startup_vars and startup_vars.beta_consent_accepted and hw_infos:
+            telemetry = get_telemetry()
+            if telemetry:
+                # Prepare comprehensive hardware metrics
+                hardware_metrics = {
+                    # Basic identification
+                    "chip_model": hw_infos.chip_model,
+                    "cpu_model": hw_infos.cpu_model,
+                    "gpu_name": hw_infos.gpu_name,
+                    "system_platform": hw_infos.system_platform,
+                    
+                    # Memory specs
+                    "total_memory_gb": hw_infos.system_ram_gb,
+                    "available_memory_gb": hw_infos.available_ram_gb,
+                    "unified_memory": hw_infos.unified_memory,
+                    
+                    # Storage
+                    "total_storage_gb": hw_infos.disk_total_gb,
+                    "available_storage_gb": hw_infos.disk_avail_gb,
+                    
+                    # Apple Silicon specific
+                    "is_apple_silicon": hw_infos.is_apple_silicon,
+                    "gpu_cores": hw_infos.gpu_cores,
+                    "estimated_gpu_tflops": hw_infos.estimated_gpu_tflops,
+                    "memory_bandwidth_gbs": hw_infos.memory_bandwidth_gbs,
+                    "neural_engine_tops": hw_infos.neural_engine_tops,
+                    "cpu_performance_units": hw_infos.cpu_performance_units,
+                    "architecture": hw_infos.architecture,
+                    "mps_available": hw_infos.mps_available,
+                    
+                    # Performance scores
+                    "global_inference_score": hw_infos.global_inference_score,
+                    "global_inference_label": hw_infos.global_inference_label,
+                    "global_finetuning_score": hw_infos.global_finetuning_score,
+                    "global_finetuning_label": hw_infos.global_finetuning_label,
+                    "cpu_score": hw_infos.cpu_score,
+                    "gpu_score": hw_infos.gpu_score,
+                    "memory_score": hw_infos.memory_score,
+                }
+                
+                telemetry.track_event(
+                    "app_startup_hardware",
+                    user_id=startup_vars.user_id,
+                    properties=hardware_metrics
+                )
+                logging.info("Hardware metrics sent to telemetry")
+    except Exception as e:
+        # Don't fail the request if telemetry fails
+        logging.warning(f"Failed to track hardware telemetry: {e}")
 
     return HardwareAppStartupInfo(
         global_finetuning_score=finetuning_score,
