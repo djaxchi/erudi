@@ -123,6 +123,8 @@ class MLX_Engine(BaseEngine):
         """Convert Hugging Face model to MLX format."""
 
         mlx_lm = importlib.import_module("mlx_lm")
+        local_hf_path = str(local_hf_path)
+        local_dest_path = str(local_dest_path)
 
         try:
             logging.info(f"Starting conversion from HF to MLX")
