@@ -275,6 +275,20 @@ class CPU_Engine(BaseEngine):
         logger.warning(f"[CPU_Engine] No known quant pattern found. Selecting smallest: {smallest.name}")
         return smallest
 
+    @classmethod
+    def _copy_auxiliary_files(cls, src: Path, dst: Path) -> None:
+        """Copy auxiliary files from source to destination, excluding .safetensors and .model files.
+        
+        Args:
+            src: Source directory path.
+            dst: Destination directory path.
+        """
+        excluded_extensions = {'.safetensors', '.model', '.gguf'}
+        for file_path in src.iterdir():
+            if file_path.is_file() and file_path.suffix.lower() not in excluded_extensions:
+                shutil.copy(file_path, dst / file_path.name)
+                logger.debug(f"[CPU_Engine] Copied auxiliary file: {file_path.name}")
+
     # ---------- Abstract methods (required by BaseEngine) ----------
 
     @classmethod
@@ -309,7 +323,7 @@ class CPU_Engine(BaseEngine):
             *args: Reserved for future engine-specific arguments.
             
         Returns:
-            None. GGUF file(s) written to local_dest_path.
+            None. GGUF file(s) and auxiliary files written to local_dest_path.
             
         Raises:
             FileNotFoundError: If local_hf_path doesn't exist.
@@ -343,6 +357,9 @@ class CPU_Engine(BaseEngine):
             - convert_hf_to_gguf.py (Python script in llama.cpp repo)
             - llama-quantize (compiled binary in bin/)
             
+            Auxiliary files (JSON configs, tokenizer files, etc.) are copied to destination,
+            excluding .safetensors and .model files.
+            
             Disk Space Optimization:
             - HF source files (~7GB) deleted after conversion to save space
             - Reduces peak disk usage from 18GB to 11GB during quantization
@@ -367,6 +384,7 @@ class CPU_Engine(BaseEngine):
             
             shutil.copy(selected, dest_file)
             logger.info(f"[CPU_Engine] Copied pre-quantized GGUF: {selected.name} → {dest_file}")
+            cls._copy_auxiliary_files(src, dst)
             return  # Early return - no conversion needed!
         
         # ============ CASE 2: SafeTensors model - convert to GGUF ============
@@ -384,7 +402,7 @@ class CPU_Engine(BaseEngine):
         if not converter.exists():
             raise EngineException(
                 f"Converter script not found: {converter}. "
-                f"Ensure llama.cpp is cloned and scripts installed at {cls._default_install_dir()}."
+                f"Ensure llama.cpp is cloned, built and scripts installed at {cls._default_install_dir()}."
             )
         
         # Convert HF → FP16 GGUF
@@ -442,6 +460,8 @@ class CPU_Engine(BaseEngine):
                 logger.warning(f"[CPU_Engine] Failed to delete intermediate file {fp16_gguf}: {e}")
         else:
             logger.info(f"[CPU_Engine] Skipping quantization (quantize=False), keeping FP16 GGUF")
+        
+        cls._copy_auxiliary_files(src, dst)
 
     @classmethod
     def get_model_and_tokenizer(
