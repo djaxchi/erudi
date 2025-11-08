@@ -53,7 +53,7 @@ reference:
     - src.entities.Llm
     - src.entities.Message
     - src.entities.StartupVariables
-    - src.entities.StaticHardwareInfos
+    - src.entities.HardwareProfile
     - src.entities.TrainingJob
     - src.entities.VectorStore
 
