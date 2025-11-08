@@ -8,6 +8,8 @@
 
 ### On Mac-Silicon (M1+)
 run `bash ./scripts/dev/backend/setup-mac-silicon.sh`
+--> frontend : `cd frontend` `npm start`
+--> backend : `cd backend` `source venv/bin/activate` `python run.py`
 
 ### On Mac-Intel
 run `bash ./scripts/dev/backend/setup-mac-intel.sh`
