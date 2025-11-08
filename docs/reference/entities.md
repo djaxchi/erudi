@@ -16,7 +16,7 @@
 
 ::: src.entities.StartupVariables
 
-::: src.entities.StaticHardwareInfos
+::: src.entities.HardwareProfile
 
 ::: src.entities.TrainingJob
 
