@@ -482,7 +482,7 @@ async def download_llm_route(
     "/downloads/{job_id}/cancel",
     status_code=200,
 )
-def cancel_download(
+async def cancel_download(
     job_id: int,
     llm_repo: Llm_Repository = Depends(get_llm_repository),
     job_repo: Download_Job_Repository = Depends(get_download_job_repository),
@@ -497,7 +497,7 @@ def cancel_download(
         db: Database session for transaction control.
 
     Returns:
-        dict: Success message.
+        dict: Success message with cancellation status.
 
     Raises:
         DownloadJobNotFoundException: If job not found.
@@ -506,35 +506,52 @@ def cancel_download(
         DatabaseException: If cancellation fails.
 
     Note:
-        Deletes temp files and marks LLM as failed. Cannot cancel completed jobs.
+        - Signals download process to stop via DownloadTracker
+        - Deletes temp files and model entry from database
+        - Cannot cancel completed jobs
+        - Transaction ensures atomic cleanup
     """
     try:
         # Get job and validate state
         job = job_repo.get_by_id(job_id)
         if not job:
             raise DownloadJobNotFoundException(job_id)
-        if job.status in ["completed", "failed"]:
-            raise StateConflictException("Cannot cancel completed or failed jobs")
+        if job.status in ["completed", "failed", "cancelled"]:
+            raise StateConflictException(
+                "Cannot cancel a job that is already completed, failed, or cancelled"
+            )
         
-        # Get associated LLM
+        # Get associated LLM and validate state
         llm = llm_repo.get_by_id(job.local_model_id)
         if not llm:
             raise ModelNotFoundException(f"LLM {job.local_model_id}")
         if llm.local != 2:
             raise InvalidInputException("Download ended - cannot be cancelled, please delete the model")
         
-        # Mark job as cancelled
-        job_repo.update_status(job, "cancelled")
-        
-        # Clean up temp files using repository method
-        job_repo.cleanup_job_files(job)
-        
-        # Delete temp LLM entry
-        llm_repo.delete(llm)
+        # Signal cancellation to download process
+        job_repo.update_status(job, "cancelling")
         db.commit()
         
-        logger.info(f"Cancelled download job {job_id} and deleted temp LLM {llm.id}")
-        return {"message": "Download job cancelled successfully"}
+        # Get download tracker from active tasks
+        from src.domains.llms.services import get_active_download_tracker
+        tracker = get_active_download_tracker(job_id)
+        if tracker:
+            tracker.cancel()
+            logger.info(f"Signaled cancellation for download job {job_id}")
+        else:
+            logger.warning(f"No active download tracker found for job {job_id}, proceeding with cleanup")
+
+        # Clean up immediately in both cases
+        job_repo.update_status(job, "cancelled")
+        job_repo.cleanup_job_files(job)
+        llm_repo.delete(llm)
+        db.commit()
+            
+        return {
+            "message": "Download cancellation initiated",
+            "job_id": job_id,
+            "status": "cancelling"
+        }
     
     except (DownloadJobNotFoundException, ModelNotFoundException, InvalidInputException, StateConflictException):
         raise

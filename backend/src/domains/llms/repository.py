@@ -26,7 +26,7 @@ import os
 import shutil
 import time
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Optional, List, TYPE_CHECKING
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -42,6 +42,9 @@ from src.core.exceptions import (
     DatabaseException,
     FileSystemException,
 )
+
+if TYPE_CHECKING:
+    from src.domains.llms.services import ProgressTracker, DownloadTracker
 
 
 class Llm_Repository:
@@ -404,22 +407,28 @@ class Download_Job_Repository:
                 logger.debug(f"Removed final directory: {job.final_local_model_link}")
 
 
-def update_db_with_progress(job_tracker, job_id: int, model_id: int) -> None:
-    """Background thread function that polls DownloadTracker and persists progress to database.
+def update_db_with_progress(
+    progress_tracker: 'ProgressTracker',
+    job_id: int,
+    model_id: int,
+    download_tracker: Optional['DownloadTracker'] = None
+) -> None:
+    """Background thread function that polls progress trackers and persists to database.
 
-    Runs in daemon thread (started by download_llm service). Loops at 1Hz polling job.percent,
-    updates DownloadJobModel row with progress/ETA/elapsed time. On completion, sets
-    status="completed" and llm.local=1. On exception, marks status="failed" and cleans
-    up temp files and LLM entry.
+    Runs in daemon thread (started by download_llm service). Loops at 1Hz polling
+    progress.percent, updates DownloadJobModel row with progress/ETA/elapsed time.
+    On completion or cancellation, updates status accordingly. For completion, sets
+    status="completed" and llm.local=1. For cancellation or failure, cleans up.
 
-    This function is repository-level because its only job is database interaction. It runs
-    in a separate thread with its own SessionLocal() instance to avoid SQLAlchemy threading
-    conflicts with the main request thread.
+    This function is repository-level because its only job is database interaction.
+    It runs in a separate thread with its own SessionLocal() instance to avoid
+    SQLAlchemy threading conflicts with the main request thread.
 
     Args:
-        job_tracker: DownloadTracker instance to poll for progress state (from services.py).
+        progress_tracker: ProgressTracker instance monitoring download progress.
         job_id: Database primary key of DownloadJobModel to update.
         model_id: LLM ID to mark local=1 on successful completion.
+        download_tracker: Optional DownloadTracker for cancellation support.
 
     Warning:
         Runs in separate thread - uses separate SessionLocal() instance to avoid
@@ -428,11 +437,12 @@ def update_db_with_progress(job_tracker, job_id: int, model_id: int) -> None:
 
     Example:
         >>> import threading
-        >>> from src.domains.llms.services import DownloadTracker
+        >>> from src.domains.llms.services import ProgressTracker, DownloadTracker
+        >>> progress = ProgressTracker()
         >>> tracker = DownloadTracker()
         >>> threading.Thread(
         ...     target=update_db_with_progress,
-        ...     args=(tracker, 42, 15),
+        ...     args=(progress, 42, 15, tracker),
         ...     daemon=True
         ... ).start()
     """
@@ -445,15 +455,41 @@ def update_db_with_progress(job_tracker, job_id: int, model_id: int) -> None:
             return
 
         start_time = datetime.utcnow()
-        # Loop until download completes
-        while job_tracker.percent < 100.0:
+        # Loop until download completes or is cancelled
+        while progress_tracker.percent < 100.0:
+            if download_tracker and not download_tracker.should_continue():
+                logger.info(f"Job {job_id} cancelled by user")
+                dbj.status = "cancelled"
+                dbj.total_time_elapsed = (datetime.utcnow() - start_time).total_seconds()
+                session.commit()
+                return
+            
             time.sleep(1)
-            dbj.total_bytes = job_tracker.total_bytes
-            dbj.progress = job_tracker.percent
+            dbj.total_bytes = progress_tracker.total_bytes
+            dbj.progress = progress_tracker.percent
             dbj.total_time_elapsed = (datetime.utcnow() - start_time).total_seconds()
-            dbj.time_left = job_tracker.eta_seconds or 0.0
+            dbj.time_left = progress_tracker.eta_seconds or 0.0
             session.commit()
             logger.debug(f"Job {job_id}: {dbj.progress:.2f}% complete")
+        
+        # Handle cancellation cleanup if cancelled
+        if download_tracker and download_tracker.cancelled:
+            logger.info(f"Job {job_id} was cancelled")
+            dbj.status = "cancelled"
+            
+            # Clean up temp files
+            if dbj.temp_local_model_link and os.path.exists(dbj.temp_local_model_link):
+                shutil.rmtree(dbj.temp_local_model_link, ignore_errors=True)
+                logger.debug(f"Cleaned up temp directory: {dbj.temp_local_model_link}")
+            
+            if dbj.final_local_model_link and os.path.exists(dbj.final_local_model_link):
+                shutil.rmtree(dbj.final_local_model_link, ignore_errors=True)
+                logger.debug(f"Cleaned up final directory: {dbj.final_local_model_link}")
+            
+            # Delete the temp LLM entry
+            session.delete(llm)
+            session.commit()
+            return
 
         # Finalize job state
         dbj.progress = 100.0
