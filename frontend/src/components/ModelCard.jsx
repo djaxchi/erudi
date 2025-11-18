@@ -2,6 +2,7 @@ import React from "react";
 import PropTypes from "prop-types";
 import GradientBox from "./GradientBox";
 import { Download, Info, BookOpen, MessageSquare, Plus, Trash2 } from "lucide-react";
+import { useDownloadModal } from '../contexts/DownloadModalContext';
 
 /**
  * ModelCard component - displays model information with actions
@@ -24,11 +25,23 @@ function ModelCard({
   onDelete,
   onClick,
 }) {
+  const { open } = useDownloadModal();
+  const handleDownload = () => {
+    if (model) {
+      open(model, {
+        onComplete: () => onDownload && onDownload(model),
+        onError: (error) => console.error("Download error:", error)
+      });
+    } else if (type === "add" && onDownload) {
+      onDownload();
+    }
+  };
+
   if (type === "add") {
     return (
       <GradientBox
         className="bg-[#1a1a1a]/60 backdrop-blur-sm border border-white/10 border-dashed cursor-pointer hover:border-white/30 transition-colors"
-        onClick={onDownload}
+        onClick={handleDownload}
       >
         <div className="flex flex-col items-center justify-center h-full text-center min-h-[160px]">
           <Plus className="w-8 h-8 text-white/60 mb-3" />

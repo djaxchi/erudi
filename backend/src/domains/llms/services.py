@@ -52,14 +52,55 @@ Example:
 
 import os, time, threading, shutil, asyncio
 from threading import Lock
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
 
 from huggingface_hub import HfApi, HfFileSystem
 from fsspec.callbacks import Callback
 
+from src.domains.llms.cleanup import cleanup_partial_download
+
 from src.database.core import SessionLocal
 from src.domains.llms.repository import update_db_with_progress
 from src.entities.Llm import Llm
+from src.domains.llms.download_tracker import DownloadTracker
+
+# Global registry of active downloads
+_active_downloads: Dict[int, DownloadTracker] = {}
+_downloads_lock = threading.Lock()
+
+def register_download_tracker(job_id: int, tracker: DownloadTracker) -> None:
+    """Register a new download tracker for a job.
+    
+    Args:
+        job_id: Database ID of the download job
+        tracker: DownloadTracker instance to register
+    """
+    with _downloads_lock:
+        _active_downloads[job_id] = tracker
+        logger.debug(f"Registered download tracker for job {job_id}")
+        
+def unregister_download_tracker(job_id: int) -> None:
+    """Remove a download tracker after job completion/failure.
+    
+    Args:
+        job_id: Database ID of the download job
+    """
+    with _downloads_lock:
+        if job_id in _active_downloads:
+            _active_downloads.pop(job_id)
+            logger.debug(f"Unregistered download tracker for job {job_id}")
+
+def get_active_download_tracker(job_id: int) -> Optional[DownloadTracker]:
+    """Get the download tracker for an active job.
+    
+    Args:
+        job_id: Database ID of the download job
+        
+    Returns:
+        DownloadTracker if job is active, None otherwise
+    """
+    with _downloads_lock:
+        return _active_downloads.get(job_id)
 
 from src.core.config import HF_TOKEN
 from src.core import config
@@ -98,7 +139,7 @@ def get_quantized_model_link(original_link: str) -> str:
     return quantized_link
 
 
-class DownloadTracker:
+class ProgressTracker:
     """Thread-safe progress tracker for multi-file downloads with ETA estimation.
 
     Aggregates downloaded bytes across concurrent file transfers and periodically
@@ -111,7 +152,7 @@ class DownloadTracker:
         eta_seconds: Estimated seconds remaining (None until first ETA computation).
 
     Example:
-        >>> tracker = DownloadTracker()
+        >>> tracker = ProgressTracker()
         >>> tracker.total_bytes = 1_000_000_000
         >>> tracker.update(50_000_000)
         >>> print(tracker.percent)
@@ -263,7 +304,7 @@ async def download_llm(
     model_id: int,
     temp_save_dir: str,
     final_save_dir: str,
-    job_id: Optional[int] = None
+    job_id: Optional[int] = None,
 ) -> str:
     """Download HuggingFace model with progress tracking and engine-specific quantization.
 
@@ -279,10 +320,13 @@ async def download_llm(
         job_id: Optional DownloadJobModel ID for progress tracking (spawns background thread).
 
     Returns:
-        Path to temp_save_dir (note: may be deleted if quantization successful).
+        Path to final_save_dir containing the ready-to-use model.
 
     Raises:
-        Exception: If HuggingFace API fails, download fails, or quantization fails.
+        HuggingFaceAPIException: If API or download operations fail
+        QuantizationException: If model quantization fails
+        FileSystemException: If file operations fail
+        asyncio.CancelledError: If download is cancelled by user
 
     Example:
         >>> final_path = await download_llm(
@@ -312,36 +356,108 @@ async def download_llm(
     else:
         logger.info(f"Model will be quantized locally after download")
 
-    # Initialize HF API & filesystem
-    api = HfApi(token=HF_TOKEN)
-    fs = HfFileSystem(token=HF_TOKEN)
+    # Initialize variables
+    tracker = None
+    progress = None
+    callback = None
+    eta_task = None
 
-    # Initialize tracking
-    job = DownloadTracker()
+    try:
+        # Initialize HF clients
+        api = HfApi(token=HF_TOKEN)
+        fs = HfFileSystem(token=HF_TOKEN)
 
-    # Gather file sizes and compute total
-    info = api.repo_info(actual_download_link, files_metadata=True)
-    file_sizes = {
-        s.rfilename: s.size
-        for s in info.siblings
-        if s.size and s.rfilename not in FILES_TO_EXCLUDE
-    }
-    job.total_bytes = sum(file_sizes.values())
-    logger.info(f"Total size: {job.total_bytes} bytes")
+        # Initialize tracking components
+        tracker = DownloadTracker()
+        progress = ProgressTracker()
 
-    # Create progress callback
-    callback = make_callback(job)
-    callback.set_size(job.total_bytes)
+        # Register tracker for cancellation support
+        if job_id is not None:
+            register_download_tracker(job_id, tracker)
 
-    # Start DB updater if requested
-    if job_id is not None:
-        threading.Thread(
-            target=update_db_with_progress,
-            args=(job, job_id, model_id),
-            daemon=True
-        ).start()
+        # Get model metadata and compute size
+        info = api.repo_info(actual_download_link, files_metadata=True)
+        file_sizes = {
+            s.rfilename: s.size
+            for s in info.siblings
+            if s.size and s.rfilename not in FILES_TO_EXCLUDE
+        }
+        
+        progress.total_bytes = sum(file_sizes.values())
+        logger.info(f"Total size: {progress.total_bytes} bytes")
 
-    # Start ETA monitoring
+        # Set up progress tracking
+        callback = make_callback(progress)
+        callback.set_size(progress.total_bytes)
+
+        # Start DB updater if requested
+        if job_id is not None:
+            threading.Thread(
+                target=update_db_with_progress,
+                args=(progress, job_id, model_id, tracker),
+                daemon=True
+            ).start()
+
+    except Exception as e:
+        logger.error(f"Failed to initialize download tracking: {e}")
+        cleanup_partial_download(temp_save_dir, final_save_dir)
+        if job_id is not None and tracker is not None:
+            unregister_download_tracker(job_id)
+        raise HuggingFaceAPIException(f"Failed to initialize download: {e}")
+
+    try:
+        # Start ETA monitoring
+        eta_task = asyncio.create_task(progress.monitor_eta(interval=5.0))
+
+        # Download files with cancellation checks
+        download_tasks = []
+        loop = asyncio.get_running_loop()
+        
+        for repo_id, path in file_sizes.items():
+            if not tracker.should_continue():
+                raise asyncio.CancelledError("Download cancelled by user")
+            
+            remote = f"{actual_download_link}/{repo_id}"
+            dest = os.path.join(temp_save_dir, repo_id)
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            download_tasks.append(
+                loop.run_in_executor(None, fs.get_file, remote, dest, callback)
+            )
+
+        # Wait for all downloads
+        await asyncio.gather(*download_tasks)
+        await eta_task
+
+        if not tracker.should_continue():
+            raise asyncio.CancelledError("Download cancelled by user")
+
+        # Handle quantization if needed
+        if not is_prequantized:
+            logger.info("Starting quantization process")
+            await config.LLM_Engine.quant_and_save_from_hf_format(
+                temp_save_dir, final_save_dir
+            )
+            # Clean up temp directory after successful quantization
+            shutil.rmtree(temp_save_dir, ignore_errors=True)
+            return final_save_dir
+        else:
+            # For pre-quantized models, move files directly
+            shutil.move(temp_save_dir, final_save_dir)
+            return final_save_dir
+
+    except asyncio.CancelledError as e:
+        logger.info(f"Download cancelled: {e}")
+        cleanup_partial_download(temp_save_dir, final_save_dir)
+        raise
+
+    except Exception as e:
+        logger.exception(f"Download failed: {e}")
+        cleanup_partial_download(temp_save_dir, final_save_dir)
+        raise
+
+    finally:
+        if job_id is not None:
+            unregister_download_tracker(job_id)    # Start ETA monitoring
     eta_task = asyncio.create_task(job.monitor_eta(interval=5.0))
 
     # Split tasks into misc and shard files

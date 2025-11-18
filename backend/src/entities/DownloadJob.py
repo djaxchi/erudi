@@ -31,7 +31,7 @@ class DownloadJobModel(Base):
         remote_model_link: HuggingFace URL or API endpoint.
         temp_local_model_link: Temp directory for full-precision download.
         final_local_model_link: Final directory for quantized model.
-        status: Job state - "pending", "running", "completed", "failed", "cancelled".
+        status: Job state - "pending", "running", "completed", "failed", "cancelling", "cancelled".
         error_message: Exception message if status="failed".
         created_at: Job creation timestamp (server default).
         updated_at: Last status update timestamp (auto-updated).
@@ -41,7 +41,7 @@ class DownloadJobModel(Base):
         time_left: Estimated seconds remaining.
 
     Constraints:
-        - status must be one of: pending, running, completed, failed, cancelled.
+        - status must be one of: pending, running, completed, failed, cancelling, cancelled.
         - progress must be between 0.0 and 100.0.
         - total_bytes, total_time_elapsed, time_left must be non-negative.
         - remote_model_id and remote_model_link must not be empty.
@@ -82,7 +82,7 @@ class DownloadJobModel(Base):
         Raises:
             ValueError: If status is not in allowed list.
         """
-        allowed = ["pending", "running", "completed", "failed", "cancelled"]
+        allowed = ["pending", "running", "completed", "failed", "cancelled", "cancelling"]
         if value not in allowed:
             raise ValueError(f"Invalid status: {value}. Must be one of {allowed}")
         return value
