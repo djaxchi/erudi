@@ -70,13 +70,16 @@ const startRealBackend = () => {
       log("Development mode: assuming backend is running via dev-start.sh");
       // Just check if backend is responding
       const checkDevBackendHealth = async () => {
+        const devPort = process.env.BACKEND_PORT || "8765";
+        log(`Dev mode using port: ${devPort}`);
+        
         for (let i = 0; i < 10; i++) {
           try {
             log(`Dev backend health check attempt ${i + 1}/10`);
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2000);
 
-            const response = await fetch("http://127.0.0.1:8765/erudi/health/", {
+            const response = await fetch(`http://127.0.0.1:${devPort}/erudi/health/`, {
               signal: controller.signal,
             });
             clearTimeout(timeoutId);
@@ -96,8 +99,8 @@ const startRealBackend = () => {
         }
 
         // If we get here, backend is not responding
-        log("Backend is not responding. Make sure to run: ./build-scripts/dev-start.sh");
-        reject(new Error("Backend is not responding on localhost:8765"));
+        log(`Backend is not responding. Make sure to run: ./build-scripts/dev-start.sh or set BACKEND_PORT env variable`);
+        reject(new Error(`Backend is not responding on localhost:${devPort}`));
       };
 
       checkDevBackendHealth();
@@ -107,7 +110,7 @@ const startRealBackend = () => {
     // Production mode: spawn packaged backend
     const PORT = 8765;
 
-    // Backend will handle port selection (8765-8799)
+    // Backend will handle port selection (8765-8864)
     let backendPath;
     if (app.isPackaged) {
       backendPath = resolvePackagedBackendPath();
