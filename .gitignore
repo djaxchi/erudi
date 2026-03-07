@@ -12,6 +12,14 @@ build/
 .DS_Store
 Thumbs.db
 
+# SQLite runtime files
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Temp files
+*.tmp
+
 *.vscode
 
 # Documentation build artifacts

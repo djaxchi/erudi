@@ -113,5 +113,9 @@ async def query_arena(
     
     return StreamingResponse(
         service.query_llm_stream(llm_id, payload),
-        media_type="text/plain"
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )

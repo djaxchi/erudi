@@ -649,7 +649,7 @@ class CPU_Engine(BaseEngine):
             disk_total = disk_available = disk_usage_pct = None
             if psutil:
                 try:
-                    disk = psutil.disk_usage('/')
+                    disk = psutil.disk_usage(os.path.abspath(os.sep))
                     disk_total = round(disk.total / (1024**3), 2)
                     disk_available = round(disk.free / (1024**3), 2)
                     disk_usage_pct = round(disk.percent, 2)

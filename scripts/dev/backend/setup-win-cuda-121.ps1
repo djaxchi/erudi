@@ -1,25 +1,7 @@
 # Erudi Backend Setup Script - Windows CUDA 12.1
 # Supports both development and production environments
 # Compatible with interactive use and CI/CD pipelines
-# Requi# Success message
-Write-Host ''
-Write-Success '? Environment setup complete!'
-Write-Host ''
-Write-Host "Environment: $($installTypeChoice.ToUpper())"
-Write-Host "Python: $version"
-Write-Host "Virtual env: $venvPath"
-Write-Host ''
-if ($currentDir -ne 'backend') {
-    Write-Host 'Next steps:'
-    Write-Host '  1. cd backend'
-    Write-Host '  2. .\venv\Scripts\Activate.ps1'
-    Write-Host '  3. uvicorn src.main:app --reload'
-} else {
-    Write-Host 'Next steps:'
-    Write-Host '  1. .\venv\Scripts\Activate.ps1'
-    Write-Host '  2. uvicorn src.main:app --reload'
-}
-Write-Host ''+, CUDA 12.1
+# Requires: Python 3.9+, CUDA 12.1
 
 param(
     [string]$InstallType = ""
@@ -187,11 +169,90 @@ if (Is-CIMode) {
 
 # Success message
 Write-Host ""
-Write-Success "? Environment setup complete!"
+Write-Success "Python environment setup complete!"
 Write-Host ""
 Write-Host "Environment: $($installTypeChoice.ToUpper())"
 Write-Host "Python: $version"
 Write-Host "Virtual env: $venvPath"
+Write-Host ""
+
+# -------- CUDA Toolkit Verification --------
+Write-Status "Verifying CUDA 12.1 toolkit installation..."
+
+$CudaBin = $null
+foreach ($candidate in @($env:CUDA_PATH_V12_1, $env:CUDA_PATH, "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1")) {
+    if ($candidate -and (Test-Path (Join-Path $candidate "bin\nvcc.exe"))) {
+        $CudaBin = Join-Path $candidate "bin"
+        break
+    }
+}
+
+if (-not $CudaBin) {
+    Write-Host ""
+    Write-Host "[WARNING] CUDA 12.1 toolkit not detected." -ForegroundColor Yellow
+    Write-Host "  Install from: https://developer.nvidia.com/cuda-12-1-0-download-archive" -ForegroundColor Yellow
+    Write-Host "  llama-server will NOT be able to use GPU acceleration without it." -ForegroundColor Yellow
+    Write-Host ""
+} else {
+    Write-OK "CUDA toolkit found: $CudaBin"
+
+    # Check if CUDA bin is on system PATH
+    $pathEntries = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") -split ";"
+    $cudaOnPath = $pathEntries | Where-Object { $_ -eq $CudaBin -or $_ -eq $CudaBin.TrimEnd("\") }
+
+    if (-not $cudaOnPath) {
+        Write-Host ""
+        Write-Host "[NOTE] CUDA bin directory is NOT on your system PATH." -ForegroundColor Yellow
+        Write-Host "  The engine handles this at runtime, but adding it to PATH is recommended." -ForegroundColor Yellow
+        Write-Host "  To add permanently, run (as Administrator):" -ForegroundColor Yellow
+        Write-Host "    [System.Environment]::SetEnvironmentVariable('PATH', `$env:PATH + ';$CudaBin', 'Machine')" -ForegroundColor Yellow
+        Write-Host ""
+    } else {
+        Write-OK "CUDA bin is on system PATH"
+    }
+}
+
+# -------- llama.cpp Build Step --------
+Write-Status "Checking llama.cpp CUDA build..."
+
+if ($currentDir -eq "backend") {
+    $llamaServerPath = ".\artifacts\llama-cpp\cuda\bin\llama-server.exe"
+    $buildScript = "..\scripts\dev\backend\build-llamacpp-cuda-win.ps1"
+} else {
+    $llamaServerPath = ".\backend\artifacts\llama-cpp\cuda\bin\llama-server.exe"
+    $buildScript = ".\scripts\dev\backend\build-llamacpp-cuda-win.ps1"
+}
+
+if (Test-Path $llamaServerPath) {
+    Write-OK "llama-server.exe already built at: $llamaServerPath"
+    Write-Host "  To rebuild, run: $buildScript"
+} else {
+    Write-Host ""
+    Write-Host "llama-server.exe not found. GPU inference requires a compiled build." -ForegroundColor Yellow
+
+    if (-not (Is-CIMode)) {
+        $buildChoice = Read-Host "Run the llama.cpp CUDA build script now? [Y/n]"
+        if ([string]::IsNullOrEmpty($buildChoice)) { $buildChoice = "Y" }
+
+        if ($buildChoice -match "^[Yy]") {
+            Write-Status "Launching llama.cpp CUDA build..."
+            & $buildScript
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "[WARNING] Build failed. You can retry manually: $buildScript" -ForegroundColor Yellow
+            } else {
+                Write-OK "llama.cpp CUDA build completed successfully."
+            }
+        } else {
+            Write-Host ""
+            Write-Host "Skipped. Run later with: $buildScript" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Status "CI mode: Skipping interactive build. Run $buildScript as a separate step."
+    }
+}
+
+Write-Host ""
+Write-Host "------------------------------------------------------"
 Write-Host ""
 if ($currentDir -ne "backend") {
     Write-Host "Next steps:"
