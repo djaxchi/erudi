@@ -641,7 +641,7 @@ class MLX_Engine(BaseEngine):
             memory_pressure = 1.0 - (vm.available / vm.total)
             
             # Get storage info
-            disk = psutil.disk_usage('/')
+            disk = psutil.disk_usage(os.path.abspath(os.sep))
             disk_total_gb = disk.total / (1024**3)
             disk_available_gb = disk.free / (1024**3)
             disk_usage_pct = disk.percent

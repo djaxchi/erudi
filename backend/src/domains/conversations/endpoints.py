@@ -111,6 +111,7 @@ from src.domains.conversations.schemas import (
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.conversations.services import ConversationService
 
+
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 
@@ -534,7 +535,11 @@ async def generate_title(
     """Generate a title for the conversation based on the first message."""
     return StreamingResponse(
         service.generate_title_stream(conversation_id, payload.question),
-        media_type="text/plain"
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -580,7 +585,11 @@ async def query_and_respond(
     """Query the conversation and get a streaming response."""
     return StreamingResponse(
         service.query_and_respond_stream(conversation_id, payload),
-        media_type="text/plain"
+        media_type="text/plain",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

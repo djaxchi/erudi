@@ -624,6 +624,13 @@ const createWindow = () => {
   mainWindow.webContents.session.clearCache();
 
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    // Skip header modification for backend API responses to preserve
+    // chunked transfer-encoding and avoid buffering streaming responses.
+    if (details.url.includes("/erudi/")) {
+      callback({ cancel: false });
+      return;
+    }
+
     callback({
       responseHeaders: {
         ...details.responseHeaders,

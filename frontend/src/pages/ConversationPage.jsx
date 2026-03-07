@@ -40,6 +40,13 @@ export default function ConversationPage() {
   const [firstReplyPending, setFirstReplyPending] = useState(false);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
 
+  // Refs to avoid putting messages.length in useCallback deps, which
+  // would cascade into the loadConversationData useEffect and overwrite
+  // in-flight streaming state with stale DB data.
+  const messagesLengthRef = useRef(0);
+  messagesLengthRef.current = messages.length;
+  const isStreamingRef = useRef(false);
+
   const toggleSidebar = () => {
     setCollapsed((prev) => !prev);
   };
@@ -133,8 +140,9 @@ export default function ConversationPage() {
       const customPromptToUse = explicitCustomPrompt !== null ? explicitCustomPrompt : customPrompt;
 
       setLoading(true);
+      isStreamingRef.current = true;
 
-      const isFirstMessage = messages.length === 0;
+      const isFirstMessage = messagesLengthRef.current === 0;
 
       if (isFirstMessage) {
         setCurrentTitle("");
@@ -173,23 +181,20 @@ export default function ConversationPage() {
 
                 while (true) {
                   const { done, value } = await reader.read();
-                  if (done) {
-                    break;
-                  }
+                  if (done) break;
 
                   const chunk = decoder.decode(value, { stream: true });
                   fullTitle += chunk;
 
-                  setCurrentTitle((prev) => {
-                    const newTitle = prev + chunk;
+                  setCurrentTitle(() => {
                     setConversations((prevConvs) =>
                       prevConvs.map((conv) =>
                         conv.id === Number(id)
-                          ? { ...conv, name: newTitle.trim() || "New Conversation" }
+                          ? { ...conv, name: fullTitle.trim() || "New Conversation" }
                           : conv
                       )
                     );
-                    return newTitle;
+                    return fullTitle;
                   });
                 }
               }
@@ -199,6 +204,7 @@ export default function ConversationPage() {
           })();
         }
 
+        // Stream response using fetch + ReadableStream
         const responseRes = await fetch(`${API_BASE_URL}/conversations/${id}/query`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -214,16 +220,16 @@ export default function ConversationPage() {
         if (responseRes.ok) {
           const reader = responseRes.body.getReader();
           const decoder = new TextDecoder("utf-8");
+          let fullText = "";
           let gotFirstChunk = false;
 
           try {
             while (true) {
               const { done, value } = await reader.read();
-              if (done) {
-                break;
-              }
+              if (done) break;
 
               const chunk = decoder.decode(value, { stream: true });
+              fullText += chunk;
 
               if (!gotFirstChunk) {
                 gotFirstChunk = true;
@@ -231,35 +237,35 @@ export default function ConversationPage() {
                 setFirstReplyPending(false);
               }
 
-              assistantMessage.content += chunk;
+              const currentText = fullText;
               setMessages((prev) =>
                 prev.map((msg) =>
                   msg.id === assistantMessage.id
-                    ? { ...msg, content: assistantMessage.content }
+                    ? { ...msg, content: currentText }
                     : msg
                 )
               );
             }
           } catch (streamError) {
             log.error("Streaming error during response generation", streamError);
-
-            // If streaming failed mid-way, append an error note with robust header
-            assistantMessage.content +=
+            fullText +=
               "\n\n[ERROR_MESSAGE_SYSTEM] Connection interrupted while generating response.";
             setMessages((prev) =>
               prev.map((msg) =>
-                msg.id === assistantMessage.id ? { ...msg, content: assistantMessage.content } : msg
+                msg.id === assistantMessage.id
+                  ? { ...msg, content: fullText }
+                  : msg
               )
             );
-
-            try {
-              await fetch(`${API_BASE_URL}/conversations/${id}/store_error_message`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-              });
-            } catch (storeError) {
-              log.error("Failed to store error message", storeError);
-            }
+          } finally {
+            assistantMessage.content = fullText;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessage.id
+                  ? { ...msg, content: fullText }
+                  : msg
+              )
+            );
           }
         } else {
           log.error("Server error during response generation", { status: responseRes.status });
@@ -269,11 +275,10 @@ export default function ConversationPage() {
               method: "POST",
               headers: { "Content-Type": "application/json" },
             });
-            log.log("Error message stored in database");
           } catch (storeError) {
             log.error("Failed to store error message", storeError);
           }
-          // Update the assistant message with error content using robust header
+
           assistantMessage.content =
             "[ERROR_MESSAGE_SYSTEM] I apologize, but I encountered an error while generating a response. Please try asking your question again.";
           setMessages((prev) =>
@@ -286,6 +291,7 @@ export default function ConversationPage() {
         log.error("Failed to send message", err);
       }
 
+      isStreamingRef.current = false;
       await fetchMessagesAndConversations();
 
       if (isFirstMessage) {
@@ -295,7 +301,7 @@ export default function ConversationPage() {
 
       setLoading(false);
     },
-    [id, fetchMessagesAndConversations, messages.length]
+    [id, fetchMessagesAndConversations]
   );
 
   const handleAsk = useCallback(
@@ -311,7 +317,17 @@ export default function ConversationPage() {
       return;
     }
 
+    // Don't overwrite in-flight streaming state with stale DB data
+    if (isStreamingRef.current) {
+      return;
+    }
+
     const loadConversationData = async () => {
+      // Re-check inside async in case streaming started between effect trigger and execution
+      if (isStreamingRef.current) {
+        return;
+      }
+
       try {
         const [convRes, msgRes, convDetailRes] = await Promise.all([
           fetch(`${API_BASE_URL}/conversations/`),
@@ -451,7 +467,7 @@ export default function ConversationPage() {
     }
   }, [messages, userScrolledUp]);
 
-  const handleConversationClick = (newId) => navigate(`erudi/conversations/${newId}`);
+  const handleConversationClick = (newId) => navigate(`/erudi/conversations/${newId}`);
 
   const handleRename = (cid, newName) =>
     setConversations((prev) => prev.map((c) => (c.id === cid ? { ...c, name: newName } : c)));

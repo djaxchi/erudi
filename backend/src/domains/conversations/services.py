@@ -58,10 +58,7 @@ Warning:
 Services for managing conversations and message processing.
 All business logic resides here. No direct database access.
 """
-import asyncio
-import threading
-from contextlib import suppress
-from typing import List, Tuple, Optional, AsyncGenerator, Callable, Iterator
+from typing import List, Tuple, Optional, Generator
 
 from src.core.logging import logger
 from src.core import config
@@ -302,58 +299,60 @@ class ConversationService:
         
         return message.id
 
-    async def generate_title_stream(
+    def generate_title_stream(
         self,
         conversation_id: int,
         question: str
-    ) -> AsyncGenerator[str, None]:
-        """
-        Generate a title for the conversation based on the first message.
-        
+    ) -> Generator[str, None, None]:
+        """Generate a title for the conversation based on the first message.
+
+        Sync generator — Starlette runs each ``next()`` call in a threadpool
+        and flushes the yielded chunk to the HTTP response immediately.
+
         Args:
-            conversation_id: ID of the conversation
-            question: The user's question to base the title on
-            
+            conversation_id: ID of the conversation.
+            question: The user's question to base the title on.
+
         Yields:
-            Title text chunks
+            Title text chunks.
         """
         logger.info(f"Generating title for conversation {conversation_id}")
-        
+
         # Get conversation and LLM
         conversation = self.conversation_repo.get_conversation_by_id(conversation_id)
         llm = self.conversation_repo.get_llm_by_id(conversation.llm_id)
-        
+
         # Early return if question is empty
         if not question or question.strip() == "":
             conversation.name = "New Conversation"
             self.db.commit()
             return
-        
+
         # Load model
         model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(
             llm_id=llm.id,
             llm_local_path=llm.link
         )
-        
+
         # Build title generation prompt
         prompt = self._build_title_prompt(question, llm.type)
-        
+
         # Generate title
         generated_title = ""
         temp = 0.5 if llm.type == "mistral" else 1.0
         nucleus = 0.9 if llm.type == "mistral" else 0.95
         max_tok = 12
-        stream_factory = lambda: config.LLM_Engine.generate_stream(
-            model=model,
-            tokenizer=tokenizer,
-            prompt=prompt,
-            temperature=temp,
-            top_p=nucleus,
-            max_tokens=max_tok,
-            repetition_penalty=1.2,
-        )
+
         try:
-            async for new_text in self._stream_blocking_generator(stream_factory):
+            for new_text in config.LLM_Engine.generate_stream(
+                model=model,
+                tokenizer=tokenizer,
+                prompt=prompt,
+                temperature=temp,
+                top_p=nucleus,
+                max_tokens=max_tok,
+                repetition_penalty=1.2,
+            ):
                 logger.debug(f"[TitleGen Stream] token: {new_text}")
                 generated_title += new_text
                 yield new_text
@@ -366,49 +365,52 @@ class ConversationService:
             self.db.commit()
             logger.info(f"Title generated and saved: {conversation.name}")
 
-    async def query_and_respond_stream(
+    def query_and_respond_stream(
         self,
         conversation_id: int,
         payload: ConversationQuery
-    ) -> AsyncGenerator[str, None]:
-        """
-        Process a query and stream the response.
-        
+    ) -> Generator[str, None, None]:
+        """Process a query and stream the response token-by-token.
+
+        Sync generator — Starlette runs each ``next()`` call in a threadpool
+        and flushes the yielded chunk to the HTTP response immediately,
+        enabling real-time token streaming to the frontend.
+
         Args:
-            conversation_id: ID of the conversation
-            payload: Query payload with question and parameters
-            
+            conversation_id: ID of the conversation.
+            payload: Query payload with question and parameters.
+
         Yields:
-            Response text chunks
+            Response text chunks (individual tokens).
         """
         logger.info(f"Processing query for conversation {conversation_id}")
-        
+
         # Get conversation and LLM
         conversation = self.conversation_repo.get_conversation_by_id(conversation_id)
         llm = self.conversation_repo.get_llm_by_id(conversation.llm_id)
-        
+
         # Store user message
         user_message = self.message_repo.create_message(
             conversation_id=conversation_id,
             sender="user",
             content=payload.question
         )
-        
+
         # Update conversation timestamp
         self.conversation_repo.update_last_message_time(conversation_id)
-        
+
         # Commit user message immediately so it's visible
         self.db.commit()
-        
+
         # Get prompting strategy
         strategy = get_prompting_strategy(llm.param_size)
         logger.info(f"Using prompting strategy for {llm.param_size}B model: {strategy}")
-        
+
         # Get conversation history (excluding the just-added user message)
         full_history = self.message_repo.get_conversation_history(conversation_id)
         if full_history and full_history[-1][0] == "user":
             full_history = full_history[:-1]
-        
+
         # Retrieve context
         context = self.context_manager.retrieve_context(
             query=payload.question,
@@ -420,10 +422,10 @@ class ConversationService:
             n_last_turns=payload.n_last_turns_to_get or strategy["max_history_turns"],
             model_type=llm.type
         )
-        
+
         # Get starred messages
         starred_messages = self.message_repo.get_starred_messages(conversation_id)
-        
+
         # Build prompt
         final_prompt = self._build_query_prompt(
             question=payload.question,
@@ -434,27 +436,26 @@ class ConversationService:
             strategy=strategy,
             custom_prompt=payload.custom_prompt
         )
-        
+
         # Load model
         model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(
             llm_id=llm.id,
             llm_local_path=llm.link
         )
-        
+
         # Generate response
         assistant_response = ""
-        stream_factory = lambda: config.LLM_Engine.generate_stream(
-            model=model,
-            tokenizer=tokenizer,
-            prompt=final_prompt,
-            max_tokens=payload.max_new_tokens or 1024,
-            temperature=payload.temperature,
-            top_p=payload.top_p,
-            repetition_penalty=1.2,
-            repetition_context_size=payload.max_new_tokens or 1024,
-        )
         try:
-            async for text in self._stream_blocking_generator(stream_factory):
+            for text in config.LLM_Engine.generate_stream(
+                model=model,
+                tokenizer=tokenizer,
+                prompt=final_prompt,
+                max_tokens=payload.max_new_tokens or 1024,
+                temperature=payload.temperature,
+                top_p=payload.top_p,
+                repetition_penalty=1.2,
+                repetition_context_size=payload.max_new_tokens or 1024,
+            ):
                 assistant_response += text
                 yield text
         except Exception as e:
@@ -472,55 +473,12 @@ class ConversationService:
                 sender="llm",
                 content=assistant_response.strip()
             )
-            
+
             # Update conversation timestamp
             self.conversation_repo.update_last_message_time(conversation_id)
-            
+
             # Commit all changes (user message + assistant message + timestamp)
             self.db.commit()
-
-    async def _stream_blocking_generator(
-        self,
-        generator_factory: Callable[[], Iterator[str]]
-    ) -> AsyncGenerator[str, None]:
-        """
-        Bridge a blocking generator into an async generator using a worker thread.
-        """
-        loop = asyncio.get_running_loop()
-        queue: asyncio.Queue = asyncio.Queue()
-        sentinel = object()
-        stop_event = threading.Event()
-
-        def worker():
-            gen = None
-            try:
-                gen = generator_factory()
-                for chunk in gen:
-                    if stop_event.is_set():
-                        break
-                    loop.call_soon_threadsafe(queue.put_nowait, ("data", chunk))
-            except Exception as exc:
-                loop.call_soon_threadsafe(queue.put_nowait, ("error", exc))
-            finally:
-                if gen and hasattr(gen, "close"):
-                    with suppress(Exception):
-                        gen.close()
-                loop.call_soon_threadsafe(queue.put_nowait, ("done", sentinel))
-
-        thread = threading.Thread(target=worker, daemon=True)
-        thread.start()
-
-        try:
-            while True:
-                kind, payload = await queue.get()
-                if kind == "data":
-                    yield payload
-                elif kind == "error":
-                    raise payload
-                else:
-                    break
-        finally:
-            stop_event.set()
 
     def _build_title_prompt(self, question: str, model_type: str) -> List[dict]:
         """Build prompt for title generation."""

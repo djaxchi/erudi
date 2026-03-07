@@ -1,3 +1,3 @@
---prefer-binary
---extra-index-url https://jllllll.github.io/bitsandbytes-windows-webui
-bitsandbytes==0.46.0 
+# CUDA Windows: build tools + runtime deps.
+# Inference uses llama-server compiled with CUDA (see scripts/dev/backend/build-llamacpp-cuda-win.ps1).
+cmake>=4.1.2
