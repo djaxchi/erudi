@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import PropTypes from "prop-types";
-import { Upload, File, Plus, Folder } from "lucide-react";
+import { Upload, File, X, Plus, Folder } from "lucide-react";
 import GradientBox from "./GradientBox";
 import { createLogger } from "../utils/logger";
 const log = createLogger("DragDropArea");
