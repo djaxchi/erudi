@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require("electron");
 const path = require("node:path");
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 
@@ -11,6 +11,22 @@ const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY = process.env.MAIN_WINDOW_PRELOAD_WEBPAC
 let backendProcess = null;
 let mainWindow = null;
 let isCreatingWindow = false;
+
+// Kill the backend process and its entire child tree.
+// On Windows, SIGTERM only kills the parent — llama-server.exe is left orphaned.
+// taskkill /F /T kills the full process tree.
+function killBackend(proc) {
+  if (!proc) return;
+  if (process.platform === "win32") {
+    try {
+      execSync(`taskkill /F /T /PID ${proc.pid}`, { stdio: "ignore" });
+    } catch (_) {
+      // Process may have already exited
+    }
+  } else {
+    proc.kill("SIGTERM");
+  }
+}
 
 // Create a log file for debugging
 const logFile = path.join(os.tmpdir(), "erudi-backend.log");
@@ -521,7 +537,7 @@ const createApplicationMenu = () => {
                 // Kill backend process first
                 if (backendProcess) {
                   log("Stopping backend process...");
-                  backendProcess.kill("SIGTERM");
+                  killBackend(backendProcess);
                   backendProcess = null;
                 }
 
@@ -617,7 +633,7 @@ const createWindow = () => {
     // Clean up backend on window close
     if (backendProcess) {
       log("Terminating backend process on window close...");
-      backendProcess.kill("SIGTERM");
+      killBackend(backendProcess);
       backendProcess = null;
     }
   });
@@ -839,7 +855,7 @@ app.on("activate", () => {
 app.on("window-all-closed", () => {
   if (backendProcess) {
     log("Shutting down backend process...");
-    backendProcess.kill("SIGTERM");
+    killBackend(backendProcess);
     backendProcess = null;
   }
 
@@ -851,7 +867,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   if (backendProcess) {
     log("Stopping backend process before quit...");
-    backendProcess.kill("SIGTERM");
+    killBackend(backendProcess);
     backendProcess = null;
   }
 });
