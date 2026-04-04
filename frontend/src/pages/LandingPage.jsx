@@ -238,9 +238,12 @@ export default function LandingPage() {
 
   // Derived data from fetched models
   const baseModelNames = [
+    "Gemma-270M",
     "Gemma-1B",
     "Gemma-2B",
     "Gemma-4B",
+    "Gemma-4-E2B",
+    "Gemma-4-E4B",
     "Mistral-7B",
     "Ministral-8B",
     "Gemma-12B",
