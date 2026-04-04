@@ -123,6 +123,9 @@ class CPU_Engine(BaseEngine):
         exe = "llama-server.exe" if os.name == "nt" else "llama-server"
         p = install_dir / exe
         if not p.exists():
+            fallback = ROOT_DIR / "artifacts" / "llama-cpp" / "cuda" / "bin" / exe
+            if fallback.exists():
+                return fallback
             raise EngineException(f"llama-server not found at {p}. Make sure you built llama.cpp correctly.")
         return p
 
@@ -289,6 +292,40 @@ class CPU_Engine(BaseEngine):
                 shutil.copy(file_path, dst / file_path.name)
                 logger.debug(f"[CPU_Engine] Copied auxiliary file: {file_path.name}")
 
+    @classmethod
+    def _run_converter_inprocess(cls, converter: Path, install_dir: Path, src: Path, fp16_gguf: Path) -> int:
+        """Run convert_hf_to_gguf.py in-process (required in PyInstaller frozen mode where
+        sys.executable is backend.exe, not a Python interpreter)."""
+        import importlib.util
+        gguf_pkg = install_dir / "gguf-py"
+        extra_paths = [str(gguf_pkg), str(install_dir)]
+        saved_argv = sys.argv[:]
+        saved_path = sys.path[:]
+        for p in reversed(extra_paths):
+            if p not in sys.path:
+                sys.path.insert(0, p)
+        sys.argv = [str(converter), str(src), "--outtype", "f16", "--outfile", str(fp16_gguf)]
+        try:
+            spec = importlib.util.spec_from_file_location("convert_hf_to_gguf", str(converter))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mod.main()
+            return 0
+        except SystemExit as exc:
+            code = exc.code if exc.code is not None else 0
+            if code != 0:
+                logger.error(f"[CPU_Engine] Converter exited with code {code}")
+            return int(code)
+        except Exception as exc:
+            logger.error(f"[CPU_Engine] In-process conversion failed: {exc}")
+            return 1
+        finally:
+            sys.argv = saved_argv
+            sys.path = saved_path
+            for key in list(sys.modules.keys()):
+                if "convert_hf_to_gguf" in key or key == "gguf" or key.startswith("gguf."):
+                    sys.modules.pop(key, None)
+
     # ---------- Abstract methods (required by BaseEngine) ----------
 
     @classmethod
@@ -397,24 +434,33 @@ class CPU_Engine(BaseEngine):
         
         logger.info(f"[CPU_Engine] Detected SafeTensors model with {len(safetensors)} shard(s), converting to GGUF...")
         
-        # Find llama.cpp converter script
+        # Find llama.cpp converter script (engine-agnostic — fall back to cuda bin)
         converter = cls._default_install_dir() / "convert_hf_to_gguf.py"
         if not converter.exists():
-            raise EngineException(
-                f"Converter script not found: {converter}. "
-                f"Ensure llama.cpp is cloned, built and scripts installed at {cls._default_install_dir()}."
-            )
+            fallback = ROOT_DIR / "artifacts" / "llama-cpp" / "cuda" / "bin" / "convert_hf_to_gguf.py"
+            if fallback.exists():
+                converter = fallback
+            else:
+                raise EngineException(
+                    f"Converter script not found: {converter}. "
+                    f"Ensure llama.cpp is cloned, built and scripts installed at {cls._default_install_dir()}."
+                )
         
         # Convert HF → FP16 GGUF
         fp16_gguf = dst / "model-f16.gguf"
-        cmd_convert = [
-            sys.executable, str(converter),
-            str(src),
-            "--outtype", "f16",
-            "--outfile", str(fp16_gguf)
-        ]
-        logger.info(f"[CPU_Engine] Converting HF → GGUF (FP16): {' '.join(cmd_convert)}")
-        rc = subprocess.call(cmd_convert)
+        install_dir = converter.parent
+        if getattr(sys, 'frozen', False):
+            logger.info(f"[CPU_Engine] Converting HF → GGUF (FP16) in-process: {converter}")
+            rc = cls._run_converter_inprocess(converter, install_dir, src, fp16_gguf)
+        else:
+            cmd_convert = [
+                sys.executable, str(converter),
+                str(src),
+                "--outtype", "f16",
+                "--outfile", str(fp16_gguf)
+            ]
+            logger.info(f"[CPU_Engine] Converting HF → GGUF (FP16): {' '.join(cmd_convert)}")
+            rc = subprocess.call(cmd_convert)
         if rc != 0:
             raise EngineException(
                 f"HuggingFace → GGUF conversion failed with exit code {rc}. "
@@ -428,11 +474,14 @@ class CPU_Engine(BaseEngine):
             # Map q_bits to llama.cpp quantization method
             q_method = "q4_k_m" if q_bits.startswith("4") else "q8_0"
             
-            # Find quantizer binary
-            quant_bin = cls._default_install_dir() / ("llama-quantize.exe" if os.name == "nt" else "llama-quantize")
+            # Find quantizer binary (fall back to cuda bin if cpu bin absent)
+            _qname = "llama-quantize.exe" if os.name == "nt" else "llama-quantize"
+            _qlegacy = "quantize.exe" if os.name == "nt" else "quantize"
+            quant_bin = cls._default_install_dir() / _qname
             if not quant_bin.exists():
-                # Fallback to legacy name
-                quant_bin = cls._default_install_dir() / ("quantize.exe" if os.name == "nt" else "quantize")
+                quant_bin = cls._default_install_dir() / _qlegacy
+            if not quant_bin.exists():
+                quant_bin = ROOT_DIR / "artifacts" / "llama-cpp" / "cuda" / "bin" / _qname
             if not quant_bin.exists():
                 raise EngineException(
                     f"Quantizer binary not found: {quant_bin}. "
@@ -441,15 +490,18 @@ class CPU_Engine(BaseEngine):
             
             # Quantize FP16 → Q4_K_M or Q8_0
             out_q = dst / f"model-{q_method}.gguf"
-            cmd_quant = [str(quant_bin), str(fp16_gguf), str(out_q), q_method]
+            out_q_tmp = dst / f"model-{q_method}.gguf.tmp"
+            cmd_quant = [str(quant_bin), str(fp16_gguf), str(out_q_tmp), q_method]
             logger.info(f"[CPU_Engine] Quantizing GGUF (FP16 → {q_method.upper()}): {' '.join(cmd_quant)}")
             rc = subprocess.call(cmd_quant)
             if rc != 0:
+                out_q_tmp.unlink(missing_ok=True)
                 raise EngineException(
                     f"Quantization failed with exit code {rc}. "
                     "Check logs for details (OOM, unsupported model, etc.)."
                 )
-            
+            # Atomic rename: file only appears at final path when fully written
+            out_q_tmp.rename(out_q)
             logger.info(f"[CPU_Engine] Quantization complete: {out_q} ({out_q.stat().st_size / (1024**3):.2f} GB)")
             
             # Clean up FP16 intermediate file to save disk space
@@ -562,21 +614,33 @@ class CPU_Engine(BaseEngine):
         try:
             with requests.post(url, json=payload, stream=True, timeout=600) as r:
                 r.raise_for_status()
-                for line in r.iter_lines(decode_unicode=True):
-                    if not line:
-                        continue
-                    if line.startswith("data: "):
-                        data = line[6:].strip()
-                        if data == "[DONE]":
-                            break
-                        try:
-                            obj = json.loads(data)
-                            delta = obj["choices"][0].get("delta", {}).get("content")
-                            if delta:
-                                yield delta
-                        except Exception:
-                            # ignore malformed lines
+                # Accumulate raw bytes and split on newlines manually so that
+                # UTF-8 multi-byte sequences (em dash, curly quotes, etc.) are
+                # never passed through requests' ISO-8859-1 fallback decoder.
+                buf = b""
+                done = False
+                for chunk in r.iter_content(chunk_size=None):
+                    buf += chunk
+                    while b"\n" in buf:
+                        raw_line, buf = buf.split(b"\n", 1)
+                        line = raw_line.rstrip(b"\r").decode("utf-8")
+                        if not line:
                             continue
+                        if line.startswith("data: "):
+                            data = line[6:].strip()
+                            if data == "[DONE]":
+                                done = True
+                                break
+                            try:
+                                obj = json.loads(data)
+                                delta = obj["choices"][0].get("delta", {}).get("content")
+                                if delta:
+                                    yield delta
+                            except Exception:
+                                # ignore malformed lines
+                                continue
+                    if done:
+                        break
         except Exception as e:
             raise EngineException(message="CPU_Engine streaming failed", trace=e)
         finally:

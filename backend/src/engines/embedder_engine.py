@@ -66,6 +66,9 @@ See Also:
     - src.domains.conversations.utils.embedding: Uses embedder for chat
 """
 import os
+from typing import Optional
+
+import torch
 from src.core.config import CACHE_DIR
 from src.core.logging import logger
 from src.core.exceptions import EmbeddingError, InsufficientMemoryException
@@ -133,6 +136,51 @@ class Embedder_Engine:
     _instance = None
     MODEL_NAME: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     EMBEDDING_DIMENSION: int = 384
+
+    @classmethod
+    def _select_device(cls) -> str:
+        """Select embedding device with safe cross-platform fallbacks.
+
+        Returns:
+            Device string for sentence-transformers ("cuda", "mps", or "cpu").
+        """
+        try:
+            if torch.cuda.is_available():
+                try:
+                    capability = torch.cuda.get_device_capability(0)
+                    sm_tag = f"sm_{capability[0]}{capability[1]}"
+                    arch_list: list[str] = []
+
+                    if hasattr(torch.cuda, "get_arch_list"):
+                        arch_list = torch.cuda.get_arch_list() or []
+
+                    # If CUDA is present but this GPU arch was not compiled into torch,
+                    # force CPU to avoid runtime failures like "no kernel image...".
+                    if arch_list and sm_tag not in arch_list:
+                        logger.warning(
+                            "Embedder CUDA arch unsupported by current torch build "
+                            f"(gpu_arch={sm_tag}, supported={arch_list}). Falling back to CPU."
+                        )
+                        return "cpu"
+
+                    return "cuda"
+                except Exception as cuda_probe_error:
+                    logger.warning(
+                        "Failed to validate CUDA architecture for embedder "
+                        f"({cuda_probe_error}). Falling back to CPU."
+                    )
+                    return "cpu"
+
+            mps_backend = getattr(torch.backends, "mps", None)
+            if mps_backend and mps_backend.is_available():
+                return "mps"
+
+        except Exception as device_error:
+            logger.warning(
+                f"Error while selecting embedder device ({device_error}). Falling back to CPU."
+            )
+
+        return "cpu"
     
     def __init__(self):
         """Prevent direct instantiation of singleton.
@@ -193,15 +241,17 @@ class Embedder_Engine:
         if cls._instance is None:
             logger.info(f"Loading embedder engine ({cls.MODEL_NAME})")
             os.makedirs(CACHE_DIR, exist_ok=True)
+            device = cls._select_device()
             
             try:
                 cls._instance = SentenceTransformer(
                     cls.MODEL_NAME,
                     cache_folder=CACHE_DIR,
+                    device=device,
                 )
                 logger.info(
                     f"Embedder engine loaded successfully "
-                    f"(dimension={cls.EMBEDDING_DIMENSION})"
+                    f"(dimension={cls.EMBEDDING_DIMENSION}, device={device})"
                 )
             except MemoryError as e:
                 logger.error(f"Insufficient memory to load embedder: {e}")

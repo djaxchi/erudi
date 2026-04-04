@@ -502,6 +502,64 @@ class CUDA_Engine(BaseEngine):
     # ---------- Abstract methods (BaseEngine contract) ----------
 
     @classmethod
+    def _run_converter_inprocess(
+        cls,
+        converter: Path,
+        install_dir: Path,
+        src: Path,
+        fp16_gguf: Path,
+    ) -> int:
+        """Run convert_hf_to_gguf.py in-process (used in frozen/PyInstaller builds).
+
+        In a frozen bundle sys.executable is the packaged EXE, not a Python interpreter,
+        so we cannot use subprocess to run .py scripts. This method loads the converter
+        script dynamically, temporarily rewiring sys.argv and sys.path so the script
+        sees the arguments it expects.
+
+        Returns:
+            0 on success, 1 on failure.
+        """
+        import importlib.util
+
+        gguf_pkg = install_dir / "gguf-py"
+        extra_paths = [str(gguf_pkg), str(install_dir)]
+        saved_argv = sys.argv[:]
+        saved_path = sys.path[:]
+
+        for p in reversed(extra_paths):
+            if p not in sys.path:
+                sys.path.insert(0, p)
+
+        sys.argv = [
+            str(converter),
+            str(src),
+            "--outtype", "f16",
+            "--outfile", str(fp16_gguf),
+        ]
+
+        try:
+            spec = importlib.util.spec_from_file_location("convert_hf_to_gguf", str(converter))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            mod.main()
+            return 0
+        except SystemExit as exc:
+            code = exc.code if exc.code is not None else 0
+            if code != 0:
+                logger.error(f"[CUDA_Engine] Converter exited with code {code}")
+            return int(code)
+        except Exception as exc:
+            logger.error(f"[CUDA_Engine] In-process conversion failed: {exc}")
+            return 1
+        finally:
+            sys.argv = saved_argv
+            sys.path = saved_path
+            # Unload converter + gguf modules so they don't pollute future imports
+            for key in list(sys.modules.keys()):
+                if "convert_hf_to_gguf" in key or key == "gguf" or key.startswith("gguf."):
+                    sys.modules.pop(key, None)
+
+    @classmethod
     def quant_and_save_from_hf_format(
         cls,
         local_hf_path: Union[str, Path],
@@ -579,14 +637,17 @@ class CUDA_Engine(BaseEngine):
 
         # Convert HF -> FP16 GGUF
         fp16_gguf = dst / "model-f16.gguf"
-        cmd_convert = [
-            sys.executable, str(converter),
-            str(src),
-            "--outtype", "f16",
-            "--outfile", str(fp16_gguf),
-        ]
-        logger.info(f"[CUDA_Engine] HF -> GGUF (FP16): {' '.join(cmd_convert)}")
-        rc = subprocess.call(cmd_convert)
+        logger.info(f"[CUDA_Engine] HF -> GGUF (FP16): {src} -> {fp16_gguf}")
+
+        # In a PyInstaller frozen bundle sys.executable is backend.exe, not a Python
+        # interpreter, so we cannot use it to run .py scripts via subprocess.
+        # Run the converter in-process instead.
+        if getattr(sys, "frozen", False):
+            rc = cls._run_converter_inprocess(converter, install_dir, src, fp16_gguf)
+        else:
+            cmd_convert = [sys.executable, str(converter), str(src), "--outtype", "f16", "--outfile", str(fp16_gguf)]
+            rc = subprocess.call(cmd_convert)
+
         if rc != 0:
             raise EngineException(
                 f"HF -> GGUF conversion failed (exit code {rc})."
@@ -608,7 +669,8 @@ class CUDA_Engine(BaseEngine):
                 )
 
             out_q = dst / f"model-{q_method}.gguf"
-            cmd_quant = [str(quant_bin), str(fp16_gguf), str(out_q), q_method]
+            out_q_tmp = dst / f"model-{q_method}.gguf.tmp"
+            cmd_quant = [str(quant_bin), str(fp16_gguf), str(out_q_tmp), q_method]
             logger.info(f"[CUDA_Engine] Quantizing FP16 -> {q_method.upper()}")
 
             # Build env with CUDA bin on PATH so llama-quantize finds DLLs
@@ -624,6 +686,7 @@ class CUDA_Engine(BaseEngine):
                 text=True,
             )
             if result.returncode != 0:
+                out_q_tmp.unlink(missing_ok=True)
                 err_msg = (result.stderr or result.stdout or "")[:500]
                 rc = result.returncode
                 if rc == -1073741515 or rc == 3221225781:
@@ -635,6 +698,8 @@ class CUDA_Engine(BaseEngine):
                 raise EngineException(
                     f"Quantization failed (exit code {rc}). Output: {err_msg}"
                 )
+            # Atomic rename: file only appears at final path when fully written
+            out_q_tmp.rename(out_q)
             logger.info(
                 f"[CUDA_Engine] Quantized: {out_q} "
                 f"({out_q.stat().st_size / (1024**3):.2f} GB)"
@@ -794,20 +859,32 @@ class CUDA_Engine(BaseEngine):
         try:
             with requests.post(url, json=payload, stream=True, timeout=600) as r:
                 r.raise_for_status()
-                for line in r.iter_lines(decode_unicode=True):
-                    if not line:
-                        continue
-                    if line.startswith("data: "):
-                        data = line[6:].strip()
-                        if data == "[DONE]":
-                            break
-                        try:
-                            obj = json.loads(data)
-                            delta = obj["choices"][0].get("delta", {}).get("content")
-                            if delta:
-                                yield delta
-                        except Exception:
+                # Accumulate raw bytes and split on newlines manually so that
+                # UTF-8 multi-byte sequences (em dash, curly quotes, etc.) are
+                # never passed through requests' ISO-8859-1 fallback decoder.
+                buf = b""
+                done = False
+                for chunk in r.iter_content(chunk_size=None):
+                    buf += chunk
+                    while b"\n" in buf:
+                        raw_line, buf = buf.split(b"\n", 1)
+                        line = raw_line.rstrip(b"\r").decode("utf-8")
+                        if not line:
                             continue
+                        if line.startswith("data: "):
+                            data = line[6:].strip()
+                            if data == "[DONE]":
+                                done = True
+                                break
+                            try:
+                                obj = json.loads(data)
+                                delta = obj["choices"][0].get("delta", {}).get("content")
+                                if delta:
+                                    yield delta
+                            except Exception:
+                                continue
+                    if done:
+                        break
         except Exception as e:
             raise EngineException(message="CUDA_Engine streaming failed", trace=e)
         finally:
@@ -869,24 +946,67 @@ class CUDA_Engine(BaseEngine):
 
     @classmethod
     def _cuda_available(cls) -> bool:
-        """Check if CUDA is available via PyTorch.
-        
+        """Check if CUDA is available via NVML (pynvml).
+
         Returns:
-            bool: True if CUDA runtime available and at least one GPU detected.
-        
+            bool: True if NVML initialises and at least one GPU is detected.
+
         Note:
-            Uses torch.cuda.is_available() which checks both CUDA installation
-            and GPU presence.
+            Uses pynvml so that a CPU-only torch installation does not affect
+            GPU detection.
         """
         try:
-            import torch
-            return torch.cuda.is_available()
-        except ImportError:
-            logger.warning("PyTorch not installed, CUDA unavailable")
-            return False
+            if not cls._init_nvml():
+                return False
+            import pynvml as nv
+            return nv.nvmlDeviceGetCount() > 0
         except Exception as e:
             logger.warning(f"CUDA availability check failed: {e}")
             return False
+
+    @classmethod
+    def _get_compute_capability(cls, handle) -> tuple[int, int]:
+        """Return (major, minor) compute capability for a GPU handle via NVML."""
+        try:
+            import pynvml as nv
+            return nv.nvmlDeviceGetCudaComputeCapability(handle)
+        except Exception as e:
+            logger.warning(f"Could not get compute capability: {e}")
+            return (0, 0)
+
+    @classmethod
+    def _get_sm_count(cls, device_id: int) -> int:
+        """Return the SM count for a device using the CUDA Driver API (nvcuda.dll).
+
+        nvcuda.dll is installed with every NVIDIA driver — no CUDA toolkit
+        or torch required.  Falls back to 0 on any error.
+        """
+        try:
+            import ctypes
+            nvcuda = ctypes.CDLL("nvcuda.dll")
+            nvcuda.cuInit(0)
+            device = ctypes.c_int()
+            nvcuda.cuDeviceGet(ctypes.byref(device), device_id)
+            sm_count = ctypes.c_int()
+            # CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT = 16
+            nvcuda.cuDeviceGetAttribute(ctypes.byref(sm_count), 16, device)
+            return sm_count.value
+        except Exception as e:
+            logger.warning(f"Could not get SM count via nvcuda.dll: {e}")
+            return 0
+
+    @classmethod
+    def _get_cuda_driver_version(cls) -> str:
+        """Return CUDA driver version string via NVML."""
+        try:
+            import pynvml as nv
+            # nvmlSystemGetCudaDriverVersion returns an int like 12010 → "12.1"
+            v = nv.nvmlSystemGetCudaDriverVersion()
+            major, minor = divmod(v, 1000)
+            return f"{major}.{minor // 10}"
+        except Exception as e:
+            logger.warning(f"Could not get CUDA driver version: {e}")
+            return "Unknown"
 
     @classmethod
     def _init_nvml(cls) -> bool:
@@ -1096,7 +1216,6 @@ class CUDA_Engine(BaseEngine):
             try:
                 import psutil
                 import cpuinfo
-                import torch
             except ImportError as e:
                 logger.error(f"Required hardware detection dependency missing: {e}")
                 raise HardwareException(
@@ -1149,13 +1268,13 @@ class CUDA_Engine(BaseEngine):
                         
                         # Get compute capability and CUDA cores
                         device_id = best_gpu["id"]
-                        props = torch.cuda.get_device_properties(device_id)
-                        compute_cap = f"{props.major}.{props.minor}"
+                        major, minor = cls._get_compute_capability(best_gpu["handle"])
+                        compute_cap = f"{major}.{minor}"
                         gpu_info["compute_capability"] = compute_cap
-                        
-                        cores_per_sm, _ = cls._CUDA_PER_SM.get(props.major, (64, 0))
-                        total_cuda_cores = props.multi_processor_count * cores_per_sm
-                        gpu_info["cuda_cores"] = total_cuda_cores
+
+                        cores_per_sm, _ = cls._CUDA_PER_SM.get(major, (64, 0))
+                        sm_count = cls._get_sm_count(device_id)
+                        gpu_info["cuda_cores"] = sm_count * cores_per_sm
                         
                         # Get memory bandwidth (requires NVML)
                         try:
@@ -1240,39 +1359,12 @@ class CUDA_Engine(BaseEngine):
         if not cls._cuda_available():
             logger.warning("CUDA not available, skipping GPU warm-up")
             return False
-        
-        try:
-            import torch
-            
-            # Get best GPU
-            gpus = cls._get_nvml_gpus()
-            if not gpus:
-                logger.warning("No GPUs detected, skipping warm-up")
-                return False
-            
-            best_gpu = cls._select_best_gpu(gpus)
-            device_id = best_gpu["id"]
-            
-            logger.info(f"Warming up GPU {device_id} ({best_gpu['name']}) for {duration_seconds}s...")
-            
-            torch.cuda.set_device(device_id)
-            start_time = time.time()
-            
-            # Run matrix operations to boost clocks
-            size = 4096
-            while (time.time() - start_time) < duration_seconds:
-                a = torch.randn(size, size, device="cuda")
-                b = torch.randn(size, size, device="cuda")
-                c = torch.matmul(a, b)
-                del a, b, c
-            
-            torch.cuda.synchronize()
-            logger.info("GPU warm-up completed successfully")
-            return True
-            
-        except Exception as e:
-            logger.exception(f"GPU warm-up failed: {e}")
-            return False
+
+        # GPU warm-up via torch matmul is skipped — the packaged build uses
+        # CPU-only torch.  llama-server warms up its own CUDA context on first
+        # inference, so this has no effect on LLM performance.
+        logger.info("GPU warm-up skipped (not required for llama-server inference)")
+        return False
 
     @classmethod
     def get_performance_evaluation(cls) -> Dict[str, Any]:
@@ -1343,9 +1435,8 @@ class CUDA_Engine(BaseEngine):
             >>> print(f"Fine-tuning: {eval_result['global_finetuning_score']}/100")
         """
         try:
-            import torch
             import psutil
-            
+
             # Get base hardware info
             hw_info = cls.get_hardware_info()
             
@@ -1381,19 +1472,18 @@ class CUDA_Engine(BaseEngine):
                         sm_clock_ghz = 1.5  # Fallback
                         bandwidth_gbs = hw_info["gpu"]["memory_bandwidth_gbs"]
                     
-                    # Get PyTorch device properties
-                    props = torch.cuda.get_device_properties(device_id)
-                    sm_count = props.multi_processor_count
-                    compute_cap_major = props.major
-                    
+                    # Get compute capability and SM count (no torch required)
+                    compute_cap_major, compute_cap_minor = cls._get_compute_capability(handle)
+                    sm_count = cls._get_sm_count(device_id)
+
                     # Calculate CUDA cores and tensor cores
                     cores_per_sm, tc_per_sm = cls._CUDA_PER_SM.get(compute_cap_major, (64, 0))
                     total_cuda_cores = sm_count * cores_per_sm
-                    
+
                     # Calculate FP32 TFLOPS
                     # 2 ops per CUDA core per clock (FMA = mul + add)
                     fp32_tflops = 2 * sm_count * cores_per_sm * sm_clock_ghz / 1000
-                    
+
                     # Calculate Tensor TFLOPS (FP16, BF16)
                     for precision, (ops_per_tc, min_cc) in cls._TC_OPS.items():
                         if compute_cap_major >= min_cc:
@@ -1401,16 +1491,13 @@ class CUDA_Engine(BaseEngine):
                             tensor_tflops[precision] = round(tflops, 2)
                         else:
                             tensor_tflops[precision] = 0.0
-                    
+
                     # Use best tensor performance for scoring
                     estimated_tflops = tensor_tflops.get("bf16", tensor_tflops.get("fp16", fp32_tflops))
-                    
-                    # Get CUDA version
-                    try:
-                        cuda_version = torch.version.cuda or "Unknown"
-                    except:
-                        cuda_version = "Unknown"
-                    
+
+                    # Get CUDA version from NVML driver info
+                    cuda_version = cls._get_cuda_driver_version()
+
                     # Determine architecture
                     if compute_cap_major == 7:
                         architecture = "Turing"
@@ -1419,7 +1506,7 @@ class CUDA_Engine(BaseEngine):
                     elif compute_cap_major == 9:
                         architecture = "Ada Lovelace / Hopper"
                     else:
-                        architecture = f"Compute {props.major}.{props.minor}"
+                        architecture = f"Compute {compute_cap_major}.{compute_cap_minor}"
                     
                     # Calculate component scores
                     vram_gb = hw_info["gpu"]["vram_total_gb"]

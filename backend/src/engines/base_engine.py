@@ -537,11 +537,14 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 elif "x86" in machine:
                     llm_engine = CPU_Engine
             elif system in ("linux", "windows"):
+                cuda_present = False
                 try:
-                    torch = importlib.import_module("torch")
-                except:
-                    raise
-                if torch.backends.cuda.is_built() and torch.cuda.is_available():
+                    import pynvml as nv
+                    nv.nvmlInit()
+                    cuda_present = nv.nvmlDeviceGetCount() > 0
+                except Exception:
+                    cuda_present = False
+                if cuda_present:
                     llm_engine = CUDA_Engine
                 else:
                     llm_engine = CPU_Engine

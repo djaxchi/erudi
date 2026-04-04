@@ -32,11 +32,13 @@ if (require("electron-squirrel-startup")) {
 }
 
 function resolvePackagedBackendPath() {
+  // On Windows PyInstaller produces backend.exe; on macOS/Linux just backend
+  const exeSuffix = process.platform === "win32" ? ".exe" : "";
   // Candidate locations inside the packaged app
   const candidates = [
-    path.join(process.resourcesPath, "backend", "backend", "backend"),
-    path.join(process.resourcesPath, "backend", "backend"),
-    path.join(process.resourcesPath, "app.asar.unpacked", "backend", "backend"),
+    path.join(process.resourcesPath, "backend", `backend${exeSuffix}`),
+    path.join(process.resourcesPath, "backend", "backend", `backend${exeSuffix}`),
+    path.join(process.resourcesPath, "app.asar.unpacked", "backend", `backend${exeSuffix}`),
   ];
 
   log("Checking packaged backend paths...");
@@ -115,7 +117,11 @@ const startRealBackend = () => {
     if (app.isPackaged) {
       backendPath = resolvePackagedBackendPath();
     } else {
-      const devCandidates = [path.join(__dirname, "..", "..", "backend", "backend")];
+      const exeSuffix = process.platform === "win32" ? ".exe" : "";
+      const devCandidates = [
+        path.join(__dirname, "..", "..", "backend", "dist", "backend", `backend${exeSuffix}`),
+        path.join(__dirname, "..", "..", "backend", "backend"),
+      ];
       backendPath = devCandidates.find((p) => fs.existsSync(p)) || null;
     }
 
@@ -330,6 +336,12 @@ const startRealBackend = () => {
         });
 
         for (let i = 0; i < 30; i++) {
+          // Abort early if the backend process has already exited — no point waiting 30s
+          if (!backendProcess) {
+            reject(new Error("Backend process exited before becoming healthy"));
+            return;
+          }
+
           try {
             log(`Health check attempt ${i + 1}/30 on port ${actualPort}`);
             const controller = new AbortController();
@@ -357,7 +369,7 @@ const startRealBackend = () => {
         if (backendProcess) {
           log("Killing stuck backend process...");
           try {
-            process.kill(-backendProcess.pid);
+            backendProcess.kill("SIGTERM");
           } catch (e) {
             log(`Could not kill process: ${e.message}`);
           }
@@ -518,9 +530,8 @@ const createApplicationMenu = () => {
 
                 // Delete the data directory
                 if (fs.existsSync(dataDir)) {
-                  const { execSync } = require("child_process");
                   try {
-                    execSync(`rm -rf "${dataDir}"`, { stdio: "ignore" });
+                    fs.rmSync(dataDir, { recursive: true, force: true });
                     log(`Successfully deleted data directory: ${dataDir}`);
                   } catch (error) {
                     log(`Failed to delete data directory: ${error.message}`);
@@ -662,9 +673,13 @@ ipcMain.handle("dialog:openDirectory", async () => {
   return result.filePaths[0];
 });
 
-// Helper function to get Application Support data directory path
+// Helper function to get the user data directory path (cross-platform)
 function getDataDirectory() {
   const appName = "erudi";
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    return path.join(localAppData, appName);
+  }
   return path.join(os.homedir(), "Library", "Application Support", appName);
 }
 
@@ -721,9 +736,8 @@ ipcMain.handle("data:clearAll", async () => {
 
       // Delete the data directory
       if (fs.existsSync(dataDir)) {
-        const { execSync } = require("child_process");
         try {
-          execSync(`rm -rf "${dataDir}"`, { stdio: "ignore" });
+          fs.rmSync(dataDir, { recursive: true, force: true });
           log(`Successfully deleted data directory: ${dataDir}`);
         } catch (error) {
           log(`Failed to delete data directory: ${error.message}`);
@@ -764,46 +778,56 @@ ipcMain.handle("data:clearAll", async () => {
 });
 
 app.whenReady().then(async () => {
-  log("App ready. Starting backend...");
+  log("App ready.");
 
-  // Create application menu
+  // Create application menu and window immediately — never block on backend startup.
+  // The renderer handles the loading/error state via backend-event IPC messages.
   createApplicationMenu();
+  createWindow();
 
-  // Retry logic for backend startup
-  let retries = 0;
+  if (!app.isPackaged) {
+    // Dev mode: backend is expected to be already running via dev-start.sh
+    startRealBackend().catch((err) => {
+      log(`Dev backend not available: ${err.message}`);
+    });
+    return;
+  }
+
+  // Production: start backend in the background, retry up to 3 times
   const maxRetries = 3;
+  let retries = 0;
 
   const tryStartBackend = async () => {
     try {
-      // In development mode, open window immediately (backend runs separately)
-      if (!app.isPackaged) {
-        log("Development mode: opening window immediately (backend should be running separately)");
-        createWindow();
-        return;
-      }
-
-      // Production mode: check backend health before opening window
+      log(`Backend startup attempt ${retries + 1}/${maxRetries}...`);
       await startRealBackend();
-      log("Backend is ready, creating window...");
-      createWindow();
+      log("Backend is ready.");
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("backend-event", { event: "backend_ready" });
+      }
     } catch (error) {
       retries++;
       log(`Backend start attempt ${retries} failed: ${error.toString()}`);
-
       if (retries < maxRetries) {
-        log(`Retrying backend startup in 2 seconds... (attempt ${retries + 1}/${maxRetries})`);
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        log(`Retrying in 2 seconds... (attempt ${retries + 1}/${maxRetries})`);
+        await new Promise((r) => setTimeout(r, 2000));
         await tryStartBackend();
       } else {
-        log(
-          `Backend startup failed after ${maxRetries} attempts. Creating window without backend.`
-        );
-        createWindow();
+        log(`Backend startup failed after ${maxRetries} attempts.`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("backend-event", {
+            event: "startup_error",
+            code: "BACKEND_STARTUP_FAILED",
+            message: `Backend failed to start after ${maxRetries} attempts.`,
+            source: "retry_exhausted",
+          });
+        }
       }
     }
   };
 
-  await tryStartBackend();
+  // Don't await — let it run in the background so the window is immediately usable
+  tryStartBackend();
 });
 
 app.on("activate", () => {

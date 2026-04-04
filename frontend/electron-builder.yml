@@ -1,0 +1,28 @@
+appId: com.erudi.app
+productName: Erudi
+copyright: "Copyright © 2025 Erudi Team"
+
+# electron-builder is invoked with --prepackaged out/erudi-win32-x64,
+# so it wraps the already-forge-packaged directory rather than re-bundling sources.
+# No files/directories.app needed here.
+
+directories:
+  output: out/installer
+
+win:
+  target:
+    - target: nsis
+      arch: x64
+  icon: assets/icons/icon.ico
+
+nsis:
+  # Non-silent installer so users can choose install directory.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: assets/icons/icon.ico
+  uninstallerIcon: assets/icons/icon.ico
+  installerHeaderIcon: assets/icons/icon.ico
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Erudi

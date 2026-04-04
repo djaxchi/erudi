@@ -220,7 +220,8 @@ class Quality_Filters:
         "mistral-7b-instruct-v0.3", "mistral-7b-v0.3",
         "gemma-3-1b-it", "gemma-2-2b-it", "gemma-3-4b-it",
         "ministral-8b-instruct-2410", "gemma-3-12b-it",
-        "mistral-nemo-instruct-2407"
+        "mistral-nemo-instruct-2407",
+        "gemma-4-e2b-it", "gemma-4-e4b-it",
     )
     skip_terms: Tuple[str, ...] = (
         "gguf", "gptq", "bnb", "4bit", "8bit", "f16", "awq",
@@ -229,7 +230,7 @@ class Quality_Filters:
         "sft", "int4", "int8", "int16", "int32", "int64",
         "peft", "test", "untrained", "checkpoint", "tmp", "temp",
         "debug", "draft", "experiment", "eval", "benchmark",
-        "pt", "onnx", "abliterated", "e2b"
+        "pt", "onnx", "abliterated",
     )
 
 
@@ -1019,18 +1020,22 @@ class Database_Seeder:
         Model_Config("Gemma-1B", "google/gemma-3-1b-it", "gemma"),
         Model_Config("Gemma-2B", "google/gemma-2-2b-it", "gemma"),
         Model_Config("Gemma-4B", "google/gemma-3-4b-it", "gemma"),
+        Model_Config("Gemma-4-E2B", "google/gemma-4-E2B-it", "gemma"),
+        Model_Config("Gemma-4-E4B", "google/gemma-4-E4B-it", "gemma"),
         Model_Config("Mistral-7B", "mistralai/Mistral-7B-Instruct-v0.3", "mistral"),
         Model_Config("Ministral-8B", "mistralai/Ministral-8B-Instruct-2410", "mistral"),
         Model_Config("Gemma-12B", "google/gemma-3-12b-it", "gemma"),
         Model_Config("Mistral-Nemo-12B", "mistralai/Mistral-Nemo-Instruct-2407", "mistral"),
     ]
-    
+
     # Default derived model searches
     DEFAULT_SEARCH_CONFIGS = [
         Search_Config("Mistral-7B v0.3", "mistral", 7.0),
         Search_Config("Gemma 1B", "gemma", 1.0),
         Search_Config("Gemma 2B", "gemma", 2.0),
         Search_Config("Gemma 4B", "gemma", 4.0),
+        Search_Config("gemma-4-e2b", "gemma", 2.0),
+        Search_Config("gemma-4-e4b", "gemma", 4.0),
         Search_Config("Ministral-8B", "mistral", 8.0),
         Search_Config("Gemma 12B", "gemma", 12.0),
         Search_Config("Mistral-Nemo-12B", "mistral", 12.0),

@@ -116,25 +116,9 @@ module.exports = {
       platforms: ["darwin"],
     },
     
-    // Windows: NSIS installer
-    {
-      name: "@electron-forge/maker-nsis",
-      platforms: ["win32"],
-      config: {
-        installerIcon: "./assets/icons/icon.ico",
-        uninstallerIcon: "./assets/icons/icon.ico",
-        installerHeader: "./assets/nsis/installerHeader.bmp",
-        installerSidebar: "./assets/nsis/installerSidebar.bmp",
-        warningIcon: "./assets/icons/icon.ico",
-        oneClick: false,
-        allowToChangeInstallationDirectory: true,
-        createDesktopShortcut: true,
-        createStartMenuShortcut: true,
-        shortcutName: "Erudi",
-      },
-    },
-    
-    // Windows: ZIP portable (optional)
+    // Windows: ZIP portable
+    // (Squirrel removed — it silently fails for nupkgs > ~1 GB and produces a
+    //  dummy 290 KB Setup.exe. Migrate to electron-builder NSIS for a real installer.)
     {
       name: "@electron-forge/maker-zip",
       platforms: ["win32"],
