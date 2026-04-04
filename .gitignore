@@ -8,6 +8,7 @@
 !/backend/backend.spec
 dist/
 build/
+!scripts/build/
 
 .DS_Store
 Thumbs.db
