@@ -345,7 +345,7 @@ class MessageRepository:
 
     def get_conversation_history(
         self, conversation_id: int
-    ) -> List[Tuple[str, str]]:
+    ) -> List[Tuple[int, str, str, any]]:
         """
         Get conversation history as a list of (sender, content) tuples.
         
@@ -353,17 +353,17 @@ class MessageRepository:
             conversation_id: ID of the conversation
             
         Returns:
-            List of (sender, content) tuples ordered by timestamp
+            List of (id, sender, content, timestamp) tuples ordered by timestamp
         """
         try:
             messages = (
-                self.db.query(Message.sender, Message.content)
+                self.db.query(Message.id, Message.sender, Message.content, Message.timestamp)
                 .filter(Message.conversation_id == conversation_id)
                 .order_by(Message.timestamp.asc())
                 .all()
             )
             logger.debug(f"Retrieved history with {len(messages)} messages")
-            return [(msg.sender, msg.content) for msg in messages]
+            return [(msg.id, msg.sender, msg.content, msg.timestamp) for msg in messages]
         except SQLAlchemyError as e:
             logger.error(f"Error retrieving conversation history: {str(e)}")
             return []

@@ -328,12 +328,6 @@ class ConversationService:
             self.db.commit()
             return
 
-        # Load model
-        model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(
-            llm_id=llm.id,
-            llm_local_path=llm.link
-        )
-
         # Build title generation prompt
         prompt = self._build_title_prompt(question, llm.type)
 
@@ -344,6 +338,11 @@ class ConversationService:
         max_tok = 12
 
         try:
+            # Load model inside try so errors don't silently abort the generator
+            model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(
+                llm_id=llm.id,
+                llm_local_path=llm.link
+            )
             for new_text in config.LLM_Engine.generate_stream(
                 model=model,
                 tokenizer=tokenizer,
@@ -408,7 +407,7 @@ class ConversationService:
 
         # Get conversation history (excluding the just-added user message)
         full_history = self.message_repo.get_conversation_history(conversation_id)
-        if full_history and full_history[-1][0] == "user":
+        if full_history and full_history[-1][1] == "user":
             full_history = full_history[:-1]
 
         # Retrieve context
@@ -437,15 +436,14 @@ class ConversationService:
             custom_prompt=payload.custom_prompt
         )
 
-        # Load model
-        model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(
-            llm_id=llm.id,
-            llm_local_path=llm.link
-        )
-
         # Generate response
         assistant_response = ""
         try:
+            # Load model inside try so errors surface to the frontend
+            model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(
+                llm_id=llm.id,
+                llm_local_path=llm.link
+            )
             for text in config.LLM_Engine.generate_stream(
                 model=model,
                 tokenizer=tokenizer,

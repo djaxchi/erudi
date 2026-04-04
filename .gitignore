@@ -49,3 +49,12 @@ ENV/
 # Used for testing build variants and experimental features
 tmp_win_cu12/
 tmp_winStartupErrorHandle/
+
+# Runtime log files
+*.log
+
+# Bundled backend output (produced by PyInstaller build, not source)
+frontend/backend/
+
+# Internal dev session logs
+docs/session-*.md

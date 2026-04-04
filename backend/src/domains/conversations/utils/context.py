@@ -76,7 +76,7 @@ class ConversationContext:
         try:
             # Convert history to formatted text
             formatted_history = []
-            for sender, message in history:
+            for _, sender, message, _ in history:
                 formatted_history.append(f"{sender}: {message}")
             
             conversation_text = "\n".join(formatted_history)
@@ -223,7 +223,7 @@ class ConversationContext:
                     f"Recent messages:\n" +
                     "\n".join([
                         f"{sender}: {message}"
-                        for sender, message in recent_messages
+                        for _, sender, message, _ in recent_messages
                     ])
                 )
 

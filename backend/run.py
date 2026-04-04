@@ -114,9 +114,13 @@ def backend_root_dir() -> Path:
             bundle_dir,
         ]
         for candidate in candidates:
-            if (candidate / "src").exists():
+            # PyInstaller 6.x onedir: Python src is compiled into PYZ (no src/ dir),
+            # but data files like artifacts/ are present in _internal/ (bundle_dir).
+            if (candidate / "src").exists() or (candidate / "artifacts").exists():
                 return candidate
-        return exe_dir
+        # Last resort: prefer bundle_dir (_internal/) over exe_dir so that
+        # artifact paths resolve correctly in PyInstaller 6.x onedir builds.
+        return bundle_dir if bundle_dir != exe_dir else exe_dir
 
     return Path(__file__).resolve().parent
 

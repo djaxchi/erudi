@@ -1,115 +1,176 @@
+# Erudi
 
+**Run local AI models on your machine — no cloud, no subscription, no data leaving your device.**
 
-
-
-
-
-## To Setup
-
-### On Mac-Silicon (M1+)
-run `bash ./scripts/dev/backend/setup-mac-silicon.sh`
---> frontend : `cd frontend` `npm start`
---> backend : `cd backend` `source venv/bin/activate` `python run.py`
-
-### On Mac-Intel
-run `bash ./scripts/dev/backend/setup-mac-intel.sh`
-
-### On Linux CUDA 121
-run `bash ./scripts/dev/backend/setup-linux-cuda-121.sh`
-
-### On Linux CUDA 118
-run `bash ./scripts/dev/backend/setup-linux-cuda-118.sh`
-
-### On Linux CPU
-run `bash ./scripts/dev/backend/setup-linux-cpu.sh`
-
-### On Windows CPU
-run `.\scripts\dev\backend\setup-win-cpu.ps1`
-
-### On Windows CUDA 121
-run `.\scripts\dev\backend\setup-win-cuda-121.ps1`
-
-### On Windows CUDA 118
-run `.\scripts\dev\backend\setup-win-cuda-118.ps1`
+Erudi is a desktop application that lets you download, run, and chat with open-source language models entirely offline. It automatically detects your hardware and routes inference to the best available backend: NVIDIA GPU (CUDA), Apple Silicon (MLX), or CPU.
 
 ---
 
-✅ Prérequis
+## Features
 
-Node.js >= 18
+- **Local inference** — models run on your hardware via [llama.cpp](https://github.com/ggerganov/llama.cpp)
+- **Automatic hardware detection** — picks CUDA, MLX, or CPU at startup
+- **Model library** — download and convert HuggingFace models in one click
+- **Knowledge Base** — attach PDF documents to a model for RAG (retrieval-augmented generation)
+- **Conversation memory** — short-term, middle-term (semantic), and long-term memory per conversation
+- **Fully offline** — after initial model download, no internet connection required
 
-npm
+---
 
-Docker
+## Platform Support
 
-📦 Installation
+| Platform | Backend | Status |
+|---|---|---|
+| Windows (NVIDIA GPU) | CUDA via llama-server | ✅ |
+| Windows (no GPU) | CPU via llama-server | ✅ |
+| macOS Apple Silicon | MLX | 🚧 In progress |
+| macOS Intel | CPU via llama-server | 🚧 In progress |
+| Linux (NVIDIA GPU) | CUDA via llama-server | 🚧 Planned |
+| Linux (CPU) | CPU via llama-server | 🚧 Planned |
 
-1. Cloner le projet
+---
 
-git clone https://github.com/votre-utilisateur/smarter.git
-cd smarter
-rqe: SMARTER est l'ancien nom... C'est Erudi maintenant
-2. Installer les dépendances de l'interface
+## Getting Started (Development)
 
+### Prerequisites
+
+- **Node.js** >= 18
+- **Python** >= 3.11
+- **Git**
+- Platform-specific: CUDA 12.1 toolkit (Windows GPU), Xcode CLI tools (macOS)
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/your-org/erudi.git
+cd erudi
+```
+
+### 2. Set up the backend
+
+Pick the script for your platform:
+
+| Platform | Script |
+|---|---|
+| macOS Apple Silicon | `bash scripts/dev/backend/setup-mac-silicon.sh` |
+| macOS Intel | `bash scripts/dev/backend/setup-mac-intel.sh` |
+| Windows CUDA 12.1 | `.\scripts\dev\backend\setup-win-cuda-121.ps1` |
+| Windows CPU | `.\scripts\dev\backend\setup-win-cpu.ps1` |
+| Linux CUDA 12.1 | `bash scripts/dev/backend/setup-linux-cuda-121.sh` |
+| Linux CPU | `bash scripts/dev/backend/setup-linux-cpu.sh` |
+
+### 3. Build llama.cpp
+
+The inference engine needs to be compiled for your platform:
+
+```bash
+# macOS Apple Silicon
+bash scripts/dev/backend/build-llamacpp-cpu-macos-silicon.sh
+
+# macOS Intel
+bash scripts/dev/backend/build-llamacpp-cpu-macos-x86.sh
+
+# Windows CUDA — run in PowerShell
+.\scripts\dev\backend\build-llamacpp-cuda-win.ps1
+```
+
+### 4. Start the app
+
+**Terminal 1 — Backend:**
+```bash
+cd backend
+source venv/bin/activate        # macOS/Linux
+# or: .\venv\Scripts\Activate   # Windows
+python run.py
+```
+
+**Terminal 2 — Frontend:**
+```bash
 cd frontend
 npm install
-
-🧠 Lancer le backend FastAPI
-
-1. Construire l'image Docker du backend
-
-cd backend
-docker build -t smarter-backend .
-
-2. Lancer le conteneur
-
-<!-- docker run -p 8000:8000 smarter-backend -->
-<!-- VERSION POWERSHELL WINDOWS !! -->
-docker run -v ${PWD}\data:/app/data -p 8000:8000 smarter-backend
-
-Le backend est maintenant disponible sur http://localhost:8000.
-
-💻 Lancer l'application Electron avec live-reload
-
-Dans un terminal séparé :
-
-cd frontend
 npm start
+```
 
-Cela démarre l'application Electron en mode développement, avec rechargement automatique à chaque modification.
+The app opens automatically. The backend runs on `http://127.0.0.1:8765` by default.
 
+---
 
+## Building for Distribution
 
+### Windows (NVIDIA GPU)
 
+```powershell
+.\scripts\build\build-win-cuda-121.ps1
+```
 
+Output: `frontend/out/installer/Erudi Setup 1.0.0.exe`
 
-## SI UTILISATION SANS DOCKER !!!!!!!
-# Windows
-dans le terminal backend faire :
-cd backend
-python -m venv venv
-./venv/Scripts/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+### macOS
 
-# Mac
-dans le terminal backend faire :
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+> macOS build script is in progress. See [`docs/macos-build-readiness.md`](docs/macos-build-readiness.md) for current status.
 
-reste a faire mnt:
-systeme prompt dynamique en fonction de model taille
-tune title
-starred messages (tester pertinence debut/fin prompt)
-opti KB (chunk plus petit)
-Clean code base
+---
 
-plus tard: 
-user story kb
-actualisation info apres telechargement
+## Project Structure
 
+```
+erudi/
+├── backend/                  # Python FastAPI backend
+│   ├── src/
+│   │   ├── engines/          # Hardware backends (CUDA, CPU, MLX)
+│   │   ├── domains/          # API domains (conversations, llms, knowledge_base…)
+│   │   └── entities/         # SQLAlchemy models
+│   ├── backend.spec          # PyInstaller build spec (Windows)
+│   └── run.py                # Entry point
+├── frontend/                 # Electron + React frontend
+│   ├── src/
+│   │   ├── main.js           # Electron main process
+│   │   ├── pages/            # React pages
+│   │   └── components/       # React components
+│   └── forge.config.js       # Electron Forge config
+├── scripts/
+│   ├── dev/backend/          # Dev environment setup scripts
+│   └── build/                # Distribution build scripts
+└── docs/                     # Architecture and build notes
+```
 
+---
 
+## Architecture
+
+The app has two processes:
+
+- **Electron frontend** — React UI running in a BrowserWindow
+- **Python backend** — FastAPI server (`backend.exe` / `backend` binary in production, raw `python run.py` in dev)
+
+The backend selects an inference engine at startup:
+
+```
+macOS ARM  →  MLX_Engine   (Apple Neural Engine via MLX framework)
+macOS x86  →  CPU_Engine   (llama-server, CPU only)
+Windows/Linux + NVIDIA  →  CUDA_Engine  (llama-server with CUDA offload)
+Windows/Linux, no GPU   →  CPU_Engine   (llama-server, CPU only)
+```
+
+All GPU inference goes through `llama-server` from llama.cpp. The bundled PyTorch is CPU-only and used only for sentence-transformers embeddings (Knowledge Base and conversation memory).
+
+---
+
+## Logs
+
+| Platform | Log location |
+|---|---|
+| Windows | `%TEMP%\erudi-backend.log` |
+| macOS / Linux | `/tmp/erudi-backend.log` |
+
+---
+
+## Contributing
+
+We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, and check the open issues for good first tasks.
+
+---
+
+## License
+
+[MIT](LICENSE)
