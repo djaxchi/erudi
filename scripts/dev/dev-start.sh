@@ -1,107 +1,71 @@
-#!/bin/bash
-
-# Development start script for Erudi
-# Starts backend and frontend in separate Terminal windows on macOS
+#!/usr/bin/env bash
+# dev-start.sh
+# Starts the Erudi backend + Electron frontend in separate Terminal windows.
+#
+# Usage (from repo root):
+#   bash scripts/dev/dev-start.sh
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Get the script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+BACKEND_PORT="${BACKEND_PORT:-8765}"
 
-echo -e "${BLUE}🚀 Starting Erudi development environment...${NC}"
-echo -e "${YELLOW}📁 Project root: $PROJECT_ROOT${NC}"
+echo -e "${BLUE}Starting Erudi dev environment...${NC}"
+echo -e "${YELLOW}Project root: $PROJECT_ROOT${NC}"
+echo -e "${YELLOW}Backend port: $BACKEND_PORT${NC}"
 
-# Check dependencies
-echo -e "${BLUE}🔍 Checking dependencies...${NC}"
-
-# Check if Python backend virtual environment exists
-if [ ! -d "$PROJECT_ROOT/backend/venv" ]; then
-    echo -e "${YELLOW}⚠️  Backend virtual environment not found. Creating...${NC}"
-    cd "$PROJECT_ROOT/backend"
-    python -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
-    cd "$PROJECT_ROOT"
+# Prefer .venv over venv if both exist
+if [ -f "$PROJECT_ROOT/backend/.venv/bin/activate" ]; then
+    VENV_ACTIVATE="$PROJECT_ROOT/backend/.venv/bin/activate"
+elif [ -f "$PROJECT_ROOT/backend/venv/bin/activate" ]; then
+    VENV_ACTIVATE="$PROJECT_ROOT/backend/venv/bin/activate"
+else
+    echo "No virtual environment found. Run: bash scripts/dev/backend/setup-mac-silicon.sh"
+    exit 1
 fi
 
-# Check if frontend dependencies are installed
+# Frontend deps
 if [ ! -d "$PROJECT_ROOT/frontend/node_modules" ]; then
-    echo -e "${YELLOW}⚠️  Frontend dependencies not found. Installing...${NC}"
-    cd "$PROJECT_ROOT/frontend"
-    npm install
-    cd "$PROJECT_ROOT"
+    echo -e "${YELLOW}Installing frontend dependencies...${NC}"
+    cd "$PROJECT_ROOT/frontend" && npm install
 fi
 
-# Kill any existing backend process on port 8000
-if lsof -i :8000 >/dev/null 2>&1; then
-    echo -e "${YELLOW}⚠️  Port 8000 is already in use. Killing existing processes...${NC}"
-    pkill -f "uvicorn.*app.main:app" 2>/dev/null || true
-    sleep 2
+# Kill anything already on the port
+if lsof -ti ":$BACKEND_PORT" >/dev/null 2>&1; then
+    echo -e "${YELLOW}Killing process on port $BACKEND_PORT...${NC}"
+    lsof -ti ":$BACKEND_PORT" | xargs kill -9 2>/dev/null || true
+    sleep 1
 fi
 
-# Create temporary script for backend
+# Backend script
 BACKEND_SCRIPT="/tmp/erudi-backend-dev.sh"
 cat > "$BACKEND_SCRIPT" << BACKEND_EOF
-#!/bin/bash
+#!/usr/bin/env bash
 cd "$PROJECT_ROOT/backend"
-source venv/bin/activate
-echo "Starting backend on port 8000..."
-uvicorn app.main:app --reload --port 8000
+source "$VENV_ACTIVATE"
+echo "Backend starting on port $BACKEND_PORT..."
+PYTHONPATH=. uvicorn src.main:app --reload --port $BACKEND_PORT
 BACKEND_EOF
 chmod +x "$BACKEND_SCRIPT"
 
-# Create temporary script for frontend
+# Frontend script
 FRONTEND_SCRIPT="/tmp/erudi-frontend-dev.sh"
 cat > "$FRONTEND_SCRIPT" << FRONTEND_EOF
-#!/bin/bash
+#!/usr/bin/env bash
 cd "$PROJECT_ROOT/frontend"
-echo "Starting frontend..."
-npm start
+BACKEND_PORT=$BACKEND_PORT npm start
 FRONTEND_EOF
 chmod +x "$FRONTEND_SCRIPT"
 
-echo -e "${GREEN}🎉 Development environment ready!${NC}"
-echo -e "${BLUE}📝 Opening two Terminal windows:${NC}"
-echo -e "${BLUE}  1️⃣  Backend terminal (port 8000)${NC}"
-echo -e "${BLUE}  2️⃣  Frontend terminal (Electron app)${NC}"
-echo ""
-
-# Open backend in new Terminal window
+# Open terminals
 osascript -e "tell application \"Terminal\" to do script \"$BACKEND_SCRIPT\""
-
-# Wait a moment for backend to start
-sleep 2
-
-# Open frontend in new Terminal window
+sleep 3
 osascript -e "tell application \"Terminal\" to do script \"$FRONTEND_SCRIPT\""
 
-echo -e "${GREEN}✅ Both terminals opened!${NC}"
-echo -e "${YELLOW}💡 Close either terminal to stop that service${NC}"
-echo -e "${YELLOW}💡 Close both to shut down the dev environment${NC}"
-
-echo -e "${GREEN}🎉 Development environment ready!${NC}"
-echo -e "${BLUE}📝 Opening two Terminal windows:${NC}"
-echo -e "${BLUE}  1️⃣  Backend terminal (port 8000)${NC}"
-echo -e "${BLUE}  2️⃣  Frontend terminal (Electron app)${NC}"
-echo ""
-
-# Open backend in new Terminal window
-open -a Terminal "$BACKEND_SCRIPT" "$PROJECT_ROOT"
-
-# Wait a moment for backend to start
-sleep 2
-
-# Open frontend in new Terminal window
-open -a Terminal "$FRONTEND_SCRIPT" "$PROJECT_ROOT"
-
-echo -e "${GREEN}✅ Both terminals opened!${NC}"
-echo -e "${YELLOW}� Close either terminal to stop that service${NC}"
-echo -e "${YELLOW}💡 Close both to shut down the dev environment${NC}"
+echo -e "${GREEN}Done — two Terminal windows opened.${NC}"
