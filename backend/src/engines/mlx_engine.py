@@ -91,7 +91,12 @@ class MLX_Engine(BaseEngine):
         "google/gemma-3-4b-it": "mlx-community/gemma-3-4b-it-4bit",
         "mistralai/Ministral-8B-Instruct-2410": "mlx-community/Ministral-8B-Instruct-2410-4bit",
         "google/gemma-3-12b-it": "mlx-community/gemma-3-12b-it-4bit",
-        "mistralai/Mistral-Nemo-Instruct-2407": "mlx-community/Mistral-Nemo-Instruct-2407-4bit"
+        "mistralai/Mistral-Nemo-Instruct-2407": "mlx-community/Mistral-Nemo-Instruct-2407-4bit",
+        # Gemma 4 family
+        "google/gemma-4-E2B-it": "mlx-community/gemma-4-e2b-it-4bit",
+        "google/gemma-4-E4B-it": "mlx-community/gemma-4-e4b-it-4bit",
+        "google/gemma-4-26b-a4b-it": "mlx-community/gemma-4-26b-a4b-it-4bit",
+        "google/gemma-4-31b-it": "mlx-community/gemma-4-31b-it-4bit",
     }
 
     @classmethod
