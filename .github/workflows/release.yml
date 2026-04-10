@@ -1,0 +1,135 @@
+name: Release
+
+# Triggers on any tag of the form v1.2.3
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # needed to create/upload GitHub Release assets
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Windows — NSIS installer (.exe) + latest.yml
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      # ── Backend ──────────────────────────────────────────────────────────────
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          python -m venv backend/venv
+          backend/venv/Scripts/pip install -r backend/requirements/entrypoints/prod/win-cpu-prod.txt
+          backend/venv/Scripts/pip install pyinstaller
+
+      - name: Build backend (PyInstaller)
+        run: backend/venv/Scripts/pyinstaller backend/backend.spec
+
+      # ── Frontend ─────────────────────────────────────────────────────────────
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Sync version from tag
+        working-directory: frontend
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"   # strip leading "v"
+          npm version "$TAG" --no-git-tag-version
+
+      - name: Package (electron-forge)
+        working-directory: frontend
+        run: npx electron-forge package --platform win32 --arch x64
+
+      - name: Build installer + publish to GitHub Releases (electron-builder)
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx electron-builder \
+            --prepackaged out/erudi-win32-x64 \
+            --config electron-builder.yml \
+            --publish always
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # macOS — DMG + zip (zip feeds electron-updater) + latest-mac.yml
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-macos:
+    runs-on: macos-14   # Apple Silicon (M1) runner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      # ── Backend ──────────────────────────────────────────────────────────────
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          python -m venv backend/venv
+          backend/venv/bin/pip install -r backend/requirements/entrypoints/prod/mac-silicon-prod.txt
+          backend/venv/bin/pip install pyinstaller
+
+      - name: Build backend (PyInstaller)
+        run: backend/venv/bin/pyinstaller backend/backend.spec
+
+      # ── Frontend ─────────────────────────────────────────────────────────────
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Sync version from tag
+        working-directory: frontend
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          npm version "$TAG" --no-git-tag-version
+
+      - name: Package (electron-forge)
+        working-directory: frontend
+        run: npx electron-forge package --platform darwin --arch arm64
+
+      - name: Build installer + publish to GitHub Releases (electron-builder)
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Code signing (optional but required for auto-update to survive Gatekeeper).
+          # Set these secrets in your repo settings to enable signing + notarization.
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          npx electron-builder \
+            --prepackaged out/erudi-darwin-arm64 \
+            --config electron-builder.yml \
+            --publish always

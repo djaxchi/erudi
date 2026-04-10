@@ -166,6 +166,10 @@ def build_system_prompt(
         if "ministral" in model_name_lower:
             return "October 2023"
         
+        # Gemma 4 - April 2025
+        if "gemma" in model_name_lower and ("gemma-4" in model_name_lower or "gemma4" in model_name_lower):
+            return "April 2025"
+
         # Gemma 12B - August 2024
         if "gemma" in model_name_lower and ("12b" in model_name_lower or "12" in model_name_lower):
             return "August 2024"

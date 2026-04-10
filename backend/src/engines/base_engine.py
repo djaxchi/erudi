@@ -39,7 +39,7 @@ Examples:
 
 """
 
-import asyncio, threading, platform, importlib
+import asyncio, threading, platform, importlib, os
 from datetime import datetime, timedelta
 from typing import Any, Optional, Tuple, Generator, Union, Type, Dict
 from abc import ABC, abstractmethod, ABCMeta
@@ -531,6 +531,12 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         llm_engine = None
 
         try:
+            # Testing override: ERUDI_FORCE_CPU=1 bypasses GPU detection entirely.
+            # Use this to validate CPU fallback on a GPU machine without disabling hardware.
+            if os.environ.get("ERUDI_FORCE_CPU"):
+                logger.info("[ERUDI_FORCE_CPU] Forcing CPU_Engine — GPU detection skipped.")
+                return CPU_Engine
+
             if system == "darwin": # MacOS
                 if "arm" in machine:
                     llm_engine = MLX_Engine
@@ -548,7 +554,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                     llm_engine = CUDA_Engine
                 else:
                     llm_engine = CPU_Engine
-                    logger.info(f"System: {system} and CUDA not availabl.")
+                    logger.info(f"System: {system} and CUDA not available.")
             logger.info(f"Engine chosen: {llm_engine}")
             if llm_engine is None:
                 raise

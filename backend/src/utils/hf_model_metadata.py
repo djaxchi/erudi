@@ -548,15 +548,18 @@ def get_model_size_estimate(model_name: str, link: str) -> ModelSize:
         # Gemma family
         if "gemma" in combined_text:
             total_b = param_count.total_billions
+            is_gemma4 = "gemma-4" in combined_text or "gemma4" in combined_text
             if 0.8 <= total_b <= 1.2:
                 logger.info(f"Matched Gemma 1B pattern for {link}")
                 return ModelSize(size_gb=2.5, min_gb=2.0, max_gb=3.0, is_estimate=True, source="pattern")
             elif 1.8 <= total_b <= 2.2:
-                logger.info(f"Matched Gemma 2B pattern for {link}")
-                return ModelSize(size_gb=5.5, min_gb=5.0, max_gb=6.0, is_estimate=True, source="pattern")
+                size = 5.0 if is_gemma4 else 5.5  # Gemma 4 E2B is MoE, slightly smaller quantized
+                logger.info(f"Matched Gemma {'4 E2B' if is_gemma4 else '2B'} pattern for {link}")
+                return ModelSize(size_gb=size, min_gb=4.5, max_gb=6.0, is_estimate=True, source="pattern")
             elif 3.5 <= total_b <= 4.5:
-                logger.info(f"Matched Gemma 4B pattern for {link}")
-                return ModelSize(size_gb=9.0, min_gb=8.5, max_gb=9.5, is_estimate=True, source="pattern")
+                size = 9.0  # same ballpark for Gemma 3 4B and Gemma 4 E4B
+                logger.info(f"Matched Gemma {'4 E4B' if is_gemma4 else '4B'} pattern for {link}")
+                return ModelSize(size_gb=size, min_gb=8.5, max_gb=9.5, is_estimate=True, source="pattern")
             elif 6.5 <= total_b <= 8.0:
                 logger.info(f"Matched Gemma 7B pattern for {link}")
                 return ModelSize(size_gb=13.5, min_gb=13.0, max_gb=14.0, is_estimate=True, source="pattern")

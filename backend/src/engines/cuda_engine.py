@@ -175,15 +175,40 @@ class CUDA_Engine(BaseEngine):
 
     # Maps model alias → HuggingFace repo with pre-quantized GGUF files.
     # All repos use bartowski's high-quality GGUF quantizations.
+    # Maps exact HuggingFace model ID → bartowski pre-quantized GGUF repo.
+    # When a model has an entry here, download_llm() will fetch the GGUF
+    # directly instead of downloading safetensors and converting locally.
+    # Keys must match the model link stored in seed.py exactly (case-sensitive).
+    # Maps exact HuggingFace model ID → pre-quantized GGUF repo.
+    # CUDA uses pre-built GGUF repos: download_llm() will call pick_best_gguf()
+    # and skip local safetensors conversion entirely.
+    USES_GGUF: bool = True
+
+    # When a model has an entry here, download_llm() fetches the GGUF directly
+    # instead of downloading safetensors and converting locally.
+    # Keys must match the model link stored in seed.py exactly (case-sensitive).
+    # All repos verified to have Q4_K_M available.
     MODEL_MAPPING = {
-        "mistral-7b":    "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
-        "llama3-8b":     "bartowski/Meta-Llama-3-8B-Instruct-GGUF",
-        "llama3.1-8b":   "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
-        "llama3.2-3b":   "bartowski/Llama-3.2-3B-Instruct-GGUF",
-        "gemma2-9b":     "bartowski/gemma-2-9b-it-GGUF",
-        "phi3-mini":     "bartowski/Phi-3-mini-4k-instruct-GGUF",
-        "phi3.5-mini":   "bartowski/Phi-3.5-mini-instruct-GGUF",
-        "qwen2.5-7b":    "bartowski/Qwen2.5-7B-Instruct-GGUF",
+        # Gemma 3 — unsloth (bartowski has no Gemma 3 repos)
+        "google/gemma-3-270m-it":               "unsloth/gemma-3-270m-it-GGUF",
+        "google/gemma-3-1b-it":                 "unsloth/gemma-3-1b-it-GGUF",
+        "google/gemma-3-4b-it":                 "unsloth/gemma-3-4b-it-GGUF",
+        "google/gemma-3-12b-it":                "unsloth/gemma-3-12b-it-GGUF",
+        # Gemma 2 — bartowski
+        "google/gemma-2-2b-it":                 "bartowski/gemma-2-2b-it-GGUF",
+        # Gemma 4 (Gemma3n / MoE architecture) — unsloth published same day as release
+        "google/gemma-4-E2B-it":                "unsloth/gemma-4-E2B-it-GGUF",
+        "google/gemma-4-E4B-it":                "unsloth/gemma-4-E4B-it-GGUF",
+        # Mistral — bartowski
+        "mistralai/Mistral-7B-Instruct-v0.3":   "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
+        "mistralai/Ministral-8B-Instruct-2410":  "bartowski/Ministral-8B-Instruct-2410-GGUF",
+        "mistralai/Mistral-Nemo-Instruct-2407":  "bartowski/Mistral-Nemo-Instruct-2407-GGUF",
+        # Llama — bartowski
+        "meta-llama/Llama-3.2-3B-Instruct":     "bartowski/Llama-3.2-3B-Instruct-GGUF",
+        "meta-llama/Llama-3.1-8B-Instruct":     "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
+        "meta-llama/Llama-3-8B-Instruct":       "bartowski/Meta-Llama-3-8B-Instruct-GGUF",
+        # Qwen — bartowski
+        "Qwen/Qwen2.5-7B-Instruct":             "bartowski/Qwen2.5-7B-Instruct-GGUF",
     }
 
     # ---------- Private server helpers ----------
@@ -485,12 +510,32 @@ class CUDA_Engine(BaseEngine):
         Returns:
             -1 for full offload (≥10 GB free), else a partial count, or
             0 if no GPU detected.
+
+        Override for testing:
+            Set ERUDI_VRAM_OVERRIDE_GB=<float> to simulate a specific free VRAM amount.
+            Examples:
+                ERUDI_VRAM_OVERRIDE_GB=2   → 0  (CPU fallback)
+                ERUDI_VRAM_OVERRIDE_GB=4.5 → 20 (partial offload)
+                ERUDI_VRAM_OVERRIDE_GB=7   → 32 (partial offload)
+                ERUDI_VRAM_OVERRIDE_GB=12  → -1 (full GPU)
         """
-        gpus = cls._get_nvml_gpus()
-        if not gpus:
-            return 0
-        best = cls._select_best_gpu(gpus)
-        vram_free_gb = best["vram_free_mb"] / 1024
+        import os
+        vram_override = os.environ.get("ERUDI_VRAM_OVERRIDE_GB")
+        if vram_override is not None:
+            try:
+                vram_free_gb = float(vram_override)
+                logger.info(f"[ERUDI_VRAM_OVERRIDE_GB] Simulating {vram_free_gb:.1f} GB free VRAM.")
+            except ValueError:
+                logger.warning(f"[ERUDI_VRAM_OVERRIDE_GB] Invalid value '{vram_override}', ignoring.")
+                vram_override = None
+
+        if vram_override is None:
+            gpus = cls._get_nvml_gpus()
+            if not gpus:
+                return 0
+            best = cls._select_best_gpu(gpus)
+            vram_free_gb = best["vram_free_mb"] / 1024
+
         if vram_free_gb < 3:
             return 0
         if vram_free_gb < 6:

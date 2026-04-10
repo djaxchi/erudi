@@ -28,3 +28,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openDataFolder: () => ipcRenderer.invoke("data:openFolder"),
   clearAllData: () => ipcRenderer.invoke("data:clearAll"),
 });
+
+// Auto-updater bridge
+contextBridge.exposeInMainWorld("updaterAPI", {
+  // Register a callback for updater events from main process.
+  // event types: "update-available" | "download-progress" | "update-downloaded"
+  onUpdaterEvent: (callback) => {
+    ipcRenderer.on("updater-event", (_event, payload) => callback(payload));
+    // Return cleanup function
+    return () => ipcRenderer.removeAllListeners("updater-event");
+  },
+  // Trigger immediate quit-and-install
+  installNow: () => ipcRenderer.invoke("updater:install-now"),
+});
