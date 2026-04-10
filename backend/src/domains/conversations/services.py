@@ -544,7 +544,8 @@ class ConversationService:
         
         if context.get("middle_term_memory"):
             mtm_prompt = "\nThese previous messages could be useful:\n" + "\n".join(
-                context["middle_term_memory"]
+                f"{sender}: {content}"
+                for sender, content in context["middle_term_memory"]
             )
         
         if context.get("kb_context"):

@@ -223,6 +223,8 @@ MODEL_SIZE_MAP: Dict[str, Tuple[float, float, float]] = {
     "google/gemma-3-4b-it": (9.0, 8.5, 9.5),
     "google/gemma-4-E2B-it": (5.0, 4.5, 5.5),
     "google/gemma-4-E4B-it": (9.0, 8.5, 9.5),
+    "google/gemma-4-26b-a4b-it": (16.0, 15.0, 17.0),
+    "google/gemma-4-31b-it": (19.0, 18.0, 20.0),
     
     # Qwen models (full precision)
     "Qwen/Qwen2.5-7B-Instruct": (14.5, 14.0, 15.0),

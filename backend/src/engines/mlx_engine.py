@@ -95,10 +95,12 @@ class MLX_Engine(BaseEngine):
         "mistralai/Mistral-7B-v0.3":           "mlx-community/Mistral-7B-v0.3-4bit",
         "mistralai/Ministral-8B-Instruct-2410": "mlx-community/Ministral-8B-Instruct-2410-4bit",
         "mistralai/Mistral-Nemo-Instruct-2407": "mlx-community/Mistral-Nemo-Instruct-2407-4bit",
-        "meta-llama/Llama-3.2-3B-Instruct":   "mlx-community/Llama-3.2-3B-Instruct-4bit",
-        "meta-llama/Llama-3.1-8B-Instruct":   "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit",
-        "meta-llama/Llama-3-8B-Instruct":     "mlx-community/Meta-Llama-3-8B-Instruct-4bit",
-        "Qwen/Qwen2.5-7B-Instruct":           "mlx-community/Qwen2.5-7B-Instruct-4bit",
+        "meta-llama/Llama-3.2-3B-Instruct":    "mlx-community/Llama-3.2-3B-Instruct-4bit",
+        "meta-llama/Llama-3.1-8B-Instruct":    "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit",
+        "meta-llama/Llama-3-8B-Instruct":      "mlx-community/Meta-Llama-3-8B-Instruct-4bit",
+        "Qwen/Qwen2.5-7B-Instruct":            "mlx-community/Qwen2.5-7B-Instruct-4bit",
+        "google/gemma-4-26b-a4b-it":           "mlx-community/gemma-4-26b-a4b-it-4bit",
+        "google/gemma-4-31b-it":               "mlx-community/gemma-4-31b-it-4bit",
     }
 
     @classmethod
