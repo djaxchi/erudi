@@ -75,6 +75,40 @@ from src.core.exceptions import (
 FILES_TO_EXCLUDE = ["consolidated.safetensors"]
 
 
+GGUF_QUANT_PRIORITY = ["q4_k_m", "q4_0", "q5_k_m", "q8_0", "f16"]
+
+
+def pick_best_gguf(filenames: list[str]) -> str | None:
+    """From a list of filenames in a GGUF repo, return the best quantization.
+
+    Uses the same priority order as CUDA_Engine._select_gguf so behavior is
+    consistent between download-time selection and load-time selection.
+
+    Args:
+        filenames: All filenames returned by HfApi.list_repo_files().
+
+    Returns:
+        Filename of the chosen GGUF, or None if no .gguf files found.
+    """
+    # Exclude multimodal projection files (mmproj-*.gguf) — these are vision
+    # encoder weights, not the main text model, and must not be loaded as LLM.
+    ggufs = [
+        f for f in filenames
+        if f.lower().endswith(".gguf") and not f.lower().startswith("mmproj")
+    ]
+    if not ggufs:
+        return None
+    for quant in GGUF_QUANT_PRIORITY:
+        for name in ggufs:
+            if quant in name.lower():
+                logger.info(f"Selected GGUF: {name} (quant={quant})")
+                return name
+    # Fall back to the first one alphabetically
+    chosen = sorted(ggufs)[0]
+    logger.warning(f"No preferred quant found; falling back to {chosen}")
+    return chosen
+
+
 def get_quantized_model_link(original_link: str) -> str:
     """Resolve engine-specific quantized model link from MODEL_MAPPING if available.
 
@@ -299,9 +333,20 @@ async def download_llm(
     llm = session.query(Llm).get(model_id)
     is_prequantized = llm.quantized if llm else False
     session.close()
-    
-    # The link stored in DB is already the MLX link for pre-quantized models
-    actual_download_link = model_link
+
+    # Check if this engine uses GGUF repos (CUDA only) and has a mapping for this model.
+    # If so, download the single best GGUF directly and skip local conversion entirely.
+    # For MLX, MODEL_MAPPING points to mlx-community repos (not GGUF) — handled separately.
+    _uses_gguf = getattr(config.LLM_Engine, 'USES_GGUF', False)
+    _mapped_repo = config.LLM_Engine.MODEL_MAPPING.get(model_link)
+    gguf_repo = _mapped_repo if (_uses_gguf and _mapped_repo) else None
+
+    if _mapped_repo:
+        logger.info(f"Mapped repo found: {model_link} -> {_mapped_repo}")
+        actual_download_link = _mapped_repo
+        is_prequantized = True
+    else:
+        actual_download_link = model_link
     
     # Prepare local path
     os.makedirs(temp_save_dir, exist_ok=True)
@@ -344,8 +389,29 @@ async def download_llm(
     # Start ETA monitoring
     eta_task = asyncio.create_task(job.monitor_eta(interval=5.0))
 
-    # Split tasks into misc and shard files
-    all_files = [f for f in api.list_repo_files(actual_download_link) if f in file_sizes]
+    # Build the file list to download.
+    # For GGUF repos: pick only the single best quantization + small aux files.
+    # For safetensors repos: download everything (then convert locally).
+    all_repo_files = list(api.list_repo_files(actual_download_link))
+    if gguf_repo:
+        best_gguf = pick_best_gguf(all_repo_files)
+        if not best_gguf:
+            raise Exception(f"No .gguf files found in repo {actual_download_link}")
+        # Keep only the chosen GGUF + small non-model files (tokenizer, config, etc.)
+        small_aux = [
+            f for f in all_repo_files
+            if not f.lower().endswith(".gguf")
+            and f in file_sizes
+            and file_sizes.get(f, 0) < 10 * 1024 * 1024  # < 10 MB
+        ]
+        all_files = [best_gguf] + small_aux
+        # Recompute total bytes for accurate progress tracking
+        job.total_bytes = sum(file_sizes.get(f, 0) for f in all_files)
+        callback.set_size(job.total_bytes)
+        logger.info(f"GGUF download: {best_gguf} + {len(small_aux)} aux files")
+    else:
+        all_files = [f for f in all_repo_files if f in file_sizes]
+
     misc = [f for f in all_files if not f.endswith(".safetensors")]
     shards = [f for f in all_files if f.endswith(".safetensors")]
 

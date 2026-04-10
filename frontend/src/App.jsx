@@ -9,6 +9,7 @@ import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import { DownloadModalProvider } from "./contexts/DownloadModalContext";
 import { KnowledgeBaseProvider } from "./contexts/KnowledgeBaseContext";
 import LoadingScreen from "./components/LoadingScreen";
+import UpdateBanner from "./components/UpdateBanner";
 import { apiClient } from "./services/api/client";
 import { createLogger } from "./utils/logger";
 
@@ -38,6 +39,7 @@ export default function App() {
   return (
     <DownloadModalProvider>
       <KnowledgeBaseProvider>
+        <UpdateBanner />
         <Router>
           <Routes>
             <Route path="/" element={<Navigate to="/erudi/models" replace />} />

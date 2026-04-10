@@ -4,6 +4,23 @@ const { spawn, execSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 
+// electron-updater: only loaded in production to avoid dev noise.
+// Reads latest.yml / latest-mac.yml from GitHub Releases and handles
+// download + install of new versions.
+let autoUpdater = null;
+if (app.isPackaged) {
+  try {
+    autoUpdater = require("electron-updater").autoUpdater;
+    autoUpdater.autoDownload = true;       // Download silently in the background
+    autoUpdater.autoInstallOnAppQuit = true; // Install on next natural quit
+    autoUpdater.logger = require("electron-log");
+    autoUpdater.logger.transports.file.level = "info";
+  } catch (e) {
+    // electron-updater not available — skip updates silently
+    autoUpdater = null;
+  }
+}
+
 // Add this line to define the entry point
 const MAIN_WINDOW_WEBPACK_ENTRY = process.env.MAIN_WINDOW_WEBPACK_ENTRY || "http://localhost:3000";
 const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY = process.env.MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY;
@@ -793,6 +810,63 @@ ipcMain.handle("data:clearAll", async () => {
   }
 });
 
+// ── Auto-updater IPC ──────────────────────────────────────────────────────────
+// Renderer can trigger an immediate install via "updater:install-now".
+ipcMain.handle("updater:install-now", () => {
+  if (autoUpdater) {
+    autoUpdater.quitAndInstall(false, true);
+  }
+});
+
+function setupAutoUpdater() {
+  if (!autoUpdater) return;
+
+  const send = (event, payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("updater-event", { event, ...payload });
+    }
+  };
+
+  autoUpdater.on("checking-for-update", () => {
+    log("Updater: checking for update...");
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    log(`Updater: update available — v${info.version}`);
+    send("update-available", { version: info.version, releaseNotes: info.releaseNotes || "" });
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    log("Updater: already on latest version.");
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    log(`Updater: downloading... ${Math.round(progress.percent)}%`);
+    send("download-progress", { percent: Math.round(progress.percent) });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    log(`Updater: v${info.version} downloaded, ready to install.`);
+    send("update-downloaded", { version: info.version });
+  });
+
+  autoUpdater.on("error", (err) => {
+    // Log but never crash the app over an update failure
+    log(`Updater error (non-fatal): ${err.message}`);
+  });
+
+  // Check on launch, then every 4 hours
+  autoUpdater.checkForUpdates().catch((err) => {
+    log(`Updater: initial check failed — ${err.message}`);
+  });
+
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch((err) => {
+      log(`Updater: periodic check failed — ${err.message}`);
+    });
+  }, 4 * 60 * 60 * 1000);
+}
+
 app.whenReady().then(async () => {
   log("App ready.");
 
@@ -800,6 +874,9 @@ app.whenReady().then(async () => {
   // The renderer handles the loading/error state via backend-event IPC messages.
   createApplicationMenu();
   createWindow();
+
+  // Auto-updater: wire up events and kick off initial check (production only).
+  setupAutoUpdater();
 
   if (!app.isPackaged) {
     // Dev mode: backend is expected to be already running via dev-start.sh
