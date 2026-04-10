@@ -92,12 +92,9 @@ class ConversationEmbedder:
         Returns:
             Numpy array containing the embeddings
         """
-        try:
-            self._ensure_embedder()
-            msg_embs = self._embedder.encode(messages, convert_to_tensor=False)
+        with self._embedder_context() as embedder:
+            msg_embs = embedder.encode(messages, convert_to_tensor=False)
             return np.array(msg_embs)
-        finally:
-            self._cleanup_embedder()
 
     def find_relevant_messages(
         self,
