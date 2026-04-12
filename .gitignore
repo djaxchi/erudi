@@ -10,6 +10,30 @@ dist/
 build/
 !scripts/build/
 
+# PyInstaller output
+frontend/backend/
+backend/dist/
+backend/build/
+
+# SQLite runtime files
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Electron build output
+frontend/out/
+frontend/.webpack/
+
+# Node
+node_modules/
+
+# macOS
+.DS_Store
+
+# App data / model downloads (never commit)
+backend/models/
+
 .DS_Store
 Thumbs.db
 
