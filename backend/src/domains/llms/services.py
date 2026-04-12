@@ -69,10 +69,33 @@ from src.core.exceptions import (
     QuantizationException,
     FileSystemException,
     DownloadJobNotFoundException,
+    ModelNotFoundException,
+    InvalidInputException,
+    StateConflictException,
+    DatabaseException,
 )
 
 # Environment setup
 FILES_TO_EXCLUDE = ["consolidated.safetensors"]
+
+# Registry of active download trackers keyed by job_id for cancellation support
+_active_trackers: dict = {}
+_trackers_lock = threading.Lock()
+
+
+def _register_tracker(job_id: int, tracker: "DownloadTracker") -> None:
+    with _trackers_lock:
+        _active_trackers[job_id] = tracker
+
+
+def _unregister_tracker(job_id: int) -> None:
+    with _trackers_lock:
+        _active_trackers.pop(job_id, None)
+
+
+def get_active_download_tracker(job_id: int) -> Optional["DownloadTracker"]:
+    with _trackers_lock:
+        return _active_trackers.get(job_id)
 
 
 GGUF_QUANT_PRIORITY = ["q4_k_m", "q4_0", "q5_k_m", "q8_0", "f16"]
@@ -157,6 +180,7 @@ class DownloadTracker:
         self.downloaded_bytes: int = 0
         self.eta_seconds: Optional[float] = None
         self._lock = Lock()
+        self._cancelled: bool = False
         logger.info("DownloadJob initialized")
 
     def update(self, bytes_downloaded: int) -> None:
@@ -178,6 +202,16 @@ class DownloadTracker:
         if self.total_bytes == 0:
             return 0.0
         return (self.downloaded_bytes / self.total_bytes) * 100
+
+    def cancel(self) -> None:
+        """Signal download cancellation (thread-safe)."""
+        with self._lock:
+            self._cancelled = True
+
+    def should_continue(self) -> bool:
+        """Return False if cancelled, True otherwise (thread-safe)."""
+        with self._lock:
+            return not self._cancelled
 
     async def monitor_eta(self, interval: float = 20.0) -> None:
         """Continuously estimate remaining time based on download rate (runs until 100%).
@@ -361,88 +395,143 @@ async def download_llm(
     api = HfApi(token=HF_TOKEN)
     fs = HfFileSystem(token=HF_TOKEN)
 
-    # Initialize tracking
+    # Initialize tracking and register for cancellation support
     job = DownloadTracker()
-
-    # Gather file sizes and compute total
-    info = api.repo_info(actual_download_link, files_metadata=True)
-    file_sizes = {
-        s.rfilename: s.size
-        for s in info.siblings
-        if s.size and s.rfilename not in FILES_TO_EXCLUDE
-    }
-    job.total_bytes = sum(file_sizes.values())
-    logger.info(f"Total size: {job.total_bytes} bytes")
-
-    # Create progress callback
-    callback = make_callback(job)
-    callback.set_size(job.total_bytes)
-
-    # Start DB updater if requested
     if job_id is not None:
-        threading.Thread(
-            target=update_db_with_progress,
-            args=(job, job_id, model_id),
-            daemon=True
-        ).start()
+        _register_tracker(job_id, job)
 
-    # Start ETA monitoring
-    eta_task = asyncio.create_task(job.monitor_eta(interval=5.0))
-
-    # Build the file list to download.
-    # For GGUF repos: pick only the single best quantization + small aux files.
-    # For safetensors repos: download everything (then convert locally).
-    all_repo_files = list(api.list_repo_files(actual_download_link))
-    if gguf_repo:
-        best_gguf = pick_best_gguf(all_repo_files)
-        if not best_gguf:
-            raise Exception(f"No .gguf files found in repo {actual_download_link}")
-        # Keep only the chosen GGUF + small non-model files (tokenizer, config, etc.)
-        small_aux = [
-            f for f in all_repo_files
-            if not f.lower().endswith(".gguf")
-            and f in file_sizes
-            and file_sizes.get(f, 0) < 10 * 1024 * 1024  # < 10 MB
-        ]
-        all_files = [best_gguf] + small_aux
-        # Recompute total bytes for accurate progress tracking
-        job.total_bytes = sum(file_sizes.get(f, 0) for f in all_files)
-        callback.set_size(job.total_bytes)
-        logger.info(f"GGUF download: {best_gguf} + {len(small_aux)} aux files")
-    else:
-        all_files = [f for f in all_repo_files if f in file_sizes]
-
-    misc = [f for f in all_files if not f.endswith(".safetensors")]
-    shards = [f for f in all_files if f.endswith(".safetensors")]
-
-    # Download misc sequentially
-    for path in misc:
-        await asyncio.to_thread(fs.get_file, f"{actual_download_link}/{path}", os.path.join(temp_save_dir, path), callback)
-        logger.info(f"Downloaded {path}")
-
-    # Download shards concurrently
-    shard_tasks = [(actual_download_link, path) for path in shards]
-    await download_files_concurrent(fs, callback, shard_tasks, temp_save_dir)
-    logger.info("All shards downloaded")
-
-    # If pre-quantized, just move files; otherwise convert locally
     try:
+        # Gather file sizes and compute total
+        info = api.repo_info(actual_download_link, files_metadata=True)
+        file_sizes = {
+            s.rfilename: s.size
+            for s in info.siblings
+            if s.size and s.rfilename not in FILES_TO_EXCLUDE
+        }
+        job.total_bytes = sum(file_sizes.values())
+        logger.info(f"Total size: {job.total_bytes} bytes")
+
+        # Create progress callback
+        callback = make_callback(job)
+        callback.set_size(job.total_bytes)
+
+        # Start DB updater if requested
+        if job_id is not None:
+            threading.Thread(
+                target=update_db_with_progress,
+                args=(job, job_id, model_id),
+                daemon=True
+            ).start()
+
+        # Start ETA monitoring
+        eta_task = asyncio.create_task(job.monitor_eta(interval=5.0))
+
+        # Build the file list to download.
+        # For GGUF repos: pick only the single best quantization + small aux files.
+        # For safetensors repos: download everything (then convert locally).
+        all_repo_files = list(api.list_repo_files(actual_download_link))
+        if gguf_repo:
+            best_gguf = pick_best_gguf(all_repo_files)
+            if not best_gguf:
+                raise Exception(f"No .gguf files found in repo {actual_download_link}")
+            small_aux = [
+                f for f in all_repo_files
+                if not f.lower().endswith(".gguf")
+                and f in file_sizes
+                and file_sizes.get(f, 0) < 10 * 1024 * 1024  # < 10 MB
+            ]
+            all_files = [best_gguf] + small_aux
+            job.total_bytes = sum(file_sizes.get(f, 0) for f in all_files)
+            callback.set_size(job.total_bytes)
+            logger.info(f"GGUF download: {best_gguf} + {len(small_aux)} aux files")
+        else:
+            all_files = [f for f in all_repo_files if f in file_sizes]
+
+        misc = [f for f in all_files if not f.endswith(".safetensors")]
+        shards = [f for f in all_files if f.endswith(".safetensors")]
+
+        # Download misc sequentially
+        for path in misc:
+            await asyncio.to_thread(fs.get_file, f"{actual_download_link}/{path}", os.path.join(temp_save_dir, path), callback)
+            logger.info(f"Downloaded {path}")
+
+        # Download shards concurrently
+        shard_tasks = [(actual_download_link, path) for path in shards]
+        await download_files_concurrent(fs, callback, shard_tasks, temp_save_dir)
+        logger.info("All shards downloaded")
+
+        # If pre-quantized, just move files; otherwise convert locally
         if is_prequantized:
-            # Already quantized in the right format, just move to final directory
             logger.info("Using pre-quantized model, moving files directly")
             if os.path.exists(final_save_dir):
                 shutil.rmtree(final_save_dir, ignore_errors=True)
             shutil.move(temp_save_dir, final_save_dir)
         else:
-            # Need to convert to right format and quantize locally
             await asyncio.to_thread(config.LLM_Engine.quant_and_save_from_hf_format, temp_save_dir, final_save_dir)
             shutil.rmtree(temp_save_dir, ignore_errors=True)
+
+        # Wait for ETA monitor to finish
+        await eta_task
+        logger.info("Download complete")
+
+        return temp_save_dir
+
     except Exception as e:
         logger.error(f"Failed to process model: {e}")
         raise
-    
-    # Wait for ETA monitor to finish
-    await eta_task
-    logger.info("Download complete")
+    finally:
+        if job_id is not None:
+            _unregister_tracker(job_id)
 
-    return temp_save_dir
+
+def cancel_download_job(job_id: int, job_repo, llm_repo, db) -> dict:
+    """Cancel an active download job, signal the tracker, and clean up partial files.
+
+    Args:
+        job_id: ID of the download job to cancel.
+        job_repo: Download_Job_Repository instance.
+        llm_repo: Llm_Repository instance.
+        db: SQLAlchemy session for transaction control.
+
+    Returns:
+        dict with cancellation status.
+
+    Raises:
+        DownloadJobNotFoundException, ModelNotFoundException,
+        InvalidInputException, StateConflictException
+    """
+    job = job_repo.get_by_id(job_id)
+    if not job:
+        raise DownloadJobNotFoundException(job_id)
+    if job.status in ["completed", "failed", "cancelled"]:
+        raise StateConflictException(
+            "Cannot cancel a job that is already completed, failed, or cancelled"
+        )
+
+    llm = llm_repo.get_by_id(job.local_model_id)
+    if not llm:
+        raise ModelNotFoundException(f"LLM {job.local_model_id}")
+    if llm.local != 2:
+        raise InvalidInputException(
+            "Download ended - cannot be cancelled, please delete the model"
+        )
+
+    # Signal running download thread to stop
+    job_repo.update_status(job, "cancelling")
+    db.commit()
+
+    tracker = get_active_download_tracker(job_id)
+    if tracker:
+        tracker.cancel()
+        logger.info(f"Signaled cancellation for download job {job_id}")
+    else:
+        logger.warning(f"No active tracker for job {job_id}, proceeding with cleanup")
+
+    # Clean up files and remove the pending LLM entry
+    job_repo.update_status(job, "cancelled")
+    job_repo.cleanup_job_files(job)
+    llm_repo.delete(llm)
+    db.commit()
+
+    logger.info(f"Cancelled download job {job_id} and deleted temp LLM {llm.id}")
+    return {"message": "Download cancellation initiated", "job_id": job_id, "status": "cancelled"}

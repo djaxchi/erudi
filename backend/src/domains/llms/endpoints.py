@@ -102,7 +102,7 @@ from src.database.core import get_db, SessionLocal
 from src.entities.Llm import Llm
 from src.entities.DownloadJob import DownloadJobModel
 from src.domains.llms.schemas import LLMCreate, LLMResponse, DownloadJobResponse
-from src.domains.llms.services import download_llm
+from src.domains.llms.services import download_llm, cancel_download_job
 from src.domains.llms.repository import Llm_Repository, Download_Job_Repository
 
 from src.core.logging import logger
@@ -488,63 +488,15 @@ def cancel_download(
     job_repo: Download_Job_Repository = Depends(get_download_job_repository),
     db: Session = Depends(get_db),
 ):
-    """Cancel an active download job and cleanup partial files.
-
-    Args:
-        job_id: ID of the download job to cancel.
-        llm_repo: Injected LLM repository.
-        job_repo: Injected download job repository.
-        db: Database session for transaction control.
-
-    Returns:
-        dict: Success message.
-
-    Raises:
-        DownloadJobNotFoundException: If job not found.
-        ModelNotFoundException: If LLM not found.
-        InvalidInputException: If already completed/failed or not in download state.
-        DatabaseException: If cancellation fails.
-
-    Note:
-        Deletes temp files and marks LLM as failed. Cannot cancel completed jobs.
-    """
+    """Cancel an active download job and cleanup partial files."""
     try:
-        # Get job and validate state
-        job = job_repo.get_by_id(job_id)
-        if not job:
-            raise DownloadJobNotFoundException(job_id)
-        if job.status in ["completed", "failed"]:
-            raise StateConflictException("Cannot cancel completed or failed jobs")
-        
-        # Get associated LLM
-        llm = llm_repo.get_by_id(job.local_model_id)
-        if not llm:
-            raise ModelNotFoundException(f"LLM {job.local_model_id}")
-        if llm.local != 2:
-            raise InvalidInputException("Download ended - cannot be cancelled, please delete the model")
-        
-        # Mark job as cancelled
-        job_repo.update_status(job, "cancelled")
-        
-        # Clean up temp files using repository method
-        job_repo.cleanup_job_files(job)
-        
-        # Delete temp LLM entry
-        llm_repo.delete(llm)
-        db.commit()
-        
-        logger.info(f"Cancelled download job {job_id} and deleted temp LLM {llm.id}")
-        return {"message": "Download job cancelled successfully"}
-    
+        return cancel_download_job(job_id, job_repo, llm_repo, db)
     except (DownloadJobNotFoundException, ModelNotFoundException, InvalidInputException, StateConflictException):
         raise
     except Exception as e:
         db.rollback()
         logger.exception(f"Failed to cancel download job {job_id}: {e}")
-        raise DatabaseException(
-            "Failed to cancel download",
-            trace=str(e)
-        )
+        raise DatabaseException("Failed to cancel download", trace=str(e))
 
 
 @router.get(
