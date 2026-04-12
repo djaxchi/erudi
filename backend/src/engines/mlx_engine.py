@@ -297,7 +297,13 @@ class MLX_Engine(BaseEngine):
                 # Generate stream
                 text = ""
                 logging.info("=" * 10)
-                
+
+                # Stateful filter for thinking blocks: <|channel>thought ... <channel|>
+                THINK_START = "<|channel>thought"
+                THINK_END = "<channel|>"
+                in_thinking = False
+                think_buf = ""  # accumulates partial tag matches while uncertain
+
                 for response in mlx_lm.stream_generate(
                     model,
                     tokenizer,
@@ -306,13 +312,68 @@ class MLX_Engine(BaseEngine):
                     sampler=sampler,
                     logits_processors=logits_processors if logits_processors != [] else None,
                     prompt_cache=None
-                ):  
-                    if response:
-                        token_repr = response.text.replace('\n', '\\n').replace('\t', '\\t')
-                        logging.info(f"Yielding token: {token_repr}")
-                        
-                        text += response.text
-                        yield response.text
+                ):
+                    if not response:
+                        continue
+
+                    chunk = response.text
+
+                    if in_thinking:
+                        # Look for end tag in accumulated buffer + new chunk
+                        combined = think_buf + chunk
+                        idx = combined.find(THINK_END)
+                        if idx != -1:
+                            # End tag found — emit everything after it
+                            in_thinking = False
+                            think_buf = ""
+                            after = combined[idx + len(THINK_END):]
+                            if after:
+                                token_repr = after.replace('\n', '\\n').replace('\t', '\\t')
+                                logging.info(f"Yielding token: {token_repr}")
+                                text += after
+                                yield after
+                        else:
+                            # Still inside thinking block — discard, keep tail for partial match
+                            think_buf = combined[-(len(THINK_END) - 1):]
+                    else:
+                        # Not in thinking block — check for start tag
+                        combined = think_buf + chunk
+                        idx = combined.find(THINK_START)
+                        if idx != -1:
+                            # Emit everything before the tag, then enter thinking mode
+                            before = combined[:idx]
+                            if before:
+                                token_repr = before.replace('\n', '\\n').replace('\t', '\\t')
+                                logging.info(f"Yielding token: {token_repr}")
+                                text += before
+                                yield before
+                            in_thinking = True
+                            think_buf = ""
+                        else:
+                            # Check if tail could be the start of a tag (partial match)
+                            tail_len = len(THINK_START) - 1
+                            tail = combined[-tail_len:]
+                            safe = combined[:-tail_len] if len(combined) > tail_len else ""
+                            if THINK_START.startswith(tail) and tail:
+                                # Hold the tail — might be a partial start tag
+                                think_buf = tail
+                                if safe:
+                                    token_repr = safe.replace('\n', '\\n').replace('\t', '\\t')
+                                    logging.info(f"Yielding token: {token_repr}")
+                                    text += safe
+                                    yield safe
+                            else:
+                                # Nothing suspicious — flush everything
+                                think_buf = ""
+                                token_repr = combined.replace('\n', '\\n').replace('\t', '\\t')
+                                logging.info(f"Yielding token: {token_repr}")
+                                text += combined
+                                yield combined
+
+                # Flush any remaining safe buffer content
+                if think_buf and not in_thinking:
+                    text += think_buf
+                    yield think_buf
 
                 logging.info("=" * 10)
 

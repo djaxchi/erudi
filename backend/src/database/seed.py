@@ -539,7 +539,6 @@ class Model_Seeder:
         results = self.hf_api.list_models(
             search=search_config.search_term,
             sort="downloads",
-            direction=-1
         )
         
         for model_info in results:
