@@ -44,6 +44,7 @@ export function DownloadModalProvider({ children }) {
   const [isFineTuning, setIsFineTuning] = useState(false);
   const [currentStep, setCurrentStep] = useState("");
   const [llmId, setLlmId] = useState(null);
+  const [jobId, setJobId] = useState(null);
 
   const intervalRef = useRef(null);
   const callbacksRef = useRef({ onComplete: null, onError: null });
@@ -79,6 +80,16 @@ export function DownloadModalProvider({ children }) {
 
         const res = await fetch(endpoint);
         if (!res.ok) {
+          if (res.status === 404) {
+            // Le job n'existe plus (probablement annulé et nettoyé)
+            clearInterval(intervalRef.current);
+            setIsDownloading(false);
+            setProgress(0);
+            setStatus("cancelled");
+            setIsFineTuning(false);
+            setLlmId(null);
+            return;
+          }
           throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
         }
         const data = await res.json();
@@ -92,11 +103,13 @@ export function DownloadModalProvider({ children }) {
           setTimeLeft(data.time_left);
         }
 
-        if (data.status === "completed" || data.status === "failed") {
+        if (data.status === "completed" || data.status === "failed" || data.status === "cancelled") {
           clearInterval(intervalRef.current);
           setIsDownloading(false);
           if (data.status === "completed") {
             callbacksRef.current.onComplete?.();
+          } else if (data.status === "cancelled") {
+            callbacksRef.current.onError?.("cancelled");
           } else {
             const errorMsg =
               data.error_message ||
@@ -164,6 +177,9 @@ export function DownloadModalProvider({ children }) {
           throw new Error(`Failed to start download (${res.status}): ${errorText}`);
         }
         const job = await res.json();
+        
+        // Sauvegarder le jobId pour l'annulation
+        setJobId(job.id);
 
         intervalRef.current = setInterval(() => {
           checkDownloadStatus(job.id);
@@ -178,15 +194,47 @@ export function DownloadModalProvider({ children }) {
     }
   }, [model, checkDownloadStatus, isFineTuning, llmId]);
 
-  const cancelDownload = useCallback(() => {
-    clearInterval(intervalRef.current);
-    setIsDownloading(false);
-    setProgress(0);
-    setStatus("cancelled");
-    setIsFineTuning(false);
-    setLlmId(null);
-    callbacksRef.current.onError?.("cancelled");
-  }, []);
+  const cancelDownload = useCallback(async () => {
+    if (!jobId) {
+      // Si pas de jobId, on fait juste le nettoyage local
+      clearInterval(intervalRef.current);
+      setIsDownloading(false);
+      setProgress(0);
+      setStatus("cancelled");
+      setIsFineTuning(false);
+      setLlmId(null);
+      callbacksRef.current.onError?.("cancelled");
+      return;
+    }
+
+    try {
+      // Appeler l'endpoint d'annulation
+      const response = await fetch(`${API_BASE_URL}/llms/downloads/${jobId}/cancel`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+      }
+
+      setStatus('cancelling');
+      log.log(`Download cancelled for job ${jobId}`);
+      
+      // Le statut final sera mis à jour par le polling
+    } catch (error) {
+      log.error('Failed to cancel download:', error);
+      setErrorMessage('Failed to cancel download: ' + error.message);
+      
+      // Dans tous les cas, on nettoie localement
+      clearInterval(intervalRef.current);
+      setIsDownloading(false);
+      setProgress(0);
+      setStatus("cancelled");
+      setIsFineTuning(false);
+      setLlmId(null);
+      callbacksRef.current.onError?.("cancelled");
+    }
+  }, [jobId]);
 
   const closeErrorModal = () => {
     setErrorMessage("");
@@ -230,19 +278,17 @@ export function DownloadModalProvider({ children }) {
                     {!isCollapsed && (
                       <>
                         <div className="flex items-center justify-between w-full">
-                          <p className="text-white font-semibold truncate">
+                          <p className="text-white font-semibold truncate flex-1">
                             {errorMessage ? "Error:" : isFineTuning ? "Training:" : "Downloading:"}{" "}
                             {model?.name}
                           </p>
-                          {errorMessage && (
-                            <button
-                              onClick={cancelDownload}
-                              className="ml-2 p-1 hover:bg-red-500/20 rounded transition-colors"
-                              aria-label="Close"
-                            >
-                              <X className="w-4 h-4 text-red-400" />
-                            </button>
-                          )}
+                          <button
+                            onClick={cancelDownload}
+                            className="ml-2 p-1.5 bg-red-500/20 hover:bg-red-500/30 rounded transition-colors"
+                            aria-label="Cancel"
+                          >
+                            <X className="w-4 h-4 text-red-400" />
+                          </button>
                         </div>
 
                         {errorMessage ? (
