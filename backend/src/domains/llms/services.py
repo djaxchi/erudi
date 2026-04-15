@@ -460,9 +460,17 @@ async def download_llm(
         await download_files_concurrent(fs, callback, shard_tasks, temp_save_dir)
         logger.info("All shards downloaded")
 
+        # If cancelled while shards were in-flight, stop here — cancel endpoint already cleaned up
+        if not job.should_continue():
+            logger.info(f"Download job {job_id} was cancelled during transfer, skipping finalization")
+            return temp_save_dir
+
         # If pre-quantized, just move files; otherwise convert locally
         if is_prequantized:
             logger.info("Using pre-quantized model, moving files directly")
+            if not os.path.exists(temp_save_dir):
+                logger.warning(f"temp dir {temp_save_dir} missing (cancelled?), skipping move")
+                return temp_save_dir
             if os.path.exists(final_save_dir):
                 shutil.rmtree(final_save_dir, ignore_errors=True)
             shutil.move(temp_save_dir, final_save_dir)
@@ -517,9 +525,6 @@ def cancel_download_job(job_id: int, job_repo, llm_repo, db) -> dict:
         )
 
     # Signal running download thread to stop
-    job_repo.update_status(job, "cancelling")
-    db.commit()
-
     tracker = get_active_download_tracker(job_id)
     if tracker:
         tracker.cancel()

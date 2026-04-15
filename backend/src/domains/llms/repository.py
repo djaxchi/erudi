@@ -445,9 +445,13 @@ def update_db_with_progress(job_tracker, job_id: int, model_id: int) -> None:
             return
 
         start_time = datetime.utcnow()
-        # Loop until download completes
+        # Loop until download completes or is cancelled
         while job_tracker.percent < 100.0:
             time.sleep(1)
+            # Exit cleanly if the job was cancelled (cancel endpoint handles DB cleanup)
+            if not job_tracker.should_continue():
+                logger.info(f"Job {job_id} cancelled, stopping progress tracking")
+                return
             dbj.total_bytes = job_tracker.total_bytes
             dbj.progress = job_tracker.percent
             dbj.total_time_elapsed = (datetime.utcnow() - start_time).total_seconds()
