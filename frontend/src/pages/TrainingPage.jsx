@@ -201,7 +201,6 @@ export default function TrainingPage() {
             <div className="lg:w-3/5">
               <HardwareInfo hw={hw} />
             </div>
-          </div>
 
             <div className="lg:w-2/5">
               <ModelLibrary

@@ -146,9 +146,7 @@ module.exports = {
   plugins: [
     {
       name: "@electron-forge/plugin-auto-unpack-natives",
-      config: {
-        // Auto-unpack native modules for faster startup
-      }
+      config: {},
     },
     {
       name: "@electron-forge/plugin-webpack",
@@ -167,12 +165,10 @@ module.exports = {
             },
           ],
         },
-        // Enable persistent caching to speed up repeated builds
-        devServer: {
-          hot: true
-        }
-      }
+      },
     },
+    // Fuses are used to enable/disable various Electron functionality
+    // at package time, before code signing the application
     new FusesPlugin({
       version: FuseVersion.V1,
       [FuseV1Options.RunAsNode]: false,
@@ -183,57 +179,4 @@ module.exports = {
       [FuseV1Options.OnlyLoadAppFromAsar]: true,
     }),
   ],
-
-  // Custom script hooks for optimizing build
-  hooks: {
-    prePackage: async (forgeConfig, buildPath) => {
-      const fs = require('fs-extra');
-      const path = require('path');
-      
-      await fs.remove(path.join(__dirname, 'out'));
-      await fs.remove(path.join(__dirname, '.webpack'));
-      
-      const backendPath = path.resolve(__dirname, '../dist/backend/backend.exe');
-      if (!await fs.pathExists(backendPath)) {
-        throw new Error(`Backend not found at ${backendPath}`);
-      }
-
-      // Copier le .env (il n'y a que les variables publiques)
-      const envSource = path.resolve(__dirname, '../.env');
-      const envDest = path.resolve(__dirname, '../dist/backend/.env');
-      if (await fs.pathExists(envSource)) {
-        await fs.copy(envSource, envDest);
-      }
-    },
-    postMake: async (forgeConfig, makeResults) => {
-      const fs = require('fs-extra');
-      const path = require('path');
-      const releaseDir = path.join(__dirname, '../releases');
-      
-      await fs.ensureDir(releaseDir);
-      
-      const existingFiles = await fs.readdir(releaseDir);
-      const exeCount = existingFiles.filter(file => file.endsWith('.exe')).length;
-      const nextVersion = exeCount + 1;
-      
-      for (const result of makeResults) {
-        for (const artifact of result.artifacts) {
-          if (artifact.endsWith('.exe')) {
-            const fileName = path.basename(artifact);
-            const newName = fileName.replace('.exe', `-alpha-v0.${nextVersion}.exe`);
-            const destPath = path.join(releaseDir, newName);
-            
-            await fs.copy(artifact, destPath);
-          }
-        }
-      }
-      
-      // Nettoyage automatique après copie - tout est intégré dans le .exe
-      await fs.remove(path.join(__dirname, 'out'));
-      await fs.remove(path.join(__dirname, '.webpack'));
-      await fs.remove(path.join(__dirname, '../build'));
-      await fs.remove(path.join(__dirname, '../dist'));
-      await fs.remove(path.join(__dirname, '../backend.spec'));
-    }
-  }
 };
