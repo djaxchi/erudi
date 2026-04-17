@@ -60,9 +60,6 @@ const log = (message) => {
 
 log(`Starting app, log file: ${logFile}`);
 
-// Add this line to define the entry point
-const MAIN_WINDOW_WEBPACK_ENTRY = process.env.MAIN_WINDOW_WEBPACK_ENTRY || 'http://localhost:3000';
-
 if (require("electron-squirrel-startup")) {
   app.quit();
 }
@@ -669,21 +666,6 @@ const createWindow = () => {
 
   mainWindow.webContents.on("will-navigate", (event) => {
     event.preventDefault();
-  });
-
-  // Add global drag & drop support after DOM is ready
-  mainWindow.webContents.on('dom-ready', () => {
-    mainWindow.webContents.executeJavaScript(`
-      // Block navigation everywhere, but let events bubble to React
-      ['dragover','drop'].forEach(type =>
-        window.addEventListener(type, e => e.preventDefault(), false)
-      );
-    `);
-  });
-
-  // Extra safety - Block any navigation the renderer still tries to start
-  mainWindow.webContents.on('will-navigate', (event) => {
-    event.preventDefault(); // cancel stray navigations (file://, http://, etc.)
   });
 
   mainWindow.webContents.session.clearCache();
