@@ -45,9 +45,7 @@ mac:
       arch: arm64
   icon: assets/icons/icon.icns
   category: public.app-category.productivity
-  # Code signing: set APPLE_SIGNING_IDENTITY env var in CI or locally.
-  # Without signing, macOS Gatekeeper will block auto-updates.
-  identity: null  # override with env var APPLE_SIGNING_IDENTITY if available
+  # Code signing: APPLE_SIGNING_IDENTITY env var set in CI secrets.
 
 dmg:
   background: assets/installers/dmg-background.png
