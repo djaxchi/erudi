@@ -1,0 +1,51 @@
+[
+  {
+    "name": "Gemma-1B",
+    "link": "google/gemma-3-1b-it",
+    "type": "gemma",
+    "param_size": 1.0,
+    "model_metadata": "Model ID: google/gemma-3-1b-it\nAuthor: google\nLibrary: transformers\nPipeline: text-generation\nSize: ~2.5 GB\nParameters: 1.0B\nQuantized: False\nTags: text-generation, conversational, instruction-tuned"
+  },
+  {
+    "name": "Gemma-2B",
+    "link": "google/gemma-2-2b-it",
+    "type": "gemma",
+    "param_size": 2.0,
+    "model_metadata": "Model ID: google/gemma-2-2b-it\nAuthor: google\nLibrary: transformers\nPipeline: text-generation\nSize: ~5 GB\nParameters: 2.0B\nQuantized: False\nTags: text-generation, conversational, instruction-tuned"
+  },
+  {
+    "name": "Gemma-4B",
+    "link": "google/gemma-3-4b-it",
+    "type": "gemma",
+    "param_size": 4.0,
+    "model_metadata": "Model ID: google/gemma-3-4b-it\nAuthor: google\nLibrary: transformers\nPipeline: text-generation\nSize: ~10 GB\nParameters: 4.0B\nQuantized: False\nTags: text-generation, conversational, instruction-tuned"
+  },
+  {
+    "name": "Mistral-7B",
+    "link": "mistralai/Mistral-7B-Instruct-v0.3",
+    "type": "mistral",
+    "param_size": 7.0,
+    "model_metadata": "Model ID: mistralai/Mistral-7B-Instruct-v0.3\nAuthor: mistralai\nLibrary: transformers\nPipeline: text-generation\nSize: ~14 GB\nParameters: 7.0B\nQuantized: False\nTags: text-generation, conversational, instruction-tuned"
+  },
+  {
+    "name": "Ministral-8B",
+    "link": "mistralai/Ministral-8B-Instruct-2410",
+    "type": "mistral",
+    "param_size": 8.0,
+    "model_metadata": "Model ID: mistralai/Ministral-8B-Instruct-2410\nAuthor: mistralai\nLibrary: transformers\nPipeline: text-generation\nSize: ~16 GB\nParameters: 8.0B\nQuantized: False\nTags: text-generation, conversational, instruction-tuned"
+  },
+  {
+    "name": "Gemma-12B",
+    "link": "google/gemma-3-12b-it",
+    "type": "gemma",
+    "param_size": 12.0,
+    "model_metadata": "Model ID: google/gemma-3-12b-it\nAuthor: google\nLibrary: transformers\nPipeline: text-generation\nSize: ~24 GB\nParameters: 12.0B\nQuantized: False\nTags: text-generation, conversational, instruction-tuned"
+  },
+  {
+    "name": "Mistral-Nemo-12B",
+    "link": "mistralai/Mistral-Nemo-Instruct-2407",
+    "type": "mistral",
+    "param_size": 12.0,
+    "model_metadata": "Model ID: mistralai/Mistral-Nemo-Instruct-2407\nAuthor: mistralai\nLibrary: transformers\nPipeline: text-generation\nSize: ~24 GB\nParameters: 12.0B\nQuantized: False\nTags: text-generation, conversational, instruction-tuned"
+  }
+]

@@ -7,26 +7,25 @@ import TrainingPage from "./pages/TrainingPage";
 import ArenaPage from "./pages/ArenaPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
 import { DownloadModalProvider } from "./contexts/DownloadModalContext";
+import { KnowledgeBaseProvider } from "./contexts/KnowledgeBaseContext";
 import LoadingScreen from "./components/LoadingScreen";
-import { API_BASE_URL } from "./config/api";
+import UpdateBanner from "./components/UpdateBanner";
+import { apiClient } from "./services/api/client";
+import { createLogger } from "./utils/logger";
+
+const log = createLogger("App");
 
 export default function App() {
   const [isBackendReady, setIsBackendReady] = useState(false);
 
-  
   useEffect(() => {
     const checkBackendHealth = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/main_window/health`, {
-          method: 'GET',
-        });
-        
-        if (response.ok) {
-          setIsBackendReady(true);
-        } else {
-          throw new Error('Backend not ready');
-        }
+        await apiClient.get("/health/");
+        log.log("Backend is ready");
+        setIsBackendReady(true);
       } catch (error) {
+        log.warn("Backend not ready, retrying...", error);
         setTimeout(checkBackendHealth, 2000);
       }
     };
@@ -35,23 +34,26 @@ export default function App() {
 
   if (!isBackendReady) {
     return <LoadingScreen />;
-  } else {
-    return (
-      <DownloadModalProvider>
+  }
+
+  return (
+    <DownloadModalProvider>
+      <KnowledgeBaseProvider>
+        <UpdateBanner />
         <Router>
           <Routes>
-            <Route path="/" element={<Navigate to="/main_window/models" replace />} />
-            <Route path="/main_window" element={<Navigate to="/main_window/models" replace />} />
-            <Route path="*" element={<Navigate to="/main_window/models" replace />} />
-            <Route path="/main_window/chat" element={<ChatPage />} />
-            <Route path="/main_window/models" element={<LandingPage />} />
-            <Route path="/main_window/conversations/:id" element={<ConversationPage />} />
-            <Route path="/main_window/new-training" element={<TrainingPage />} />
-            <Route path="/main_window/arena" element={<ArenaPage />} />
-            <Route path="/main_window/attach_knowledge_base" element={<KnowledgeBasePage />} />
+            <Route path="/" element={<Navigate to="/erudi/models" replace />} />
+            <Route path="/erudi" element={<Navigate to="/erudi/models" replace />} />
+            <Route path="*" element={<Navigate to="/erudi/models" replace />} />
+            <Route path="/erudi/chat" element={<ChatPage />} />
+            <Route path="/erudi/models" element={<LandingPage />} />
+            <Route path="/erudi/conversations/:id" element={<ConversationPage />} />
+            <Route path="/erudi/new-training" element={<TrainingPage />} />
+            <Route path="/erudi/arena" element={<ArenaPage />} />
+            <Route path="/erudi/attach_knowledge_base" element={<KnowledgeBasePage />} />
           </Routes>
         </Router>
-      </DownloadModalProvider>
-    );
-  }
+      </KnowledgeBaseProvider>
+    </DownloadModalProvider>
+  );
 }

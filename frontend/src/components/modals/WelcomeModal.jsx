@@ -1,193 +1,224 @@
 import React from "react";
-import erudiLogo from '../../../assets/erudi.png';
+import PropTypes from "prop-types";
+import { HelpCircle, Cpu, AlertTriangle } from "lucide-react";
+import logoErudi from "../../assets/images/logos/logoerudifinal.png";
 
-export default function WelcomeModal({
-  show,
-  onClose,
-  hardwareInfo,
-  loading,
-  cudaStatus,
-  cudaLoading,
-}) {
-  if (!show) return null;
+WelcomeModal.propTypes = {
+  isOpen: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+};
+
+export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading }) {
+  if (!isOpen) {
+    return null;
+  }
+
+  // Helper function to get color based on label
+  const getColorForLabel = (label) => {
+    switch (label) {
+      case "Very Good":
+        return "bg-emerald-700/30 text-white";
+      case "Good":
+        return "bg-green-600/30 text-white";
+      case "Medium":
+        return "bg-yellow-600/30 text-white";
+      case "Poor":
+        return "bg-red-600/30 text-white";
+      default:
+        return "bg-gray-600/30 text-white";
+    }
+  };
+
+  // Helper function to get dynamic recommendations
+  const getRecommendations = (inferenceScore, finetuningScore) => {
+    const avgScore = (inferenceScore + finetuningScore) / 2;
+
+    if (avgScore >= 75) {
+      return {
+        title: "Excellent Hardware! 🚀",
+        description:
+          "Your system can handle any model from 1B to 12B parameters with ease. We recommend trying the power of Mistral 8B or Gemma 12B for the best experience. We're also working on adding support for much larger models—stay tuned!",
+      };
+    } else if (avgScore >= 50) {
+      return {
+        title: "Great Performance! ✨",
+        description:
+          "Your hardware supports models from 1B to 12B parameters. You'll get smooth performance with Mistral 8B and Gemma 12B. Perfect for experiencing the full capabilities of modern AI!",
+      };
+    } else if (avgScore >= 25) {
+      return {
+        title: "Good Setup 👍",
+        description:
+          "You may experience some delays with larger models like Mistral 7B, but you're well-equipped for models like Gemma 4B and smaller. These will provide excellent results with smooth performance.",
+      };
+    } else {
+      return {
+        title: "Optimized for Smaller Models 💡",
+        description:
+          "We recommend starting with our optimized smaller models like Gemma 1B, 2B, or 4B. These models are specifically tuned to deliver real, impressive results even on limited hardware. You can still experiment with larger models, but performance may vary.",
+      };
+    }
+  };
+
+  const recommendations = hardwareInfo
+    ? getRecommendations(hardwareInfo.global_inference_score, hardwareInfo.global_finetuning_score)
+    : null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-[#2B2B2B] rounded-2xl border border-white/10 shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className={[
+          "rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto",
+          "border border-white/10",
+          "bg-[rgba(22,40,36,0.45)] backdrop-blur-[18px] saturate-[1.4]",
+          "shadow-[0_8px_30px_-4px_rgba(0,0,0,0.45),0_2px_6px_-1px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)]",
+        ].join(" ")}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="p-4 border-b border-white/10 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-              🎉 Welcome to erudi!
-            </h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-              </svg>
-            </button>
-          </div>
+        <div className="text-center py-6 px-6 sm:py-8 sm:px-8">
+          <h1 className="text-4xl sm:text-5xl font-bold mb-4">
+            <span className="text-[#00B574]">Welcome!</span>
+          </h1>
+          <p className="text-lg sm:text-xl text-gray-300 mb-2 flex items-center justify-center gap-2">
+            <img src={logoErudi} alt="erudi" className="h-7 sm:h-7 -mt-2" /> is a{" "}
+            <span className="text-[#00B574]">personal</span> AI training platform.
+          </p>
+          <p className="text-lg sm:text-xl text-gray-300">
+            Get ready to chat and <span className="text-[#00B574]">specialize</span> your{" "}
+            <span className="text-[#00B574]">own</span> AI models!
+          </p>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto flex flex-col">
-          {/* Logo Section */}
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <img 
-                      src={erudiLogo}
-                      alt="Erudi Logo"
-                      className="w-60"
-                      style={{ objectFit: 'contain' }}
-                    />
-              <div className="text-lg text-gray-400">
-                AI with you, for you
-              </div>
-            </div>
-          </div>
-          
-          {/* Bottom Content */}
-          <div className="p-4 text-white">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Left Column */}
-              <div className="space-y-4">
-                <p className="text-lg">
-                  Welcome to your personal AI training platform! Get ready to chat and specialize your own AI models.
-                </p>
-                
-                <div className="bg-amber-900/20 border border-amber-600/30 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <span className="text-xl">⚠️</span>
-                    <div>
-                      <p className="text-amber-200 font-medium mb-2">Important Notice</p>
-                      <p className="text-amber-100 text-sm mb-3">
-                        Erudi is in early alpha stage and highly dependent on your PC's hardware capabilities. 
-                        Features may change, and you might encounter bugs.
-                      </p>
-                      
-                      {/* System Requirements */}
-                      <div className="bg-[#1a1a1a] rounded-lg p-3 border border-white/10">
-                        <p className="text-amber-200 font-medium mb-2">System Requirements:</p>
-                        <div className="space-y-1.5 text-sm">
-                          <div className="flex items-center justify-between">
-                            <span className="text-amber-100">NVIDIA GPU Required</span>
-                            <span className="text-lg">🎮</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-amber-100">CUDA 12.x Installed</span>
-                            {cudaLoading ? (
-                              <span className="text-xs text-amber-300">Checking...</span>
-                            ) : (
-                              <span className="text-lg">
-                                {cudaStatus?.has_cuda ? '✅' : '❌'}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-amber-100">10+ GB Disk Space</span>
-                            <span className="text-lg">💾</span>
-                          </div>
-                        </div>
-                        {cudaStatus && !cudaStatus.has_cuda && (
-                          <div className="mt-2 p-2 bg-red-900/30 border border-red-600/30 rounded text-xs text-red-300">
-                            <strong>CUDA not detected!</strong> Install NVIDIA CUDA Toolkit to use Erudi's AI capabilities.
-                          </div>
-                        )}
-                      </div>
-                    </div>
+        <div className="px-4 pb-6 sm:px-8 sm:pb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            {/* Left Column - Important Notice */}
+            <div className="bg-amber-900/30 border border-amber-600/40 rounded-xl p-4 sm:p-6">
+              <div className="flex items-start gap-3 sm:gap-4">
+                <AlertTriangle className="w-8 h-8 text-[#E5D07D] mt-1" />
+                <div className="flex-1">
+                  <h3 className="text-[#E5D07D] font-semibold text-lg mb-3 flex items-center gap-2">
+                    Important Notice
+                  </h3>
+                  <div className="space-y-3 text-sm sm:text-base">
+                    <p className="text-gray-300 leading-relaxed">
+                      The app is in early alpha and highly dependent on your PC's hardware.
+                    </p>
+                    <p className="text-gray-300 leading-relaxed">
+                      Features may change, and you may encounter bugs. If you do, we'd be grateful
+                      if you report to our team.
+                    </p>
+                    <p className="text-gray-300 leading-relaxed">
+                      Every report helps us improve and your feedback means a lot, and we truly
+                      appreciate the time you take to test and support the project.
+                    </p>
+                    <p className="text-[#E5D07D] font-bold">
+                      Thank you for being part of this journey
+                    </p>
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* Right Column */}
-              <div className="space-y-4">
-                {/* Hardware Evaluation */}
-                <div className="bg-[#1a1a1a] rounded-lg p-4 border border-white/10">
-                  <h3 className="text-lg font-semibold mb-3 text-emerald-400">
-                    🖥️ Hardware Evaluation
-                  </h3>
-                  
-                  {loading ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="w-8 h-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="ml-3 text-gray-300">We are evaluating your hardware...</span>
-                    </div>
-                  ) : hardwareInfo?.error ? (
-                    <div className="text-red-400 bg-red-900/20 border border-red-600/30 rounded-lg p-3">
-                      <p className="font-medium">⚠️ Evaluation Failed</p>
-                      <p className="text-sm mt-1">{hardwareInfo.error}</p>
-                    </div>
-                  ) : hardwareInfo ? (
+            {/* Right Column - Hardware Evaluation */}
+            <div className="space-y-4">
+              {/* Hardware Evaluation */}
+              <div className="bg-[#1A1A1A]/70 border border-white/10 rounded-xl p-4 sm:p-6 backdrop-blur-[10px] saturate-[1.2]">
+                <div className="flex items-center gap-3 mb-4">
+                  {/* Remove the container div and use a larger CPU icon */}
+                  <Cpu className="w-8 h-8 text-[#00B574]" />
+                  <h3 className="text-[#00B574] font-semibold text-lg">Hardware Evaluation</h3>
+                </div>
+
+                {loading ? (
+                  <div className="flex items-center justify-center py-6 sm:py-8">
+                    <div className="w-6 h-6 sm:w-8 sm:h-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="ml-3 text-gray-300 text-sm sm:text-base">
+                      We are evaluating your hardware...
+                    </span>
+                  </div>
+                ) : hardwareInfo?.error ? (
+                  <div className="text-red-400 bg-red-900/20 border border-red-600/30 rounded-lg p-3">
+                    <p className="font-medium">⚠️ Evaluation Failed</p>
+                    <p className="text-sm mt-1">{hardwareInfo.error}</p>
+                  </div>
+                ) : hardwareInfo ? (
+                  <div className="space-y-3">
+                    {/* Performance Cards */}
                     <div className="space-y-3">
-                      {/* Performance Scores */}
-                      <div className="grid grid-cols-1 gap-3">
-                        <div className="bg-[#242424] rounded-lg p-3 border border-white/5">
-                          <p className="text-sm text-gray-400">Chat Performance</p>
+                      <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-400 text-sm">Chat Performance</span>
                           <div className="flex items-center gap-2">
-                            <p className="font-medium">{Math.round(hardwareInfo.global_inference_score)}%</p>
-                            <span className={`text-xs px-2 py-1 rounded-full ${
-                              hardwareInfo.global_inference_score >= 70 ? 'bg-green-900/30 text-green-400' :
-                              hardwareInfo.global_inference_score >= 50 ? 'bg-yellow-900/30 text-yellow-400' :
-                              'bg-red-900/30 text-red-400'
-                            }`}>
-                              {hardwareInfo.global_inference_label || 'Unknown'}
+                            <span className="text-lg sm:text-xl font-bold text-white">
+                              {Math.round(hardwareInfo.global_inference_score)}%
+                            </span>
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${getColorForLabel(hardwareInfo.global_inference_label)}`}
+                            >
+                              {hardwareInfo.global_inference_label || "Unknown"}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">AI model chat performance</p>
-                        </div>
-
-                        <div className="bg-[#242424] rounded-lg p-3 border border-white/5">
-                          <p className="text-sm text-gray-400">Training Performance</p>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{Math.round(hardwareInfo.global_finetuning_score)}%</p>
-                            <span className={`text-xs px-2 py-1 rounded-full ${
-                              hardwareInfo.global_finetuning_score >= 70 ? 'bg-green-900/30 text-green-400' :
-                              hardwareInfo.global_finetuning_score >= 50 ? 'bg-yellow-900/30 text-yellow-400' :
-                              'bg-red-900/30 text-red-400'
-                            }`}>
-                              {hardwareInfo.global_finetuning_label || 'Unknown'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-1">AI model training performance</p>
                         </div>
                       </div>
 
-                      {/* Performance Summary */}
-                      <div className="bg-[#242424] rounded-lg p-3 border border-white/5">
-                        <div className="flex items-start gap-2">
-                          <span className="text-lg">
-                            {(hardwareInfo.global_inference_score >= 70 && hardwareInfo.global_finetuning_score >= 70) ? '🚀' :
-                             (hardwareInfo.global_inference_score >= 50 || hardwareInfo.global_finetuning_score >= 50) ? '⚡' : '⚠️'}
-                          </span>
-                          <div>
-                            <p className="font-medium text-white mb-1">Summary</p>
-                            <p className="text-xs text-gray-300">
-                              {(hardwareInfo.global_inference_score >= 70 && hardwareInfo.global_finetuning_score >= 70) 
-                                ? 'Excellent performance for AI workloads!'
-                                : (hardwareInfo.global_inference_score >= 50 || hardwareInfo.global_finetuning_score >= 50)
-                                ? 'Good performance, some operations may be slower.'
-                                : 'Limited performance. Consider hardware upgrades.'
-                              }
+                      <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-400 text-sm">Training Performance</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg sm:text-xl font-bold text-white">
+                              {Math.round(hardwareInfo.global_finetuning_score)}%
+                            </span>
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${getColorForLabel(hardwareInfo.global_finetuning_label)}`}
+                            >
+                              {hardwareInfo.global_finetuning_label || "Unknown"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Recommendations Summary */}
+                    {recommendations && (
+                      <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
+                        <div className="flex items-start gap-3">
+                          <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5 text-orange-300 transition-colors cursor-help mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-orange-300 font-semibold mb-2">
+                              {recommendations.title}
+                            </h4>
+                            <p className="text-gray-300 text-sm leading-relaxed">
+                              {recommendations.description}
                             </p>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ) : null}
-                </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-white/10 flex-shrink-0">
-          <div className="flex justify-end">
+          {/* Get Started Button - Centered */}
+          <div className="flex justify-center mt-6">
             <button
-              onClick={onClose}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg transition-colors font-medium"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              className={[
+                "rounded-full px-5 py-2 text-sm font-semibold",
+                "bg-[#00B574]/80 hover:bg-[#009960]/80 text-white",
+                "border border-white/20 shadow backdrop-blur-[6px] saturate-[1.1]",
+                "transition active:scale-95",
+                "flex items-center gap-2",
+              ].join(" ")}
             >
               Get Started
             </button>

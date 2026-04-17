@@ -1,15 +1,85 @@
 
-.vscode/
+# Secrets : il faut le mettre dans le gitignore une fois mis en prod
+.env
+.env.example
 
 # Build
-backend.spec
+/backend.spec
+!/backend/backend.spec
 dist/
 build/
+!scripts/build/
+
+# PyInstaller output
+frontend/backend/
+backend/dist/
+backend/build/
+
+# SQLite runtime files
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Electron build output
+frontend/out/
+frontend/.webpack/
+
+# Node
+node_modules/
+
+# macOS
+.DS_Store
+
+# App data / model downloads (never commit)
+backend/models/
 
 .DS_Store
 Thumbs.db
 
-# To never push the exe built files
-releases/*.exe
+# SQLite runtime files
+*.db-shm
+*.db-wal
+*.db-journal
 
-node_modules/
+# Temp files
+*.tmp
+
+*.vscode
+
+# Documentation build artifacts
+site/
+reports/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Temporary experimental directories (keep but ignore from version control)
+# Used for testing build variants and experimental features
+tmp_win_cu12/
+tmp_winStartupErrorHandle/
+
+# Runtime log files
+*.log
+
+# Bundled backend output (produced by PyInstaller build, not source)
+frontend/backend/
+
+# Internal dev session logs
+docs/session-*.md

@@ -1,0 +1,62 @@
+appId: com.erudi.app
+productName: Erudi
+copyright: "Copyright © 2025 Erudi Team"
+
+# electron-builder is invoked with --prepackaged (out/erudi-win32-x64 or out/erudi-darwin-arm64),
+# so it wraps the already-forge-packaged directory rather than re-bundling sources.
+
+directories:
+  output: out/installer
+
+# GitHub Releases publish config — used by electron-updater at runtime to check for updates.
+# GH_TOKEN env var must be set when running with --publish always.
+publish:
+  provider: github
+  owner: djaxchi
+  repo: erudi
+  releaseType: release
+
+# ---------- Windows ----------
+win:
+  target:
+    - target: nsis
+      arch: x64
+  icon: assets/icons/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  installerIcon: assets/icons/icon.ico
+  uninstallerIcon: assets/icons/icon.ico
+  installerHeaderIcon: assets/icons/icon.ico
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Erudi
+
+# ---------- macOS ----------
+# electron-updater on macOS requires a zip target (not DMG) to deliver delta updates.
+# The DMG is kept for first-time installation; the zip feeds the auto-updater.
+mac:
+  target:
+    - target: dmg
+      arch: arm64
+    - target: zip
+      arch: arm64
+  icon: assets/icons/icon.icns
+  category: public.app-category.productivity
+  # Code signing: APPLE_SIGNING_IDENTITY env var set in CI secrets.
+
+dmg:
+  background: assets/installers/dmg-background.png
+  window:
+    width: 640
+    height: 440
+  contents:
+    - x: 200
+      y: 200
+      type: file
+    - x: 400
+      y: 200
+      type: link
+      path: /Applications
