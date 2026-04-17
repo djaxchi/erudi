@@ -81,6 +81,7 @@ export default function ArenaPage() {
     }
     setLoading(true);
 
+    // Initialize placeholders and set per-panel flags
     const withPlaceholders = panels.map((panel) => ({
       ...panel,
       messages: [
@@ -88,6 +89,8 @@ export default function ArenaPage() {
         { role: "user", content: inputValue },
         { role: "llm", content: "" },
       ],
+      isStreaming: true,
+      firstReplyPending: panel.messages.length === 0,
     }));
     setPanels(withPlaceholders);
 
@@ -154,6 +157,11 @@ export default function ArenaPage() {
         maxNewTokens: panel.maxTokens,
         customPrompt: panel.customPrompt,
         onStreamChunk: (chunk) => {
+          // First chunk received: clear the first-reply note for this panel
+          if (panel.firstReplyPending) {
+            setPanels((prev) => prev.map((p) => (p.id === panel.id ? { ...p, firstReplyPending: false } : p)));
+            panel.firstReplyPending = false; // update local copy to avoid multiple sets
+          }
           buffersRef.current[panel.id].push(chunk);
         },
       })
