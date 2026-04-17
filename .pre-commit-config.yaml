@@ -1,0 +1,48 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 24.1.1
+    hooks:
+      - id: black
+        name: black
+        entry: black
+        language: python
+        types: [python]
+        args: ['--line-length=100']
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.7
+    hooks:
+      - id: ruff
+        name: ruff lint
+        entry: ruff check
+        language: python
+        types: [python]
+        args: ['--fix']
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format
+        language: python
+        types: [python]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: python
+        types: [python]
+        args: ['--ignore-missing-imports']
+        additional_dependencies: ['types-all']
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: pytest
+        language: python
+        types: [python]
+        stages: [commit]
+        pass_filenames: false
+        always_run: true
+        args: ['backend/tests', '--maxfail=1', '-q']

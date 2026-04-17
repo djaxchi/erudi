@@ -1,15 +1,37 @@
 import React, { useState } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  Cog,
-  RefreshCcw,
-  Plus,
-  Edit3,
-  X
-} from "lucide-react";
+import PropTypes from "prop-types";
+import { ChevronDown, ChevronRight, RefreshCcw, Plus, Edit3, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { API_BASE_URL } from "../config/api";
+import ErrorModal from "./modals/ErrorModal";
+import { API_BASE_URL } from "../config/api.js";
+import { createLogger } from "../utils/logger";
+const log = createLogger("ChatCollapsibleSection");
+
+ChatCollapsibleSection.propTypes = {
+  title: PropTypes.string.isRequired,
+  items: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.string.isRequired,
+      title: PropTypes.string.isRequired,
+    })
+  ),
+  selectedId: PropTypes.string,
+  onSelect: PropTypes.func,
+  onRename: PropTypes.func,
+  onDelete: PropTypes.func,
+  onRefresh: PropTypes.func,
+  disabled: PropTypes.bool,
+};
+
+ChatCollapsibleSection.defaultProps = {
+  items: [],
+  selectedId: null,
+  onSelect: null,
+  onRename: null,
+  onDelete: null,
+  onRefresh: null,
+  disabled: false,
+};
 
 export default function ChatCollapsibleSection({
   title,
@@ -29,7 +51,6 @@ export default function ChatCollapsibleSection({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [showErrorPopup, setShowErrorPopup] = useState(false);
 
   const renameConversation = async (id, name) => {
     try {
@@ -39,12 +60,13 @@ export default function ChatCollapsibleSection({
         body: JSON.stringify({ name }),
       });
 
-      if (!res.ok) throw new Error("Rename failed");
-
+      if (!res.ok) {
+        throw new Error(res.status);
+      }
       onRename?.(id, name);
     } catch (err) {
-      console.error(err);
-      alert("Impossible de renommer la conversation - réessayez.");
+      log.error(err);
+      alert("Could not rename conversation, try again: " + err.message);
     } finally {
       setEditingId(null);
     }
@@ -57,23 +79,27 @@ export default function ChatCollapsibleSection({
         headers: { "Content-Type": "application/json" },
       });
 
-      if (!res.ok) throw new Error("Delete failed");
+      if (!res.ok) {
+        throw new Error("Delete failed");
+      }
 
       onDelete?.(id);
     } catch (err) {
-      console.error(err);
-      alert("Deleting conversation failed.");
+      log.error(err);
+      alert("Deleting conversation failed: " + err.message);
     } finally {
       setEditingId(null);
     }
   };
 
   const renderItems = () => {
-    if (loading) return (
-      <div className="flex items-center justify-center py-4">
-        <div className="w-5 h-5 border-2 border-gray-400 border-t-emerald-400 rounded-full animate-spin"></div>
-      </div>
-    );
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-4">
+          <div className="w-5 h-5 border-2 border-gray-400 border-t-emerald-400 rounded-full animate-spin"></div>
+        </div>
+      );
+    }
 
     if (title === "Previous Chats" && items.length > 0) {
       return items.map((conv) => {
@@ -86,7 +112,7 @@ export default function ChatCollapsibleSection({
             onClick={() => {
               if (!isEditing) {
                 onSelect?.(conv.id);
-                navigate(`/main_window/conversations/${conv.id}`);
+                navigate(`/erudi/conversations/${conv.id}`);
               }
             }}
             className={`relative group py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${
@@ -142,20 +168,20 @@ export default function ChatCollapsibleSection({
     return <p className="italic">Nothing here…</p>;
   };
 
+  const closeErrorModal = () => {
+    setErrorMessage("");
+  };
+
   return (
     <div
       className={`text-gray-200 h-full flex flex-col ${disabled ? "pointer-events-none opacity-50 select-none" : ""}`}
     >
       <div
-        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30"
+        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-700/30 flex-shrink-0"
         onClick={() => setOpen(!open)}
       >
         <div className="flex items-center gap-2">
-          {open ? (
-            <ChevronDown className="w-4 h-4" />
-          ) : (
-            <ChevronRight className="w-4 h-4" />
-          )}
+          {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           <span className="font-semibold">{title}</span>
         </div>
 
@@ -169,9 +195,10 @@ export default function ChatCollapsibleSection({
               try {
                 await onRefresh?.();
               } catch (err) {
-                console.error("Failed to refresh conversations:", err);
-                setErrorMessage(`Failed to refresh conversations: ${err.message || 'Network error'}`);
-                setShowErrorPopup(true);
+                log.error("Failed to refresh conversations:", err);
+                setErrorMessage(
+                  `Failed to refresh conversations: ${err.message || "Network error"}`
+                );
               } finally {
                 setLoading(false);
               }
@@ -181,14 +208,16 @@ export default function ChatCollapsibleSection({
             className="w-6 h-6 hover:opacity-70 hover:bg-gray-600/30 rounded-full p-1 -m-1 cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
-              navigate('/main_window/chat');
+              navigate("/erudi/chat");
             }}
           />
         </div>
       </div>
 
-      <div className={`grid flex-1 min-h-0 transition-all duration-300 ease-in-out ${open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'} `}>
-        <div className="px-4 py-2 flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scroll">
+      <div
+        className={`grid transition-all duration-300 ease-in-out flex-1 min-h-0 ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"} `}
+      >
+        <div className="px-4 py-2 overflow-y-auto overflow-x-visible custom-scroll">
           {renderItems()}
         </div>
       </div>
@@ -196,7 +225,9 @@ export default function ChatCollapsibleSection({
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-[#272727] text-white rounded-lg p-6 w-full max-w-sm shadow-lg">
-            <h2 className="text-lg font-semibold mb-4">Are you sure to delete this conversation ?</h2>
+            <h2 className="text-lg font-semibold mb-4">
+              Are you sure to delete this conversation ?
+            </h2>
             <p className="text-sm mb-6">This action is irreversible.</p>
             <div className="flex justify-end gap-3">
               <button
@@ -220,29 +251,7 @@ export default function ChatCollapsibleSection({
       )}
 
       {/* Error Popup */}
-      {showErrorPopup && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl">
-            <div className="flex items-center mb-4">
-              <div className="bg-red-100 rounded-full p-2 mr-3">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900">Error</h3>
-            </div>
-            <p className="text-gray-700 mb-4">{errorMessage}</p>
-            <div className="flex justify-end">
-              <button
-                onClick={() => setShowErrorPopup(false)}
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ErrorModal errorMessage={errorMessage} onClose={closeErrorModal} />
     </div>
   );
 }

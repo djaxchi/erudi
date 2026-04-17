@@ -1,28 +1,37 @@
 import React from "react";
+import PropTypes from "prop-types";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import GradientBox from "./GradientBox";
 
+TrainNewModelCard.propTypes = {
+  onAdd: PropTypes.func,
+};
+
+TrainNewModelCard.defaultProps = {
+  onAdd: null,
+};
+
 export default function TrainNewModelCard() {
   const navigate = useNavigate();
-  const handleTrainNewModel = () => navigate("/main_window/new-training");
+  const handleAttachKnowledgeBase = () => navigate("/erudi/attach_knowledge_base");
 
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center">
       {/* wrapper div receives the click */}
       <div
-        onClick={handleTrainNewModel}
+        onClick={handleAttachKnowledgeBase}
         className="cursor-pointer w-56 h-56 flex items-center justify-center"
       >
-        <GradientBox 
-          className="w-full h-full" 
+        <GradientBox
+          className="w-full h-full"
           contentClassName="flex items-center justify-center h-full"
         >
           <Plus className="w-20 h-20 text-white" />
         </GradientBox>
       </div>
 
-      <p className="mt-4 text-white text-lg">Train new model</p>
+      <p className="mt-4 text-white text-lg">Attach Knowledge Base</p>
     </div>
   );
 }

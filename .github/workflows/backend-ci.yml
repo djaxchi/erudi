@@ -1,0 +1,36 @@
+name: Backend CI
+
+on:
+  push:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
+
+jobs:
+  backend-ci:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUNBUFFERED: 1
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pip, wheel, setuptools
+        run: python -m pip install --upgrade pip wheel setuptools
+
+      - name: Create venv & install Linux CPU requirements
+        run: |
+          python -m venv backend/venv
+          backend/venv/bin/pip install -r backend/requirements/entrypoints/dev/linux-cpu.txt
+
+      - name: Check for syntax errors
+        run: backend/venv/bin/python -m compileall backend/src -q

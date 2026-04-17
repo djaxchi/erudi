@@ -6,73 +6,141 @@ module.exports = {
   packagerConfig: {
     asar: true,
     prune: true,
-    icon: path.resolve(__dirname, "assets", "icon.png"),
-    // Unpack native modules for performance
+    
+    // Unpack native modules & backend for runtime access (critical for CUDA/MLX)
     asarUnpack: ["**/*.node"],
-    // Exclude unnecessary files to slim bundle
+    
+    // Resource bundling: include backend for all platforms
+    extraResource: [
+      "../backend/dist/backend"
+    ],
+    
+    // Exclude unnecessary files to reduce bundle size
     ignore: [
       "^/tests($|/)",
-      "^/\.github($|/)",
+      "^/\\.github($|/)",
       "^/docs($|/)",
+      "^/\\.gitignore$",
+      "^/\\.env($|/)",
       "\\.map$",
       "\\.md$",
       "\\.ts$"
     ],
-    extraResource: [
-      // Backend executable
-      path.resolve(__dirname, "../dist/backend")
-    ],
-    win32metadata: {
-      CompanyName: "Erudi AI",
-      FileDescription: "Erudi AI Desktop App",
-      OriginalFilename: "ErudiSetup.exe",
-      ProductName: "Erudi",
-      InternalName: "Erudi"
-    }
+    
+    // Application metadata (cross-platform)
+    name: "erudi",
+    executableName: "erudi",
+    appBundleId: "com.erudi.app",
+    appCategoryType: "public.app-category.productivity",
+    icon: "./assets/icons/icon",
+    appCopyright: "Copyright © 2025 Erudi Team",
+    appVersion: "1.0.0",
+    buildVersion: "1.0.0",
+    
+    // macOS-specific code signing & notarization
+    ...(process.platform === "darwin" && {
+      ...(process.env.APPLE_SIGNING_IDENTITY && {
+        osxSign: {
+          identity: process.env.APPLE_SIGNING_IDENTITY,
+          hardenedRuntime: true,
+          entitlements: "./entitlements.plist",
+          entitlementsInherit: "./entitlements.plist",
+          gatekeeper: false,
+        },
+      }),
+      ...(process.env.APPLE_ID && {
+        osxNotarize: {
+          tool: "notarytool",
+          appleId: process.env.APPLE_ID,
+          appleIdPassword: process.env.APPLE_ID_PASSWORD,
+          teamId: process.env.APPLE_TEAM_ID,
+        },
+      }),
+    }),
+    
+    // Windows-specific metadata
+    ...(process.platform === "win32" && {
+      win32metadata: {
+        CompanyName: "Erudi AI",
+        FileDescription: "Erudi: Local LLM Specialization Desktop App",
+        OriginalFilename: "erudi.exe",
+        ProductName: "Erudi",
+        InternalName: "erudi",
+      },
+    }),
   },
 
   rebuildConfig: {
-    // Skip rebuilding large native modules if already packaged
+    // Rebuild native modules for the target platform
     buildPath: path.resolve(__dirname, "forge-local-build"),
   },
 
   makers: [
+    // macOS: DMG installer
     {
-      name: "@felixrieseberg/electron-forge-maker-nsis",
+      name: "@electron-forge/maker-dmg",
+      platforms: ["darwin"],
       config: {
-        oneClick: false,
-        perMachine: false,
-        allowToChangeInstallationDirectory: true,
-        createDesktopShortcut: true,
-        createStartMenuShortcut: true,
-        shortcutName: "Erudi",
-        license: path.resolve(__dirname, "LICENSE.txt"),
-        include: "../dist/backend/backend.exe",
-        installerIcon: path.resolve(__dirname, "assets", "icon.ico"),
-        uninstallerIcon: path.resolve(__dirname, "assets", "icon.ico"),
-        installerHeaderIcon: path.resolve(__dirname, "assets", "icon.ico")
-      }
+        name: "erudi-Installer",
+        icon: "./assets/icons/icon.icns",
+        background: "./assets/installers/dmg-background.png",
+        format: "UDZO",
+        window: {
+          x: 420,
+          y: 200,
+          width: 640,
+          height: 440,
+        },
+        contents: [
+          {
+            x: 200,
+            y: 200,
+            type: "file",
+            path: "./out/erudi-darwin-arm64/erudi.app",
+          },
+          {
+            x: 400,
+            y: 200,
+            type: "link",
+            path: "/Applications",
+          },
+        ],
+        iconSize: 80,
+        textColor: "#FFFFFF",
+      },
     },
+    
+    // macOS: ZIP archive
     {
       name: "@electron-forge/maker-zip",
       platforms: ["darwin"],
     },
+    
+    // Windows: ZIP portable
+    // (Squirrel removed — it silently fails for nupkgs > ~1 GB and produces a
+    //  dummy 290 KB Setup.exe. Migrate to electron-builder NSIS for a real installer.)
+    {
+      name: "@electron-forge/maker-zip",
+      platforms: ["win32"],
+    },
+    
+    // Linux: DEB
     {
       name: "@electron-forge/maker-deb",
+      platforms: ["linux"],
       config: {
-        options: {
-          icon: path.resolve(__dirname, "assets", "icon.png"),
-        }
-      }
+        icon: "./assets/icons/icon.png",
+      },
     },
+    
+    // Linux: RPM
     {
       name: "@electron-forge/maker-rpm",
+      platforms: ["linux"],
       config: {
-        options: {
-          icon: path.resolve(__dirname, "assets", "icon.ico"),
-        }
-      }
-    }
+        icon: "./assets/icons/icon.png",
+      },
+    },
   ],
 
   plugins: [

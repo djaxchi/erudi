@@ -1,7 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
+import PropTypes from "prop-types";
 import DragDropArea from "./DragDropArea";
 import { Loader, X } from "lucide-react";
-import { API_BASE_URL } from "../config/api";
+import ErrorModal from "./modals/ErrorModal";
+import ComingSoonModal from "./modals/ComingSoonModal";
+import { API_BASE_URL } from "../config/api.js";
+import { transformTrainingInfo } from "../utils/hardwareTransform";
+import { createLogger } from "../utils/logger";
+const log = createLogger("DatasetCard");
 
 /* ─────────────── Recap small table ─────────────── */
 function RecapTable({ recap }) {
@@ -18,40 +24,53 @@ function RecapTable({ recap }) {
       <table className="w-full text-[10px] sm:text-xs lg:text-sm leading-3 sm:leading-4 lg:leading-5 bg-transparent">
         <tbody>
           {rows.map(([label, val], idx) => (
-          <tr
-            key={label}
-            className={`${idx % 2 === 0 ? "bg-[#3B3B3B]" : "bg-black/20"}`}
-          >
-            <th className="px-1.5 sm:px-2 lg:px-3 py-0.5 sm:py-1 lg:py-1.5 text-left font-semibold text-white w-[44%]">{label}</th>
-            <td className="px-1.5 sm:px-2 lg:px-3 py-0.5 sm:py-1 lg:py-1.5 text-center text-white/90 truncate">{val}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+            <tr key={label} className={`${idx % 2 === 0 ? "bg-[#3B3B3B]" : "bg-black/20"}`}>
+              <th className="px-1.5 sm:px-2 lg:px-3 py-0.5 sm:py-1 lg:py-1.5 text-left font-semibold text-white w-[44%]">
+                {label}
+              </th>
+              <td className="px-1.5 sm:px-2 lg:px-3 py-0.5 sm:py-1 lg:py-1.5 text-center text-white/90 truncate">
+                {val}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
 /* ─────────────── Main component ─────────────── */
-export default function DatasetCard({ selectedModel, modelName, onStartTraining, isTraining = false, onReset }) {
+
+DatasetCard.propTypes = {
+  onFilesAdded: PropTypes.func,
+  onReset: PropTypes.func,
+};
+
+DatasetCard.defaultProps = {
+  onFilesAdded: null,
+  onReset: null,
+};
+
+export default function DatasetCard({
+  selectedModel,
+  modelName,
+  onStartTraining,
+  isTraining = false,
+  onReset,
+}) {
   /* Paths - now handling objects with metadata */
   const [paths, setPaths] = useState([]);
   /* Modal state */
   const [showComingSoonModal, setShowComingSoonModal] = useState(false);
-  
+
   const addDroppedFiles = (newPathObjects) => {
-    console.log('DatasetCard received files:', newPathObjects);
-    
+    log.log("DatasetCard received files:", newPathObjects);
+
     // Handle complete replacement of the file list (for when files are removed)
     // or addition of new files (for when files are added)
     setPaths(() => {
-      const newPaths = newPathObjects.map(pathObj => {
-        const path = pathObj.path || pathObj;
-        // Normalize Windows paths: replace backslashes with forward slashes
-        // This ensures proper JSON serialization and cross-platform compatibility
-        return typeof path === 'string' ? path.replace(/\\/g, '/') : path;
-      });
-      console.log('Setting paths to:', newPaths);
+      const newPaths = newPathObjects.map((pathObj) => pathObj.path || pathObj);
+      log.log("Setting paths to:", newPaths);
       return Array.from(new Set(newPaths)); // Remove duplicates but don't merge with previous
     });
   };
@@ -66,34 +85,63 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
   const [hardwareInfo, setHardwareInfo] = useState({
     available_vram: "fetching...",
     device_used: "fetching...",
+    is_apple_silicon: false,
+    mps_available: false,
+    unified_memory: false,
+    chip_model: null,
   });
 
   /* Fetch hardware info on component mount */
   useEffect(() => {
     const fetchHardwareInfo = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/hardware/training`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        
-        const data = await response.json();
-        
-        // Determine device to use: GPU if available, otherwise CPU
-        let deviceUsed = "CPU";
-        if (data.gpu_model && data.gpu_model !== "No GPU detected" && !data.gpu_model.includes("fetching")) {
-          deviceUsed = `${data.gpu_model}`;
-        } else if (data.cpu_model && !data.cpu_model.includes("fetching")) {
-          deviceUsed = `${data.cpu_model}`;
+        const response = await fetch(`${API_BASE_URL}/hardware/training_info`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
         }
-        
+
+        const data = await response.json();
+        const hw = transformTrainingInfo(data);
+
+        // Determine device to use based on backend type
+        let deviceUsed = "CPU";
+        let memoryInfo = "Unknown";
+
+        if (hw.backend_type === "mlx" && hw.mps_available) {
+          // Apple Silicon with MPS support
+          deviceUsed = hw.gpu_model || "Apple Silicon GPU";
+          memoryInfo = hw.unified_memory
+            ? `${hw.total_ram_gb} Unified Memory`
+            : `${hw.ram_available} RAM`;
+        } else if (hw.backend_type === "cuda") {
+          // NVIDIA GPU
+          deviceUsed = hw.gpu_model;
+          memoryInfo = hw.gpu_vram_total || "Unknown";
+        } else {
+          // CPU fallback
+          deviceUsed = hw.cpu_model;
+          memoryInfo = hw.ram_available || "Unknown";
+        }
+
         setHardwareInfo({
-          available_vram: data.gpu_vram_total_gb ? `${data.gpu_vram_total_gb} GB` : "Unknown",
+          available_vram: memoryInfo,
           device_used: deviceUsed,
+          backend_type: hw.backend_type,
+          is_apple_silicon: hw.is_mlx,
+          mps_available: hw.mps_available,
+          unified_memory: hw.unified_memory,
+          chip_model: hw.chip_model,
         });
       } catch (error) {
-        console.error("Error fetching hardware info:", error);
+        log.error("Error fetching hardware info:", error);
         setHardwareInfo({
           available_vram: "Error fetching",
           device_used: "Error fetching",
+          backend_type: "unknown",
+          is_apple_silicon: false,
+          mps_available: false,
+          unified_memory: false,
+          chip_model: null,
         });
       }
     };
@@ -103,7 +151,7 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
 
   /* Handle reset from parent component */
   const resetDatasetCardState = () => {
-    console.log('Resetting DatasetCard state');
+    log.log("Resetting DatasetCard state");
     setPaths([]);
     setTrainingStatus(null);
     setTrainingError("");
@@ -138,28 +186,36 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
   const checkTrainingStatus = async (id) => {
     try {
       const res = await fetch(`${API_BASE_URL}/training/${id}/status`);
-      if (!res.ok) throw new Error(res.status);
+      if (!res.ok) {
+        throw new Error(res.status);
+      }
       const d = await res.json();
       setTrainingStatus(d.status);
       setProgress(d.progress || 0);
+      if (d.status === "failed") {
+        setTrainingError("Training failed: " + (d.error_message || "Unknown error"));
+      }
       return ["failed", "completed"].includes(d.status);
     } catch (e) {
-      setTrainingError(String(e));
+      setTrainingError("Error fetching training status: " + String(e));
       return true;
     }
   };
   const startPolling = (id) => {
     pollingRef.current && clearInterval(pollingRef.current);
     pollingRef.current = setInterval(async () => {
-      (await checkTrainingStatus(id)) && (clearInterval(pollingRef.current), (pollingRef.current = null));
+      (await checkTrainingStatus(id)) &&
+        (clearInterval(pollingRef.current), (pollingRef.current = null));
     }, 30_000);
   };
   useEffect(() => () => pollingRef.current && clearInterval(pollingRef.current), []);
 
   /* Launch training */
   const submitTrain = async () => {
-    if (!selectedModel || !modelName || !paths.length || modelName.trim() === "") return;
-    
+    if (!selectedModel || !modelName || !paths.length || modelName.trim() === "") {
+      return;
+    }
+
     if (onStartTraining) {
       onStartTraining(paths);
     }
@@ -189,7 +245,6 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
 
             {isTraining ? (
               <div className="flex-1 flex flex-col items-center gap-3 py-2">
-                
                 {/* Status text with enhanced styling */}
                 <div className="flex items-center gap-2 bg-emerald-950/30 px-3 py-2 rounded-full border border-emerald-500/20">
                   <div className="relative">
@@ -197,7 +252,9 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
                     <div className="absolute inset-0 w-4 h-4 bg-emerald-400/20 rounded-full animate-pulse"></div>
                   </div>
                   <span className="text-emerald-300 font-medium text-sm">
-                    {trainingStatus === "running" ? "Training in Progress" : "Initializing Training"}
+                    {trainingStatus === "running"
+                      ? "Training in Progress"
+                      : "Initializing Training"}
                   </span>
                 </div>
               </div>
@@ -212,60 +269,22 @@ export default function DatasetCard({ selectedModel, modelName, onStartTraining,
             )}
           </div>
 
-          {trainingError && <p className="text-red-400 text-xs sm:text-sm mt-1.5 sm:mt-2">{trainingError}</p>}
+          <ErrorModal errorMessage={trainingError} onClose={() => setTrainingError("")} />
         </div>
 
         {/* RIGHT */}
         <div className="h-[100%] w-3/5">
-          <DragDropArea onFilesAdded={addDroppedFiles}/>
+          <DragDropArea onFilesAdded={addDroppedFiles} />
         </div>
       </div>
 
       {/* Coming Soon Modal */}
-      {showComingSoonModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#2B2B2B] rounded-2xl border border-white/10 shadow-2xl max-w-md w-full">
-            {/* Header */}
-            <div className="p-4 border-b border-white/10">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-white flex items-center gap-3">
-                  🚧 Coming Soon
-                </h2>
-                <button
-                  onClick={() => setShowComingSoonModal(false)}
-                  className="text-gray-400 hover:text-white transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="p-6">
-              <div className="text-gray-300 text-center">
-                <p className="text-sm mb-4">
-                  Dataset evaluation feature is currently under development and will be available in a future update.
-                </p>
-                <p className="text-xs text-gray-400">
-                  This feature will help you assess the quality and suitability of your training data.
-                </p>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t border-white/10">
-              <div className="flex justify-end">
-                <button
-                  onClick={() => setShowComingSoonModal(false)}
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
-                >
-                  Got it
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <ComingSoonModal
+        showComingSoonModal={showComingSoonModal}
+        onClose={() => setShowComingSoonModal(false)}
+        featureName="Dataset evaluation"
+        featureDescription="This feature will help you assess the quality and suitability of your training data."
+      />
     </>
   );
 }

@@ -1,129 +1,153 @@
 // src/contexts/DownloadModalContext.jsx
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useRef,
-} from 'react'
-import ReactDOM from 'react-dom'
-import ConfirmationModal from '../components/modals/ConfirmationModal'
-import SpinnerDots from '../components/Spinner'
-import { X, ChevronLeft, ChevronRight } from 'lucide-react'
-import { API_BASE_URL } from '../config/api'
+import React, { createContext, useContext, useState, useCallback, useRef } from "react";
+import ReactDOM from "react-dom";
+import ConfirmationModal from "../components/modals/ConfirmationModal";
+import SpinnerDots from "../components/Spinner";
+import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { API_BASE_URL } from "../config/api.js";
+import { createLogger } from "../utils/logger";
+const log = createLogger("DownloadModalContext");
 
-const DownloadModalContext = createContext()
+const DownloadModalContext = createContext();
 
 // Helper function to format time with appropriate units
 const formatTimeLeft = (seconds) => {
-  if (!seconds || seconds <= 0) return '--'
-  
-  const days = Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds % 86400) / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = Math.floor(seconds % 60)
-  
-  if (days > 0) {
-    return `${days}d ${hours}h`
-  } else if (hours > 0) {
-    return `${hours}h ${minutes}m`
-  } else if (minutes > 0) {
-    return `${minutes}m ${secs}s`
-  } else {
-    return `${secs}s`
+  if (!seconds || seconds <= 0) {
+    return "--";
   }
-}
+
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  } else if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${secs}s`;
+  } else {
+    return `${secs}s`;
+  }
+};
 
 export function DownloadModalProvider({ children }) {
-  const [model, setModel] = useState(null)
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false)
-  const [isDownloading, setIsDownloading] = useState(false)
-  const [isCollapsed, setIsCollapsed] = useState(true)
-  const [progress, setProgress] = useState(0)
-  const [status, setStatus] = useState('idle')
-  const [timeLeft, setTimeLeft] = useState(null)
-  const [errorMessage, setErrorMessage] = useState('')
-  const [isFineTuning, setIsFineTuning] = useState(false)
-  const [currentStep, setCurrentStep] = useState('')
-  const [llmId, setLlmId] = useState(null)
+  const [model, setModel] = useState(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [progress, setProgress] = useState(0);
+  const [status, setStatus] = useState("idle");
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isFineTuning, setIsFineTuning] = useState(false);
+  const [currentStep, setCurrentStep] = useState("");
+  const [llmId, setLlmId] = useState(null);
+  const [jobId, setJobId] = useState(null);
 
-  const intervalRef = useRef(null)
-  const callbacksRef = useRef({ onComplete: null, onError: null })
+  const intervalRef = useRef(null);
+  const callbacksRef = useRef({ onComplete: null, onError: null });
 
   const toggleCollapse = useCallback(() => {
-    setIsCollapsed(c => !c)
-  }, [])
+    setIsCollapsed((c) => !c);
+  }, []);
 
-  const open = useCallback((selectedModel, { onComplete, onError, isFineTuning: fineTuning, llmId: trainingLlmId } = {}) => {
-    setModel(selectedModel)
-    callbacksRef.current = { onComplete, onError }
-    setErrorMessage('')
-    setIsFineTuning(fineTuning || false)
-    setLlmId(trainingLlmId || null)
-    setCurrentStep(fineTuning ? 'Preparing training...' : '')
-    setIsConfirmOpen(true)
-  }, [])
+  const open = useCallback(
+    (
+      selectedModel,
+      { onComplete, onError, isFineTuning: fineTuning, llmId: trainingLlmId } = {}
+    ) => {
+      setModel(selectedModel);
+      callbacksRef.current = { onComplete, onError };
+      setErrorMessage("");
+      setIsFineTuning(fineTuning || false);
+      setLlmId(trainingLlmId || null);
+      setCurrentStep(fineTuning ? "Preparing training..." : "");
+      setIsConfirmOpen(true);
+    },
+    []
+  );
 
-  const cancelConfirm = useCallback(() => setIsConfirmOpen(false), [])
+  const cancelConfirm = useCallback(() => setIsConfirmOpen(false), []);
 
-  const checkDownloadStatus = useCallback(async (id, llmId = null) => {
-    try {
-      const endpoint = isFineTuning 
-        ? `${API_BASE_URL}/training/${llmId}/status` 
-        : `${API_BASE_URL}/main_window/downloads/${id}/status`
-      
-      const res = await fetch(endpoint)
-      if (!res.ok) throw new Error(`Server responded with ${res.status}: ${res.statusText}`)
-      const data = await res.json()
-      setProgress(data.progress)
-      setStatus(data.status)
-      
-      if (isFineTuning) {
-        setCurrentStep(data.status === 'pending' ? 'Preparing...' : 'Training in progress...')
-        setTimeLeft(data.time_left || 0) // Set timeLeft for fine-tuning too
-      } else {
-        setTimeLeft(data.time_left)
-      }
+  const checkDownloadStatus = useCallback(
+    async (id, llmId = null) => {
+      try {
+        const endpoint = isFineTuning
+          ? `${API_BASE_URL}/training/${llmId}/status`
+          : `${API_BASE_URL}/llms/downloads/${id}/status`;
 
-      if (data.status === 'completed' || data.status === 'failed') {
-        clearInterval(intervalRef.current)
-        setIsDownloading(false)
-        if (data.status === 'completed') {
-          callbacksRef.current.onComplete?.()
-        } else {
-          const errorMsg = data.error_message || (isFineTuning ? 'Training failed unexpectedly' : 'Download failed unexpectedly')
-          setErrorMessage(errorMsg)
-          callbacksRef.current.onError?.(errorMsg)
+        const res = await fetch(endpoint);
+        if (!res.ok) {
+          if (res.status === 404) {
+            // Le job n'existe plus (probablement annulé et nettoyé)
+            clearInterval(intervalRef.current);
+            setIsDownloading(false);
+            setProgress(0);
+            setStatus("cancelled");
+            setIsFineTuning(false);
+            setLlmId(null);
+            return;
+          }
+          throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
         }
+        const data = await res.json();
+        setProgress(data.progress);
+        setStatus(data.status);
+
+        if (isFineTuning) {
+          setCurrentStep(data.status === "pending" ? "Preparing..." : "Training in progress...");
+          setTimeLeft(data.time_left || 0); // Set timeLeft for fine-tuning too
+        } else {
+          setTimeLeft(data.time_left);
+        }
+
+        if (data.status === "completed" || data.status === "failed" || data.status === "cancelled") {
+          clearInterval(intervalRef.current);
+          setIsDownloading(false);
+          if (data.status === "completed") {
+            callbacksRef.current.onComplete?.();
+          } else if (data.status === "cancelled") {
+            callbacksRef.current.onError?.("cancelled");
+          } else {
+            const errorMsg =
+              data.error_message ||
+              (isFineTuning ? "Training failed unexpectedly" : "Download failed unexpectedly");
+            setErrorMessage(errorMsg);
+            callbacksRef.current.onError?.(errorMsg);
+          }
+        }
+      } catch (err) {
+        log.error("Status check error:", err);
+        clearInterval(intervalRef.current);
+        setIsDownloading(false);
+        const errorMsg = isFineTuning
+          ? "An error occured during training. Please try again or contact the Erudi team."
+          : "An error occured during download. Please check your connection and try again. If the problem persists, please contact the Erudi team.";
+        setErrorMessage(errorMsg);
+        callbacksRef.current.onError?.(errorMsg);
       }
-    } catch (err) {
-      console.error('Status check error:', err)
-      clearInterval(intervalRef.current)
-      setIsDownloading(false)
-      const errorMsg = isFineTuning 
-        ? 'An error occured during training. Please try again or contact the Erudi team.' 
-        : 'An error occured during download. Please check your connection and try again. If the problem persists, please contact the Erudi team.'
-      setErrorMessage(errorMsg)
-      callbacksRef.current.onError?.(errorMsg)
-    }
-  }, [isFineTuning])
+    },
+    [isFineTuning]
+  );
 
   const handleConfirm = useCallback(async () => {
-    setIsConfirmOpen(false)
-    setIsDownloading(true)
-    setStatus('pending')
-    setProgress(0)
-    setErrorMessage('')
+    setIsConfirmOpen(false);
+    setIsDownloading(true);
+    setStatus("pending");
+    setProgress(0);
+    setErrorMessage("");
 
-    setTimeout(() => setIsCollapsed(false), 2000)
+    setTimeout(() => setIsCollapsed(false), 2000);
 
     try {
       if (isFineTuning) {
         // Start the fine-tuning API call
         const response = await fetch(`${API_BASE_URL}/train`, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             paths: model.trainingFiles,
@@ -133,58 +157,97 @@ export function DownloadModalProvider({ children }) {
         });
 
         if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(`Failed to start fine-tuning (${response.status}): ${errorText}`)
+          const errorText = await response.text();
+          throw new Error(`Failed to start fine-tuning (${response.status}): ${errorText}`);
         }
 
         const result = await response.json();
         const llmInTrainingId = result.llm_in_training_id;
-        
+
         // Update the llmId for status polling
         setLlmId(llmInTrainingId);
 
         intervalRef.current = setInterval(() => {
-          checkDownloadStatus(null, llmInTrainingId) // Pass llmId for training progress
-        }, 2000)
+          checkDownloadStatus(null, llmInTrainingId); // Pass llmId for training progress
+        }, 2000);
       } else {
-        const res = await fetch(
-          `${API_BASE_URL}/main_window/llms/${model.id}/download`,
-          { method: 'POST' }
-        )
+        const res = await fetch(`${API_BASE_URL}/llms/${model.id}/download`, { method: "POST" });
         if (!res.ok) {
-          const errorText = await res.text()
-          throw new Error(`Failed to start download (${res.status}): ${errorText}`)
+          const errorText = await res.text();
+          throw new Error(`Failed to start download (${res.status}): ${errorText}`);
         }
-        const job = await res.json()
+        const job = await res.json();
+        
+        // Sauvegarder le jobId pour l'annulation
+        setJobId(job.id);
 
         intervalRef.current = setInterval(() => {
-          checkDownloadStatus(job.id)
-        }, 2000)
+          checkDownloadStatus(job.id);
+        }, 2000);
       }
     } catch (err) {
-      console.error('Download/Training start error:', err)
-      const errorMsg = err.message || err.toString() || 'An unexpected error occurred'
-      setErrorMessage(errorMsg)
-      setIsDownloading(false)
-      callbacksRef.current.onError?.(errorMsg)
+      log.error("Download/Training start error:", err);
+      const errorMsg = err.message || err.toString() || "An unexpected error occurred";
+      setErrorMessage(errorMsg);
+      setIsDownloading(false);
+      callbacksRef.current.onError?.(errorMsg);
     }
-  }, [model, checkDownloadStatus, isFineTuning, llmId])
+  }, [model, checkDownloadStatus, isFineTuning, llmId]);
 
-  const cancelDownload = useCallback(() => {
-    clearInterval(intervalRef.current)
-    setIsDownloading(false)
-    setProgress(0)
-    setStatus('cancelled')
-    setIsFineTuning(false)
-    setLlmId(null)
-    callbacksRef.current.onError?.('cancelled')
-  }, [])
+  const cancelDownload = useCallback(async () => {
+    if (!jobId) {
+      // Si pas de jobId, on fait juste le nettoyage local
+      clearInterval(intervalRef.current);
+      setIsDownloading(false);
+      setProgress(0);
+      setStatus("cancelled");
+      setIsFineTuning(false);
+      setLlmId(null);
+      callbacksRef.current.onError?.("cancelled");
+      return;
+    }
+
+    try {
+      // Appeler l'endpoint d'annulation
+      const response = await fetch(`${API_BASE_URL}/llms/downloads/${jobId}/cancel`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+      }
+
+      setStatus('cancelling');
+      log.log(`Download cancelled for job ${jobId}`);
+      
+      // Le statut final sera mis à jour par le polling
+    } catch (error) {
+      log.error('Failed to cancel download:', error);
+      setErrorMessage('Failed to cancel download: ' + error.message);
+      
+      // Dans tous les cas, on nettoie localement
+      clearInterval(intervalRef.current);
+      setIsDownloading(false);
+      setProgress(0);
+      setStatus("cancelled");
+      setIsFineTuning(false);
+      setLlmId(null);
+      callbacksRef.current.onError?.("cancelled");
+    }
+  }, [jobId]);
+
+  const closeErrorModal = () => {
+    setErrorMessage("");
+  };
 
   return (
-    <DownloadModalContext.Provider value={{ 
-      open,
-      isTraining: isFineTuning && isDownloading
-    }}>
+    <DownloadModalContext.Provider
+      value={{
+        open,
+        isTraining: isFineTuning && isDownloading,
+        isDownloading,
+      }}
+    >
       {children}
 
       {(isConfirmOpen || isDownloading) &&
@@ -207,53 +270,46 @@ export function DownloadModalProvider({ children }) {
                 <div
                   className={`fixed bottom-0 bg-[#121212]/50 p-4 flex items-center rounded-r-3xl z-50 ${
                     isCollapsed
-                      ? 'left-[4.5%] w-0 bg-transparent'
-                      : 'left-[4.5%] w-[35%] sm:w-[38%] xl:w-[28%] gap-3'
+                      ? "left-[4.5%] w-0 bg-transparent"
+                      : "left-[4.5%] w-[35%] sm:w-[38%] xl:w-[28%] gap-3"
                   }`}
                 >
                   <div className="flex-1">
                     {!isCollapsed && (
                       <>
                         <div className="flex items-center justify-between w-full">
-                          <p className="text-white font-semibold truncate">
-                            {errorMessage ? 'Error:' : (isFineTuning ? 'Training:' : 'Downloading:')} {model?.name}
+                          <p className="text-white font-semibold truncate flex-1">
+                            {errorMessage ? "Error:" : isFineTuning ? "Training:" : "Downloading:"}{" "}
+                            {model?.name}
                           </p>
-                          {errorMessage && (
-                            <button
-                              onClick={cancelDownload}
-                              className="ml-2 p-1 hover:bg-red-500/20 rounded transition-colors"
-                              aria-label="Close"
-                            >
-                              <X className="w-4 h-4 text-red-400" />
-                            </button>
-                          )}
+                          <button
+                            onClick={cancelDownload}
+                            className="ml-2 p-1.5 bg-red-500/20 hover:bg-red-500/30 rounded transition-colors"
+                            aria-label="Cancel"
+                          >
+                            <X className="w-4 h-4 text-red-400" />
+                          </button>
                         </div>
-                        
+
                         {errorMessage ? (
-                          <div className="mt-2 text-red-400 text-sm">
-                            {errorMessage}
-                          </div>
+                          <ErrorModal errorMessage={errorMessage} onClose={closeErrorModal} />
                         ) : (
                           <div className="flex gap-4 text-sm text-gray-300 mt-2">
                             <span>
-                              Time Left:{' '}
+                              Time Left:{" "}
                               <span className="font-semibold">
-                                {status === 'running'
-                                  ? formatTimeLeft(timeLeft)
-                                  : '--'}
+                                {status === "running" ? formatTimeLeft(timeLeft) : "--"}
                               </span>
                             </span>
                             <span>
-                              Progress:{' '}
+                              Progress:{" "}
                               <span className="font-semibold">
-                                {status === 'running'
-                                  ? `${(progress?.toFixed(1) || 0)} %`
-                                  : '--'}
+                                {status === "running" ? `${progress?.toFixed(1) || 0} %` : "--"}
                               </span>
                             </span>
                           </div>
                         )}
-                        
+
                         {/* Progress bar at bottom - only show if no error */}
                         {!errorMessage && (
                           <div className="absolute left-0 bottom-0 w-[96%] h-1 bg-gray-800/50 rounded-b-3xl overflow-hidden">
@@ -269,7 +325,7 @@ export function DownloadModalProvider({ children }) {
                   <button
                     className="absolute bottom-8 right-0"
                     onClick={toggleCollapse}
-                    aria-label={isCollapsed ? 'Expand' : 'Collapse'}
+                    aria-label={isCollapsed ? "Expand" : "Collapse"}
                   >
                     {isCollapsed ? (
                       <ChevronRight className="w-6 h-6 text-gray-300 hover:text-white" />
@@ -281,12 +337,12 @@ export function DownloadModalProvider({ children }) {
               </>
             )}
           </>,
-          document.getElementById('modal-root')
+          document.getElementById("modal-root")
         )}
     </DownloadModalContext.Provider>
-  )
+  );
 }
 
 export function useDownloadModal() {
-  return useContext(DownloadModalContext)
+  return useContext(DownloadModalContext);
 }

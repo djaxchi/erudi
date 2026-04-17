@@ -1,9 +1,12 @@
 import React from "react";
+import PropTypes from "prop-types";
 
 export default function GradientBox({
   children,
   className = "",
   contentClassName,
+  onClick,
+  ...props
 }) {
   // Default content wrapper classes: padding, flex layout, full height, hide overflow
   const defaultContentClasses = "p-8 flex flex-col h-full overflow-hidden";
@@ -11,6 +14,8 @@ export default function GradientBox({
   return (
     <div
       className={`relative rounded-2xl overflow-hidden shadow-xl ${className}`}
+      onClick={onClick}
+      {...props}
     >
       {/* gradient layer (11% opacity) */}
       <div
@@ -25,11 +30,14 @@ export default function GradientBox({
       <div className="absolute inset-0 mix-blend-overlay pointer-events-none" />
 
       {/* content retains full opacity, customizable wrapper */}
-      <div
-        className={`relative z-10 ${contentClassName || defaultContentClasses}`}
-      >
-        {children}
-      </div>
+      <div className={`relative z-10 ${contentClassName || defaultContentClasses}`}>{children}</div>
     </div>
   );
 }
+
+GradientBox.propTypes = {
+  children: PropTypes.node.isRequired,
+  className: PropTypes.string,
+  contentClassName: PropTypes.string,
+  onClick: PropTypes.func,
+};

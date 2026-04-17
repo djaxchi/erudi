@@ -1,0 +1,4 @@
+# Production Dependencies Only
+-r ../../meta/base.txt
+-r ../../meta/cpu.txt
+-r ../../meta/win-specs.txt
