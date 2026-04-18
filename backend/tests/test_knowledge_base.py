@@ -603,7 +603,7 @@ class TestKnowledgeBaseEndpoints:
     
     def test_get_kb_job_status_not_found(self, client):
         """Test GET /knowledge_base/{llm_id}/status with invalid ID returns 404."""
-        response = client.get("/knowledge_base/99999/status")
+        response = client.get("/erudi/knowledge_base/99999/status")
         
         assert response.status_code == 404
     
@@ -630,7 +630,7 @@ class TestKnowledgeBaseEndpoints:
             "description": "Test description"
         }
 
-        response = client.post("/knowledge_base/create", json=payload)
+        response = client.post("/erudi/knowledge_base/create", json=payload)
 
         assert response.status_code == 200
         data = response.json()
@@ -645,7 +645,7 @@ class TestKnowledgeBaseEndpoints:
             "modelName": "Test"
         }
         
-        response = client.post("/knowledge_base/create", json=payload)
+        response = client.post("/erudi/knowledge_base/create", json=payload)
         
         assert response.status_code == 400
     
@@ -657,7 +657,7 @@ class TestKnowledgeBaseEndpoints:
             "modelName": "Test Assistant"
         }
         
-        response = client.post("/knowledge_base/create", json=payload)
+        response = client.post("/erudi/knowledge_base/create", json=payload)
         
         assert response.status_code == 404
     
@@ -685,7 +685,7 @@ class TestKnowledgeBaseEndpoints:
             "description": "Updated description"
         }
 
-        response = client.post("/knowledge_base/create", json=payload)
+        response = client.post("/erudi/knowledge_base/create", json=payload)
 
         assert response.status_code == 200
         data = response.json()
