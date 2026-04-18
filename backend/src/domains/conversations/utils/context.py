@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from src.core.logging import logger
 from src.entities.Llm import Llm
-from src.utils.inference_utils import get_relevant_texts_from_kb
+from src.utils.kb_utils import get_relevant_texts_from_kb
 from .cache import ConversationCache
 from .embedding import ConversationEmbedder
 from .prompt import PromptBuilder
@@ -176,7 +176,7 @@ class ConversationContext:
             strategy.get("use_kb_enhanced", False)
         ):
             try:
-                from src.utils.inference_utils import get_relevant_texts_from_kb
+                from src.utils.kb_utils import get_relevant_texts_from_kb
                 kb_context = get_relevant_texts_from_kb(
                     query=query,
                     llm=llm,
