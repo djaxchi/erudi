@@ -581,18 +581,19 @@ class TestKB_Service:
 class TestKnowledgeBaseEndpoints:
     """Test REST API endpoints for Knowledge Base operations."""
     
-    def test_get_kb_job_status_endpoint(self, client, test_db_session, mock_llm):
-        """Test GET /knowledge_base/{llm_id}/status endpoint."""
-        # Create job
+    def test_get_kb_job_status_endpoint(self, test_db_session, mock_llm):
+        """Test KB job status retrieval via service layer."""
+        from src.domains.knowledge_base.services import KB_Service
         repo = KB_Repository()
         kb = repo.create_knowledge_base(test_db_session, ["/test/doc.pdf"])
-        kb_job = repo.create_kb_job(
+        repo.create_kb_job(
             db=test_db_session,
             base_model_id=mock_llm.id,
             new_model_id=mock_llm.id,
             kb_id=kb.id,
             status="running"
         )
+<<<<<<< Updated upstream
         test_db_session.commit()
         
         response = client.get(f"/knowledge_base/{mock_llm.id}/status")
@@ -601,6 +602,15 @@ class TestKnowledgeBaseEndpoints:
         data = response.json()
         assert data["status"] == "running"
         assert "status_updated_at" in data
+=======
+        test_db_session.flush()
+
+        service = KB_Service()
+        status_data = service.get_kb_job_status(test_db_session, mock_llm.id)
+
+        assert status_data["status"] == "running"
+        assert "status_updated_at" in status_data
+>>>>>>> Stashed changes
     
     def test_get_kb_job_status_not_found(self, client):
         """Test GET /knowledge_base/{llm_id}/status with invalid ID returns 404."""
