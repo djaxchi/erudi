@@ -607,29 +607,31 @@ class TestKnowledgeBaseEndpoints:
         
         assert response.status_code == 404
     
+    @patch('src.domains.knowledge_base.repository.KB_Repository.get_local_llm_by_id')
     @patch('src.domains.knowledge_base.services.KB_Service.create_kb_assistant')
     @patch('src.domains.knowledge_base.endpoints._run_kb_creation_task')
     def test_create_knowledge_base_endpoint_new(
         self,
         mock_bg_task,
         mock_create,
+        mock_get_llm,
         client,
         test_db_session,
         mock_llm
     ):
         """Test POST /knowledge_base/create for new KB assistant."""
-        # Mock service
+        mock_get_llm.return_value = mock_llm  # LLM found, no KB attached
         mock_create.return_value = (42, 1)  # (llm_id, kb_job_id)
-        
+
         payload = {
             "paths": ["/test/doc.pdf"],
             "selectedModel": mock_llm.id,
             "modelName": "Test Assistant",
             "description": "Test description"
         }
-        
+
         response = client.post("/knowledge_base/create", json=payload)
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "Knowledge Base Assistant is being created" in data["msg"]
@@ -659,31 +661,32 @@ class TestKnowledgeBaseEndpoints:
         
         assert response.status_code == 404
     
+    @patch('src.domains.knowledge_base.repository.KB_Repository.get_local_llm_by_id')
     @patch('src.domains.knowledge_base.services.KB_Service.update_existing_kb')
     @patch('src.domains.knowledge_base.endpoints._run_kb_update_task')
     def test_create_knowledge_base_endpoint_update(
         self,
         mock_bg_task,
         mock_update,
+        mock_get_llm,
         client,
         test_db_session,
         mock_llm_with_kb
     ):
         """Test POST /knowledge_base/create for updating existing KB."""
         llm, kb, vector_store = mock_llm_with_kb
-        
-        # Mock service
+        mock_get_llm.return_value = llm  # LLM found, has KB attached
         mock_update.return_value = (llm.id, 1)  # (llm_id, kb_job_id)
-        
+
         payload = {
             "paths": ["/test/new_doc.pdf"],
             "selectedModel": llm.id,
             "modelName": "Updated Assistant",
             "description": "Updated description"
         }
-        
+
         response = client.post("/knowledge_base/create", json=payload)
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "updated" in data["msg"].lower()
