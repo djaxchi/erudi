@@ -75,7 +75,6 @@ Warning:
 from dotenv import load_dotenv
 import os
 from typing import Optional, Type
-from pathlib import Path
 
 from huggingface_hub import HfApi
 

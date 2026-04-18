@@ -75,7 +75,16 @@ Warning:
 # - No subprocess-per-request; one local server process per loaded model
 
 from __future__ import annotations
-import os, sys, time, json, subprocess, signal, atexit, platform, socket, shutil
+import os
+import sys
+import time
+import json
+import subprocess
+import signal
+import atexit
+import platform
+import socket
+import shutil
 from pathlib import Path
 from typing import Any, Optional, Tuple, Generator, Union, Dict, List
 
@@ -511,7 +520,7 @@ class CPU_Engine(BaseEngine):
             except Exception as e:
                 logger.warning(f"[CPU_Engine] Failed to delete intermediate file {fp16_gguf}: {e}")
         else:
-            logger.info(f"[CPU_Engine] Skipping quantization (quantize=False), keeping FP16 GGUF")
+            logger.info("[CPU_Engine] Skipping quantization (quantize=False), keeping FP16 GGUF")
         
         cls._copy_auxiliary_files(src, dst)
 
@@ -1070,7 +1079,8 @@ class CPU_Engine(BaseEngine):
 
     @classmethod
     def _wait_port_closed(cls, port: int, timeout_s: float = 3.0) -> None:
-        import socket, time
+        import socket
+        import time
         t0 = time.time()
         while time.time() - t0 < timeout_s:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

@@ -28,7 +28,6 @@ import time
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.database.core import SessionLocal
@@ -36,12 +35,6 @@ from src.entities.Llm import Llm
 from src.entities.DownloadJob import DownloadJobModel
 from src.core.logging import logger
 from src.core import config
-from src.core.exceptions import (
-    ModelNotFoundException,
-    DownloadJobNotFoundException,
-    DatabaseException,
-    FileSystemException,
-)
 
 
 class Llm_Repository:

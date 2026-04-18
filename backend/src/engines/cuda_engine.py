@@ -76,7 +76,6 @@ Note:
 """
 
 import os
-import re
 import sys
 import json
 import time
@@ -1480,7 +1479,6 @@ class CUDA_Engine(BaseEngine):
             >>> print(f"Fine-tuning: {eval_result['global_finetuning_score']}/100")
         """
         try:
-            import psutil
 
             # Get base hardware info
             hw_info = cls.get_hardware_info()

@@ -74,7 +74,7 @@ Notes:
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Dict, Tuple, List
+from typing import Optional, Dict, Tuple
 from huggingface_hub import ModelInfo
 
 from src.core.logging import logger

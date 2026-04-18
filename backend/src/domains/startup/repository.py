@@ -20,7 +20,6 @@ Example:
     startup_repo = Startup_Variables_Repository(db)
     vars = startup_repo.get_or_create()
 """
-from typing import Optional
 
 from sqlalchemy.orm import Session
 

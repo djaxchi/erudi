@@ -383,7 +383,7 @@ class MessageRepository:
                 self.db.query(Message.content)
                 .filter(
                     Message.conversation_id == conversation_id,
-                    Message.starred == True
+                    Message.starred == True  # noqa: E712
                 )
                 .all()
             )

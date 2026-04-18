@@ -16,7 +16,6 @@ Example:
 from sqlalchemy import Column, Integer, Boolean, DateTime
 from sqlalchemy.orm import validates
 from src.database.core import Base
-from datetime import datetime
 
 
 class StartupVariables(Base):

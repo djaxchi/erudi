@@ -56,8 +56,6 @@ Notes:
     - Overlap defaults: 15% for chunking, 64 tokens for token-based
     - All functions log processing time and stats via structured logger
 """
-import os
-import re
 from typing import List
 import unicodedata
 import pypdf
@@ -67,7 +65,6 @@ from src.core.logging import logger
 from src.core import config
 from datetime import datetime
 
-from typing import List
 import regex as re
 
 

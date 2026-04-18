@@ -2,13 +2,11 @@
 Cache utilities for conversation management.
 """
 from datetime import datetime
-from typing import Dict, Optional, Tuple, List, Set
+from typing import Dict, Optional, Tuple, List
 import numpy as np
 import faiss
-from dataclasses import dataclass
 
 from src.core.logging import logger
-from src.engines.embedder_engine import Embedder_Engine
 from .cache_types import ConversationEmbeddingCache, MessageEmbedding
 
 

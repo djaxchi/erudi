@@ -91,15 +91,16 @@ Warning:
     Ensure model is not in use (check conversations) before deleting.
 """
 
-import asyncio, os, shutil
+import asyncio
+import os
+import shutil
 from typing import List
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from fastapi import BackgroundTasks, Depends, HTTPException, APIRouter, status as http_status
+from fastapi import BackgroundTasks, Depends, APIRouter, status as http_status
 from sqlalchemy.orm import Session
 from src.database.core import get_db, SessionLocal
 
-from src.entities.Llm import Llm
 from src.entities.DownloadJob import DownloadJobModel
 from src.domains.llms.schemas import LLMCreate, LLMResponse, DownloadJobResponse
 from src.domains.llms.services import download_llm, cancel_download_job

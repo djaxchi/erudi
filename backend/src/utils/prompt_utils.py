@@ -63,7 +63,6 @@ Notes:
 from datetime import datetime
 from typing import List, Optional
 
-from src.core.logging import logger
 
 
 def build_system_prompt(

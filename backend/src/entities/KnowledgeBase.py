@@ -19,7 +19,7 @@ Example:
     print(kb.file_count)  # 2
 """
 import os
-from typing import List, Optional
+from typing import List
 from sqlalchemy import Column, Integer, String, DateTime, JSON
 from datetime import datetime
 from src.database.core import Base

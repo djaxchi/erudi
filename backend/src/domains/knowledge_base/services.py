@@ -28,8 +28,7 @@ Examples:
     ... )
 """
 import os
-from typing import List, Dict, Tuple, Optional, Any
-from datetime import datetime
+from typing import List, Dict, Tuple, Any
 
 import faiss
 import numpy
@@ -39,7 +38,6 @@ from sqlalchemy.orm import Session
 from src.domains.knowledge_base.repository import KB_Repository
 from src.entities.KnowledgeBase import KnowledgeBase
 from src.entities.VectorStore import VectorStore
-from src.entities.Llm import Llm
 from src.entities.KBJob import KBJobModel
 
 from src.engines.embedder_engine import Embedder_Engine
@@ -50,9 +48,6 @@ from src.core.exceptions import (
     FAISSException,
     EmbeddingError,
     FileSystemException,
-    KnowledgeBaseNotFoundException,
-    KnowledgeBaseCorruptedException,
-    DatabaseException,
 )
 
 

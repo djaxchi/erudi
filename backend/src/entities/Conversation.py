@@ -18,13 +18,14 @@ Example:
         max_tokens=2048
     )
 """
+from __future__ import annotations
+
 from datetime import datetime
-from typing import List, Optional
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text, event
+from typing import Optional
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.ext.hybrid import hybrid_property
 from src.database.core import Base
-from src.core.logging import logger
 
 
 class Conversation(Base):
@@ -151,7 +152,7 @@ class Conversation(Base):
             return max(msg.timestamp for msg in self.messages)
         return self.created_at
 
-    def add_message(self, content: str, sender: str) -> "Message":
+    def add_message(self, content: str, sender: str):  # noqa: F821
         """Add a new message to this conversation and update timestamp.
 
         Args:
