@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
 import DragDropArea from "./DragDropArea";
-import { Loader, X } from "lucide-react";
+import { Loader } from "lucide-react";
 import ErrorModal from "./modals/ErrorModal";
 import ComingSoonModal from "./modals/ComingSoonModal";
 import { API_BASE_URL } from "../config/api.js";
@@ -78,7 +78,7 @@ export default function DatasetCard({
   /* Training state */
   const [trainingStatus, setTrainingStatus] = useState(null);
   const [trainingError, setTrainingError] = useState("");
-  const [progress, setProgress] = useState(0);
+  const [, setProgress] = useState(0);
   const pollingRef = useRef(null);
 
   /* Hardware info state */
@@ -182,32 +182,6 @@ export default function DatasetCard({
     notes: "Coming soon",
   };
 
-  /* Polling helpers */
-  const checkTrainingStatus = async (id) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/training/${id}/status`);
-      if (!res.ok) {
-        throw new Error(res.status);
-      }
-      const d = await res.json();
-      setTrainingStatus(d.status);
-      setProgress(d.progress || 0);
-      if (d.status === "failed") {
-        setTrainingError("Training failed: " + (d.error_message || "Unknown error"));
-      }
-      return ["failed", "completed"].includes(d.status);
-    } catch (e) {
-      setTrainingError("Error fetching training status: " + String(e));
-      return true;
-    }
-  };
-  const startPolling = (id) => {
-    pollingRef.current && clearInterval(pollingRef.current);
-    pollingRef.current = setInterval(async () => {
-      (await checkTrainingStatus(id)) &&
-        (clearInterval(pollingRef.current), (pollingRef.current = null));
-    }, 30_000);
-  };
   useEffect(() => () => pollingRef.current && clearInterval(pollingRef.current), []);
 
   /* Launch training */

@@ -34,7 +34,6 @@ export default function HeaderBar({
   }, [initialMaxTokens]);
 
   const rootRef = useRef(null);
-  const selectRef = useRef(null);
   const dropdownRef = useRef(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [tier, setTier] = useState("lg");

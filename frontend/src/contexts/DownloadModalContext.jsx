@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from "react";
 import ReactDOM from "react-dom";
 import ConfirmationModal from "../components/modals/ConfirmationModal";
+import ErrorModal from "../components/modals/ErrorModal";
 import SpinnerDots from "../components/Spinner";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { API_BASE_URL } from "../config/api.js";
@@ -42,7 +43,7 @@ export function DownloadModalProvider({ children }) {
   const [timeLeft, setTimeLeft] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isFineTuning, setIsFineTuning] = useState(false);
-  const [currentStep, setCurrentStep] = useState("");
+  const [, setCurrentStep] = useState("");
   const [llmId, setLlmId] = useState(null);
   const [jobId, setJobId] = useState(null);
 
@@ -103,7 +104,11 @@ export function DownloadModalProvider({ children }) {
           setTimeLeft(data.time_left);
         }
 
-        if (data.status === "completed" || data.status === "failed" || data.status === "cancelled") {
+        if (
+          data.status === "completed" ||
+          data.status === "failed" ||
+          data.status === "cancelled"
+        ) {
           clearInterval(intervalRef.current);
           setIsDownloading(false);
           if (data.status === "completed") {
@@ -177,7 +182,7 @@ export function DownloadModalProvider({ children }) {
           throw new Error(`Failed to start download (${res.status}): ${errorText}`);
         }
         const job = await res.json();
-        
+
         // Sauvegarder le jobId pour l'annulation
         setJobId(job.id);
 
@@ -210,21 +215,21 @@ export function DownloadModalProvider({ children }) {
     try {
       // Appeler l'endpoint d'annulation
       const response = await fetch(`${API_BASE_URL}/llms/downloads/${jobId}/cancel`, {
-        method: 'POST'
+        method: "POST",
       });
-      
+
       if (!response.ok) {
         throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
       }
 
-      setStatus('cancelling');
+      setStatus("cancelling");
       log.log(`Download cancelled for job ${jobId}`);
-      
+
       // Le statut final sera mis à jour par le polling
     } catch (error) {
-      log.error('Failed to cancel download:', error);
-      setErrorMessage('Failed to cancel download: ' + error.message);
-      
+      log.error("Failed to cancel download:", error);
+      setErrorMessage("Failed to cancel download: " + error.message);
+
       // Dans tous les cas, on nettoie localement
       clearInterval(intervalRef.current);
       setIsDownloading(false);

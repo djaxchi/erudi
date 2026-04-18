@@ -31,7 +31,7 @@ export default function HardwareLoadingPopup({ show, loading, onClose }) {
             <div className="w-12 h-12 border-3 border-emerald-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <p className="text-white font-medium mb-2">Evaluating Hardware</p>
             <p className="text-gray-400 text-sm mb-4">
-              We're still checking your system capabilities. This will only take a moment.
+              We&apos;re still checking your system capabilities. This will only take a moment.
             </p>
             <div className="space-y-2 text-xs text-gray-500">
               <div className="flex items-center justify-between">

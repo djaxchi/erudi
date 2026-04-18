@@ -57,12 +57,16 @@ export default function UpdateBanner() {
     window.addEventListener("__test_updater__", testHandler);
 
     return () => {
-      if (cleanupIPC) cleanupIPC();
+      if (cleanupIPC) {
+        cleanupIPC();
+      }
       window.removeEventListener("__test_updater__", testHandler);
     };
   }, []);
 
-  if (!state || dismissed) return null;
+  if (!state || dismissed) {
+    return null;
+  }
 
   const handleInstall = () => {
     window.updaterAPI?.installNow();

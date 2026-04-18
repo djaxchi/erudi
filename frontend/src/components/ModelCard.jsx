@@ -2,7 +2,7 @@ import React from "react";
 import PropTypes from "prop-types";
 import GradientBox from "./GradientBox";
 import { Download, Info, BookOpen, MessageSquare, Plus, Trash2 } from "lucide-react";
-import { useDownloadModal } from '../contexts/DownloadModalContext';
+import { useDownloadModal } from "../contexts/DownloadModalContext";
 
 /**
  * ModelCard component - displays model information with actions
@@ -23,14 +23,14 @@ function ModelCard({
   onChat,
   onKnowledgeBase,
   onDelete,
-  onClick,
+  onClick: _onClick,
 }) {
   const { open } = useDownloadModal();
   const handleDownload = () => {
     if (model) {
       open(model, {
         onComplete: () => onDownload && onDownload(model),
-        onError: (error) => console.error("Download error:", error)
+        onError: (error) => console.error("Download error:", error),
       });
     } else if (type === "add" && onDownload) {
       onDownload();

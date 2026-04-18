@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require("electron");
 const path = require("node:path");
 const { spawn, execSync } = require("child_process");
@@ -11,7 +12,7 @@ let autoUpdater = null;
 if (app.isPackaged) {
   try {
     autoUpdater = require("electron-updater").autoUpdater;
-    autoUpdater.autoDownload = true;       // Download silently in the background
+    autoUpdater.autoDownload = true; // Download silently in the background
     autoUpdater.autoInstallOnAppQuit = true; // Install on next natural quit
     autoUpdater.logger = require("electron-log");
     autoUpdater.logger.transports.file.level = "info";
@@ -33,7 +34,9 @@ let isCreatingWindow = false;
 // On Windows, SIGTERM only kills the parent — llama-server.exe is left orphaned.
 // taskkill /F /T kills the full process tree.
 function killBackend(proc) {
-  if (!proc) return;
+  if (!proc) {
+    return;
+  }
   if (process.platform === "win32") {
     try {
       execSync(`taskkill /F /T /PID ${proc.pid}`, { stdio: "ignore" });
@@ -107,7 +110,7 @@ const startRealBackend = () => {
       const checkDevBackendHealth = async () => {
         const devPort = process.env.BACKEND_PORT || "8765";
         log(`Dev mode using port: ${devPort}`);
-        
+
         for (let i = 0; i < 10; i++) {
           try {
             log(`Dev backend health check attempt ${i + 1}/10`);
@@ -134,7 +137,9 @@ const startRealBackend = () => {
         }
 
         // If we get here, backend is not responding
-        log(`Backend is not responding. Make sure to run: ./build-scripts/dev-start.sh or set BACKEND_PORT env variable`);
+        log(
+          "Backend is not responding. Make sure to run: ./build-scripts/dev-start.sh or set BACKEND_PORT env variable"
+        );
         reject(new Error(`Backend is not responding on localhost:${devPort}`));
       };
 
@@ -187,231 +192,231 @@ const startRealBackend = () => {
 
     log(`Backend process spawned with PID: ${backendProcess.pid}`);
 
-      backendProcess.stdout.on("data", (data) => {
-        const output = data.toString().trim();
-        log(`Backend stdout: ${output}`);
+    backendProcess.stdout.on("data", (data) => {
+      const output = data.toString().trim();
+      log(`Backend stdout: ${output}`);
 
-        // Parse JSON events from backend
-        if (output) {
-          try {
-            const event = JSON.parse(output);
-            if (event && event.event) {
-              log(`Backend event: ${event.event} ${event.code ? `(${event.code})` : ""}`);
-              // Forward structured events to renderer
-              if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send("backend-event", event);
-              }
+      // Parse JSON events from backend
+      if (output) {
+        try {
+          const event = JSON.parse(output);
+          if (event && event.event) {
+            log(`Backend event: ${event.event} ${event.code ? `(${event.code})` : ""}`);
+            // Forward structured events to renderer
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("backend-event", event);
             }
-          } catch (_) {
-            // Not JSON, just a log line
           }
+        } catch (_) {
+          // Not JSON, just a log line
         }
-      });
+      }
+    });
 
-      backendProcess.stderr.on("data", (data) => {
-        const output = data.toString().trim();
-        log(`Backend stderr: ${output}`);
+    backendProcess.stderr.on("data", (data) => {
+      const output = data.toString().trim();
+      log(`Backend stderr: ${output}`);
 
-        // Intelligent error detection: map stderr patterns to structured errors
-        // These are hints from libraries based on what's available at runtime
-        const detectError = (line) => {
-          if (!line) {
-            return null;
-          }
-
-          // GPU/CUDA detection errors (if CUDA build was expected but libs missing)
-          if (line.includes("CUDA runtime error") || line.includes("CUDA out of memory")) {
-            return { code: "CUDA_RUNTIME_ERROR", message: line };
-          }
-          if (line.includes("pynvml") || line.includes("NVML")) {
-            return {
-              code: "NVIDIA_ML_ERROR",
-              message: "NVIDIA GPU runtime unavailable; falling back to CPU",
-            };
-          }
-
-          // MLX detection errors (Mac Silicon specific)
-          if (line.includes("mlx.core") || line.includes("MLX")) {
-            return {
-              code: "MLX_ERROR",
-              message: "MLX framework error; verify Mac Silicon support",
-            };
-          }
-
-          // PyTorch errors (works on all builds)
-          if (line.includes("torch.cuda") || line.includes("cuda:") || line.includes("CUDA")) {
-            return {
-              code: "TORCH_CUDA_ERROR",
-              message: "PyTorch CUDA unavailable; check GPU drivers",
-            };
-          }
-          if (line.includes("No module named torch")) {
-            return {
-              code: "PYTORCH_MISSING",
-              message: "PyTorch not installed in backend environment",
-            };
-          }
-
-          // Dependency errors
-          if (line.includes("No module named")) {
-            const match = line.match(/No module named '([^']+)'/);
-            const module = match ? match[1] : "unknown";
-            return { code: "MISSING_DEPENDENCY", message: `Missing Python module: ${module}` };
-          }
-          if (line.includes("ImportError") || line.includes("import error")) {
-            return { code: "IMPORT_ERROR", message: "Failed to import required Python module" };
-          }
-
-          // Database errors
-          if (line.includes("database") || line.includes("sqlite")) {
-            return { code: "DATABASE_ERROR", message: "Database initialization failed" };
-          }
-
-          // Config/startup errors
-          if (line.includes("KeyError") || line.includes("FileNotFoundError")) {
-            return { code: "CONFIG_ERROR", message: "Configuration or data file error" };
-          }
-
+      // Intelligent error detection: map stderr patterns to structured errors
+      // These are hints from libraries based on what's available at runtime
+      const detectError = (line) => {
+        if (!line) {
           return null;
-        };
-
-        const error = detectError(output);
-        if (error) {
-          log(`Detected error: ${error.code} - ${error.message}`);
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send("backend-event", {
-              event: "startup_error",
-              code: error.code,
-              message: error.message,
-              source: "stderr",
-            });
-          }
-        }
-      });
-
-      backendProcess.on("exit", (code, signal) => {
-        log(`Backend process exited with code ${code}, signal ${signal}`);
-
-        // Map exit codes to errors
-        let errorEvent = null;
-        if (code !== 0 && code !== null) {
-          if (code === 1) {
-            errorEvent = {
-              code: "BACKEND_STARTUP_FAILED",
-              message: `Backend exited with code ${code}`,
-            };
-          } else if (code === 127) {
-            errorEvent = { code: "BACKEND_NOT_FOUND", message: "Backend executable not found" };
-          } else {
-            errorEvent = {
-              code: "BACKEND_EXIT_ERROR",
-              message: `Backend exited unexpectedly (code: ${code})`,
-            };
-          }
-
-          log(`Backend exit error: ${errorEvent.code}`);
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send("backend-event", {
-              event: "startup_error",
-              ...errorEvent,
-              source: "exit",
-            });
-          }
         }
 
-        backendProcess = null;
-      });
-
-      backendProcess.on("error", (error) => {
-        log(`Failed to start backend process: ${error.message}`);
-
-        // Platform-specific guidance
-        let guidance = "";
-        if (process.platform === "darwin") {
-          guidance =
-            "On macOS, the first run of an unsigned binary may be blocked. " +
-            "If you see a security popup, open System Settings > Privacy & Security and allow the backend binary.";
-        } else if (process.platform === "win32") {
-          guidance = "On Windows, ensure CUDA drivers and Python runtime are properly installed.";
+        // GPU/CUDA detection errors (if CUDA build was expected but libs missing)
+        if (line.includes("CUDA runtime error") || line.includes("CUDA out of memory")) {
+          return { code: "CUDA_RUNTIME_ERROR", message: line };
+        }
+        if (line.includes("pynvml") || line.includes("NVML")) {
+          return {
+            code: "NVIDIA_ML_ERROR",
+            message: "NVIDIA GPU runtime unavailable; falling back to CPU",
+          };
         }
 
-        const errorObj = {
-          event: "startup_error",
-          code: "BACKEND_SPAWN_FAILED",
-          message: error.message,
-          guidance: guidance,
-          source: "spawn",
-        };
-
-        log(guidance);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("backend-event", errorObj);
+        // MLX detection errors (Mac Silicon specific)
+        if (line.includes("mlx.core") || line.includes("MLX")) {
+          return {
+            code: "MLX_ERROR",
+            message: "MLX framework error; verify Mac Silicon support",
+          };
         }
 
-        reject(error);
-      });
-
-      const checkHealth = async () => {
-        let lastError = null;
-        let actualPort = PORT; // Will be updated from backend event
-
-        // Listen for port changes from backend
-        backendProcess.stdout.on("data", (data) => {
-          try {
-            const event = JSON.parse(data.toString().trim());
-            if (event.event === "starting" && event.port) {
-              actualPort = event.port;
-              log(`Backend selected port: ${actualPort}`);
-            }
-          } catch (_) {
-            // Not JSON
-          }
-        });
-
-        for (let i = 0; i < 30; i++) {
-          // Abort early if the backend process has already exited — no point waiting 30s
-          if (!backendProcess) {
-            reject(new Error("Backend process exited before becoming healthy"));
-            return;
-          }
-
-          try {
-            log(`Health check attempt ${i + 1}/30 on port ${actualPort}`);
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-            const response = await fetch(`http://127.0.0.1:${actualPort}/erudi/health/`, {
-              signal: controller.signal,
-            });
-            clearTimeout(timeoutId);
-
-            if (response.ok) {
-              const data = await response.json();
-              log(`Backend is ready: ${data.message}`);
-              resolve();
-              return;
-            }
-          } catch (error) {
-            lastError = error.message;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+        // PyTorch errors (works on all builds)
+        if (line.includes("torch.cuda") || line.includes("cuda:") || line.includes("CUDA")) {
+          return {
+            code: "TORCH_CUDA_ERROR",
+            message: "PyTorch CUDA unavailable; check GPU drivers",
+          };
+        }
+        if (line.includes("No module named torch")) {
+          return {
+            code: "PYTORCH_MISSING",
+            message: "PyTorch not installed in backend environment",
+          };
         }
 
-        const error = `Backend failed to start within 30 seconds. Last error: ${lastError}`;
-        log(error);
-        if (backendProcess) {
-          log("Killing stuck backend process...");
-          try {
-            backendProcess.kill("SIGTERM");
-          } catch (e) {
-            log(`Could not kill process: ${e.message}`);
-          }
-          backendProcess = null;
+        // Dependency errors
+        if (line.includes("No module named")) {
+          const match = line.match(/No module named '([^']+)'/);
+          const module = match ? match[1] : "unknown";
+          return { code: "MISSING_DEPENDENCY", message: `Missing Python module: ${module}` };
         }
-        reject(new Error(error));
+        if (line.includes("ImportError") || line.includes("import error")) {
+          return { code: "IMPORT_ERROR", message: "Failed to import required Python module" };
+        }
+
+        // Database errors
+        if (line.includes("database") || line.includes("sqlite")) {
+          return { code: "DATABASE_ERROR", message: "Database initialization failed" };
+        }
+
+        // Config/startup errors
+        if (line.includes("KeyError") || line.includes("FileNotFoundError")) {
+          return { code: "CONFIG_ERROR", message: "Configuration or data file error" };
+        }
+
+        return null;
       };
 
-      setTimeout(checkHealth, 2000);
+      const error = detectError(output);
+      if (error) {
+        log(`Detected error: ${error.code} - ${error.message}`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("backend-event", {
+            event: "startup_error",
+            code: error.code,
+            message: error.message,
+            source: "stderr",
+          });
+        }
+      }
+    });
+
+    backendProcess.on("exit", (code, signal) => {
+      log(`Backend process exited with code ${code}, signal ${signal}`);
+
+      // Map exit codes to errors
+      let errorEvent = null;
+      if (code !== 0 && code !== null) {
+        if (code === 1) {
+          errorEvent = {
+            code: "BACKEND_STARTUP_FAILED",
+            message: `Backend exited with code ${code}`,
+          };
+        } else if (code === 127) {
+          errorEvent = { code: "BACKEND_NOT_FOUND", message: "Backend executable not found" };
+        } else {
+          errorEvent = {
+            code: "BACKEND_EXIT_ERROR",
+            message: `Backend exited unexpectedly (code: ${code})`,
+          };
+        }
+
+        log(`Backend exit error: ${errorEvent.code}`);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("backend-event", {
+            event: "startup_error",
+            ...errorEvent,
+            source: "exit",
+          });
+        }
+      }
+
+      backendProcess = null;
+    });
+
+    backendProcess.on("error", (error) => {
+      log(`Failed to start backend process: ${error.message}`);
+
+      // Platform-specific guidance
+      let guidance = "";
+      if (process.platform === "darwin") {
+        guidance =
+          "On macOS, the first run of an unsigned binary may be blocked. " +
+          "If you see a security popup, open System Settings > Privacy & Security and allow the backend binary.";
+      } else if (process.platform === "win32") {
+        guidance = "On Windows, ensure CUDA drivers and Python runtime are properly installed.";
+      }
+
+      const errorObj = {
+        event: "startup_error",
+        code: "BACKEND_SPAWN_FAILED",
+        message: error.message,
+        guidance: guidance,
+        source: "spawn",
+      };
+
+      log(guidance);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("backend-event", errorObj);
+      }
+
+      reject(error);
+    });
+
+    const checkHealth = async () => {
+      let lastError = null;
+      let actualPort = PORT; // Will be updated from backend event
+
+      // Listen for port changes from backend
+      backendProcess.stdout.on("data", (data) => {
+        try {
+          const event = JSON.parse(data.toString().trim());
+          if (event.event === "starting" && event.port) {
+            actualPort = event.port;
+            log(`Backend selected port: ${actualPort}`);
+          }
+        } catch (_) {
+          // Not JSON
+        }
+      });
+
+      for (let i = 0; i < 30; i++) {
+        // Abort early if the backend process has already exited — no point waiting 30s
+        if (!backendProcess) {
+          reject(new Error("Backend process exited before becoming healthy"));
+          return;
+        }
+
+        try {
+          log(`Health check attempt ${i + 1}/30 on port ${actualPort}`);
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+          const response = await fetch(`http://127.0.0.1:${actualPort}/erudi/health/`, {
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+
+          if (response.ok) {
+            const data = await response.json();
+            log(`Backend is ready: ${data.message}`);
+            resolve();
+            return;
+          }
+        } catch (error) {
+          lastError = error.message;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      const error = `Backend failed to start within 30 seconds. Last error: ${lastError}`;
+      log(error);
+      if (backendProcess) {
+        log("Killing stuck backend process...");
+        try {
+          backendProcess.kill("SIGTERM");
+        } catch (e) {
+          log(`Could not kill process: ${e.message}`);
+        }
+        backendProcess = null;
+      }
+      reject(new Error(error));
+    };
+
+    setTimeout(checkHealth, 2000);
   });
 };
 
@@ -819,7 +824,9 @@ ipcMain.handle("updater:install-now", () => {
 });
 
 function setupAutoUpdater() {
-  if (!autoUpdater) return;
+  if (!autoUpdater) {
+    return;
+  }
 
   const send = (event, payload) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -860,11 +867,14 @@ function setupAutoUpdater() {
     log(`Updater: initial check failed — ${err.message}`);
   });
 
-  setInterval(() => {
-    autoUpdater.checkForUpdates().catch((err) => {
-      log(`Updater: periodic check failed — ${err.message}`);
-    });
-  }, 4 * 60 * 60 * 1000);
+  setInterval(
+    () => {
+      autoUpdater.checkForUpdates().catch((err) => {
+        log(`Updater: periodic check failed — ${err.message}`);
+      });
+    },
+    4 * 60 * 60 * 1000
+  );
 }
 
 app.whenReady().then(async () => {

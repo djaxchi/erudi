@@ -106,11 +106,11 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                   </h3>
                   <div className="space-y-3 text-sm sm:text-base">
                     <p className="text-gray-300 leading-relaxed">
-                      The app is in early alpha and highly dependent on your PC's hardware.
+                      The app is in early alpha and highly dependent on your PC&apos;s hardware.
                     </p>
                     <p className="text-gray-300 leading-relaxed">
-                      Features may change, and you may encounter bugs. If you do, we'd be grateful
-                      if you report to our team.
+                      Features may change, and you may encounter bugs. If you do, we&apos;d be
+                      grateful if you report to our team.
                     </p>
                     <p className="text-gray-300 leading-relaxed">
                       Every report helps us improve and your feedback means a lot, and we truly

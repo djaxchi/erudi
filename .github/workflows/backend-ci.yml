@@ -32,5 +32,15 @@ jobs:
           python -m venv backend/venv
           backend/venv/bin/pip install -r backend/requirements/entrypoints/dev/linux-cpu.txt
 
-      - name: Check for syntax errors
+      - name: Syntax check
         run: backend/venv/bin/python -m compileall backend/src -q
+
+      - name: Lint (ruff)
+        run: backend/venv/bin/ruff check backend/src
+
+      - name: Import check
+        run: backend/venv/bin/python -c "from src.main import app; print('OK')"
+        working-directory: backend
+
+      - name: Tests
+        run: backend/venv/bin/pytest backend/tests/ -x -q --ignore=backend/tests/e2e

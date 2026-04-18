@@ -2,7 +2,6 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from "react";
 import ReactDOM from "react-dom";
 import SpinnerDots from "../components/Spinner";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { API_BASE_URL } from "../config/api";
 import { createLogger } from "../utils/logger";
 const log = createLogger("KnowledgeBaseContext");
@@ -16,15 +15,11 @@ export function KnowledgeBaseProvider({ children }) {
   const [isStarting, setIsStarting] = useState(false); // For the initial API call
   const [showSpinner, setShowSpinner] = useState(false); // For bottom-left spinner
   const [status, setStatus] = useState("idle");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [assistantId, setAssistantId] = useState(null);
+  const [, setErrorMessage] = useState("");
+  const [, setAssistantId] = useState(null);
 
   const intervalRef = useRef(null);
   const callbacksRef = useRef({ onComplete: null, onError: null });
-
-  const toggleCollapse = useCallback(() => {
-    // Remove toggle functionality since we're not using the popup modal
-  }, []);
 
   const open = useCallback((knowledgeBaseTask, { onComplete, onError } = {}) => {
     log.log("KnowledgeBase context open function called with:", knowledgeBaseTask);

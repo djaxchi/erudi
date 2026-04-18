@@ -13,7 +13,7 @@ const log = createLogger("DragDropArea");
 export default function DragDropArea({ onFilesAdded }) {
   const [isOver, setIsOver] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
-  const [dragCounter, setDragCounter] = useState(0);
+  const [, setDragCounter] = useState(0);
   const inputRef = useRef(null);
 
   /* -------------------------------- helpers -------------------------------- */
@@ -107,19 +107,6 @@ export default function DragDropArea({ onFilesAdded }) {
       onFilesAdded?.(newFiles);
     }
     e.target.value = ""; // reset picker
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragCounter(0);
-    setIsOver(false);
-    const paths = extractPaths(e.dataTransfer.files);
-    if (paths.length) {
-      const newFiles = [...selectedFiles, ...paths];
-      setSelectedFiles(newFiles);
-      onFilesAdded?.(newFiles);
-    }
   };
 
   /* ---------------------------------- UI ---------------------------------- */
