@@ -647,8 +647,8 @@ class TestKnowledgeBaseEndpoints:
         
         response = client.post("/erudi/knowledge_base/create", json=payload)
         
-        assert response.status_code == 400
-    
+        assert response.status_code == 422  # InvalidInputException returns 422
+
     def test_create_knowledge_base_base_llm_not_found(self, client):
         """Test POST /knowledge_base/create with invalid base LLM returns 404."""
         payload = {
