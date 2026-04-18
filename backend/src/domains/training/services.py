@@ -26,10 +26,7 @@ Example (when uncommented):
     trainer = Trainer(model=model, callbacks=[callback], ...)
     trainer.train()  # Progress updates persisted to TrainingJob(id=42)
 """
-from datetime import datetime
-from src.entities.TrainingJob import TrainingJob
 
-from src.core.logging import logger
 
 class TrainingProgressCallback():
     """Stub class for HuggingFace TrainerCallback (implementation commented out).

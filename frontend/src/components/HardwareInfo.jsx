@@ -1,73 +1,10 @@
-import React, { useState } from "react";
+import React from "react";
 import PropTypes from "prop-types";
 import InfoRow from "./InfoRow";
 import Tooltip from "./Tooltip";
 import { HelpCircle } from "lucide-react";
-import { createLogger } from "../utils/logger";
-const log = createLogger("HardwareInfo");
 
 export default function HardwareInfo({ hw }) {
-  const [storagePath, setStoragePath] = useState(hw.storage_path || "");
-
-  // Handle directory selection for storage path
-  const handleStoragePathSelection = async () => {
-    try {
-      // Use the Electron API from preload.js
-      if (window.electron && window.electron.openDirectory) {
-        const result = await window.electron.openDirectory();
-        log.log("Storage directory selection result:", result); // Debug log
-
-        // Handle different possible result structures
-        if (result && !result.canceled) {
-          let selectedPath = null;
-
-          // Check different possible structures
-          if (result.filePaths && result.filePaths.length > 0) {
-            selectedPath = result.filePaths[0];
-          } else if (result.filePath) {
-            selectedPath = result.filePath;
-          } else if (typeof result === "string") {
-            selectedPath = result;
-          }
-
-          if (selectedPath) {
-            setStoragePath(selectedPath);
-            log.log("Selected storage path:", selectedPath);
-          } else {
-            log.log("No directory selected or invalid result structure");
-          }
-        } else {
-          log.log("Directory selection was canceled or failed");
-        }
-      } else {
-        log.warn("Electron API not available for selecting directory");
-        // Fallback for web environment - create hidden file input
-        const input = document.createElement("input");
-        input.type = "file";
-        input.webkitdirectory = true; // For directory selection
-        input.style.display = "none";
-
-        input.onchange = (e) => {
-          const files = e.target.files;
-          if (files && files.length > 0) {
-            // Get the directory path from the first file
-            const firstFile = files[0];
-            const pathParts = firstFile.webkitRelativePath.split("/");
-            if (pathParts.length > 0) {
-              setStoragePath(pathParts[0]); // Use the directory name
-            }
-          }
-          document.body.removeChild(input);
-        };
-
-        document.body.appendChild(input);
-        input.click();
-      }
-    } catch (error) {
-      log.error("Error selecting storage directory:", error);
-    }
-  };
-
   // Helper component for tooltips
   const TooltipIcon = ({ id }) => {
     const getTooltipText = (id) => {
@@ -113,14 +50,12 @@ export default function HardwareInfo({ hw }) {
         const n = parseFloat(match[1]);
         if (!isNaN(n)) {
           if (n >= 50) {
-            bulletColor = "bg-green-500";
-          } // Plenty of space/memory
-          else if (n >= 20) {
-            bulletColor = "bg-orange-400";
-          } // Moderate space/memory
-          else {
-            bulletColor = "bg-red-500";
-          } // Low space/memory
+            bulletColor = "bg-green-500"; // Plenty of space/memory
+          } else if (n >= 20) {
+            bulletColor = "bg-orange-400"; // Moderate space/memory
+          } else {
+            bulletColor = "bg-red-500"; // Low space/memory
+          }
         }
       }
     }
@@ -129,29 +64,6 @@ export default function HardwareInfo({ hw }) {
       type: "bullet",
       value: bulletColor,
     };
-  };
-
-  /* helper to determine bullet color for Apple Silicon chip */
-  const getChipBulletInfo = (chipModel) => {
-    if (!chipModel || chipModel.includes("fetching") || chipModel === "Unknown") {
-      return { type: "bullet", value: "bg-red-500" };
-    }
-
-    // Color code based on chip generation
-    if (chipModel.includes("M4")) {
-      return { type: "bullet", value: "bg-green-500" };
-    }
-    if (chipModel.includes("M3")) {
-      return { type: "bullet", value: "bg-green-500" };
-    }
-    if (chipModel.includes("M2")) {
-      return { type: "bullet", value: "bg-orange-400" };
-    }
-    if (chipModel.includes("M1")) {
-      return { type: "bullet", value: "bg-orange-400" };
-    }
-
-    return { type: "bullet", value: "bg-red-500" };
   };
 
   /* helper to determine bullet color for GPU cores */
@@ -299,7 +211,7 @@ export default function HardwareInfo({ hw }) {
               <TooltipIcon id="gpu" />
             </div>
           }
-          bullet={getEvalScoreBulletInfo(hw.gpu_eval_score).value}
+          bullet={getSizeBulletInfo(hw.gpu_eval_score).value}
         >
           {hw.gpu_model}
         </InfoRow>

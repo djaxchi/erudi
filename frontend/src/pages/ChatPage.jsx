@@ -23,7 +23,6 @@ export default function ChatPage() {
   const [selectedModel, setSelectedModel] = useState("");
   const [conversations, setConversations] = useState([]);
   const [errorMessage, setErrorMessage] = useState("");
-  const [showErrorPopup, setShowErrorPopup] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [isLanguageWarningExpanded, setIsLanguageWarningExpanded] = useState(false);
 
@@ -278,7 +277,7 @@ export default function ChatPage() {
                       significantly better results by chatting in English.
                     </p>
                     <p className="text-sm text-orange-200/70 italic">
-                      Pour les français, ça vous fera de l'entraînement :)
+                      Pour les français, ça vous fera de l&apos;entraînement :)
                     </p>
                   </div>
                 </div>
@@ -602,7 +601,7 @@ export default function ChatPage() {
                                 get significantly better results by chatting in English.
                               </p>
                               <p className="text-sm text-orange-200/70 italic">
-                                Pour les français, ça vous fera de l'entraînement :)
+                                Pour les français, ça vous fera de l&apos;entraînement :)
                               </p>
                             </motion.div>
                           )}

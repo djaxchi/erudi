@@ -59,7 +59,7 @@ Note:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from src.database.seed import create_tables, startup_populate_database, delete_all_data
+from src.database.seed import create_tables, startup_populate_database
 
 from src.core.exceptions import AppBaseException, app_base_exception_handler
 from src.core import config

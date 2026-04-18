@@ -7,7 +7,6 @@ This module is kept for backward compatibility and conversation-specific utiliti
 from typing import List, Optional, Dict, Tuple
 from src.core.logging import logger
 from src.utils.prompt_utils import build_system_prompt as _build_system_prompt
-from src.utils.prompt_utils import get_prompting_strategy as _get_prompting_strategy
 
 
 class PromptBuilder:

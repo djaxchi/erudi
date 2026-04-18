@@ -9,7 +9,6 @@ Example:
     repo = ArenaRepository(db)
     llm = repo.get_llm_by_id(42)
 """
-from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 

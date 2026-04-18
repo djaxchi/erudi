@@ -20,21 +20,43 @@ def test_argparse_port(monkeypatch, port):
 
 
 def test_json_event_emission():
-    # Run launcher with --port 12345, capture stdout
-    with tempfile.TemporaryDirectory() as tmpdir:
-        launcher = Path(__file__).parent.parent / "run.py"
-        result = subprocess.run(
-            [sys.executable, str(launcher), "--port", "12345"],
-            cwd=tmpdir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=10,
-            env={**os.environ, "PYTHONPATH": str(launcher.parent)},
-        )
-        # Find the 'starting' event in output
-        lines = result.stdout.decode().splitlines()
-        starting_events = [json.loads(l) for l in lines if 'starting' in l]
-        assert starting_events, "No starting event emitted"
-        event = starting_events[0]
-        assert event["event"] == "starting"
-        assert event["port"] == 12345
+    import time
+    import threading
+
+    launcher = Path(__file__).parent.parent / "run.py"
+    proc = subprocess.Popen(
+        [sys.executable, str(launcher), "--port", "12345"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={**os.environ, "PYTHONPATH": str(launcher.parent)},
+    )
+
+    starting_events = []
+    deadline = time.time() + 15
+
+    try:
+        while time.time() < deadline:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            decoded = line.decode().strip()
+            if not decoded:
+                continue
+            try:
+                event = json.loads(decoded)
+                if event.get("event") == "starting":
+                    starting_events.append(event)
+                    break
+            except json.JSONDecodeError:
+                pass
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+    assert starting_events, "No starting event emitted"
+    event = starting_events[0]
+    assert event["event"] == "starting"
+    assert event["port"] == 12345

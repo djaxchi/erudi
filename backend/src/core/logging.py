@@ -55,8 +55,8 @@ Warning:
     Use structured logging: logger.info("Model loaded", extra={"model_id": 123})
 """
 
-import logging, sys
-from pathlib import Path
+import logging
+import sys
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 

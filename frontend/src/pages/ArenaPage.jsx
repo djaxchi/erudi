@@ -38,7 +38,7 @@ export default function ArenaPage() {
 
   const [models, setModels] = useState([]);
   const [panels, setPanels] = useState([]);
-  const [inputValue, setInputValue] = useState("");
+  const [, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [addButtonAnimating, setAddButtonAnimating] = useState(false);
 

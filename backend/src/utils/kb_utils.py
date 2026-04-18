@@ -214,7 +214,7 @@ def get_relevant_texts_from_kb(
             q = numpy.ascontiguousarray(
                 query_emb.detach().cpu().numpy().astype("float32")
             ).reshape(1, -1)
-            _, I = faiss_index.search(q, k=kb_top_k)
+            _, I = faiss_index.search(q, k=kb_top_k)  # noqa: E741
             
             # Collect matching texts
             for idx in I[0]:

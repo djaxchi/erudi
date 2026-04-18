@@ -75,7 +75,16 @@ Warning:
 # - No subprocess-per-request; one local server process per loaded model
 
 from __future__ import annotations
-import os, sys, time, json, subprocess, signal, atexit, platform, socket, shutil
+import os
+import sys
+import time
+import json
+import subprocess
+import signal
+import atexit
+import platform
+import socket
+import shutil
 from pathlib import Path
 from typing import Any, Optional, Tuple, Generator, Union, Dict, List
 
@@ -511,7 +520,7 @@ class CPU_Engine(BaseEngine):
             except Exception as e:
                 logger.warning(f"[CPU_Engine] Failed to delete intermediate file {fp16_gguf}: {e}")
         else:
-            logger.info(f"[CPU_Engine] Skipping quantization (quantize=False), keeping FP16 GGUF")
+            logger.info("[CPU_Engine] Skipping quantization (quantize=False), keeping FP16 GGUF")
         
         cls._copy_auxiliary_files(src, dst)
 
@@ -963,7 +972,7 @@ class CPU_Engine(BaseEngine):
             # === BUILD RESULT ===
             result = {
                 "backend_type": "cpu",
-                "accelerator_name": "CPU Only",
+                "gpu_name": "CPU Only",
                 "cpu_model": cpu_model,
                 "total_memory_gb": total_memory_gb,
                 "available_memory_gb": available_memory_gb,
@@ -971,7 +980,6 @@ class CPU_Engine(BaseEngine):
                 "disk_total_gb": hw_info["storage"]["total_gb"],
                 "disk_available_gb": disk_available_gb,
                 "estimated_tflops": None,  # Not applicable for CPUs
-                "compute_units": total_cores,
                 "cpu_performance_units": total_cores,
                 "neural_engine_tops": None,
                 "cuda_version": None,
@@ -985,7 +993,6 @@ class CPU_Engine(BaseEngine):
                 "cpu_score": round(cpu_score, 2),
                 "memory_score": round(memory_capacity_score, 2),
                 "unified_memory": False,
-                "accelerator_available": False,
                 "system_platform": hw_info["system"]["platform"],
                 "performance_breakdown": {
                     "compute_score": round(cpu_score, 2),
@@ -1010,7 +1017,7 @@ class CPU_Engine(BaseEngine):
             base_score = min(100.0, cores * 5.0)  # 5 points per core
             return {
                 "backend_type": "cpu",
-                "accelerator_name": "CPU Only",
+                "gpu_name": "CPU Only",
                 "cpu_model": platform.processor() or "Unknown CPU",
                 "total_memory_gb": None,
                 "available_memory_gb": None,
@@ -1018,7 +1025,6 @@ class CPU_Engine(BaseEngine):
                 "disk_total_gb": None,
                 "disk_available_gb": None,
                 "estimated_tflops": None,
-                "compute_units": cores,
                 "cpu_performance_units": cores,
                 "neural_engine_tops": None,
                 "cuda_version": None,
@@ -1032,7 +1038,6 @@ class CPU_Engine(BaseEngine):
                 "cpu_score": round(base_score, 2),
                 "memory_score": 0.0,
                 "unified_memory": False,
-                "accelerator_available": False,
                 "system_platform": platform.system(),
                 "performance_breakdown": {
                     "compute_score": round(base_score, 2),
@@ -1070,7 +1075,8 @@ class CPU_Engine(BaseEngine):
 
     @classmethod
     def _wait_port_closed(cls, port: int, timeout_s: float = 3.0) -> None:
-        import socket, time
+        import socket
+        import time
         t0 = time.time()
         while time.time() - t0 < timeout_s:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

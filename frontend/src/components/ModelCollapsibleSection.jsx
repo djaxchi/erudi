@@ -1,19 +1,10 @@
 // src/components/CollapsibleSection.jsx
-import React, { useState, useEffect, forwardRef, useImperativeHandle, useRef } from "react";
+import React, { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import PropTypes from "prop-types";
 import Tooltip from "./Tooltip";
 import DeleteModelModal from "./modals/DeleteModelModal";
 import MessageModal from "./modals/MessageModal";
-import {
-  ChevronDown,
-  RefreshCcw,
-  X,
-  HelpCircle,
-  Trash2,
-  Database,
-  Globe,
-  Search,
-} from "lucide-react";
+import { ChevronDown, RefreshCcw, HelpCircle, Trash2, Database, Globe, Search } from "lucide-react";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { API_BASE_URL } from "../config/api";
 import { createLogger } from "../utils/logger";
@@ -307,6 +298,8 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
     </>
   );
 });
+
+CollapsibleSection.displayName = "CollapsibleSection";
 
 CollapsibleSection.propTypes = {
   title: PropTypes.string.isRequired,

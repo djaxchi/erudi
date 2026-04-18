@@ -7,7 +7,8 @@
   "extends": [
     "eslint:recommended",
     "plugin:react/recommended",
-    "plugin:react-hooks/recommended"
+    "plugin:react-hooks/recommended",
+    "prettier"
   ],
   "parserOptions": {
     "ecmaVersion": "latest",
@@ -41,25 +42,6 @@
     ],
     "no-var": "error",
     "prefer-const": "error",
-    "eqeqeq": ["error", "always"],
-    "curly": ["error", "all"],
-    "brace-style": ["error", "1tbs"],
-    "semi": ["error", "always"],
-    "quotes": ["error", "double", { "avoidEscape": true }],
-    "indent": ["error", 2],
-    "comma-dangle": ["error", "always-multiline"],
-    "object-curly-spacing": ["error", "always"],
-    "array-bracket-spacing": ["error", "never"],
-    "space-before-function-paren": [
-      "error",
-      {
-        "anonymous": "always",
-        "named": "never",
-        "asyncArrow": "always"
-      }
-    ],
-    "keyword-spacing": "error",
-    "space-infix-ops": "error",
-    "space-before-blocks": "error"
+    "eqeqeq": ["error", "always"]
   }
 }

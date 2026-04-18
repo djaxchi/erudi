@@ -68,7 +68,6 @@ from src.domains.conversations.utils.cache import ConversationCache
 from src.domains.conversations.utils.context import ConversationContext
 from src.domains.conversations.schemas import ConversationQuery
 from src.entities.Conversation import Conversation
-from src.entities.Message import Message
 
 
 class ConversationService:
@@ -355,7 +354,7 @@ class ConversationService:
                 logger.debug(f"[TitleGen Stream] token: {new_text}")
                 generated_title += new_text
                 yield new_text
-        except Exception as e:
+        except Exception:
             logger.exception("Title streaming failed")
         finally:
             # Save the generated title
@@ -456,7 +455,7 @@ class ConversationService:
             ):
                 assistant_response += text
                 yield text
-        except Exception as e:
+        except Exception:
             logger.exception("Streaming failed")
             error_msg = (
                 "[ERROR_MESSAGE_SYSTEM] Generation failed due to an error. "

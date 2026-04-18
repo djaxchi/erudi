@@ -1,13 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { HelpCircle, X } from "lucide-react";
+import { HelpCircle } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
-import DatasetCard from "../components/DatasetCard";
-import HardwareInfo from "../components/HardwareInfo";
 import ModelLibrary from "../components/ModelLibrary";
 import InfoRow from "../components/InfoRow";
 import DragDropArea from "../components/DragDropArea";
-import Dropdown from "../components/Dropdown";
 import { useKnowledgeBase } from "../contexts/KnowledgeBaseContext";
 import ErrorModal from "../components/modals/ErrorModal";
 import { API_BASE_URL } from "../config/api.js";
@@ -103,7 +100,7 @@ export default function KnowledgeBasePage() {
       return;
     }
 
-    console.log("Validation passed, proceeding with creation");
+    log.log("Validation passed, proceeding with creation");
     setErrorMessage("");
 
     const task = {
@@ -130,26 +127,6 @@ export default function KnowledgeBasePage() {
         setErrorMessage(error);
       },
     });
-  };
-
-  const handleKnowledgeBaseComplete = () => {
-    log.log("Knowledge base creation completed successfully");
-    setSelectedModel(null);
-    setModelName("");
-    setDescription("");
-    setPaths([]);
-    setErrorMessage("");
-    // Force page refresh with a small delay to ensure state reset completes
-    setTimeout(() => {
-      window.location.href = window.location.href;
-    }, 100);
-  };
-
-  const handleKnowledgeBaseError = (error) => {
-    log.error("Knowledge base creation error", error);
-    setErrorMessage(
-      "Assistant creation failed. Please try again. If the issue persists, contact the Erudi team for support."
-    );
   };
 
   const fetchModels = () => {
@@ -265,9 +242,9 @@ export default function KnowledgeBasePage() {
                   <br />
                   <br />
                   This is perfect when you want your AI to know about your business, research, or
-                  personal documents, but don't need to permanently change how the AI thinks. It's
-                  faster and easier than training a new model, and you can update your knowledge
-                  anytime by adding or removing documents.
+                  personal documents, but don&apos;t need to permanently change how the AI thinks.
+                  It&apos;s faster and easier than training a new model, and you can update your
+                  knowledge anytime by adding or removing documents.
                   <br />
                   <br />
                   Use Knowledge Bases for: company documents, research papers, manuals, personal

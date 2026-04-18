@@ -66,7 +66,6 @@ See Also:
     - src.domains.conversations.utils.embedding: Uses embedder for chat
 """
 import os
-from typing import Optional
 
 import torch
 from src.core.config import CACHE_DIR

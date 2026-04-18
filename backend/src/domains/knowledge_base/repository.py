@@ -285,9 +285,9 @@ class KB_Repository:
             Created KBJobModel instance with ID assigned.
         """
         kb_job = KBJobModel(
-            base_model_id=base_model_id,
-            new_model_id=new_model_id,
-            kb_id=kb_id,
+            base_model_id=str(base_model_id),
+            new_model_id=str(new_model_id),
+            kb_id=str(kb_id),
             status=status
         )
         db.add(kb_job)

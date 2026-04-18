@@ -43,6 +43,7 @@
     "electron": "^36.1.0",
     "electron-builder": "^26.0.12",
     "eslint": "^8.56.0",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",
     "node-loader": "^2.1.0",

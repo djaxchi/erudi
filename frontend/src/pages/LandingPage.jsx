@@ -178,12 +178,6 @@ export default function LandingPage() {
     setShowLoadingPopup(false);
   };
 
-  const handleLocalModelRefresh = () => {
-    if (localModelsRef.current) {
-      localModelsRef.current.reloadLocalModels();
-    }
-  };
-
   const handleMainPageRefresh = async () => {
     // This function refreshes the main page local models when called from ModelCollapsibleSection
     await reloadLocalModels();
@@ -353,7 +347,7 @@ export default function LandingPage() {
             localModelsRef.current.reloadLocalModels();
           }
         },
-        onError: (err) => {
+        onError: (_err) => {
           setErrorMessage("Download failed. Please try again.");
         },
       });
@@ -503,7 +497,9 @@ export default function LandingPage() {
                 </>
               ) : searchQuery ? (
                 <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">No local models found for "{searchQuery}"</p>
+                  <p className="text-gray-400">
+                    No local models found for &quot;{searchQuery}&quot;
+                  </p>
                 </div>
               ) : (
                 <ModelCard type="add" onDownload={scrollToExplore} />
@@ -575,7 +571,9 @@ export default function LandingPage() {
                   ))
                 ) : searchQuery ? (
                   <div className="col-span-3 text-center py-8">
-                    <p className="text-gray-400">No base models found for "{searchQuery}"</p>
+                    <p className="text-gray-400">
+                      No base models found for &quot;{searchQuery}&quot;
+                    </p>
                   </div>
                 ) : (
                   <div className="col-span-3 text-center py-8">
@@ -619,7 +617,9 @@ export default function LandingPage() {
                 ))
               ) : searchQuery ? (
                 <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">No recommended models found for "{searchQuery}"</p>
+                  <p className="text-gray-400">
+                    No recommended models found for &quot;{searchQuery}&quot;
+                  </p>
                 </div>
               ) : (
                 <div className="col-span-3 text-center py-8">
@@ -662,7 +662,9 @@ export default function LandingPage() {
                 ))
               ) : searchQuery ? (
                 <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">No community models found for "{searchQuery}"</p>
+                  <p className="text-gray-400">
+                    No community models found for &quot;{searchQuery}&quot;
+                  </p>
                 </div>
               ) : (
                 <div className="col-span-3 text-center py-8">
@@ -677,7 +679,8 @@ export default function LandingPage() {
             <div className="text-center py-12">
               <div className="text-gray-400 text-lg mb-2">No models found</div>
               <p className="text-gray-500">
-                No models match your search for "{searchQuery}". Try a different search term.
+                No models match your search for &quot;{searchQuery}&quot;. Try a different search
+                term.
               </p>
               <button
                 onClick={() => setSearchQuery("")}
