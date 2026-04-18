@@ -50,7 +50,11 @@ Example:
     # → Downloads to temp, quantizes to MLX 4-bit, saves to final, updates job #15
 """
 
-import os, time, threading, shutil, asyncio
+import os
+import time
+import threading
+import shutil
+import asyncio
 from threading import Lock
 from typing import Optional, List, Tuple
 
@@ -65,14 +69,10 @@ from src.core.config import HF_TOKEN
 from src.core import config
 from src.core.logging import logger
 from src.core.exceptions import (
-    HuggingFaceAPIException,
-    QuantizationException,
-    FileSystemException,
     DownloadJobNotFoundException,
     ModelNotFoundException,
     InvalidInputException,
     StateConflictException,
-    DatabaseException,
 )
 
 # Environment setup
@@ -389,7 +389,7 @@ async def download_llm(
     if is_prequantized:
         logger.info(f"Model is pre-quantized (MLX), downloading directly: {actual_download_link}")
     else:
-        logger.info(f"Model will be quantized locally after download")
+        logger.info("Model will be quantized locally after download")
 
     # Initialize HF API & filesystem
     api = HfApi(token=HF_TOKEN)

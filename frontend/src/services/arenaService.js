@@ -33,8 +33,10 @@ export async function askArena({
   const decoder = new TextDecoder("utf-8");
   let fullText = "";
 
-  while (true) {
+  let streamDone = false;
+  while (!streamDone) {
     const { done, value } = await reader.read();
+    streamDone = done;
     if (done) {
       break;
     }

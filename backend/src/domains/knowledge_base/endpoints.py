@@ -22,6 +22,7 @@ from src.domains.knowledge_base.schemas import (
 )
 from src.core.logging import logger
 from src.core.exceptions import (
+    AppBaseException,
     KnowledgeBaseNotFoundException,
     DatabaseException,
     InvalidInputException,
@@ -172,6 +173,9 @@ def create_knowledge_base(
                 msg="Knowledge Base Assistant is being created.",
                 model_id=llm_id
             )
+
+    except AppBaseException:
+        raise
 
     except ValueError as e:
         logger.error(f"Validation error: {e}")

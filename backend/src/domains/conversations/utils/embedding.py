@@ -3,15 +3,13 @@ Embedding and semantic search utilities for conversations.
 Handles the generation, caching, and searching of message embeddings.
 """
 from datetime import datetime
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple
 import numpy as np
-import faiss
 from contextlib import contextmanager
 
 from src.core.logging import logger
 from src.engines.embedder_engine import Embedder_Engine
 from src.core.exceptions import EmbeddingError
-from src.entities.Message import Message
 
 
 class ConversationEmbedder:

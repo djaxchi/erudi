@@ -4,7 +4,7 @@ Provides strongly-typed classes for managing cached embeddings and metadata.
 """
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Set
+from typing import Dict, Optional, Any, Set
 import numpy as np
 from src.core.logging import logger
 

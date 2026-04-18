@@ -60,7 +60,6 @@ from src.core.exceptions import (
     GenerationException,
     KnowledgeBaseNotFoundException,
     KnowledgeBaseCorruptedException,
-    ModelNotFoundException,
     InvalidInputException,
     ModelLoadingException,
 )

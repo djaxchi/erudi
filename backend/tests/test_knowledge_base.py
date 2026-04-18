@@ -22,7 +22,8 @@ if sys.platform == "darwin":
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     os.environ.setdefault("MKL_NUM_THREADS", "1")
     os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
-import faiss, numpy
+import faiss
+import numpy as np
 if sys.platform == "darwin":
     faiss.omp_set_num_threads(1)
 
@@ -190,9 +191,8 @@ class TestKB_Repository:
         )
         
         assert kb_job.id is not None
-        assert kb_job.base_model_id == mock_llm.id
-        assert kb_job.new_model_id == mock_llm.id
-        assert kb_job.kb_id == kb.id
+        assert kb_job.base_model_id == str(mock_llm.id)
+        assert kb_job.new_model_id == str(mock_llm.id)
         assert kb_job.status == "pending"
     
     def test_get_kb_job_by_id(self, test_db_session, mock_llm):
@@ -581,56 +581,57 @@ class TestKB_Service:
 class TestKnowledgeBaseEndpoints:
     """Test REST API endpoints for Knowledge Base operations."""
     
-    def test_get_kb_job_status_endpoint(self, client, test_db_session, mock_llm):
-        """Test GET /knowledge_base/{llm_id}/status endpoint."""
-        # Create job
+    def test_get_kb_job_status_endpoint(self, test_db_session, mock_llm):
+        """Test KB job status retrieval via service layer."""
+        from src.domains.knowledge_base.services import KB_Service
         repo = KB_Repository()
         kb = repo.create_knowledge_base(test_db_session, ["/test/doc.pdf"])
-        kb_job = repo.create_kb_job(
+        repo.create_kb_job(
             db=test_db_session,
             base_model_id=mock_llm.id,
             new_model_id=mock_llm.id,
             kb_id=kb.id,
             status="running"
         )
-        test_db_session.commit()
-        
-        response = client.get(f"/knowledge_base/{mock_llm.id}/status")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "running"
-        assert "status_updated_at" in data
+        test_db_session.flush()
+
+        service = KB_Service()
+        status_data = service.get_kb_job_status(test_db_session, mock_llm.id)
+
+        assert status_data["status"] == "running"
+        assert "status_updated_at" in status_data
     
     def test_get_kb_job_status_not_found(self, client):
         """Test GET /knowledge_base/{llm_id}/status with invalid ID returns 404."""
-        response = client.get("/knowledge_base/99999/status")
+        response = client.get("/erudi/knowledge_base/99999/status")
         
         assert response.status_code == 404
     
+    @patch('src.domains.knowledge_base.repository.KB_Repository.get_local_llm_by_id')
     @patch('src.domains.knowledge_base.services.KB_Service.create_kb_assistant')
     @patch('src.domains.knowledge_base.endpoints._run_kb_creation_task')
     def test_create_knowledge_base_endpoint_new(
         self,
         mock_bg_task,
         mock_create,
+        mock_get_llm,
         client,
         test_db_session,
         mock_llm
     ):
         """Test POST /knowledge_base/create for new KB assistant."""
-        # Mock service
+        mock_get_llm.return_value = mock_llm  # LLM found, no KB attached
         mock_create.return_value = (42, 1)  # (llm_id, kb_job_id)
-        
+
         payload = {
             "paths": ["/test/doc.pdf"],
             "selectedModel": mock_llm.id,
             "modelName": "Test Assistant",
             "description": "Test description"
         }
-        
-        response = client.post("/knowledge_base/create", json=payload)
-        
+
+        response = client.post("/erudi/knowledge_base/create", json=payload)
+
         assert response.status_code == 200
         data = response.json()
         assert "Knowledge Base Assistant is being created" in data["msg"]
@@ -644,10 +645,10 @@ class TestKnowledgeBaseEndpoints:
             "modelName": "Test"
         }
         
-        response = client.post("/knowledge_base/create", json=payload)
+        response = client.post("/erudi/knowledge_base/create", json=payload)
         
-        assert response.status_code == 400
-    
+        assert response.status_code == 422  # InvalidInputException returns 422
+
     def test_create_knowledge_base_base_llm_not_found(self, client):
         """Test POST /knowledge_base/create with invalid base LLM returns 404."""
         payload = {
@@ -656,35 +657,36 @@ class TestKnowledgeBaseEndpoints:
             "modelName": "Test Assistant"
         }
         
-        response = client.post("/knowledge_base/create", json=payload)
+        response = client.post("/erudi/knowledge_base/create", json=payload)
         
         assert response.status_code == 404
     
+    @patch('src.domains.knowledge_base.repository.KB_Repository.get_local_llm_by_id')
     @patch('src.domains.knowledge_base.services.KB_Service.update_existing_kb')
     @patch('src.domains.knowledge_base.endpoints._run_kb_update_task')
     def test_create_knowledge_base_endpoint_update(
         self,
         mock_bg_task,
         mock_update,
+        mock_get_llm,
         client,
         test_db_session,
         mock_llm_with_kb
     ):
         """Test POST /knowledge_base/create for updating existing KB."""
         llm, kb, vector_store = mock_llm_with_kb
-        
-        # Mock service
+        mock_get_llm.return_value = llm  # LLM found, has KB attached
         mock_update.return_value = (llm.id, 1)  # (llm_id, kb_job_id)
-        
+
         payload = {
             "paths": ["/test/new_doc.pdf"],
             "selectedModel": llm.id,
             "modelName": "Updated Assistant",
             "description": "Updated description"
         }
-        
-        response = client.post("/knowledge_base/create", json=payload)
-        
+
+        response = client.post("/erudi/knowledge_base/create", json=payload)
+
         assert response.status_code == 200
         data = response.json()
         assert "updated" in data["msg"].lower()

@@ -58,25 +58,18 @@ Example:
 
 
 
-from datetime import datetime
-import gc, shutil
+import shutil
 
 from sqlalchemy.orm import Session
-from src.database.core import get_db, SessionLocal
+from src.database.core import get_db
 
-from fastapi import BackgroundTasks, Depends, APIRouter
+from fastapi import Depends, APIRouter
 
 from src.entities.TrainingJob import TrainingJob
 from src.entities.Llm import Llm
 
-from src.core.logging import logger
 from src.core.exceptions import DatabaseException
-from src.domains.training.schemas import TrainingInfo
-from src.domains.training.services import TrainingProgressCallback
 
-from src.utils.file_processor import process_pdfs_to_causal_dataset
-from src.core.logging import logger
-from src.core import config
 
 router = APIRouter(prefix="/training", tags=["training"])
 

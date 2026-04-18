@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from src.core.logging import logger
 from src.entities.Llm import Llm
+from src.utils.kb_utils import get_relevant_texts_from_kb
 from .cache import ConversationCache
 from .embedding import ConversationEmbedder
 from .prompt import PromptBuilder
@@ -175,7 +176,7 @@ class ConversationContext:
             strategy.get("use_kb_enhanced", False)
         ):
             try:
-                from src.utils.inference_utils import get_relevant_texts_from_kb
+                from src.utils.kb_utils import get_relevant_texts_from_kb
                 kb_context = get_relevant_texts_from_kb(
                     query=query,
                     llm=llm,
@@ -184,7 +185,7 @@ class ConversationContext:
                 )
                 if kb_context:
                     context["kb_context"] = kb_context
-            except Exception as e:
+            except Exception:
                 logger.exception("Failed to retrieve Knowledge Base context")
 
         # Build the final context string
@@ -220,7 +221,7 @@ class ConversationContext:
             )
             if recent_messages:
                 context_elements.append(
-                    f"Recent messages:\n" +
+                    "Recent messages:\n" +
                     "\n".join([
                         f"{sender}: {message}"
                         for _, sender, message, _ in recent_messages

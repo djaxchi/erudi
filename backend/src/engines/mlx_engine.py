@@ -63,7 +63,13 @@ Warning:
     will select CUDA_Engine or CPU_Engine instead.
 """
 
-import os, shutil, logging, importlib, subprocess, platform, time
+import os
+import shutil
+import logging
+import importlib
+import subprocess
+import platform
+import time
 from datetime import datetime
 from typing import Optional, Tuple, Any, Generator, Union, Dict
 from src.engines.base_engine import BaseEngine
@@ -136,7 +142,7 @@ class MLX_Engine(BaseEngine):
         local_dest_path = str(local_dest_path)
 
         try:
-            logging.info(f"Starting conversion from HF to MLX")
+            logging.info("Starting conversion from HF to MLX")
             start = datetime.now()
             if os.path.exists(local_dest_path):
                 shutil.rmtree(local_dest_path, ignore_errors=True)
@@ -658,7 +664,7 @@ class MLX_Engine(BaseEngine):
 
         try:
             return torch.backends.mps.is_available()
-        except:
+        except Exception:
             return False
 
     @classmethod

@@ -17,8 +17,7 @@ Example:
     )
 """
 from datetime import datetime
-from typing import Optional
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Text, event
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Text
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.ext.hybrid import hybrid_property
 from src.database.core import Base

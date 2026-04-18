@@ -1,0 +1,22 @@
+[lint]
+# Rules enforced:
+# F4xx - unused imports
+# F8xx - undefined names, unused variables
+# E7xx - statement style issues
+select = ["F", "E7"]
+
+ignore = [
+    "E501",   # line too long — not enforced
+    "E402",   # module-level import not at top — intentional in some engine files
+    "F841",   # local variable assigned but never used — too noisy in except blocks
+    "E701",   # multiple statements on one line — intentional in engine dispatch tables
+]
+
+# Exclude generated/build dirs
+exclude = [
+    "dist",
+    "build",
+    "venv",
+    ".venv",
+    "forks",
+]

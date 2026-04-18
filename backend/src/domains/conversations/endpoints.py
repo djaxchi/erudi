@@ -255,7 +255,7 @@ async def delete_message(
         await run_in_threadpool(message_repo.delete_message, message_id)
         db.commit()
         return {"message": "Message deleted successfully"}
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise
 
@@ -397,7 +397,7 @@ async def create_conversation(
         )
         db.commit()
         return conv
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise
 
@@ -435,7 +435,7 @@ async def delete_conversation(
         await run_in_threadpool(service.delete_conversation, conversation_id)
         db.commit()
         return {"message": "Conversation deleted successfully"}
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise
 
@@ -495,7 +495,7 @@ async def update_conversation(
         )
         db.commit()
         return result
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise
 
@@ -629,7 +629,7 @@ async def delete_bulk(
         )
         db.commit()
         return {"message": "Conversations deleted successfully"}
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise
 
@@ -674,7 +674,7 @@ async def store_error_message(
             "message": "Error message stored successfully",
             "error_message_id": error_message_id,
         }
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise
 
@@ -713,7 +713,7 @@ async def star_message(
         await run_in_threadpool(message_repo.star_message, payload.message_id)
         db.commit()
         return {"state": "success", "message": "Message starred successfully"}
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise
 
@@ -748,6 +748,6 @@ async def unstar_message(
         await run_in_threadpool(message_repo.unstar_message, payload.message_id)
         db.commit()
         return {"state": "success", "message": "Message unstarred successfully"}
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise

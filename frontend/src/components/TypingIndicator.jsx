@@ -1,5 +1,4 @@
 import React from "react";
-import PropTypes from "prop-types";
 export default function TypingIndicator({
   size = 8,
   colorClass = "bg-gray-400",

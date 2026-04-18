@@ -4,7 +4,6 @@ import DatasetCard from "../components/DatasetCard";
 import HardwareInfo from "../components/HardwareInfo";
 import ModelLibrary from "../components/ModelLibrary";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
-import { X } from "lucide-react";
 import ErrorModal from "../components/modals/ErrorModal";
 import { API_BASE_URL } from "../config/api";
 import { transformTrainingInfo } from "../utils/hardwareTransform";
@@ -161,7 +160,7 @@ export default function TrainingPage() {
     resetDatasetCard();
     // Force page refresh with a small delay to ensure state reset completes
     setTimeout(() => {
-      window.location.href = window.location.href;
+      window.location.reload();
     }, 100);
   };
 
@@ -186,7 +185,7 @@ export default function TrainingPage() {
     log.log("Closing error modal and resetting state");
     // Force page refresh with a small delay to ensure state reset completes
     setTimeout(() => {
-      window.location.href = window.location.href;
+      window.location.reload();
     }, 100);
   };
 

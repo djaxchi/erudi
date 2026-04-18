@@ -345,86 +345,65 @@ class TestConversationService:
         assert len(messages) == 1
         assert "[ERROR_MESSAGE_SYSTEM]" in messages[0].content
 
-    @pytest.mark.asyncio
-    async def test_generate_title_stream(self, test_db_session, mock_llm):
-        """Test title generation stream with mocked engine.
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
+    def test_generate_title_stream(self, test_db_session, mock_llm):
+        """Test title generation stream with mocked engine."""
         service = ConversationService(test_db_session)
         conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
-        
+
         mock_model = Mock()
         mock_tokenizer = Mock()
         mock_title_tokens = ["AI ", "Basics"]
-        
+
         with patch("src.core.config.LLM_Engine") as mock_engine:
             mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
             mock_engine.generate_stream.return_value = iter(mock_title_tokens)
-            
+
             result = []
-            async for token in service.generate_title_stream(conversation.id, "What is AI?"):
+            for token in service.generate_title_stream(conversation.id, "What is AI?"):
                 result.append(token)
-        
+
         assert result == mock_title_tokens
-        
-        # Verify title was saved to database
+
         updated_conv = service.conversation_repo.get_conversation_by_id(conversation.id)
         assert updated_conv.name == "AI Basics"
 
-    @pytest.mark.asyncio
-    async def test_generate_title_stream_empty_question(self, test_db_session, mock_llm):
-        """Test title generation with empty question (should use default).
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
+    def test_generate_title_stream_empty_question(self, test_db_session, mock_llm):
+        """Test title generation with empty question (should use default)."""
         service = ConversationService(test_db_session)
         conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
-        
-        # Empty question should return early without calling engine
-        async for _ in service.generate_title_stream(conversation.id, ""):
+
+        for _ in service.generate_title_stream(conversation.id, ""):
             pass
-        
+
         updated_conv = service.conversation_repo.get_conversation_by_id(conversation.id)
         assert updated_conv.name == "New Conversation"
 
-    @pytest.mark.asyncio
-    async def test_query_and_respond_stream(self, test_db_session, mock_llm):
-        """Test query-response stream with mocked engine.
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
+    def test_query_and_respond_stream(self, test_db_session, mock_llm):
+        """Test query-response stream with mocked engine."""
         service = ConversationService(test_db_session)
         conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024)
-        
+
         payload = ConversationQuery(
             question="Explain Python decorators",
             temperature=0.7,
             n_last_turns_to_get=5
         )
-        
+
         mock_model = Mock()
         mock_tokenizer = Mock()
         mock_response_tokens = ["Decorators ", "are ", "functions."]
-        
+
         with patch("src.core.config.LLM_Engine") as mock_engine:
             mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
             mock_engine.generate_stream.return_value = iter(mock_response_tokens)
             mock_engine.cleanup.return_value = None
-            
+
             result = []
-            async for token in service.query_and_respond_stream(conversation.id, payload):
+            for token in service.query_and_respond_stream(conversation.id, payload):
                 result.append(token)
-        
+
         assert result == mock_response_tokens
-        
-        # Verify user message and assistant message were saved
+
         messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 2
         assert messages[0].sender == "user"
@@ -432,43 +411,35 @@ class TestConversationService:
         assert messages[1].sender == "llm"
         assert messages[1].content == "Decorators are functions."
 
-    @pytest.mark.asyncio
-    async def test_query_and_respond_stream_with_context(self, test_db_session, mock_llm):
-        """Test query with conversation context (previous messages).
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
+    def test_query_and_respond_stream_with_context(self, test_db_session, mock_llm):
+        """Test query with conversation context (previous messages)."""
         service = ConversationService(test_db_session)
         conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024)
-        
-        # Add previous messages
+
         service.message_repo.create_message(conversation.id, "What is Python?", "user")
         service.message_repo.create_message(conversation.id, "Python is a language.", "llm")
-        
+
         payload = ConversationQuery(
             question="Tell me more",
             temperature=0.7,
             n_last_turns_to_get=2
         )
-        
+
         mock_model = Mock()
         mock_tokenizer = Mock()
         mock_tokens = ["Python ", "is ", "versatile."]
-        
+
         with patch("src.core.config.LLM_Engine") as mock_engine:
             mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
             mock_engine.generate_stream.return_value = iter(mock_tokens)
             mock_engine.cleanup.return_value = None
-            
+
             result = []
-            async for token in service.query_and_respond_stream(conversation.id, payload):
+            for token in service.query_and_respond_stream(conversation.id, payload):
                 result.append(token)
-        
+
         assert result == mock_tokens
-        
-        # Verify context was included (4 messages total: 2 context + 1 new user + 1 new assistant)
+
         messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 4
 

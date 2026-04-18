@@ -23,7 +23,7 @@ export default function ConversationPage() {
   const [starredIds, setStarredIds] = useState({});
   const [conversations, setConversations] = useState([]);
   const scrollRef = useRef(null);
-  const [currentTitle, setCurrentTitle] = useState("");
+  const [, setCurrentTitle] = useState("");
 
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
@@ -179,9 +179,13 @@ export default function ConversationPage() {
                 const decoder = new TextDecoder("utf-8");
                 let fullTitle = "";
 
-                while (true) {
+                let titleDone = false;
+                while (!titleDone) {
                   const { done, value } = await reader.read();
-                  if (done) break;
+                  titleDone = done;
+                  if (done) {
+                    break;
+                  }
 
                   const chunk = decoder.decode(value, { stream: true });
                   fullTitle += chunk;
@@ -224,9 +228,13 @@ export default function ConversationPage() {
           let gotFirstChunk = false;
 
           try {
-            while (true) {
+            let responseDone = false;
+            while (!responseDone) {
               const { done, value } = await reader.read();
-              if (done) break;
+              responseDone = done;
+              if (done) {
+                break;
+              }
 
               const chunk = decoder.decode(value, { stream: true });
               fullText += chunk;
@@ -240,9 +248,7 @@ export default function ConversationPage() {
               const currentText = fullText;
               setMessages((prev) =>
                 prev.map((msg) =>
-                  msg.id === assistantMessage.id
-                    ? { ...msg, content: currentText }
-                    : msg
+                  msg.id === assistantMessage.id ? { ...msg, content: currentText } : msg
                 )
               );
             }
@@ -252,18 +258,14 @@ export default function ConversationPage() {
               "\n\n[ERROR_MESSAGE_SYSTEM] Connection interrupted while generating response.";
             setMessages((prev) =>
               prev.map((msg) =>
-                msg.id === assistantMessage.id
-                  ? { ...msg, content: fullText }
-                  : msg
+                msg.id === assistantMessage.id ? { ...msg, content: fullText } : msg
               )
             );
           } finally {
             assistantMessage.content = fullText;
             setMessages((prev) =>
               prev.map((msg) =>
-                msg.id === assistantMessage.id
-                  ? { ...msg, content: fullText }
-                  : msg
+                msg.id === assistantMessage.id ? { ...msg, content: fullText } : msg
               )
             );
           }

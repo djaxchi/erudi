@@ -22,7 +22,7 @@ Example:
         quantized=False
     )
 """
-from sqlalchemy import Column, Integer, String, ForeignKey, Float, Boolean, CheckConstraint
+from sqlalchemy import Column, Integer, String, ForeignKey, Float, Boolean
 from src.database.core import Base
 from sqlalchemy.orm import relationship, validates
 
