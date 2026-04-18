@@ -44,4 +44,6 @@ jobs:
           venv/bin/python -c "from src.main import app; print('OK')"
 
       - name: Tests
-        run: backend/venv/bin/pytest backend/tests/ -x -q --ignore=backend/tests/e2e
+        run: |
+          cd backend
+          venv/bin/pytest tests/ -x -q --ignore=tests/e2e
