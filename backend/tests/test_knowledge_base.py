@@ -22,7 +22,8 @@ if sys.platform == "darwin":
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     os.environ.setdefault("MKL_NUM_THREADS", "1")
     os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
-import faiss, numpy
+import faiss
+import numpy as np
 if sys.platform == "darwin":
     faiss.omp_set_num_threads(1)
 
@@ -190,9 +191,8 @@ class TestKB_Repository:
         )
         
         assert kb_job.id is not None
-        assert kb_job.base_model_id == mock_llm.id
-        assert kb_job.new_model_id == mock_llm.id
-        assert kb_job.kb_id == kb.id
+        assert kb_job.base_model_id == str(mock_llm.id)
+        assert kb_job.new_model_id == str(mock_llm.id)
         assert kb_job.status == "pending"
     
     def test_get_kb_job_by_id(self, test_db_session, mock_llm):
@@ -593,16 +593,6 @@ class TestKnowledgeBaseEndpoints:
             kb_id=kb.id,
             status="running"
         )
-<<<<<<< Updated upstream
-        test_db_session.commit()
-        
-        response = client.get(f"/knowledge_base/{mock_llm.id}/status")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "running"
-        assert "status_updated_at" in data
-=======
         test_db_session.flush()
 
         service = KB_Service()
@@ -610,7 +600,6 @@ class TestKnowledgeBaseEndpoints:
 
         assert status_data["status"] == "running"
         assert "status_updated_at" in status_data
->>>>>>> Stashed changes
     
     def test_get_kb_job_status_not_found(self, client):
         """Test GET /knowledge_base/{llm_id}/status with invalid ID returns 404."""

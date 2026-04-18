@@ -972,7 +972,7 @@ class CPU_Engine(BaseEngine):
             # === BUILD RESULT ===
             result = {
                 "backend_type": "cpu",
-                "accelerator_name": "CPU Only",
+                "gpu_name": "CPU Only",
                 "cpu_model": cpu_model,
                 "total_memory_gb": total_memory_gb,
                 "available_memory_gb": available_memory_gb,
@@ -980,7 +980,6 @@ class CPU_Engine(BaseEngine):
                 "disk_total_gb": hw_info["storage"]["total_gb"],
                 "disk_available_gb": disk_available_gb,
                 "estimated_tflops": None,  # Not applicable for CPUs
-                "compute_units": total_cores,
                 "cpu_performance_units": total_cores,
                 "neural_engine_tops": None,
                 "cuda_version": None,
@@ -994,7 +993,6 @@ class CPU_Engine(BaseEngine):
                 "cpu_score": round(cpu_score, 2),
                 "memory_score": round(memory_capacity_score, 2),
                 "unified_memory": False,
-                "accelerator_available": False,
                 "system_platform": hw_info["system"]["platform"],
                 "performance_breakdown": {
                     "compute_score": round(cpu_score, 2),
@@ -1019,7 +1017,7 @@ class CPU_Engine(BaseEngine):
             base_score = min(100.0, cores * 5.0)  # 5 points per core
             return {
                 "backend_type": "cpu",
-                "accelerator_name": "CPU Only",
+                "gpu_name": "CPU Only",
                 "cpu_model": platform.processor() or "Unknown CPU",
                 "total_memory_gb": None,
                 "available_memory_gb": None,
@@ -1027,7 +1025,6 @@ class CPU_Engine(BaseEngine):
                 "disk_total_gb": None,
                 "disk_available_gb": None,
                 "estimated_tflops": None,
-                "compute_units": cores,
                 "cpu_performance_units": cores,
                 "neural_engine_tops": None,
                 "cuda_version": None,
@@ -1041,7 +1038,6 @@ class CPU_Engine(BaseEngine):
                 "cpu_score": round(base_score, 2),
                 "memory_score": 0.0,
                 "unified_memory": False,
-                "accelerator_available": False,
                 "system_platform": platform.system(),
                 "performance_breakdown": {
                     "compute_score": round(base_score, 2),
