@@ -44,7 +44,7 @@ jobs:
           backend/venv/Scripts/pip install pyinstaller
 
       - name: Build backend (PyInstaller)
-        run: backend/venv/Scripts/pyinstaller backend/backend.spec
+        run: backend/venv/Scripts/pyinstaller backend/backend.spec --distpath backend/dist
 
       # ── Frontend ─────────────────────────────────────────────────────────────
       - name: Install frontend dependencies
@@ -101,7 +101,7 @@ jobs:
           backend/venv/bin/pip install pyinstaller
 
       - name: Build backend (PyInstaller)
-        run: backend/venv/bin/pyinstaller backend/backend-mac-silicon.spec
+        run: backend/venv/bin/pyinstaller backend/backend-mac-silicon.spec --distpath backend/dist
 
       # ── Frontend ─────────────────────────────────────────────────────────────
       - name: Install frontend dependencies
