@@ -50,8 +50,7 @@ mac:
   gatekeeperAssess: false
   entitlements: assets/entitlements.mac.plist
   entitlementsInherit: assets/entitlements.mac.plist
-  notarize:
-    teamId: ${APPLE_TEAM_ID}
+  notarize: true
 
 dmg:
   background: assets/installers/dmg-background.png
