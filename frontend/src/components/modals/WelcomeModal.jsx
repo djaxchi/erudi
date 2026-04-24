@@ -106,19 +106,17 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                   </h3>
                   <div className="space-y-3 text-sm sm:text-base">
                     <p className="text-gray-300 leading-relaxed">
-                      Erudi runs entirely on your device — no data leaves your machine.
-                      Performance depends on your hardware.
+                      Erudi runs entirely on your device — no data leaves your machine. Performance
+                      depends on your hardware.
                     </p>
                     <p className="text-gray-300 leading-relaxed">
-                      This is v1.0.0 and some rough edges may remain. If you encounter
-                      an issue, we&apos;d love to hear about it.
+                      This is v1.0.0 and some rough edges may remain. If you encounter an issue,
+                      we&apos;d love to hear about it.
                     </p>
                     <p className="text-gray-300 leading-relaxed">
                       Your feedback shapes what we build next — thank you for using Erudi.
                     </p>
-                    <p className="text-[#E5D07D] font-bold">
-                      Welcome to your private AI workspace
-                    </p>
+                    <p className="text-[#E5D07D] font-bold">Welcome to your private AI workspace</p>
                   </div>
                 </div>
               </div>
