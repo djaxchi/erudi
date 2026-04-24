@@ -1,20 +1,22 @@
-ERUDI BETA SOFTWARE EVALUATION LICENSE
+ERUDI SOFTWARE LICENSE
 
 Copyright © 2025 Erudi Team. All rights reserved.
 
 GRANT OF LICENSE
-This software is provided as a beta release for evaluation purposes only. You are granted a limited, non-exclusive, non-transferable license to use this software solely for testing and evaluation.
+This software is provided for personal use. You are granted a limited, non-exclusive,
+non-transferable license to use this software on your own devices.
 
 RESTRICTIONS
 You may NOT:
 - Redistribute, share, or transfer this software to any third party
-- Use this software for production purposes
+- Use this software for commercial purposes without prior written consent
 - Modify, reverse engineer, or disassemble the software
 - Use any portion of this software in other applications
 - Remove or alter any proprietary notices or labels
 
-BETA SOFTWARE DISCLAIMER
-This software is provided on an "AS-IS" basis without any warranties, express or implied. Erudi Team makes no warranties regarding:
+DISCLAIMER
+This software is provided on an "AS-IS" basis without any warranties, express or implied.
+Erudi Team makes no warranties regarding:
 - The functionality or performance of the software
 - The absence of bugs or errors
 - Compatibility with your systems
@@ -29,20 +31,16 @@ In no event shall Erudi Team be liable for any damages, including but not limite
 - Even if advised of the possibility of such damages
 
 TERMINATION
-This license is effective until terminated. Erudi Team may terminate this license at any time if you violate any terms of this agreement.
-
-NO GUARANTEE OF AVAILABILITY
-Features, functionality, and APIs may change or be removed in future versions without notice.
+This license is effective until terminated. Erudi Team may terminate this license at any
+time if you violate any terms of this agreement.
 
 PRIVACY & DATA
-Your use of this software may involve collection of usage data for improvement purposes. All data is handled according to our Privacy Policy.
-
-FUTURE LICENSING
-Upon production release, this software may be subject to a different license (commercial, open-source, or other). By using this beta version, you acknowledge and accept these terms.
+This software runs entirely on your local device. No usage data is collected or transmitted
+without your explicit knowledge.
 
 CONTACT
 For licensing inquiries, contact: Erudi Team
 
 ---
-By using this software, you agree to the terms and conditions of this Evaluation License.
-Last Updated: October 20, 2025
+By using this software, you agree to the terms and conditions of this License.
+Last Updated: April 2026
