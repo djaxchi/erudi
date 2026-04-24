@@ -125,6 +125,18 @@ jobs:
           rm -f out/erudi-darwin-arm64/LICENSES.chromium.html
           rm -f out/erudi-darwin-arm64/version
 
+      - name: Verify signing certificate
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          echo "$CSC_LINK" | base64 --decode > /tmp/build.p12
+          security create-keychain -p build build.keychain
+          security unlock-keychain -p build build.keychain
+          security import /tmp/build.p12 -k build.keychain -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign || echo "Import failed"
+          security find-identity -v build.keychain
+          rm /tmp/build.p12
+
       - name: Build installer + publish to GitHub Releases (electron-builder)
         working-directory: frontend
         env:
