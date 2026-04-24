@@ -118,6 +118,13 @@ jobs:
         working-directory: frontend
         run: npx electron-forge package --platform darwin --arch arm64
 
+      - name: Clean extra Electron files from DMG
+        working-directory: frontend
+        run: |
+          rm -f out/erudi-darwin-arm64/LICENSE
+          rm -f out/erudi-darwin-arm64/LICENSES.chromium.html
+          rm -f out/erudi-darwin-arm64/version
+
       - name: Build installer + publish to GitHub Releases (electron-builder)
         working-directory: frontend
         env:
@@ -129,6 +136,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          DEBUG: electron-builder
         run: |
           npx electron-builder \
             --prepackaged out/erudi-darwin-arm64 \
