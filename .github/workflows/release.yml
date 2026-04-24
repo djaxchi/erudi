@@ -194,13 +194,40 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           echo "Signature verification passed"
 
-      - name: Build installer + publish to GitHub Releases (electron-builder)
+      - name: Build DMG and zip (electron-builder)
         working-directory: frontend
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx electron-builder \
+            --prepackaged out/erudi-darwin-arm64 \
+            --config electron-builder.yml \
+            --publish never
+
+      - name: Notarize the DMG
+        working-directory: frontend
+        env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          DMG_PATH=$(ls out/installer/*.dmg)
+          echo "Submitting for notarization: $DMG_PATH"
+
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          echo "Stapling notarization ticket to DMG"
+          xcrun stapler staple "$DMG_PATH"
+          xcrun stapler validate "$DMG_PATH"
+
+      - name: Publish to GitHub Releases
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx electron-builder \
             --prepackaged out/erudi-darwin-arm64 \
