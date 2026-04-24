@@ -125,30 +125,42 @@ jobs:
           rm -f out/erudi-darwin-arm64/LICENSES.chromium.html
           rm -f out/erudi-darwin-arm64/version
 
-      - name: Verify signing certificate
+      - name: Import signing certificate into keychain
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
-          echo "$CSC_LINK" | base64 --decode > /tmp/build.p12
-          security create-keychain -p build build.keychain
-          security unlock-keychain -p build build.keychain
-          security import /tmp/build.p12 -k build.keychain -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign || echo "Import failed"
-          security find-identity -v build.keychain
-          rm /tmp/build.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/signing.keychain-db
+          KEYCHAIN_PASS=$(openssl rand -base64 20)
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+          echo "KEYCHAIN_PASS=$KEYCHAIN_PASS" >> $GITHUB_ENV
+
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+
+          echo "$CSC_LINK" | base64 --decode > /tmp/cert.p12
+          security import /tmp/cert.p12 -k "$KEYCHAIN_PATH" -P "$CSC_KEY_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+
+          # Add to keychain search list
+          security list-keychains -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychains -d user | tr -d '"')
+
+          rm /tmp/cert.p12
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
       - name: Build installer + publish to GitHub Releases (electron-builder)
         working-directory: frontend
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Code signing + notarization (required to pass macOS Gatekeeper).
-          # Set these secrets in repo Settings → Secrets and variables → Actions.
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          CSC_NAME: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          CSC_KEYCHAIN: ${{ env.KEYCHAIN_PATH }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          DEBUG: electron-builder
         run: |
           npx electron-builder \
             --prepackaged out/erudi-darwin-arm64 \
