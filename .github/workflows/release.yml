@@ -122,9 +122,10 @@ jobs:
         working-directory: frontend
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Code signing (optional but required for auto-update to survive Gatekeeper).
-          # Set these secrets in your repo settings to enable signing + notarization.
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # Code signing + notarization (required to pass macOS Gatekeeper).
+          # Set these secrets in repo Settings → Secrets and variables → Actions.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
