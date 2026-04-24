@@ -45,7 +45,13 @@ mac:
       arch: arm64
   icon: assets/icons/icon.icns
   category: public.app-category.productivity
-  # Code signing: APPLE_SIGNING_IDENTITY env var set in CI secrets.
+  # Required for Gatekeeper: sign with hardened runtime and notarize.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: assets/entitlements.mac.plist
+  entitlementsInherit: assets/entitlements.mac.plist
+  notarize:
+    teamId: ${APPLE_TEAM_ID}
 
 dmg:
   background: assets/installers/dmg-background.png
