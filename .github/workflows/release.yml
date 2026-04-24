@@ -152,12 +152,52 @@ jobs:
           rm /tmp/cert.p12
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
+      - name: Sign app bundle with codesign
+        working-directory: frontend
+        run: |
+          APP_PATH="out/erudi-darwin-arm64/erudi.app"
+
+          # Discover the signing identity from the keychain we just imported
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "Signing with identity: $IDENTITY"
+
+          # Sign all nested frameworks, dylibs, and helper apps first (deep contents)
+          find "$APP_PATH/Contents" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.node" \) -exec \
+            codesign --force --options runtime --sign "$IDENTITY" \
+              --keychain "$KEYCHAIN_PATH" \
+              --entitlements assets/entitlements.mac.plist {} \;
+
+          find "$APP_PATH/Contents/Frameworks" -depth -type d -name "*.framework" -exec \
+            codesign --force --options runtime --sign "$IDENTITY" \
+              --keychain "$KEYCHAIN_PATH" \
+              --entitlements assets/entitlements.mac.plist {} \;
+
+          # Find and sign any helper apps
+          find "$APP_PATH/Contents" -depth -type d -name "*.app" ! -path "$APP_PATH" -exec \
+            codesign --force --options runtime --sign "$IDENTITY" \
+              --keychain "$KEYCHAIN_PATH" \
+              --entitlements assets/entitlements.mac.plist {} \;
+
+          # Sign the main executable
+          codesign --force --options runtime --sign "$IDENTITY" \
+            --keychain "$KEYCHAIN_PATH" \
+            --entitlements assets/entitlements.mac.plist \
+            "$APP_PATH/Contents/MacOS/erudi"
+
+          # Sign the top-level .app bundle
+          codesign --force --options runtime --sign "$IDENTITY" \
+            --keychain "$KEYCHAIN_PATH" \
+            --entitlements assets/entitlements.mac.plist \
+            "$APP_PATH"
+
+          # Verify the signature
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          echo "Signature verification passed"
+
       - name: Build installer + publish to GitHub Releases (electron-builder)
         working-directory: frontend
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
