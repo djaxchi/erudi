@@ -90,7 +90,10 @@ Warning:
 """
 
 
-from typing import List
+import asyncio
+import queue
+import threading
+from typing import AsyncGenerator, Generator, List
 
 from fastapi import Depends, APIRouter
 from fastapi.concurrency import run_in_threadpool
@@ -113,6 +116,38 @@ from src.domains.conversations.services import ConversationService
 
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
+
+
+async def _stream_on_single_thread(
+    sync_generator_fn, *args, **kwargs
+) -> AsyncGenerator[str, None]:
+    """Run a sync generator on a single dedicated thread and yield its values.
+
+    MLX binds GPU streams to the creating thread. Starlette's
+    iterate_in_threadpool calls next() from arbitrary pool threads, which
+    crashes MLX. This helper pins the entire generation to one thread and
+    ferries tokens back via a queue.
+    """
+    token_queue: queue.Queue = queue.Queue()
+
+    def _run():
+        try:
+            for token in sync_generator_fn(*args, **kwargs):
+                token_queue.put(token)
+        finally:
+            token_queue.put(None)  # sentinel
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+
+    loop = asyncio.get_event_loop()
+    while True:
+        token = await loop.run_in_executor(None, token_queue.get)
+        if token is None:
+            break
+        yield token
+
+    thread.join()
 
 
 @router.get("/debug/test_model/{llm_id}")
@@ -575,7 +610,9 @@ async def generate_title(
     """
     """Generate a title for the conversation based on the first message."""
     return StreamingResponse(
-        service.generate_title_stream(conversation_id, payload.question),
+        _stream_on_single_thread(
+            service.generate_title_stream, conversation_id, payload.question
+        ),
         media_type="text/plain",
         headers={
             "Cache-Control": "no-cache",
@@ -625,7 +662,9 @@ async def query_and_respond(
     """
     """Query the conversation and get a streaming response."""
     return StreamingResponse(
-        service.query_and_respond_stream(conversation_id, payload),
+        _stream_on_single_thread(
+            service.query_and_respond_stream, conversation_id, payload
+        ),
         media_type="text/plain",
         headers={
             "Cache-Control": "no-cache",
