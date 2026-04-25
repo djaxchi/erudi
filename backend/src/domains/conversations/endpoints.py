@@ -115,6 +115,47 @@ from src.domains.conversations.services import ConversationService
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 
+@router.get("/debug/test_model/{llm_id}")
+async def debug_test_model(llm_id: int, db: Session = Depends(get_db)):
+    """Temporary debug endpoint to test model loading and generation."""
+    import traceback
+    from src.core import config
+    from src.entities.Llm import Llm
+    result = {"steps": []}
+    try:
+        llm = db.query(Llm).filter(Llm.id == llm_id).first()
+        if not llm:
+            return {"error": f"LLM {llm_id} not found"}
+        result["steps"].append(f"Found LLM: {llm.name}, local={llm.local}, link={llm.link}")
+
+        import os
+        link_exists = os.path.exists(llm.link)
+        result["steps"].append(f"Path exists: {link_exists}")
+        if link_exists:
+            contents = os.listdir(llm.link)
+            result["steps"].append(f"Path contents: {contents}")
+
+        model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(
+            llm_id=llm.id, llm_local_path=llm.link
+        )
+        result["steps"].append(f"Model loaded: {type(model).__name__}")
+
+        output = ""
+        for text in config.LLM_Engine.generate_stream(
+            model=model, tokenizer=tokenizer, prompt="Hello",
+            max_tokens=5, temperature=1.0, top_p=0.95,
+            repetition_penalty=1.2, repetition_context_size=5,
+        ):
+            output += text
+        result["steps"].append(f"Generated: {repr(output)}")
+        result["success"] = True
+    except Exception as e:
+        result["error"] = f"{type(e).__name__}: {e}"
+        result["traceback"] = traceback.format_exc()
+        result["success"] = False
+    return result
+
+
 def get_conversation_repository(db: Session = Depends(get_db)) -> ConversationRepository:
     """Provide a conversation repository instance for dependency injection.
 

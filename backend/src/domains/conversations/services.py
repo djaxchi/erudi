@@ -495,11 +495,12 @@ class ConversationService:
             ):
                 assistant_response += text
                 yield text
-        except Exception:
+        except Exception as e:
             logger.exception("Streaming failed")
+            import traceback
+            tb = traceback.format_exc()
             error_msg = (
-                "[ERROR_MESSAGE_SYSTEM] Generation failed due to an error. "
-                "Please try again or contact developer team."
+                f"[ERROR_MESSAGE_SYSTEM] Generation failed: {type(e).__name__}: {e}\n{tb}"
             )
             assistant_response = error_msg
             yield error_msg
