@@ -161,36 +161,39 @@ jobs:
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "Signing with identity: $IDENTITY"
 
-          # Sign all nested frameworks, dylibs, and helper apps first (deep contents)
-          find "$APP_PATH/Contents" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.node" \) -exec \
-            codesign --force --options runtime --sign "$IDENTITY" \
+          # Sign every Mach-O binary inside the app bundle (deepest files first)
+          find "$APP_PATH" -type f | while read -r f; do
+            if file "$f" | grep -q "Mach-O"; then
+              echo "Signing: $f"
+              codesign --force --options runtime --timestamp --sign "$IDENTITY" \
+                --keychain "$KEYCHAIN_PATH" \
+                --entitlements assets/entitlements.mac.plist "$f"
+            fi
+          done
+
+          # Re-sign framework bundles (must be signed as bundles after their contents)
+          find "$APP_PATH/Contents/Frameworks" -depth -type d -name "*.framework" | while read -r fw; do
+            echo "Signing framework: $fw"
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" \
               --keychain "$KEYCHAIN_PATH" \
-              --entitlements assets/entitlements.mac.plist {} \;
+              --entitlements assets/entitlements.mac.plist "$fw"
+          done
 
-          find "$APP_PATH/Contents/Frameworks" -depth -type d -name "*.framework" -exec \
-            codesign --force --options runtime --sign "$IDENTITY" \
+          # Re-sign nested .app bundles
+          find "$APP_PATH/Contents" -depth -type d -name "*.app" ! -path "$APP_PATH" | while read -r a; do
+            echo "Signing nested app: $a"
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" \
               --keychain "$KEYCHAIN_PATH" \
-              --entitlements assets/entitlements.mac.plist {} \;
+              --entitlements assets/entitlements.mac.plist "$a"
+          done
 
-          # Find and sign any helper apps
-          find "$APP_PATH/Contents" -depth -type d -name "*.app" ! -path "$APP_PATH" -exec \
-            codesign --force --options runtime --sign "$IDENTITY" \
-              --keychain "$KEYCHAIN_PATH" \
-              --entitlements assets/entitlements.mac.plist {} \;
-
-          # Sign the main executable
-          codesign --force --options runtime --sign "$IDENTITY" \
-            --keychain "$KEYCHAIN_PATH" \
-            --entitlements assets/entitlements.mac.plist \
-            "$APP_PATH/Contents/MacOS/erudi"
-
-          # Sign the top-level .app bundle
-          codesign --force --options runtime --sign "$IDENTITY" \
+          # Sign the top-level .app bundle last
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" \
             --keychain "$KEYCHAIN_PATH" \
             --entitlements assets/entitlements.mac.plist \
             "$APP_PATH"
 
-          # Verify the signature
+          # Verify
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           echo "Signature verification passed"
 
