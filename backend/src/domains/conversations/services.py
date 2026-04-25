@@ -68,6 +68,8 @@ from src.domains.conversations.utils.cache import ConversationCache
 from src.domains.conversations.utils.context import ConversationContext
 from src.domains.conversations.schemas import ConversationQuery
 from src.entities.Conversation import Conversation
+from src.entities.Llm import Llm
+from src.core.exceptions import ModelNotFoundException
 
 
 class ConversationService:
@@ -317,27 +319,40 @@ class ConversationService:
         """
         logger.info(f"Generating title for conversation {conversation_id}")
 
-        # Get conversation and LLM
-        conversation = self.conversation_repo.get_conversation_by_id(conversation_id)
-        llm = self.conversation_repo.get_llm_by_id(conversation.llm_id)
-
-        # Early return if question is empty
-        if not question or question.strip() == "":
-            conversation.name = "New Conversation"
-            self.db.commit()
-            return
-
-        # Build title generation prompt
-        prompt = self._build_title_prompt(question, llm.type)
-
-        # Generate title
         generated_title = ""
-        temp = 0.5 if llm.type == "mistral" else 1.0
-        nucleus = 0.9 if llm.type == "mistral" else 0.95
-        max_tok = 12
-
         try:
-            # Load model inside try so errors don't silently abort the generator
+            # Get conversation and LLM
+            conversation = self.conversation_repo.get_conversation_by_id(conversation_id)
+
+            # Try to get the LLM; if the ID is stale, auto-repair from local models
+            try:
+                llm = self.conversation_repo.get_llm_by_id(conversation.llm_id)
+            except ModelNotFoundException:
+                logger.warning(
+                    f"LLM id={conversation.llm_id} not found for conversation "
+                    f"{conversation_id} during title gen, attempting auto-repair"
+                )
+                local_llm = self.db.query(Llm).filter(Llm.local == 1).first()
+                if local_llm is None:
+                    raise
+                conversation.llm_id = local_llm.id
+                self.db.commit()
+                llm = local_llm
+
+            # Early return if question is empty
+            if not question or question.strip() == "":
+                conversation.name = "New Conversation"
+                self.db.commit()
+                return
+
+            # Build title generation prompt
+            prompt = self._build_title_prompt(question, llm.type)
+
+            # Generate title
+            temp = 0.5 if llm.type == "mistral" else 1.0
+            nucleus = 0.9 if llm.type == "mistral" else 0.95
+            max_tok = 12
+
             model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(
                 llm_id=llm.id,
                 llm_local_path=llm.link
@@ -359,9 +374,13 @@ class ConversationService:
         finally:
             # Save the generated title
             final_title = generated_title if generated_title else "New Conversation"
-            conversation.name = final_title
-            self.db.commit()
-            logger.info(f"Title generated and saved: {conversation.name}")
+            try:
+                conversation = self.conversation_repo.get_conversation_by_id(conversation_id)
+                conversation.name = final_title
+                self.db.commit()
+            except Exception:
+                logger.exception("Failed to save generated title")
+            logger.info(f"Title generated and saved: {final_title}")
 
     def query_and_respond_stream(
         self,
@@ -383,62 +402,83 @@ class ConversationService:
         """
         logger.info(f"Processing query for conversation {conversation_id}")
 
-        # Get conversation and LLM
-        conversation = self.conversation_repo.get_conversation_by_id(conversation_id)
-        llm = self.conversation_repo.get_llm_by_id(conversation.llm_id)
-
-        # Store user message
-        user_message = self.message_repo.create_message(
-            conversation_id=conversation_id,
-            sender="user",
-            content=payload.question
-        )
-
-        # Update conversation timestamp
-        self.conversation_repo.update_last_message_time(conversation_id)
-
-        # Commit user message immediately so it's visible
-        self.db.commit()
-
-        # Get prompting strategy
-        strategy = get_prompting_strategy(llm.param_size)
-        logger.info(f"Using prompting strategy for {llm.param_size}B model: {strategy}")
-
-        # Get conversation history (excluding the just-added user message)
-        full_history = self.message_repo.get_conversation_history(conversation_id)
-        if full_history and full_history[-1][1] == "user":
-            full_history = full_history[:-1]
-
-        # Retrieve context
-        context = self.context_manager.retrieve_context(
-            query=payload.question,
-            conversation_history=full_history,
-            conversation_id=conversation_id,
-            llm=llm,
-            db=self.db,
-            strategy=strategy,
-            n_last_turns=payload.n_last_turns_to_get or strategy["max_history_turns"],
-            model_type=llm.type
-        )
-
-        # Get starred messages
-        starred_messages = self.message_repo.get_starred_messages(conversation_id)
-
-        # Build prompt
-        final_prompt = self._build_query_prompt(
-            question=payload.question,
-            history=full_history,
-            context=context,
-            starred_messages=starred_messages,
-            llm=llm,
-            strategy=strategy,
-            custom_prompt=payload.custom_prompt
-        )
-
         # Generate response
         assistant_response = ""
         try:
-            # Load model inside try so errors surface to the frontend
+            # Get conversation and LLM
+            conversation = self.conversation_repo.get_conversation_by_id(conversation_id)
+
+            # Try to get the LLM; if the ID is stale, auto-repair from local models
+            try:
+                llm = self.conversation_repo.get_llm_by_id(conversation.llm_id)
+            except ModelNotFoundException:
+                logger.warning(
+                    f"LLM id={conversation.llm_id} not found for conversation "
+                    f"{conversation_id}, attempting auto-repair"
+                )
+                # Find any local model (local=1) to reassign
+                local_llm = self.db.query(Llm).filter(Llm.local == 1).first()
+                if local_llm is None:
+                    raise ModelNotFoundException(
+                        f"LLM {conversation.llm_id} not found and no local models available"
+                    )
+                logger.info(
+                    f"Auto-repairing conversation {conversation_id}: "
+                    f"llm_id {conversation.llm_id} -> {local_llm.id} ({local_llm.name})"
+                )
+                conversation.llm_id = local_llm.id
+                self.db.commit()
+                llm = local_llm
+
+            # Store user message
+            user_message = self.message_repo.create_message(
+                conversation_id=conversation_id,
+                sender="user",
+                content=payload.question
+            )
+
+            # Update conversation timestamp
+            self.conversation_repo.update_last_message_time(conversation_id)
+
+            # Commit user message immediately so it's visible
+            self.db.commit()
+
+            # Get prompting strategy
+            strategy = get_prompting_strategy(llm.param_size)
+            logger.info(f"Using prompting strategy for {llm.param_size}B model: {strategy}")
+
+            # Get conversation history (excluding the just-added user message)
+            full_history = self.message_repo.get_conversation_history(conversation_id)
+            if full_history and full_history[-1][1] == "user":
+                full_history = full_history[:-1]
+
+            # Retrieve context
+            context = self.context_manager.retrieve_context(
+                query=payload.question,
+                conversation_history=full_history,
+                conversation_id=conversation_id,
+                llm=llm,
+                db=self.db,
+                strategy=strategy,
+                n_last_turns=payload.n_last_turns_to_get or strategy["max_history_turns"],
+                model_type=llm.type
+            )
+
+            # Get starred messages
+            starred_messages = self.message_repo.get_starred_messages(conversation_id)
+
+            # Build prompt
+            final_prompt = self._build_query_prompt(
+                question=payload.question,
+                history=full_history,
+                context=context,
+                starred_messages=starred_messages,
+                llm=llm,
+                strategy=strategy,
+                custom_prompt=payload.custom_prompt
+            )
+
+            # Load model and stream response
             model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(
                 llm_id=llm.id,
                 llm_local_path=llm.link
