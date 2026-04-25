@@ -447,9 +447,9 @@ class ConversationService:
                 model=model,
                 tokenizer=tokenizer,
                 prompt=final_prompt,
-                max_tokens=payload.max_new_tokens or 1024,
-                temperature=payload.temperature,
-                top_p=payload.top_p,
+                max_tokens=payload.max_new_tokens or conversation.max_tokens or 1024,
+                temperature=payload.temperature if payload.temperature is not None else conversation.temperature,
+                top_p=payload.top_p if payload.top_p is not None else conversation.top_p,
                 repetition_penalty=1.2,
                 repetition_context_size=payload.max_new_tokens or 1024,
             ):
