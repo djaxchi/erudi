@@ -92,8 +92,8 @@ Warning:
 
 import asyncio
 import queue
-import threading
-from typing import AsyncGenerator, Generator, List
+from concurrent.futures import ThreadPoolExecutor
+from typing import AsyncGenerator, List
 
 from fastapi import Depends, APIRouter
 from fastapi.concurrency import run_in_threadpool
@@ -118,36 +118,57 @@ from src.domains.conversations.services import ConversationService
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 
+def _mlx_thread_initializer() -> None:
+    """Warm up MLX GPU streams in the persistent generation thread.
+
+    MLX creates thread-local GPU streams on first use. Running a trivial eval
+    here ensures Stream(gpu, 0) exists before any generation call is made,
+    which prevents the 'There is no Stream(gpu, 0) in current thread' crash.
+    """
+    try:
+        import mlx.core as mx
+        mx.eval(mx.array([1.0]))
+    except Exception:
+        pass
+
+
+_MLX_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="mlx-generation",
+    initializer=_mlx_thread_initializer,
+)
+
+
 async def _stream_on_single_thread(
     sync_generator_fn, *args, **kwargs
 ) -> AsyncGenerator[str, None]:
-    """Run a sync generator on a single dedicated thread and yield its values.
+    """Run a sync generator on a persistent single MLX thread and yield its values.
 
-    MLX binds GPU streams to the creating thread. Starlette's
-    iterate_in_threadpool calls next() from arbitrary pool threads, which
-    crashes MLX. This helper pins the entire generation to one thread and
-    ferries tokens back via a queue.
+    Uses a single-worker ThreadPoolExecutor so the same OS thread handles every
+    generation request. MLX GPU streams are thread-local; initializing them once
+    in the executor thread (via _mlx_thread_initializer) and reusing that thread
+    avoids the Stream(gpu, 0) crash that occurs when next() is called from an
+    arbitrary or freshly-created thread.
     """
     token_queue: queue.Queue = queue.Queue()
 
-    def _run():
+    def _run() -> None:
         try:
             for token in sync_generator_fn(*args, **kwargs):
                 token_queue.put(token)
         finally:
             token_queue.put(None)  # sentinel
 
-    thread = threading.Thread(target=_run, daemon=True)
-    thread.start()
-
     loop = asyncio.get_event_loop()
+    future = loop.run_in_executor(_MLX_EXECUTOR, _run)
+
     while True:
         token = await loop.run_in_executor(None, token_queue.get)
         if token is None:
             break
         yield token
 
-    thread.join()
+    await future
 
 
 @router.get("/debug/test_model/{llm_id}")
