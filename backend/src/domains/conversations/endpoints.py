@@ -93,7 +93,7 @@ Warning:
 import asyncio
 import queue
 import threading
-from typing import AsyncGenerator, Generator, List
+from typing import AsyncGenerator, List
 
 from fastapi import Depends, APIRouter
 from fastapi.concurrency import run_in_threadpool
