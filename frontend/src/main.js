@@ -44,7 +44,18 @@ function killBackend(proc) {
       // Process may have already exited
     }
   } else {
-    proc.kill("SIGTERM");
+    try {
+      // Kill the entire process group (negative PID) so uvicorn workers
+      // and multiprocessing children are also terminated.
+      process.kill(-proc.pid, "SIGTERM");
+    } catch (_) {
+      // Fallback if the process is no longer a group leader
+      try {
+        proc.kill("SIGTERM");
+      } catch (_) {
+        /* already exited */
+      }
+    }
   }
 }
 
@@ -187,7 +198,7 @@ const startRealBackend = () => {
       stdio: ["pipe", "pipe", "pipe"],
       cwd: workingDir,
       env: backendEnv,
-      detached: false, // Don't detach, so we can properly kill it
+      detached: true, // Own process group so we can kill the whole tree with -pid
     });
 
     log(`Backend process spawned with PID: ${backendProcess.pid}`);
@@ -651,13 +662,6 @@ const createWindow = () => {
     log("Main window closed");
     mainWindow = null;
     isCreatingWindow = false;
-
-    // Clean up backend on window close
-    if (backendProcess) {
-      log("Terminating backend process on window close...");
-      killBackend(backendProcess);
-      backendProcess = null;
-    }
   });
 
   mainWindow.webContents.on("dom-ready", () => {
@@ -940,15 +944,17 @@ app.on("activate", () => {
 });
 
 app.on("window-all-closed", () => {
-  if (backendProcess) {
-    log("Shutting down backend process...");
-    killBackend(backendProcess);
-    backendProcess = null;
-  }
-
   if (process.platform !== "darwin") {
+    // On non-macOS, closing all windows means quit — kill backend and exit.
+    if (backendProcess) {
+      log("Shutting down backend process...");
+      killBackend(backendProcess);
+      backendProcess = null;
+    }
     app.quit();
   }
+  // On macOS: app stays alive in the dock after window close (standard convention).
+  // Keep the backend running so re-clicking the dock icon reconnects instantly.
 });
 
 app.on("before-quit", () => {
