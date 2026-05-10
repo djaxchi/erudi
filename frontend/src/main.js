@@ -44,7 +44,14 @@ function killBackend(proc) {
       // Process may have already exited
     }
   } else {
-    proc.kill("SIGTERM");
+    try {
+      // Kill the entire process group (negative PID) so uvicorn workers
+      // and multiprocessing children are also terminated.
+      process.kill(-proc.pid, "SIGTERM");
+    } catch (_) {
+      // Fallback if the process is no longer a group leader
+      try { proc.kill("SIGTERM"); } catch (_) {}
+    }
   }
 }
 
@@ -187,7 +194,7 @@ const startRealBackend = () => {
       stdio: ["pipe", "pipe", "pipe"],
       cwd: workingDir,
       env: backendEnv,
-      detached: false, // Don't detach, so we can properly kill it
+      detached: true, // Own process group so we can kill the whole tree with -pid
     });
 
     log(`Backend process spawned with PID: ${backendProcess.pid}`);
