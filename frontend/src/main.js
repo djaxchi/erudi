@@ -50,7 +50,11 @@ function killBackend(proc) {
       process.kill(-proc.pid, "SIGTERM");
     } catch (_) {
       // Fallback if the process is no longer a group leader
-      try { proc.kill("SIGTERM"); } catch (_) { /* already exited */ }
+      try {
+        proc.kill("SIGTERM");
+      } catch (_) {
+        /* already exited */
+      }
     }
   }
 }
