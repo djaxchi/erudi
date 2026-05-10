@@ -658,13 +658,6 @@ const createWindow = () => {
     log("Main window closed");
     mainWindow = null;
     isCreatingWindow = false;
-
-    // Clean up backend on window close
-    if (backendProcess) {
-      log("Terminating backend process on window close...");
-      killBackend(backendProcess);
-      backendProcess = null;
-    }
   });
 
   mainWindow.webContents.on("dom-ready", () => {
@@ -947,15 +940,17 @@ app.on("activate", () => {
 });
 
 app.on("window-all-closed", () => {
-  if (backendProcess) {
-    log("Shutting down backend process...");
-    killBackend(backendProcess);
-    backendProcess = null;
-  }
-
   if (process.platform !== "darwin") {
+    // On non-macOS, closing all windows means quit — kill backend and exit.
+    if (backendProcess) {
+      log("Shutting down backend process...");
+      killBackend(backendProcess);
+      backendProcess = null;
+    }
     app.quit();
   }
+  // On macOS: app stays alive in the dock after window close (standard convention).
+  // Keep the backend running so re-clicking the dock icon reconnects instantly.
 });
 
 app.on("before-quit", () => {
