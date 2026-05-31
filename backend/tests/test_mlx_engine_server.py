@@ -683,8 +683,11 @@ class TestCleanupAndCache:
         assert model is sentinel_model
         assert tokenizer is sentinel_tokenizer
 
-    def test_get_model_and_tokenizer_kills_old_when_switching(self):
+    def test_get_model_and_tokenizer_kills_old_when_switching(self, tmp_path):
         """Switching to a different llm_id must terminate the previous proc."""
+        new_dir = tmp_path / "new"
+        new_dir.mkdir()
+
         old_proc = MagicMock()
         old_proc.is_alive.return_value = True
         MLX_Engine._model = {
@@ -698,11 +701,11 @@ class TestCleanupAndCache:
         new_handle = {
             "pid": 8, "proc": MagicMock(), "port": 9092,
             "base_url": "http://127.0.0.1:9092",
-            "alias": "erudi-new", "model_path": "/new",
+            "alias": "erudi-new", "model_path": str(new_dir),
         }
         with patch.object(MLX_Engine, "_start_server", return_value=new_handle):
             model, tokenizer = MLX_Engine.get_model_and_tokenizer(
-                llm_id="new", llm_local_path="/new",
+                llm_id="new", llm_local_path=str(new_dir),
             )
 
         old_proc.terminate.assert_called_once()
