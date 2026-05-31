@@ -42,10 +42,6 @@ from src.core.logging import logger
 from src.engines.base_engine import BaseEngine
 
 
-# Sentinel for unconfigured class attrs — raises if a subclass forgets to override.
-_UNSET = object()
-
-
 class BaseChatServerEngine(BaseEngine):
     """Subprocess + OpenAI-compat HTTP + SSE common pattern.
 
@@ -215,7 +211,12 @@ class BaseChatServerEngine(BaseEngine):
         # If we time out, downstream port pick will skip this port anyway.
 
     @classmethod
-    def _probe_ready(cls, base_url: str, proc: Any = None) -> None:
+    def _probe_ready(
+        cls,
+        base_url: str,
+        proc: Any = None,
+        alias: Optional[str] = None,
+    ) -> None:
         """Two-stage readiness probe.
 
         Stage 1: poll `GET /health` until 200 OK. The upstream contract is:
@@ -228,7 +229,12 @@ class BaseChatServerEngine(BaseEngine):
         Stage 2: send a single `POST /v1/chat/completions` with `max_tokens=1`.
         This validates the chat template + tokenizer + sampling chain — a
         broken GGUF (missing chat template) returns 200 on `/health` but 400
-        on the first chat call.
+        on the first chat call. The `model` field is built via
+        `_payload_model_value({"alias": alias})` when `alias` is provided, so
+        each subclass picks the same field name it'd use for real inference
+        (llama-cpp returns the alias; MLX returns the `"default_model"`
+        sentinel). Without `alias`, falls back to `"default_model"` for
+        backward compatibility.
         """
         deadline = time.monotonic() + cls._probe_timeout_s
         last_status: Optional[int] = None
@@ -262,14 +268,17 @@ class BaseChatServerEngine(BaseEngine):
                 ),
             )
         # Stage 2 — cheap chat-completions ping (1 token).
+        if alias is not None:
+            model_field = cls._payload_model_value({"alias": alias})
+        else:
+            # Backward-compat fallback: mlx_lm.server's sentinel, accepted by
+            # llama-server as well (it picks the only loaded model).
+            model_field = "default_model"
         try:
             resp = requests.post(
                 f"{base_url}/v1/chat/completions",
                 json={
-                    # `default_model` is a sentinel mlx_lm.server falls back from
-                    # to whatever was loaded with --model; llama-server accepts
-                    # any string here and uses the loaded model.
-                    "model": "default_model",
+                    "model": model_field,
                     "messages": [{"role": "user", "content": "ping"}],
                     "max_tokens": 1,
                     "temperature": 0.0,
@@ -335,7 +344,11 @@ class BaseChatServerEngine(BaseEngine):
         ctx = cls._prepare_spawn_context()
         handle = cls._spawn_child(model_path=model_path, alias=alias, port=port, **ctx)
         try:
-            cls._probe_ready(handle["base_url"], proc=handle.get("proc"))
+            cls._probe_ready(
+                handle["base_url"],
+                proc=handle.get("proc"),
+                alias=handle.get("alias"),
+            )
         except Exception:
             cls._terminate_process(handle.get("proc"))
             raise

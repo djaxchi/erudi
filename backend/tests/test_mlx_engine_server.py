@@ -172,26 +172,10 @@ class TestModuleImportInvariants:
 
 
 # =====================================================================
-# UNIT — _pick_free_port
-# =====================================================================
-
-def _patched_socket_module(bind_side_effect):
-    """Build a contextmanager-style mock of the `socket` module.
-
-    Replaces `socket.socket(AF_INET, SOCK_STREAM)` so that `s.bind(addr)`
-    invokes `bind_side_effect(addr)`. Preserves the real constants so the
-    impl's `setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)` doesn't crash on
-    `mock.AttributeError`.
-    """
-    patcher = patch("src.engines.base_chat_server_engine.socket")
-    mock_socket_mod = patcher.start()
-    mock_sock = mock_socket_mod.socket.return_value.__enter__.return_value
-    mock_sock.bind.side_effect = bind_side_effect
-    mock_socket_mod.AF_INET = _stdlib_socket.AF_INET
-    mock_socket_mod.SOCK_STREAM = _stdlib_socket.SOCK_STREAM
-    mock_socket_mod.SOL_SOCKET = _stdlib_socket.SOL_SOCKET
-    mock_socket_mod.SO_REUSEADDR = _stdlib_socket.SO_REUSEADDR
-    return patcher
+# NOTE: subprocess pattern unit tests (port pick / probe / start_server /
+# atexit) are exercised against the shared base in
+# `test_base_chat_server_engine.py`. The MLX-specific tests below cover
+# only what MLX_Engine implements directly.
 
 
 

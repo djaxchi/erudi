@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import os
 import platform
-import shutil
 import signal
 import subprocess
 from abc import abstractmethod
@@ -234,8 +233,7 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         """
         return os.environ.copy()
 
-    # Note: `_build_auxiliary_files` and `quant_and_save_from_hf_format` stay
+    # Note: `_copy_auxiliary_files` and `quant_and_save_from_hf_format` stay
     # in concrete subclasses for now. The conversion / quantization pipeline
     # is much heavier than the runtime path and will be factored in a
     # follow-up PR if duplication justifies it.
-    _ = shutil  # keep import alive for subclasses that copy auxiliary files

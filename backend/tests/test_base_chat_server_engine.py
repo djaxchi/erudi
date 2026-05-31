@@ -213,6 +213,59 @@ class TestProbeReady:
             with pytest.raises(EngineException, match="400"):
                 _TestEngine._probe_ready("http://127.0.0.1:19000")
 
+    def test_chat_ping_uses_payload_model_value_with_alias(self):
+        """When `alias` is provided, the stage-2 payload's `model` field is
+        built via `_payload_model_value({"alias": alias})` so each subclass
+        picks the field it'd use for real inference (llama-cpp returns the
+        alias; MLX returns the sentinel)."""
+
+        class _AliasEngine(_TestEngine):
+            @staticmethod
+            def _payload_model_value(handle):
+                return handle["alias"]  # llama-cpp behaviour
+
+        health_ok = MagicMock(status_code=200)
+        chat_ok = MagicMock(status_code=200, text='{"choices":[]}')
+        captured_payload: dict = {}
+
+        def _capture_post(url, json=None, **kwargs):
+            captured_payload.update(json)
+            return chat_ok
+
+        with patch(
+            "src.engines.base_chat_server_engine.requests.get",
+            return_value=health_ok,
+        ), patch(
+            "src.engines.base_chat_server_engine.requests.post",
+            side_effect=_capture_post,
+        ):
+            _AliasEngine._probe_ready(
+                "http://127.0.0.1:19000", alias="erudi-7",
+            )
+        assert captured_payload["model"] == "erudi-7"
+
+    def test_chat_ping_falls_back_to_default_model_without_alias(self):
+        """When `alias` is None (backward compatibility), the probe uses the
+        `default_model` sentinel that mlx_lm.server accepts and llama-server
+        tolerates."""
+        health_ok = MagicMock(status_code=200)
+        chat_ok = MagicMock(status_code=200, text='{"choices":[]}')
+        captured_payload: dict = {}
+
+        def _capture_post(url, json=None, **kwargs):
+            captured_payload.update(json)
+            return chat_ok
+
+        with patch(
+            "src.engines.base_chat_server_engine.requests.get",
+            return_value=health_ok,
+        ), patch(
+            "src.engines.base_chat_server_engine.requests.post",
+            side_effect=_capture_post,
+        ):
+            _TestEngine._probe_ready("http://127.0.0.1:19000")  # no alias
+        assert captured_payload["model"] == "default_model"
+
     def test_timeout_message_mentions_port_for_toctou_hint(self):
         """When /health never reaches 200, error should mention the port so the
         user can run `lsof -i :PORT` to diagnose a stolen-port race."""
@@ -290,6 +343,29 @@ class TestAtexitAndStop:
         _TestEngine._model = None
         _TestEngine._atexit_handler = None
         _TestEngine._stop_server_if_running()  # must not raise
+
+    def test_atexit_handler_isolated_per_subclass(self):
+        """`cls._atexit_handler = ...` must shadow on the subclass dict, not
+        on `BaseChatServerEngine`. Pinning this invariant prevents a future
+        refactor from accidentally storing on the base and corrupting
+        cross-engine state."""
+
+        class _A(_TestEngine):
+            pass
+
+        class _B(_TestEngine):
+            pass
+
+        def handler_a() -> None: ...
+        def handler_b() -> None: ...
+
+        _A._atexit_handler = handler_a
+        _B._atexit_handler = handler_b
+        assert _A._atexit_handler is handler_a
+        assert _B._atexit_handler is handler_b
+        # Reset cleanup
+        _A._atexit_handler = None
+        _B._atexit_handler = None
 
     def test_model_swap_unregisters_previous_handler(self):
         """get_model_and_tokenizer with a new llm_id must stop the previous one
