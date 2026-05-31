@@ -253,12 +253,10 @@ class ConversationQuery(BaseModel):
 
     Attributes:
         question: User message/query to send to LLM.
-        language: Optional language code for response (not yet implemented).
         temperature: Optional temperature override for this query only.
         top_p: Optional top_p override for this query only.
         max_new_tokens: Optional max_tokens override for this query only.
         custom_prompt: Optional system prompt override for this query only.
-        n_relevent_msgs_to_get: Number of relevant messages for RAG (not yet used).
         n_last_turns_to_get: Number of recent conversation turns to include.
 
     Example:
@@ -270,31 +268,12 @@ class ConversationQuery(BaseModel):
                 n_last_turns_to_get=5  # Include last 5 turns for context
             )
     """
-    question: str 
-    language: Optional[str] = None         
+    question: str
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_new_tokens: Optional[int] = None
     custom_prompt: Optional[str] = None
-    n_relevent_msgs_to_get: Optional[int] = None
     n_last_turns_to_get: Optional[int] = None
-
-class ConversationQueryResponse(BaseModel):
-    """Schema for conversation query response metadata (legacy/unused).
-
-    Attributes:
-        id: Response identifier.
-        link: Link to response resource.
-
-    Note:
-        This schema appears unused in current codebase. Streaming responses
-        use StreamingResponse instead.
-    """
-    id: int
-    link: str
-    
-    class Config:
-        from_attributes = True
 
 class ConversationDeleteBulk(BaseModel):
     """Schema for bulk conversation deletion requests.
