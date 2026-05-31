@@ -28,9 +28,9 @@ Test sections:
 
 Patch targets (Phase 2 module shape assumed):
     - `src.engines.mlx_engine.mp` — `multiprocessing as mp`, used as `mp.Process(...)`.
-    - `src.engines.mlx_engine.requests` — http client (same pattern as
+    - `src.engines.base_chat_server_engine.requests` — http client (same pattern as
       `cpu_engine.py:25`).
-    - `src.engines.mlx_engine.socket` — module-level import for `_pick_free_port`.
+    - `src.engines.base_chat_server_engine.socket` — module-level import for `_pick_free_port`.
 
 Run examples:
     pytest backend/tests/test_mlx_engine_server.py -m unit          # CI-friendly
@@ -138,7 +138,13 @@ def _mlx_engine_state_reset():
 
 @pytest.mark.unit
 class TestModuleImportInvariants:
-    """Pin the module-level import names that every mock in this file targets."""
+    """Pin the module-level imports the mocks in this file rely on.
+
+    Post-migration to BaseChatServerEngine: `requests`, `socket`, `atexit`,
+    `time` are owned by the base module; only `mp` (multiprocessing) is
+    still imported at the MLX module level because `_spawn_child` uses
+    `mp.Process` directly.
+    """
 
     def test_mlx_engine_exposes_mp_alias(self):
         """`import multiprocessing as mp` must be at module level."""
@@ -149,31 +155,20 @@ class TestModuleImportInvariants:
             "it, the mp.Process mocks in this file are no-ops."
         )
 
-    def test_mlx_engine_exposes_requests(self):
-        """`import requests` must be at module level (same pattern as cpu_engine.py:25)."""
-        from src.engines import mlx_engine as mod
-        assert hasattr(mod, "requests"), (
-            "src/engines/mlx_engine.py must `import requests` at module level "
-            "(patch target: src.engines.mlx_engine.requests)."
-        )
+    def test_base_chat_server_engine_exposes_requests(self):
+        """`import requests` is in the base module post-migration."""
+        from src.engines import base_chat_server_engine as base
+        assert hasattr(base, "requests")
 
-    def test_mlx_engine_exposes_socket(self):
-        """`import socket` must be at module level (used by `_pick_free_port`)."""
-        from src.engines import mlx_engine as mod
-        assert hasattr(mod, "socket"), (
-            "src/engines/mlx_engine.py must `import socket` at module level "
-            "(patch target: src.engines.mlx_engine.socket)."
-        )
+    def test_base_chat_server_engine_exposes_socket(self):
+        """`import socket` is in the base module post-migration."""
+        from src.engines import base_chat_server_engine as base
+        assert hasattr(base, "socket")
 
-    def test_mlx_engine_exposes_atexit(self):
-        """`import atexit` must be at module level (used by `_start_server`)."""
-        from src.engines import mlx_engine as mod
-        assert hasattr(mod, "atexit"), (
-            "src/engines/mlx_engine.py must `import atexit` at module level "
-            "(patch target: src.engines.mlx_engine.atexit). Required so that "
-            "subprocess cleanup is wired to interpreter exit (see "
-            "cpu_engine.py:213)."
-        )
+    def test_base_chat_server_engine_exposes_atexit(self):
+        """`import atexit` is in the base module post-migration."""
+        from src.engines import base_chat_server_engine as base
+        assert hasattr(base, "atexit")
 
 
 # =====================================================================
@@ -188,7 +183,7 @@ def _patched_socket_module(bind_side_effect):
     impl's `setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)` doesn't crash on
     `mock.AttributeError`.
     """
-    patcher = patch("src.engines.mlx_engine.socket")
+    patcher = patch("src.engines.base_chat_server_engine.socket")
     mock_socket_mod = patcher.start()
     mock_sock = mock_socket_mod.socket.return_value.__enter__.return_value
     mock_sock.bind.side_effect = bind_side_effect
@@ -199,162 +194,7 @@ def _patched_socket_module(bind_side_effect):
     return patcher
 
 
-@pytest.mark.unit
-class TestPickFreePort:
-    """Verify the TCP port scanner behaves like the CPU/CUDA twin.
 
-    Both tests use a fully mocked `socket` module so that:
-      - The result is deterministic across CI runners (no race with
-        pytest-xdist workers binding the same real port).
-      - The probe sequence (which ports were tried in which order) is
-        observable via the mock's call_args_list.
-    """
-
-    def test_returns_first_available_port_in_range(self):
-        """Happy path: first port whose bind() succeeds is returned."""
-        attempted: List[int] = []
-
-        def fake_bind(addr):
-            attempted.append(addr[1])
-            if addr[1] == 43002:  # third port is "free"
-                return None
-            raise OSError("busy")
-
-        patcher = _patched_socket_module(fake_bind)
-        try:
-            port = MLX_Engine._pick_free_port(start=43000, limit=10)
-        finally:
-            patcher.stop()
-
-        assert port == 43002, f"expected 43002, got {port}"
-        assert attempted == [43000, 43001, 43002], (
-            f"unexpected probe order: {attempted}"
-        )
-
-    def test_raises_when_all_ports_busy(self):
-        """When every probed port refuses to bind, must raise."""
-        patcher = _patched_socket_module(OSError("port busy"))
-        try:
-            with pytest.raises(Exception):
-                MLX_Engine._pick_free_port(start=43000, limit=3)
-        finally:
-            patcher.stop()
-
-
-# =====================================================================
-# UNIT — _probe_ready (uses GET /health on mlx_lm.server)
-# =====================================================================
-
-@pytest.mark.unit
-class TestProbeReady:
-    """`_probe_ready` polls `GET {base_url}/health` until 200 or timeout."""
-
-    def test_returns_immediately_when_health_200(self):
-        with patch("src.engines.mlx_engine.requests") as mock_requests:
-            mock_requests.get.return_value.status_code = 200
-            # Must not raise; must call /health (not /v1/chat/completions).
-            MLX_Engine._probe_ready("http://127.0.0.1:9999", timeout_s=2.0)
-            called_url = mock_requests.get.call_args[0][0]
-            assert called_url.endswith("/health"), (
-                f"_probe_ready should poll /health endpoint, got {called_url!r}"
-            )
-
-    def test_raises_on_timeout(self):
-        """If the server never responds, must raise within timeout."""
-        with patch("src.engines.mlx_engine.requests") as mock_requests:
-            mock_requests.get.side_effect = Exception("connection refused")
-            t0 = time.monotonic()
-            with pytest.raises(Exception):
-                MLX_Engine._probe_ready("http://127.0.0.1:9999", timeout_s=0.4)
-            elapsed = time.monotonic() - t0
-            # Loose bound: must respect timeout (and not hang).
-            assert elapsed < 5.0, f"_probe_ready exceeded its own timeout: {elapsed:.2f}s"
-
-
-# =====================================================================
-# UNIT — _start_server (mp.Process spawn)
-# =====================================================================
-
-@pytest.mark.unit
-class TestStartServerArgvAndHandle:
-    """`_start_server` must spawn an `mp.Process` with picklable runner + argv."""
-
-    def test_argv_contains_required_flags(self):
-        with patch("src.engines.mlx_engine.mp") as mock_mp, \
-             patch.object(MLX_Engine, "_probe_ready"):
-            mock_proc = MagicMock()
-            mock_proc.pid = 24680
-            mock_proc.is_alive.return_value = True
-            mock_mp.Process.return_value = mock_proc
-
-            MLX_Engine._start_server(
-                model_path=Path("/tmp/fake-mlx-model"),
-                alias="erudi-test-llm",
-                port=42424,
-            )
-
-            assert mock_mp.Process.called, "must spawn an mp.Process"
-            kwargs = mock_mp.Process.call_args.kwargs
-
-            # target must be a picklable module-level function (not a lambda
-            # nor a class method) — required by spawn start method in frozen
-            # PyInstaller builds.
-            target = kwargs.get("target")
-            assert target is not None and getattr(target, "__module__", "") != "__main__", (
-                "target must be a module-level function, got %r" % (target,)
-            )
-
-            # Positional args to the child: a single list/tuple = the argv.
-            args = kwargs.get("args") or ()
-            assert args and isinstance(args[0], (list, tuple)), (
-                "args=([argv],) expected, got %r" % (args,)
-            )
-            argv = list(args[0])
-
-            assert "--model" in argv, "missing --model flag"
-            assert "/tmp/fake-mlx-model" in argv, "model path not in argv"
-            assert "--host" in argv and "127.0.0.1" in argv, "missing host binding"
-            assert "--port" in argv and "42424" in argv, "missing port flag"
-
-    def test_handle_shape_matches_cpu_cuda_pattern(self):
-        """The returned handle must mirror CPU/CUDA shape for downstream code."""
-        with patch("src.engines.mlx_engine.mp") as mock_mp, \
-             patch.object(MLX_Engine, "_probe_ready"):
-            mock_proc = MagicMock()
-            mock_proc.pid = 13579
-            mock_proc.is_alive.return_value = True
-            mock_mp.Process.return_value = mock_proc
-
-            handle = MLX_Engine._start_server(
-                model_path=Path("/m/path"),
-                alias="erudi-7",
-                port=33333,
-            )
-
-        # Required keys, types, and exact values.
-        assert handle["pid"] == 13579
-        assert handle["port"] == 33333
-        assert handle["base_url"] == "http://127.0.0.1:33333"
-        assert handle["alias"] == "erudi-7"
-        assert handle["model_path"] == "/m/path"
-        assert handle["proc"] is mock_proc
-        # Sanity on the set of keys — must not silently grow or shrink
-        # without an accompanying contract change in cpu_engine / cuda_engine.
-        assert set(handle.keys()) >= {
-            "pid", "proc", "port", "base_url", "alias", "model_path",
-        }
-
-    def test_probe_ready_called_with_correct_base_url(self):
-        """After spawn, must wait for readiness on http://127.0.0.1:<port>."""
-        with patch("src.engines.mlx_engine.mp") as mock_mp, \
-             patch.object(MLX_Engine, "_probe_ready") as mock_probe:
-            mock_mp.Process.return_value = MagicMock(pid=1, is_alive=lambda: True)
-            MLX_Engine._start_server(
-                model_path=Path("/x"), alias="erudi-x", port=55555,
-            )
-            mock_probe.assert_called_once()
-            base_url = mock_probe.call_args[0][0]
-            assert base_url == "http://127.0.0.1:55555"
 
 
 # =====================================================================
@@ -446,7 +286,7 @@ class TestGenerateStreamSSEParsing:
             {"choices": [{"delta": {"content": ""}, "finish_reason": "stop"}]},
             "[DONE]",
         ])
-        with patch("src.engines.mlx_engine.requests") as mock_requests:
+        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
             mock_requests.post = _mock_streaming_post(list(chunks))
 
             tokens = list(MLX_Engine.generate_stream(
@@ -463,7 +303,7 @@ class TestGenerateStreamSSEParsing:
             {"choices": [{"delta": {"content": "X"}}]},
             "[DONE]",
         ])
-        with patch("src.engines.mlx_engine.requests") as mock_requests:
+        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
             mock_requests.post = _mock_streaming_post(list(chunks))
             tokens = list(MLX_Engine.generate_stream(
                 model=self._fake_model(), tokenizer=self._fake_tokenizer(),
@@ -485,7 +325,7 @@ class TestGenerateStreamSSEParsing:
             {"choices": [{"delta": {"content": "Answer", "reasoning": ""}}]},
             "[DONE]",
         ])
-        with patch("src.engines.mlx_engine.requests") as mock_requests:
+        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
             mock_requests.post = _mock_streaming_post(list(chunks))
             tokens = list(MLX_Engine.generate_stream(
                 model=self._fake_model(), tokenizer=self._fake_tokenizer(),
@@ -506,7 +346,7 @@ class TestGenerateStreamSSEParsing:
             {"choices": [{"delta": {"content": "after"}}]},
             "[DONE]",
         ])
-        with patch("src.engines.mlx_engine.requests") as mock_requests:
+        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
             mock_requests.post = _mock_streaming_post(list(chunks))
             tokens = list(MLX_Engine.generate_stream(
                 model=self._fake_model(), tokenizer=self._fake_tokenizer(),
@@ -517,7 +357,7 @@ class TestGenerateStreamSSEParsing:
 
     def test_payload_includes_stream_true_and_messages(self):
         chunks = _sse_bytes(["[DONE]"])
-        with patch("src.engines.mlx_engine.requests") as mock_requests:
+        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
             mock_requests.post = _mock_streaming_post(list(chunks))
             list(MLX_Engine.generate_stream(
                 model=self._fake_model(), tokenizer=self._fake_tokenizer(),
@@ -555,7 +395,7 @@ class TestGenerateStreamSSEParsing:
             b'lo"}}]}\n\ndata: {"choices":[{"delta":{"content":" world"}}]}\n\n',
             b'data: [DONE]\n\n',
         ]
-        with patch("src.engines.mlx_engine.requests") as mock_requests:
+        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
             mock_requests.post = _mock_streaming_post(chunks)
             tokens = list(MLX_Engine.generate_stream(
                 model=self._fake_model(), tokenizer=self._fake_tokenizer(),
@@ -574,7 +414,7 @@ class TestGenerateStreamSSEParsing:
         cm = MagicMock()
         cm.__enter__.return_value = response
         cm.__exit__.return_value = False
-        with patch("src.engines.mlx_engine.requests") as mock_requests:
+        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
             mock_requests.post.return_value = cm
 
             with pytest.raises(Exception):
@@ -596,7 +436,7 @@ class TestGenerateStreamSSEParsing:
             {"choices": [{"delta": {"content": "OK"}}]},
             "[DONE]",
         ])
-        with patch("src.engines.mlx_engine.requests") as mock_requests:
+        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
             mock_requests.post = _mock_streaming_post(list(chunks))
             tokens = list(MLX_Engine.generate_stream(
                 model=self._fake_model(), tokenizer=self._fake_tokenizer(),
@@ -609,40 +449,6 @@ class TestGenerateStreamSSEParsing:
         assert "".join(tokens) == "OK"
 
 
-# =====================================================================
-# UNIT — cleanup / get_model_and_tokenizer cache
-# =====================================================================
-
-@pytest.mark.unit
-class TestAssertRequestsGuard:
-    """Mirrors cpu_engine._assert_requests (cpu_engine.py:119-122)."""
-
-    def test_raises_when_requests_is_none(self):
-        """If the runtime is missing the `requests` lib, must raise clearly."""
-        with patch("src.engines.mlx_engine.requests", None):
-            with pytest.raises(Exception):
-                MLX_Engine._assert_requests()
-
-
-@pytest.mark.unit
-class TestAtExitCleanupRegistration:
-    """The subprocess must be wired to die when the Python interpreter exits.
-
-    Mirrors cpu_engine.py:213 (`atexit.register(lambda: cls._terminate_process(proc))`).
-    Without this, a crashed FastAPI parent leaves a zombie `mlx_lm.server`.
-    """
-
-    def test_start_server_registers_atexit_cleanup(self):
-        with patch("src.engines.mlx_engine.mp") as mock_mp, \
-             patch("src.engines.mlx_engine.atexit") as mock_atexit, \
-             patch.object(MLX_Engine, "_probe_ready"):
-            mock_mp.Process.return_value = MagicMock(pid=1, is_alive=lambda: True)
-            MLX_Engine._start_server(
-                model_path=Path("/x"), alias="erudi-x", port=55555,
-            )
-            assert mock_atexit.register.called, (
-                "_start_server must atexit.register a cleanup callback"
-            )
 
 
 @pytest.mark.unit
