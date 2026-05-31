@@ -108,7 +108,6 @@ from src.engines._mlx_server_runner import run_mlx_server
 from src.core.exceptions import (
     EngineException,
     FileSystemException,
-    GenerationException,
     HardwareException,
     InsufficientMemoryException,
     QuantizationException,
