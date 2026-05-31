@@ -687,6 +687,7 @@ class TestCleanupAndCache:
         """Switching to a different llm_id must terminate the previous proc."""
         new_dir = tmp_path / "new"
         new_dir.mkdir()
+        resolved_new = new_dir.resolve()
 
         old_proc = MagicMock()
         old_proc.is_alive.return_value = True
@@ -701,14 +702,18 @@ class TestCleanupAndCache:
         new_handle = {
             "pid": 8, "proc": MagicMock(), "port": 9092,
             "base_url": "http://127.0.0.1:9092",
-            "alias": "erudi-new", "model_path": str(new_dir),
+            "alias": "erudi-new", "model_path": str(resolved_new),
         }
-        with patch.object(MLX_Engine, "_start_server", return_value=new_handle):
+        with patch.object(MLX_Engine, "_start_server", return_value=new_handle) as mock_start, \
+             patch.object(MLX_Engine, "_pick_free_port", return_value=9092):
             model, tokenizer = MLX_Engine.get_model_and_tokenizer(
                 llm_id="new", llm_local_path=str(new_dir),
             )
 
         old_proc.terminate.assert_called_once()
+        mock_start.assert_called_once_with(
+            model_path=resolved_new, alias="erudi-new", port=9092,
+        )
         assert MLX_Engine._model_id == "new"
         assert model is new_handle
 

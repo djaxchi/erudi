@@ -114,58 +114,11 @@ from src.domains.conversations.services import ConversationService
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
-# Note (refactor/mlx-server-subprocess, Phase 3):
-# The former `_MLX_EXECUTOR` / `_mlx_thread_initializer` / `_stream_on_single_thread`
-# wrapper was needed because the old in-process MLX engine called
-# `mlx_lm.stream_generate` directly: GPU streams are thread-local, so each
-# generation request had to land on the same persistent OS thread that had
-# pre-warmed `Stream(gpu, 0)` (commits cefdc7a, 40fb55e). Now that MLX_Engine
-# spawns `mlx_lm.server` in a child process, the GPU stream lives entirely in
-# that child — the parent FastAPI process never touches MLX. StreamingResponse
-# can iterate the sync generator returned by ConversationService directly;
-# Starlette wraps it via `iterate_in_threadpool` (any worker thread is fine).
-# This is the same pattern arena/endpoints.py:114 has always used.
-
-
-@router.get("/debug/test_model/{llm_id}")
-async def debug_test_model(llm_id: int, db: Session = Depends(get_db)):
-    """Temporary debug endpoint to test model loading and generation."""
-    import traceback
-    from src.core import config
-    from src.entities.Llm import Llm
-    result = {"steps": []}
-    try:
-        llm = db.query(Llm).filter(Llm.id == llm_id).first()
-        if not llm:
-            return {"error": f"LLM {llm_id} not found"}
-        result["steps"].append(f"Found LLM: {llm.name}, local={llm.local}, link={llm.link}")
-
-        import os
-        link_exists = os.path.exists(llm.link)
-        result["steps"].append(f"Path exists: {link_exists}")
-        if link_exists:
-            contents = os.listdir(llm.link)
-            result["steps"].append(f"Path contents: {contents}")
-
-        model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(
-            llm_id=llm.id, llm_local_path=llm.link
-        )
-        result["steps"].append(f"Model loaded: {type(model).__name__}")
-
-        output = ""
-        for text in config.LLM_Engine.generate_stream(
-            model=model, tokenizer=tokenizer, prompt="Hello",
-            max_tokens=5, temperature=1.0, top_p=0.95,
-            repetition_penalty=1.2, repetition_context_size=5,
-        ):
-            output += text
-        result["steps"].append(f"Generated: {repr(output)}")
-        result["success"] = True
-    except Exception as e:
-        result["error"] = f"{type(e).__name__}: {e}"
-        result["traceback"] = traceback.format_exc()
-        result["success"] = False
-    return result
+# MLX_Engine spawns `mlx_lm.server` in a child process, so the GPU stream lives
+# entirely in the child — the parent FastAPI process never touches MLX. Starlette
+# wraps the sync generator returned by ConversationService via
+# `iterate_in_threadpool`, any worker thread is fine. Same pattern as
+# `arena/endpoints.py:114`.
 
 
 def get_conversation_repository(db: Session = Depends(get_db)) -> ConversationRepository:

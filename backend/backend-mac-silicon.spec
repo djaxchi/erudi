@@ -127,6 +127,7 @@ a = Analysis(
         "src.engines.base_engine",
         "src.engines.mlx_engine",
         "src.engines._mlx_server_runner",  # picklable target for mp.Process spawning mlx_lm.server
+        "mlx_lm.server",  # imported lazily inside the runner; collect_all may miss it
         "src.engines.cpu_engine",
         "src.engines.embedder_engine",
         "src.launcher",
