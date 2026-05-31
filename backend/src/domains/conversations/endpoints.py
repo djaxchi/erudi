@@ -98,6 +98,7 @@ from sqlalchemy.orm import Session
 from fastapi.responses import StreamingResponse
 
 from src.database.core import get_db
+from src.agents.checkpoint import get_checkpointer
 from src.domains.conversations.schemas import (
     ConversationCreate,
     ConversationDeleteBulk,
@@ -168,7 +169,10 @@ def get_message_repository(db: Session = Depends(get_db)) -> MessageRepository:
     return MessageRepository(db)
 
 
-def get_conversation_service(db: Session = Depends(get_db)) -> ConversationService:
+def get_conversation_service(
+    db: Session = Depends(get_db),
+    checkpointer=Depends(get_checkpointer),
+) -> ConversationService:
     """Provide a conversation service instance for dependency injection.
 
     Args:
@@ -193,7 +197,7 @@ def get_conversation_service(db: Session = Depends(get_db)) -> ConversationServi
                 )
     """
     """Provide a conversation service instance."""
-    return ConversationService(db)
+    return ConversationService(db, checkpointer=checkpointer)
 
 
 @router.get(
@@ -438,8 +442,7 @@ async def delete_conversation(
     Delete a conversation by its ID.
     """
     try:
-        await run_in_threadpool(service.delete_conversation, conversation_id)
-        db.commit()
+        await service.delete_conversation(conversation_id)
         return {"message": "Conversation deleted successfully"}
     except Exception:
         db.rollback()
@@ -629,11 +632,7 @@ async def delete_bulk(
     """
     """Delete multiple conversations by their IDs (body JSON)."""
     try:
-        await run_in_threadpool(
-            service.delete_conversations_bulk,
-            payload.conversation_ids,
-        )
-        db.commit()
+        await service.delete_conversations_bulk(payload.conversation_ids)
         return {"message": "Conversations deleted successfully"}
     except Exception:
         db.rollback()

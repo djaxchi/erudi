@@ -12,6 +12,13 @@ from unittest.mock import Mock, patch, AsyncMock
 from fastapi import status
 from sqlalchemy.orm import Session
 
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage
+from langgraph.checkpoint.memory import InMemorySaver
+
+import src.agents.runner as agent_runner
+from src.core import config
+from src.engines.base_engine import BaseEngine
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.conversations.services import ConversationService
 from src.domains.conversations.schemas import (
@@ -23,6 +30,21 @@ from src.domains.conversations.schemas import (
 from src.entities.Conversation import Conversation
 from src.entities.Message import Message
 from src.entities.Llm import Llm
+
+
+class _FakeEngine(BaseEngine):
+    """Engine stub exposing generation_guard without spawning a real model."""
+
+
+def _fake_chat_model(*texts):
+    """Return a ``build_chat_model`` replacement yielding a scripted fake model.
+
+    ``GenericFakeChatModel`` streams the content word-by-word, so assertions
+    compare the concatenated stream (the text/plain wire contract), not the
+    original token list.
+    """
+    msgs = [AIMessage(content=t) for t in texts]
+    return lambda llm, **kw: GenericFakeChatModel(messages=iter(msgs))
 
 
 # ============ Repository Tests ============
@@ -290,37 +312,27 @@ class TestConversationService:
         assert conversation.llm_id == mock_llm.id
         assert conversation.llm_id == mock_llm.id
 
-    def test_delete_conversation_service(self, test_db_session, mock_llm):
-        """Test conversation deletion via service (clears cache).
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
+    async def test_delete_conversation_service(self, test_db_session, mock_llm):
+        """Test conversation deletion via service (now async; purges checkpointer)."""
         service = ConversationService(test_db_session)
-        
+
         conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
-        
-        service.delete_conversation(conversation.id)
-        
+
+        await service.delete_conversation(conversation.id)
+
         # Verify deleted
         with pytest.raises(Exception):
             service.conversation_repo.get_conversation_by_id(conversation.id)
 
-    def test_delete_conversations_bulk_service(self, test_db_session, mock_llm):
-        """Test bulk deletion via service.
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
+    async def test_delete_conversations_bulk_service(self, test_db_session, mock_llm):
+        """Test bulk deletion via service (now async)."""
         service = ConversationService(test_db_session)
-        
+
         c1 = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
         c2 = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
-        
-        service.delete_conversations_bulk([c1.id, c2.id])
-        
+
+        await service.delete_conversations_bulk([c1.id, c2.id])
+
         remaining = service.conversation_repo.get_all_conversations()
         assert len(remaining) == 0
 
@@ -345,64 +357,47 @@ class TestConversationService:
         assert len(messages) == 1
         assert "[ERROR_MESSAGE_SYSTEM]" in messages[0].content
 
-    def test_generate_title_stream(self, test_db_session, mock_llm):
-        """Test title generation stream with mocked engine."""
+    async def test_generate_title_stream(self, test_db_session, mock_llm, monkeypatch):
+        """Title generation streams via a stateless one-shot model."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("AI Basics"))
         service = ConversationService(test_db_session)
         conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
 
-        mock_model = Mock()
-        mock_tokenizer = Mock()
-        mock_title_tokens = ["AI ", "Basics"]
+        result = [t async for t in service.generate_title_stream(conversation.id, "What is AI?")]
 
-        with patch("src.core.config.LLM_Engine") as mock_engine:
-            mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
-            mock_engine.generate_stream.return_value = iter(mock_title_tokens)
-
-            result = []
-            for token in service.generate_title_stream(conversation.id, "What is AI?"):
-                result.append(token)
-
-        assert result == mock_title_tokens
-
+        assert "".join(result) == "AI Basics"
         updated_conv = service.conversation_repo.get_conversation_by_id(conversation.id)
         assert updated_conv.name == "AI Basics"
 
-    def test_generate_title_stream_empty_question(self, test_db_session, mock_llm):
-        """Test title generation with empty question (should use default)."""
+    async def test_generate_title_stream_empty_question(self, test_db_session, mock_llm, monkeypatch):
+        """Empty question short-circuits to the default title (no streaming)."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
         service = ConversationService(test_db_session)
         conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
 
-        for _ in service.generate_title_stream(conversation.id, ""):
+        async for _ in service.generate_title_stream(conversation.id, ""):
             pass
 
         updated_conv = service.conversation_repo.get_conversation_by_id(conversation.id)
         assert updated_conv.name == "New Conversation"
 
-    def test_query_and_respond_stream(self, test_db_session, mock_llm):
-        """Test query-response stream with mocked engine."""
-        service = ConversationService(test_db_session)
+    async def test_query_and_respond_stream(self, test_db_session, mock_llm, monkeypatch):
+        """Query streams the agent response (raw text) and persists both messages."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("Decorators are functions."))
+        service = ConversationService(test_db_session, InMemorySaver())
         conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024)
 
         payload = ConversationQuery(
             question="Explain Python decorators",
             temperature=0.7,
-            n_last_turns_to_get=5
+            n_last_turns_to_get=5,
         )
 
-        mock_model = Mock()
-        mock_tokenizer = Mock()
-        mock_response_tokens = ["Decorators ", "are ", "functions."]
+        result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
-        with patch("src.core.config.LLM_Engine") as mock_engine:
-            mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
-            mock_engine.generate_stream.return_value = iter(mock_response_tokens)
-            mock_engine.cleanup.return_value = None
-
-            result = []
-            for token in service.query_and_respond_stream(conversation.id, payload):
-                result.append(token)
-
-        assert result == mock_response_tokens
+        assert "".join(result) == "Decorators are functions."
 
         messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 2
@@ -411,9 +406,11 @@ class TestConversationService:
         assert messages[1].sender == "llm"
         assert messages[1].content == "Decorators are functions."
 
-    def test_query_and_respond_stream_with_context(self, test_db_session, mock_llm):
-        """Test query with conversation context (previous messages)."""
-        service = ConversationService(test_db_session)
+    async def test_query_and_respond_stream_with_context(self, test_db_session, mock_llm, monkeypatch):
+        """Query with prior messages persists a 4th message (2 prior + user + llm)."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("Python is versatile."))
+        service = ConversationService(test_db_session, InMemorySaver())
         conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024)
 
         service.message_repo.create_message(conversation.id, "What is Python?", "user")
@@ -422,23 +419,12 @@ class TestConversationService:
         payload = ConversationQuery(
             question="Tell me more",
             temperature=0.7,
-            n_last_turns_to_get=2
+            n_last_turns_to_get=2,
         )
 
-        mock_model = Mock()
-        mock_tokenizer = Mock()
-        mock_tokens = ["Python ", "is ", "versatile."]
+        result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
-        with patch("src.core.config.LLM_Engine") as mock_engine:
-            mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
-            mock_engine.generate_stream.return_value = iter(mock_tokens)
-            mock_engine.cleanup.return_value = None
-
-            result = []
-            for token in service.query_and_respond_stream(conversation.id, payload):
-                result.append(token)
-
-        assert result == mock_tokens
+        assert "".join(result) == "Python is versatile."
 
         messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 4
@@ -587,22 +573,17 @@ class TestConversationEndpoints:
             "question": "What is Python?",
             "temperature": 0.7
         }
-        
-        mock_model = Mock()
-        mock_tokenizer = Mock()
-        mock_tokens = ["Python ", "is ", "awesome."]
-        
-        with patch("src.core.config.LLM_Engine") as mock_engine:
-            mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
-            mock_engine.generate_stream.return_value = iter(mock_tokens)
-            mock_engine.cleanup.return_value = None
-            
+
+        # Patch model construction; the client fixture already set a real engine
+        # (for generation_guard) and an in-memory checkpointer on app.state.
+        with patch.object(agent_runner, "build_chat_model", _fake_chat_model("Python is awesome.")):
             response = client.post(
                 f"/erudi/conversations/{conversation_id}/query",
                 json=query_payload
             )
-        
+
         assert response.status_code == status.HTTP_200_OK
+        # raw text/plain wire contract: concatenated token text, no SSE framing
         assert response.text == "Python is awesome."
 
     def test_generate_title_endpoint(self, client, mock_llm):
@@ -619,20 +600,13 @@ class TestConversationEndpoints:
         conversation_id = create_response.json()["id"]
         
         title_payload = {"question": "What is machine learning?"}
-        
-        mock_model = Mock()
-        mock_tokenizer = Mock()
-        mock_title = ["ML ", "Intro"]
-        
-        with patch("src.core.config.LLM_Engine") as mock_engine:
-            mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
-            mock_engine.generate_stream.return_value = iter(mock_title)
-            
+
+        with patch.object(agent_runner, "build_chat_model", _fake_chat_model("ML Intro")):
             response = client.post(
                 f"/erudi/conversations/{conversation_id}/generate_title",
                 json=title_payload
             )
-        
+
         assert response.status_code == status.HTTP_200_OK
         assert response.text == "ML Intro"
 

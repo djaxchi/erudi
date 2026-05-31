@@ -106,6 +106,43 @@ class AgentRunner:
                     await self._repair_alternation(agent, run_config)
                 yield ERROR_MESSAGE
 
+    async def astream_oneshot(
+        self,
+        *,
+        llm,
+        prompt_text: str,
+        temperature: float,
+        top_p: float,
+        max_tokens: int,
+    ) -> AsyncIterator[str]:
+        """Stateless one-shot stream (no agent/checkpointer), e.g. title generation.
+
+        Still routed through ``engine.generation_guard`` so it serializes with
+        conversation/arena generations and keeps the model pinned while streaming.
+        Failures are swallowed (the caller falls back to a default).
+        """
+        engine = config.LLM_Engine
+        async with engine.generation_guard():
+            try:
+                model = await run_in_threadpool(
+                    build_chat_model,
+                    llm,
+                    temperature=temperature,
+                    top_p=top_p,
+                    max_tokens=max_tokens,
+                )
+            except Exception:
+                logger.exception("One-shot model construction failed")
+                return
+            try:
+                async for chunk in model.astream([HumanMessage(prompt_text)]):
+                    text = getattr(chunk, "text", "")
+                    if text:
+                        yield text
+            except Exception:
+                logger.exception("One-shot streaming failed")
+                return
+
     def _build_middleware(self, model):
         """Summarization middleware is wired here in P5; empty for now."""
         return []
