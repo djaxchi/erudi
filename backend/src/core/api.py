@@ -65,6 +65,7 @@ from src.core.exceptions import AppBaseException, app_base_exception_handler
 from src.core import config
 from src.engines.base_engine import BaseEngine
 from src.core.logging import logger
+from src.agents.checkpoint import open_checkpointer
 
 from src.domains.llms.endpoints import router as llms_router
 from src.domains.arena.endpoints import router as arena_router
@@ -220,9 +221,13 @@ async def lifespan(app: FastAPI):
     await create_tables()
     # await delete_all_data()
     await startup_populate_database()
+    # LangGraph conversation-state checkpointer (separate erudi-checkpoints.db),
+    # held open for the whole app lifetime and exposed on app.state.checkpointer.
+    checkpointer_cm = open_checkpointer(config.CHECKPOINT_DB_PATH)
+    app.state.checkpointer = await checkpointer_cm.__aenter__()
     config.LLM_Engine.start_cleanup_task()
     yield
     logger.info("==== Shutting down... ====")
-    # Shutdown code can go here if needed
     config.LLM_Engine.stop_cleanup_task()
     config.LLM_Engine.cleanup()
+    await checkpointer_cm.__aexit__(None, None, None)
