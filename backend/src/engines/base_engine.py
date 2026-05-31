@@ -563,7 +563,10 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 raise
             return llm_engine
         except Exception as e:
-            raise EngineException(message="Error selecting the LLM Engine.", trace=e)
+            raise EngineException(
+                message="Error selecting the LLM Engine.",
+                trace=f"{type(e).__name__}: {e}",
+            )
 
     @classmethod
     def _should_cleanup(cls) -> bool:

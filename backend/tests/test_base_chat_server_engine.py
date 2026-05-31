@@ -248,6 +248,29 @@ class TestAtexitAndStop:
         reg.assert_called_once_with(_TestEngine._atexit_handler)
         assert handle["port"] == 19010
 
+    def test_start_server_terminates_proc_on_probe_failure(self):
+        """If `_probe_ready` raises after spawn, the child must be terminated
+        and no atexit handler should be registered (otherwise we'd leak a
+        handler holding a dead proc — exactly bug (b) from PR #76)."""
+        spawned_proc = MagicMock()
+        spawn_returns = {
+            "pid": 1, "proc": spawned_proc, "port": 19015,
+            "base_url": "http://127.0.0.1:19015",
+            "alias": "test-x", "model_path": Path("/tmp"),
+        }
+        with patch.object(_TestEngine, "_spawn_child", return_value=spawn_returns), \
+             patch.object(_TestEngine, "_probe_ready",
+                          side_effect=EngineException("probe rejected")), \
+             patch.object(_TestEngine, "_terminate_process") as term, \
+             patch("src.engines.base_chat_server_engine.atexit.register") as reg:
+            with pytest.raises(EngineException, match="probe rejected"):
+                _TestEngine._start_server(
+                    model_path=Path("/tmp"), alias="test-x", port=19015,
+                )
+        term.assert_called_once_with(spawned_proc)
+        reg.assert_not_called()
+        assert _TestEngine._atexit_handler is None
+
     def test_stop_server_unregisters_handler(self):
         """_stop_server_if_running must unregister the stored handler."""
         def sentinel() -> None: ...
