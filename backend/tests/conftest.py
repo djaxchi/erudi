@@ -7,6 +7,23 @@ Architecture:
     Tests use in-memory SQLite database for isolation and speed.
     Each test gets a fresh database session with automatic rollback.
 """
+# Force the multiprocessing start method to "spawn" BEFORE any heavy import
+# below loads modules that would interact with multiprocessing internals.
+# This mirrors `backend/run.py:force_mp_spawn()` and is required because:
+#   1. The MLX engine refactor will use `multiprocessing.Process` to spawn
+#      `mlx_lm.server` as a child process. Spawn is the only start method
+#      that works inside PyInstaller frozen builds (`mp.freeze_support()`).
+#   2. On Linux (CI), the default is `fork`, which after importing torch /
+#      faiss / sentence_transformers has undefined behaviour.
+#   3. Setting `force=True` here makes the test environment match production.
+import multiprocessing as _mp
+
+try:
+    _mp.set_start_method("spawn", force=True)
+except RuntimeError:
+    # Already configured (e.g. pytest re-execution) — safe to ignore.
+    pass
+
 import os
 import sys
 import pytest
@@ -24,6 +41,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from src.database.core import Base
 from src.main import app
 from src.database.core import get_db
+
+from tests._helpers import is_mlx_platform
 
 
 # ============ Database Fixtures ============
@@ -239,14 +258,117 @@ def temp_test_files():
 @pytest.fixture
 def temp_index_dir():
     """Create temporary directory for FAISS indexes.
-    
+
     Yields:
         Path to temporary index directory.
     """
     temp_dir = tempfile.mkdtemp()
     yield temp_dir
-    
+
     # Cleanup
     for file in os.listdir(temp_dir):
         os.remove(os.path.join(temp_dir, file))
     os.rmdir(temp_dir)
+
+
+# ============ MLX-specific fixtures (Phase 0 — refactor/mlx-server-subprocess) ============
+#
+# Shared infrastructure for the MLX server-mode refactor test suite. These
+# fixtures are session-scoped to amortize the cost of downloading the test
+# models across the whole suite, and skip cleanly on non-Apple-Silicon hosts
+# so that Linux CI stays green.
+#
+# Two models are provided:
+#
+#   `mlx_test_model_path` — default, always available
+#       repo: mlx-community/Qwen2.5-0.5B-Instruct-4bit
+#       - Apache 2.0 (no HF license accept required, works in unattended CI)
+#       - 4-bit quantized, ~280 MB on disk
+#       - No <think> tokens (keeps text-only assertions simple)
+#       - Standard ChatML template (validates apply_chat_template path)
+#
+#   `mlx_thinking_model_path` — opt-in via ERUDI_TEST_THINKING=1
+#       repo: mlx-community/Qwen3-0.6B-4bit (override: ERUDI_MLX_THINKING_MODEL_REPO)
+#       - Required to validate that `reasoning_text` is delivered as a
+#         separate stream channel by mlx_lm.server (i.e. the refactor does
+#         not silently drop reasoning output).
+#       - Without this fixture, the regression of `<think>...</think>` /
+#         `<|channel>thought ... <channel|>` filtering would be invisible.
+#
+# Gemma-specific EOS regression coverage is opt-in via ERUDI_TEST_GEMMA=1
+# (added in Phase 1 once we have the corresponding test).
+
+MLX_TEST_MODEL_REPO = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
+MLX_TEST_THINKING_MODEL_REPO_DEFAULT = "mlx-community/Qwen3-0.6B-4bit"
+
+
+def _download_mlx_model(repo_id: str, local_dir_env_var: str | None = None) -> Path:
+    """Download (or reuse cache for) an MLX-quantized model from the HF Hub.
+
+    Returns the absolute local path as a `Path`. Skips the calling test on:
+      - non-MLX platforms (Linux CI, Mac Intel, etc.)
+      - missing huggingface_hub
+      - network failure with no local cache (offline dev)
+
+    Args:
+        repo_id: HF repo id, e.g. "mlx-community/Qwen2.5-0.5B-Instruct-4bit".
+        local_dir_env_var: optional env var name that, if set and non-empty,
+            overrides the HF cache directory for offline / pre-seeded setups.
+    """
+    if not is_mlx_platform():
+        pytest.skip("MLX_Engine not selected on this platform — MLX fixture skipped")
+
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        pytest.skip(f"huggingface_hub not available: {exc}")
+
+    # Treat "" as None so an unset env var doesn't get passed as an empty path.
+    override = os.environ.get(local_dir_env_var) if local_dir_env_var else None
+    local_dir = override or None
+
+    try:
+        local_path = snapshot_download(repo_id=repo_id, local_dir=local_dir)
+    except Exception as exc:
+        # Covers LocalEntryNotFoundError, HfHubHTTPError, ConnectionError, etc.
+        # On offline runs with cold cache we skip rather than ERROR so the
+        # rest of the suite is not blocked.
+        pytest.skip(f"Cannot fetch MLX test model {repo_id!r} (offline?): {exc}")
+
+    return Path(local_path)
+
+
+@pytest.fixture(scope="session")
+def mlx_test_model_path() -> Path:
+    """Local path to the default MLX test model (no thinking tokens).
+
+    See module-level comment for repo details and rationale.
+    """
+    return _download_mlx_model(
+        MLX_TEST_MODEL_REPO,
+        local_dir_env_var="ERUDI_MLX_TEST_MODEL_DIR",
+    )
+
+
+@pytest.fixture(scope="session")
+def mlx_thinking_model_path() -> Path:
+    """Local path to an MLX test model that emits `<think>` tokens.
+
+    Opt-in via ERUDI_TEST_THINKING=1 to keep the default suite fast. The repo
+    can be overridden via ERUDI_MLX_THINKING_MODEL_REPO for forward
+    compatibility (e.g. when newer thinking-capable MLX repos appear).
+    """
+    if os.environ.get("ERUDI_TEST_THINKING") != "1":
+        pytest.skip(
+            "Thinking-model integration tests are opt-in. "
+            "Run with ERUDI_TEST_THINKING=1 to enable."
+        )
+
+    repo_id = os.environ.get(
+        "ERUDI_MLX_THINKING_MODEL_REPO",
+        MLX_TEST_THINKING_MODEL_REPO_DEFAULT,
+    )
+    return _download_mlx_model(
+        repo_id,
+        local_dir_env_var="ERUDI_MLX_THINKING_MODEL_DIR",
+    )

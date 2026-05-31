@@ -70,10 +70,13 @@ source venv/bin/activate  # Mac/Linux
 # ou
 venv\Scripts\activate  # Windows
 
-uvicorn src.main:app --reload
+python run.py            # production-faithful launcher (JSON lifecycle events)
+# OR for API-only iteration:
+PYTHONPATH=. uvicorn src.main:app --reload --port 8765
 ```
 
-Le backend démarre sur **http://localhost:8000**
+Le backend démarre sur **http://127.0.0.1:8765** (cf `backend/run.py:72` —
+le port défaut est 8765, scan jusqu'à 8799 si occupé).
 
 ### Frontend (Electron)
 
@@ -91,7 +94,7 @@ L'application desktop Electron s'ouvre automatiquement.
 Vérifier que le backend répond :
 
 ```bash
-curl http://localhost:8000/erudi/health
+curl http://127.0.0.1:8765/erudi/health
 ```
 
 Réponse attendue :
@@ -107,7 +110,7 @@ Réponse attendue :
 ### Lister les modèles disponibles
 
 ```bash
-curl http://localhost:8000/erudi/llms
+curl http://127.0.0.1:8765/erudi/llms
 ```
 
 Retourne les modèles seed depuis HuggingFace (Mistral, Gemma, etc.).
@@ -115,7 +118,7 @@ Retourne les modèles seed depuis HuggingFace (Mistral, Gemma, etc.).
 ### Créer une conversation
 
 ```bash
-curl -X POST http://localhost:8000/erudi/conversations \
+curl -X POST http://127.0.0.1:8765/erudi/conversations \
   -H "Content-Type: application/json" \
   -d '{"llm_id": 1, "name": "Test Chat"}'
 ```

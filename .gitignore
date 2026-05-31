@@ -83,3 +83,7 @@ frontend/backend/
 
 # Internal dev session logs
 docs/session-*.md
+
+# Playwright CLI artefacts (local E2E exploration only)
+.playwright-cli/
+erudi-landing-loaded.yaml

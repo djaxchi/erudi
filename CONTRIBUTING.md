@@ -77,12 +77,23 @@ The backend selects an inference engine at startup based on hardware:
 
 ```
 src/engines/
-├── base_engine.py      ← abstract base + engine selection logic
-├── cuda_engine.py      ← NVIDIA GPU via llama-server (Windows/Linux)
-├── cpu_engine.py       ← CPU via llama-server (all platforms, fallback)
-├── mlx_engine.py       ← Apple Silicon via MLX (macOS ARM)
-└── embedder_engine.py  ← sentence-transformers for KB and memory
+├── base_engine.py            ← abstract base + engine selection logic
+├── cuda_engine.py            ← NVIDIA GPU via llama-server subprocess (Windows/Linux)
+├── cpu_engine.py             ← CPU via llama-server subprocess (all platforms, fallback)
+├── mlx_engine.py             ← Apple Silicon via mlx_lm.server subprocess (macOS ARM)
+├── _mlx_server_runner.py     ← picklable target for the MLX server child process
+└── embedder_engine.py        ← sentence-transformers for KB and memory
 ```
+
+All three inference engines follow the same pattern: they spawn an
+OpenAI-compatible HTTP server in a child process and talk to it over
+`http://127.0.0.1:<port>/v1/chat/completions` (streaming SSE). CPU/CUDA wrap
+the `llama-server` binary via `subprocess.Popen`; MLX wraps `mlx_lm.server`
+via `multiprocessing.Process` (because PyInstaller frozen builds have no
+Python interpreter at `sys.executable` to pass `-m` to). The streaming
+loop, port-pick, readiness probe, and termination logic are intentionally
+duplicated across the three files — a follow-up PR will factor them into a
+shared `_LlamaServerLikeEngine` base.
 
 Adding a new engine: subclass `BaseEngine`, implement all abstract methods, register it in `base_engine.get_engine()`.
 
@@ -104,8 +115,37 @@ Each domain has `endpoints.py` (FastAPI routes), `services.py` (business logic),
 ```bash
 cd backend
 source venv/bin/activate
-pytest tests/
+pytest tests/                       # full suite (default)
+pytest tests/ -m "not mlx_only"     # skip MLX integration (CI default)
+pytest tests/ -m "mlx_only"         # only MLX integration (local Mac)
+pytest tests/ -m "e2e"              # only full-stack e2e tests
 ```
+
+Pytest markers (declared in `backend/pytest.ini`):
+
+- `unit` — fully mocked, no external dep, runs everywhere
+- `integration` — cross-component, may hit DB/filesystem
+- `mlx_only` — requires Apple Silicon + `mlx-lm` + a downloaded MLX model;
+  skipped automatically on Linux CI by `BaseEngine.get_engine() != "MLX_Engine"`
+- `e2e` — full-stack via FastAPI TestClient + real model
+
+MLX integration tests use a shared session-scoped fixture
+(`mlx_test_model_path`) that downloads `mlx-community/Qwen2.5-0.5B-Instruct-4bit`
+(~280 MB, Apache 2.0, no HF license accept) on first run via
+`huggingface_hub.snapshot_download` — cached locally afterwards.
+
+Test-mode environment variables:
+
+- `ERUDI_TEST_THINKING=1` — enable the `<think>` token regression suite
+  against `mlx-community/Qwen3-0.6B-4bit` (~600 MB)
+- `ERUDI_TEST_GEMMA=1` — enable the Gemma `<end_of_turn>` EOS regression
+  test against `mlx-community/gemma-3-270m-it-4bit`
+- `ERUDI_MLX_TEST_MODEL_DIR=/path` — override the default HF cache for
+  the standard MLX test model (offline / pre-seeded environments)
+- `ERUDI_MLX_THINKING_MODEL_REPO=mlx-community/...` — override the
+  thinking-test model repo
+- `ERUDI_FORCE_CPU=1` — short-circuit GPU detection in
+  `BaseEngine.get_engine()` to force `CPU_Engine` for testing fallback paths
 
 ---
 
