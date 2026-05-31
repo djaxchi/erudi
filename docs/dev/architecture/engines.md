@@ -8,26 +8,34 @@ The `src/engines/` directory contains all inference engine implementations for E
 
 ### LLM Engines
 
-LLM engines implement the `BaseEngine` abstract class. All three follow the
-same pattern: they spawn an OpenAI-compatible HTTP server in a child
-process and talk to it over `http://127.0.0.1:<port>/v1/chat/completions`
-(streaming SSE).
+The hierarchy is now two-tier:
 
-- **MLX_Engine** (Mac Silicon M1/M2/M3/M4): spawns `mlx_lm.server` via
-  `multiprocessing.Process(target=run_mlx_server, ...)`. Child port range
-  9080+.
-- **CUDA_Engine** (Windows/Linux + NVIDIA): spawns the `llama-server`
-  binary (CUDA build) via `subprocess.Popen`. Child port range 8080+.
-- **CPU_Engine** (Windows / Linux / macOS Intel): spawns the same
-  `llama-server` binary (CPU build) via `subprocess.Popen`. Child port
-  range 8080+.
+```
+BaseEngine
+└── BaseChatServerEngine        ← shared: port pick, /health + chat-ping probe,
+    │                             SSE byte-buffer parser, atexit storage,
+    │                             idle-cleanup active marker, kwarg translation
+    ├── MLX_Engine               (mp.Process + mlx_lm.server, port 9080+)
+    └── BaseLlamaCppEngine      ← shared CPU/CUDA: Popen, llama-server resolution,
+        │                         GGUF picker (q4_k_m > q4_0 > … > smallest),
+        │                         `repetition_penalty → repeat_penalty` rename
+        ├── CPU_Engine           (Popen + llama-server CPU, -ngl 0, port 8080+)
+        └── CUDA_Engine          (Popen + llama-server CUDA, -ngl <computed>, port 8080+)
+```
+
+Concrete engines implement only the small surface that is genuinely
+backend-specific: `_spawn_child` (CPU/CUDA via `subprocess.Popen`, MLX
+via `multiprocessing.Process(target=run_mlx_server, ...)`),
+`_terminate_process`, `_proc_is_alive`, and `_resolve_model_artifact`.
+LlamaCpp subclasses additionally implement `_build_spawn_argv` and
+`_build_spawn_env` (CUDA prepends the CUDA toolkit `bin/` to `PATH` for
+the runtime DLLs).
 
 `multiprocessing.Process` is required for MLX because PyInstaller frozen
 builds have no Python interpreter at `sys.executable` to pass `-m` to;
-`mp.spawn` (configured in `backend/run.py:143-160`) re-executes the
-binary in child mode. CPU/CUDA can use `Popen` because the
-`llama-server` binary is bundled in
-`backend/artifacts/llama-cpp/<cpu|cuda>/bin/`.
+`mp.spawn` (configured in `backend/run.py`) re-executes the binary in
+child mode. CPU/CUDA can use `Popen` because the `llama-server` binary
+is bundled in `backend/artifacts/llama-cpp/<cpu|cuda>/bin/`.
 
 #### Engine Selection
 
