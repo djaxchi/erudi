@@ -77,32 +77,20 @@ Note:
 
 import os
 import sys
-import json
-import time
+import time  # used by hardware methods
 import shutil
-import socket
-import signal
-import atexit
 import platform
-import subprocess
-from typing import Any, Optional, Tuple, Generator, Dict, Union, List
+import subprocess  # used by quant_and_save_from_hf_format + hardware
+from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
 
-try:
-    import requests
-except Exception as _e:
-    requests = None  # Raise a clear EngineException at runtime if missing
-
-from src.engines.base_engine import BaseEngine
+from src.engines.base_llama_cpp_engine import BaseLlamaCppEngine
 from src.core.logging import logger
 from src.core.exceptions import (
     HardwareException,
     EngineException,
 )
-from src.core.config import ROOT_DIR
-
-
-class CUDA_Engine(BaseEngine):
+class CUDA_Engine(BaseLlamaCppEngine):
     """Engine for NVIDIA CUDA GPU inference.
     
     Provides hardware detection and performance evaluation for NVIDIA GPUs
@@ -116,6 +104,14 @@ class CUDA_Engine(BaseEngine):
         Inference uses a CUDA-compiled llama-server subprocess (same
         architecture as CPU_Engine). GPU layers are auto-detected from VRAM.
     """
+
+    # --- BaseChatServerEngine / BaseLlamaCppEngine config overrides ---
+    _server_name = "llama-server"
+    _tokenizer_provider = "llama-server-cuda"
+    _use_cuda_build = True  # → BaseLlamaCppEngine._default_install_dir picks the cuda/ artifact
+
+    # --- CUDA-specific spawn hooks ----
+    # `_compute_gpu_layers` is defined further below and reads NVML at spawn time.
 
     # NVIDIA GPU architecture specifications
     # Maps compute capability major version to (CUDA cores/SM, Tensor cores/SM)
@@ -210,20 +206,57 @@ class CUDA_Engine(BaseEngine):
         "Qwen/Qwen2.5-7B-Instruct":             "bartowski/Qwen2.5-7B-Instruct-GGUF",
     }
 
-    # ---------- Private server helpers ----------
+    # ---------- CUDA-specific spawn hooks (BaseLlamaCppEngine contract) ----------
 
     @classmethod
-    def _assert_requests(cls) -> None:
-        """Raise EngineException if requests library is not available."""
-        if requests is None:
-            raise EngineException(
-                "Missing dependency 'requests'. Install it in the runtime environment."
-            )
+    def _prepare_spawn_context(cls) -> Dict[str, Any]:
+        """Resolve per-spawn CUDA context: context window, thread count,
+        and GPU layers computed from current VRAM (NVML)."""
+        return {
+            "ctx_size": int(os.environ.get("ERUDI_CTX", "4096")),
+            "threads": max(1, os.cpu_count() or 1),
+            "gpu_layers": cls._compute_gpu_layers(),
+        }
 
     @classmethod
-    def _default_install_dir(cls) -> Path:
-        """Return path to CUDA-compiled llama.cpp binaries."""
-        return ROOT_DIR / "artifacts" / "llama-cpp" / "cuda" / "bin"
+    def _build_spawn_argv(
+        cls,
+        *,
+        llama_server: Path,
+        model_gguf: Path,
+        alias: str,
+        port: int,
+        ctx_size: int = 4096,
+        threads: int = 1,
+        gpu_layers: int = -1,
+        **_ignored: Any,
+    ) -> List[Any]:
+        """CUDA CLI for llama-server: injects computed `-ngl <gpu_layers>`."""
+        return [
+            str(llama_server),
+            "-m", str(model_gguf),
+            "--host", "127.0.0.1",
+            "--port", str(port),
+            "--alias", alias,
+            "-c", str(ctx_size),
+            "--threads", str(threads),
+            "-ngl", str(gpu_layers),
+        ]
+
+    @classmethod
+    def _build_spawn_env(cls) -> Dict[str, str]:
+        """Prepend the CUDA toolkit `bin/` to PATH so llama-server finds
+        the runtime DLLs (cuBLAS, cuDNN, etc.)."""
+        env = os.environ.copy()
+        cuda_bin = cls._resolve_cuda_bin_dir()
+        if cuda_bin:
+            env["PATH"] = str(cuda_bin) + os.pathsep + env.get("PATH", "")
+            logger.debug(f"[CUDA_Engine] Prepended CUDA bin to PATH: {cuda_bin}")
+        return env
+
+    # ---------- CUDA-specific helpers (kept from pre-refactor) ----------
+
+
 
     @classmethod
     def _resolve_cuda_bin_dir(cls) -> Optional[Path]:
@@ -260,247 +293,11 @@ class CUDA_Engine(BaseEngine):
 
         return None
 
-    @classmethod
-    def _find_llama_server(cls, install_dir: Path) -> Path:
-        """Locate llama-server executable in the install directory.
 
-        Args:
-            install_dir: Directory containing llama.cpp binaries.
 
-        Returns:
-            Absolute path to llama-server executable.
 
-        Raises:
-            EngineException: If binary not found at expected path.
-        """
-        exe = "llama-server.exe" if os.name == "nt" else "llama-server"
-        p = install_dir / exe
-        if not p.exists():
-            raise EngineException(
-                f"llama-server not found at {p}. Build llama.cpp with CUDA first."
-            )
-        return p
 
-    @classmethod
-    def _pick_free_port(cls, start: int = 8080, limit: int = 100) -> int:
-        """Find a free TCP port on localhost.
 
-        Args:
-            start: First port to try.
-            limit: Number of ports to scan before giving up.
-
-        Returns:
-            Available port number.
-
-        Raises:
-            EngineException: If no free port found in range.
-        """
-        for port in range(start, start + limit):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                try:
-                    s.bind(("127.0.0.1", port))
-                    return port
-                except OSError:
-                    continue
-        raise EngineException("No free TCP port found for llama-server.")
-
-    @classmethod
-    def _probe_ready(
-        cls,
-        base_url: str,
-        model_alias: str,
-        timeout_s: float = 120.0,
-        proc: Optional[subprocess.Popen] = None,
-    ) -> None:
-        """Poll llama-server until it responds to a chat request.
-
-        Args:
-            base_url: Server base URL (http://127.0.0.1:<port>).
-            model_alias: Model alias used when starting the server.
-            timeout_s: Maximum seconds to wait before raising.
-            proc: Optional subprocess handle to detect early crashes.
-
-        Raises:
-            EngineException: If server does not respond within timeout
-                or crashes during startup.
-        """
-        cls._assert_requests()
-        t0 = time.time()
-        url = f"{base_url}/v1/chat/completions"
-        payload = {
-            "model": model_alias,
-            "messages": [{"role": "user", "content": "ping"}],
-            "max_tokens": 1,
-        }
-        while time.time() - t0 < timeout_s:
-            # Detect early crash: process exited before becoming ready
-            if proc is not None and proc.poll() is not None:
-                output = ""
-                try:
-                    output = proc.stdout.read() if proc.stdout else ""
-                except Exception:
-                    pass
-                rc = proc.returncode
-                # 0xC0000135 = STATUS_DLL_NOT_FOUND on Windows
-                if rc == -1073741515 or rc == 3221225781:
-                    raise EngineException(
-                        f"llama-server failed to start (exit {rc}): "
-                        f"Missing DLLs. Ensure CUDA toolkit bin directory is on PATH. "
-                        f"Server output: {output[:500]}"
-                    )
-                raise EngineException(
-                    f"llama-server crashed during startup (exit {rc}). "
-                    f"Server output: {output[:500]}"
-                )
-            try:
-                r = requests.post(url, json=payload, timeout=2.0)
-                if r.status_code in (200, 400):
-                    return
-            except Exception:
-                pass
-            time.sleep(0.5)
-        raise EngineException("llama-server did not become ready within timeout.")
-
-    @classmethod
-    def _start_server(
-        cls,
-        model_gguf: Path,
-        install_dir: Path,
-        alias: str,
-        ctx: int,
-        threads: Optional[int],
-        gpu_layers: int = -1,
-        port: Optional[int] = None,
-        extra_args: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        """Start a llama-server subprocess and wait for it to become ready.
-
-        Args:
-            model_gguf: Path to the GGUF model file.
-            install_dir: Directory containing llama-server binary.
-            alias: Model alias for OpenAI-compatible API calls.
-            ctx: Context window size in tokens.
-            threads: CPU thread count. None = auto-detect.
-            gpu_layers: Layers to offload to GPU. -1 = full offload.
-            port: TCP port to bind. None = auto-select.
-            extra_args: Additional CLI arguments for llama-server.
-
-        Returns:
-            Server handle dict with keys: pid, proc, port, base_url, alias,
-            model_path, threads, gpu_layers.
-        """
-        server_path = cls._find_llama_server(install_dir)
-        if threads is None:
-            threads = max(1, os.cpu_count() or 1)
-        port = port or cls._pick_free_port()
-
-        args = [
-            str(server_path),
-            "-m", str(model_gguf),
-            "--host", "127.0.0.1",
-            "--port", str(port),
-            "--alias", alias,
-            "-c", str(ctx),
-            "--threads", str(threads),
-            "-ngl", str(gpu_layers),
-        ]
-        if extra_args:
-            args += extra_args
-
-        # Build env with CUDA toolkit on PATH so llama-server finds DLLs
-        env = os.environ.copy()
-        cuda_bin = cls._resolve_cuda_bin_dir()
-        if cuda_bin:
-            env["PATH"] = str(cuda_bin) + os.pathsep + env.get("PATH", "")
-            logger.debug(f"Prepended CUDA bin to PATH: {cuda_bin}")
-
-        proc = subprocess.Popen(
-            args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            bufsize=1,
-            env=env,
-        )
-
-        base_url = f"http://127.0.0.1:{port}"
-        cls._probe_ready(base_url, alias, proc=proc)
-
-        atexit.register(lambda: cls._terminate_process(proc))
-
-        return {
-            "pid": proc.pid,
-            "proc": proc,
-            "port": port,
-            "base_url": base_url,
-            "alias": alias,
-            "model_path": str(model_gguf),
-            "threads": threads,
-            "gpu_layers": gpu_layers,
-        }
-
-    @classmethod
-    def _terminate_process(cls, proc: subprocess.Popen) -> None:
-        """Gracefully terminate a llama-server subprocess.
-
-        Args:
-            proc: Subprocess handle returned by Popen.
-        """
-        if not proc:
-            return
-        try:
-            if proc.poll() is None:
-                if platform.system() == "Windows":
-                    proc.terminate()
-                else:
-                    proc.send_signal(signal.SIGINT)
-                try:
-                    proc.wait(timeout=5)
-                except Exception:
-                    proc.kill()
-        except Exception:
-            pass
-
-    @classmethod
-    def _select_gguf(cls, llm_local_path: Union[str, Path]) -> Path:
-        """Select the best GGUF file from a path or directory.
-
-        Priority: q4_k_m > q4_0 > q5_k_m > q8_0 > f16, then smallest file.
-
-        Args:
-            llm_local_path: Path to .gguf file or directory containing them.
-
-        Returns:
-            Path to selected .gguf file.
-
-        Raises:
-            FileNotFoundError: If path does not exist.
-            EngineException: If no .gguf file found.
-        """
-        p = Path(llm_local_path).resolve()
-        if not p.exists():
-            raise FileNotFoundError(f"Model path not found: {p}")
-        if p.is_file():
-            if p.suffix.lower() == ".gguf":
-                return p
-            raise EngineException(f"Expected a .gguf file, got: {p}")
-
-        ggufs = list(p.glob("*.gguf"))
-        if not ggufs:
-            raise EngineException(f"No .gguf files found in {p}.")
-        if len(ggufs) == 1:
-            return ggufs[0]
-
-        for quant in ["q4_k_m", "q4_0", "q5_k_m", "q8_0", "f16"]:
-            for gguf in ggufs:
-                if quant in gguf.stem.lower():
-                    logger.info(f"[CUDA_Engine] Selected {gguf.name} (quant={quant})")
-                    return gguf
-
-        smallest = min(ggufs, key=lambda x: x.stat().st_size)
-        logger.warning(f"[CUDA_Engine] No known quant pattern; selecting smallest: {smallest.name}")
-        return smallest
 
     @classmethod
     def _compute_gpu_layers(cls) -> int:
@@ -760,231 +557,7 @@ class CUDA_Engine(BaseEngine):
             if f.is_file() and f.suffix.lower() not in excluded:
                 shutil.copy(f, dst / f.name)
 
-    @classmethod
-    def get_model_and_tokenizer(
-        cls,
-        llm_id: str,
-        llm_local_path: Union[str, Path],
-        *args
-    ) -> Tuple[Any, Any]:
-        """Start a CUDA-accelerated llama-server and return its handle.
 
-        Starts a llama-server process compiled with CUDA support. GPU layer
-        count is computed automatically from available VRAM. Idempotent: if
-        the same llm_id is already loaded, the cached handle is returned.
-
-        Args:
-            llm_id: Unique model identifier (used as server alias).
-            llm_local_path: Path to .gguf file or directory containing one.
-            *args: Reserved for future engine-specific arguments.
-
-        Returns:
-            Tuple of (model_handle, tokenizer_placeholder) where model_handle
-            is a dict with keys: pid, proc, port, base_url, alias, model_path,
-            threads, gpu_layers. tokenizer_placeholder is a static dict since
-            tokenization is handled server-side.
-
-        Raises:
-            EngineException: If llama-server binary not found, port unavailable,
-                or server fails to start within timeout.
-        """
-        logger.info(f"[CUDA_Engine] Loading '{llm_id}' from {llm_local_path} (CUDA)...")
-        with cls._lock:
-            if cls._should_not_reload_model(llm_id):
-                return cls._return_cached_model_and_tokenizer()
-
-            cls._assert_requests()
-            gguf = cls._select_gguf(llm_local_path)
-            install_dir = cls._default_install_dir()
-            gpu_layers = cls._compute_gpu_layers()
-
-            # Log CUDA environment details on first load
-            cuda_bin = cls._resolve_cuda_bin_dir()
-            logger.info(
-                f"[CUDA_Engine] GGUF: {gguf.name} "
-                f"({gguf.stat().st_size / (1024**3):.2f} GB)"
-            )
-            logger.info(
-                f"[CUDA_Engine] GPU layers: {gpu_layers} "
-                f"({'full offload' if gpu_layers == -1 else f'{gpu_layers} layers'}), "
-                f"CUDA bin: {cuda_bin or 'NOT FOUND'}"
-            )
-
-            # Terminate any previously running server
-            prev = cls._model
-            if isinstance(prev, dict) and "proc" in prev and prev["proc"] is not None:
-                cls._terminate_process(prev["proc"])
-
-            alias = f"erudi-{llm_id}"
-            model_handle = cls._start_server(
-                model_gguf=gguf,
-                install_dir=install_dir,
-                alias=alias,
-                ctx=int(os.environ.get("ERUDI_CTX", "4096")),
-                threads=None,
-                gpu_layers=gpu_layers,
-                port=None,
-                extra_args=None,
-            )
-
-            cls._model = model_handle
-            cls._tokenizer = {"type": "remote", "provider": "llama-server-cuda"}
-            cls._model_id = llm_id
-            from datetime import datetime
-            cls._last_used = datetime.now()
-
-            logger.info(
-                f"[CUDA_Engine] Server ready at {model_handle['base_url']} "
-                f"(gpu_layers={gpu_layers}, alias={alias})"
-            )
-            return cls._model, cls._tokenizer
-
-    @classmethod
-    def generate_stream(
-        cls,
-        model: Any,
-        tokenizer: Any,
-        prompt: list[dict[str, str]],
-        max_tokens: int,
-        temperature: float,
-        top_p: float,
-        **kwargs
-    ) -> Generator[str, None, None]:
-        """Stream tokens from the CUDA llama-server via OpenAI-compatible API.
-
-        Sends a streaming POST request to the running llama-server and yields
-        token deltas as strings. All generation is performed server-side.
-
-        Args:
-            model: Server handle dict from get_model_and_tokenizer().
-            tokenizer: Unused — tokenization is handled by llama-server.
-            prompt: Chat messages in OpenAI format.
-            max_tokens: Maximum tokens to generate.
-            temperature: Sampling temperature (0.0–2.0).
-            top_p: Nucleus sampling threshold (0.0–1.0).
-            **kwargs: Additional parameters (ignored; logged at DEBUG level).
-
-        Yields:
-            str: Token delta strings as they are generated.
-
-        Raises:
-            RuntimeError: If model handle is not a valid server dict.
-            EngineException: If the streaming request fails.
-        """
-        if not isinstance(model, dict) or "base_url" not in model:
-            raise RuntimeError(
-                "Invalid model handle for CUDA_Engine. Call get_model_and_tokenizer() first."
-            )
-
-        cls._assert_requests()
-        base_url = model["base_url"]
-        alias = model["alias"]
-        url = f"{base_url}/v1/chat/completions"
-
-        if kwargs:
-            logger.debug(f"[CUDA_Engine] Ignoring unsupported params: {list(kwargs.keys())}")
-        logger.debug(
-            f"[CUDA_Engine] generate_stream: max_tokens={max_tokens}, "
-            f"temperature={temperature}, top_p={top_p}"
-        )
-
-        payload = {
-            "model": alias,
-            "messages": prompt,
-            "max_tokens": max_tokens,
-            "temperature": float(temperature),
-            "top_p": float(top_p),
-            "stream": True,
-        }
-
-        with cls._lock:
-            cls._last_used = None
-
-        try:
-            with requests.post(url, json=payload, stream=True, timeout=600) as r:
-                r.raise_for_status()
-                # Accumulate raw bytes and split on newlines manually so that
-                # UTF-8 multi-byte sequences (em dash, curly quotes, etc.) are
-                # never passed through requests' ISO-8859-1 fallback decoder.
-                buf = b""
-                done = False
-                for chunk in r.iter_content(chunk_size=None):
-                    buf += chunk
-                    while b"\n" in buf:
-                        raw_line, buf = buf.split(b"\n", 1)
-                        line = raw_line.rstrip(b"\r").decode("utf-8")
-                        if not line:
-                            continue
-                        if line.startswith("data: "):
-                            data = line[6:].strip()
-                            if data == "[DONE]":
-                                done = True
-                                break
-                            try:
-                                obj = json.loads(data)
-                                delta = obj["choices"][0].get("delta", {}).get("content")
-                                if delta:
-                                    yield delta
-                            except Exception:
-                                continue
-                    if done:
-                        break
-        except Exception as e:
-            raise EngineException(message="CUDA_Engine streaming failed", trace=e)
-        finally:
-            with cls._lock:
-                from datetime import datetime
-                cls._last_used = datetime.now()
-
-    @classmethod
-    def _wait_port_closed(cls, port: int, timeout_s: float = 3.0) -> None:
-        """Wait until the given TCP port on localhost is no longer bound.
-
-        Args:
-            port: Port number to poll.
-            timeout_s: Seconds to wait before returning regardless.
-        """
-        t0 = time.time()
-        while time.time() - t0 < timeout_s:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(0.2)
-                if s.connect_ex(("127.0.0.1", port)) != 0:
-                    return
-            time.sleep(0.1)
-
-    @classmethod
-    def _stop_server_if_running(cls) -> None:
-        """Terminate the running llama-server process and wait for its port to close."""
-        prev = cls._model
-        if not isinstance(prev, dict):
-            return
-        proc = prev.get("proc")
-        port = prev.get("port")
-        try:
-            if proc:
-                cls._terminate_process(proc)
-            if port is not None:
-                try:
-                    cls._wait_port_closed(int(port))
-                except Exception:
-                    pass
-        except Exception as e:
-            logger.warning(f"[CUDA_Engine] graceful stop failed: {e}")
-
-    @classmethod
-    def cleanup(cls) -> None:
-        """Terminate llama-server process and release cached model state.
-
-        Overrides BaseEngine.cleanup() to ensure the CUDA llama-server
-        subprocess is killed before clearing model state.
-
-        Note:
-            Thread-safe. Called automatically by the cleanup monitor or
-            explicitly when switching models.
-        """
-        with cls._lock:
-            cls._stop_server_if_running()
-            return super().cleanup()
 
     # ======================= HARDWARE DETECTION =======================
 
