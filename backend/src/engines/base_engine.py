@@ -46,6 +46,7 @@ import os
 from datetime import datetime, timedelta
 from typing import Any, Optional, Tuple, Generator, Union, Type, Dict
 from abc import ABC, abstractmethod, ABCMeta
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from src.core.exceptions import EngineException
@@ -94,6 +95,12 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     _model_id: Optional[int] = None
     _last_used: Optional[datetime] = None
     _lock = threading.Lock()
+
+    # Serializes a full generation (model resolution + stream) on the
+    # single-model engine. Lazily created and rebound per running loop so each
+    # test (own loop) stays isolated; production has one loop -> one lock.
+    _generation_lock = None
+    _generation_lock_loop = None
 
     # --- Lifecycle management ---
     _cleanup_task = None
@@ -589,7 +596,50 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         cls._last_used = datetime.now()
         logger.info(f"Using cached model {cls._model_id}")
         return cls._model, cls._tokenizer
-    
+
+    @classmethod
+    def _generation_lock_for_running_loop(cls) -> "asyncio.Lock":
+        """Return an ``asyncio.Lock`` bound to the current running loop.
+
+        Recreated if the running loop changed so tests (each with their own
+        loop) stay isolated; in production there is exactly one loop, so the
+        lock is created once and shared across all engine classes.
+        """
+        loop = asyncio.get_running_loop()
+        if BaseEngine._generation_lock is None or BaseEngine._generation_lock_loop is not loop:
+            BaseEngine._generation_lock = asyncio.Lock()
+            BaseEngine._generation_lock_loop = loop
+        return BaseEngine._generation_lock
+
+    @classmethod
+    @asynccontextmanager
+    async def generation_guard(cls):
+        """Serialize a full generation and suppress idle cleanup for its duration.
+
+        The agent layer wraps model resolution + the entire token stream in this
+        guard so that:
+          - concurrent requests for different models can't thrash the
+            single-model engine subprocess (they serialize on one asyncio lock);
+          - the idle-cleanup monitor never reaps the model mid-stream — entering
+            the guard sets the ``_last_used = None`` active marker (so
+            ``_should_cleanup`` returns ``False``), restored on exit.
+
+        This is the engine-level home of the invariant that ``generate_stream``
+        used to carry; it lives here (not in the agent layer) to keep subprocess
+        lifecycle and concurrency inside the engine encapsulation.
+        """
+        lock = cls._generation_lock_for_running_loop()
+        async with lock:
+            # Set/restore the marker under the threading lock so it is atomic
+            # w.r.t. the cleanup monitor's `with _lock: _should_cleanup()` check.
+            with cls._lock:
+                cls._last_used = None
+            try:
+                yield
+            finally:
+                with cls._lock:
+                    cls._last_used = datetime.now()
+
     @classmethod
     def cleanup(cls) -> None:
         """Free model and tokenizer from memory, reset state.
