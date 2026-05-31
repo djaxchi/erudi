@@ -2,22 +2,37 @@
 
 Tests cover:
 - Repository layer (database operations)
-- Service layer (business logic with mocked engine)
+- Service layer (business logic with a fake chat model)
 - Endpoint layer (REST API with streaming)
 
-All LLM_Engine operations are mocked for fast, isolated testing.
+Generation goes through the shared AgentRunner (stateless: no checkpointer),
+so the fake chat model is injected by patching ``build_chat_model``.
 """
-import pytest
-from unittest.mock import Mock, patch, AsyncMock
-from fastapi import status
-from sqlalchemy.orm import Session
 
+import pytest
+from unittest.mock import patch
+from fastapi import status
+
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage
+
+import src.agents.runner as agent_runner
+from src.core import config
+from src.engines.base_engine import BaseEngine
+from src.agents.runner import ERROR_SENTINEL
 from src.domains.arena.repository import ArenaRepository
 from src.domains.arena.services import ArenaService
 from src.domains.arena.schemas import ArenaQueryPayload
-from src.entities.Llm import Llm
-from src.entities.KnowledgeBase import KnowledgeBase
-from src.entities.VectorStore import VectorStore
+
+
+class _FakeEngine(BaseEngine):
+    """Engine stub exposing generation_guard without spawning a real model."""
+
+
+def _fake_chat_model(*texts):
+    """Return a build_chat_model replacement yielding a scripted fake model."""
+    msgs = [AIMessage(content=t) for t in texts]
+    return lambda llm, **kw: GenericFakeChatModel(messages=iter(msgs))
 
 
 # ============ Repository Tests ============
@@ -26,297 +41,127 @@ class TestArenaRepository:
     """Test suite for ArenaRepository database operations."""
 
     def test_get_llm_by_id_success(self, test_db_session, mock_llm):
-        """Test successful LLM retrieval by ID.
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
         repo = ArenaRepository(test_db_session)
-        
         llm = repo.get_llm_by_id(mock_llm.id)
-        
         assert llm is not None
         assert llm.id == mock_llm.id
         assert llm.name == "Test Base Model"
         assert llm.param_size == 7.0
 
     def test_get_llm_by_id_not_found(self, test_db_session):
-        """Test 404 error when LLM doesn't exist.
-        
-        Args:
-            test_db_session: Database session fixture.
-        """
         repo = ArenaRepository(test_db_session)
-        
         with pytest.raises(Exception) as exc_info:
             repo.get_llm_by_id(999)
-        
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
 
 
 # ============ Service Tests ============
 
 class TestArenaService:
-    """Test suite for ArenaService business logic with mocked engine."""
+    """Test suite for ArenaService business logic (fake chat model)."""
 
-    @pytest.mark.asyncio
-    async def test_query_llm_stream_basic(self, test_db_session, mock_llm):
-        """Test basic streaming query with mocked engine.
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
+    async def test_query_llm_stream_basic(self, test_db_session, mock_llm, monkeypatch):
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("AI is artificial intelligence."))
         service = ArenaService(test_db_session)
-        payload = ArenaQueryPayload(
-            question="What is AI?",
-            temperature=0.7,
-            top_p=0.9,
-            max_new_tokens=512
-        )
-        
-        # Mock engine methods
-        mock_model = Mock()
-        mock_tokenizer = Mock()
-        mock_tokens = ["AI ", "is ", "artificial ", "intelligence."]
-        
-        with patch("src.core.config.LLM_Engine") as mock_engine:
-            mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
-            mock_engine.generate_stream.return_value = iter(mock_tokens)
-            
-            # Collect stream output
-            result = []
-            async for token in service.query_llm_stream(mock_llm.id, payload):
-                result.append(token)
-        
-        assert result == mock_tokens
+        payload = ArenaQueryPayload(question="What is AI?", temperature=0.7, top_p=0.9, max_new_tokens=512)
+
+        result = [t async for t in service.query_llm_stream(mock_llm.id, payload)]
+
         assert "".join(result) == "AI is artificial intelligence."
-        mock_engine.get_model_and_tokenizer.assert_called_once()
-        mock_engine.generate_stream.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_query_llm_stream_empty_question(self, test_db_session, mock_llm):
-        """Test error handling for empty question.
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
-        service = ArenaService(test_db_session)
-        
-        # Pydantic validation should catch this before service call
+    async def test_query_llm_stream_empty_question_rejected_by_pydantic(self, test_db_session, mock_llm):
+        # Empty question is rejected at the schema level (min_length=1) -> 422.
         with pytest.raises(Exception):
-            payload = ArenaQueryPayload(
-                question="",  # Empty string not allowed by Pydantic min_length=1
-                temperature=0.5
-            )
+            ArenaQueryPayload(question="", temperature=0.5)
 
-    @pytest.mark.asyncio
     async def test_query_llm_stream_model_not_found(self, test_db_session):
-        """Test error handling when LLM doesn't exist.
-        
-        Args:
-            test_db_session: Database session fixture.
-        """
         service = ArenaService(test_db_session)
         payload = ArenaQueryPayload(question="Test question")
-        
         with pytest.raises(Exception) as exc_info:
             async for _ in service.query_llm_stream(999, payload):
                 pass
-        
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
 
-    @pytest.mark.asyncio
-    async def test_query_llm_stream_with_kb(self, test_db_session, mock_llm_with_kb):
-        """Test streaming with KB-attached LLM (mocked KB retrieval).
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm_with_kb: LLM with KB fixture.
-        """
-        llm, kb, vector_store = mock_llm_with_kb
+    async def test_query_llm_stream_with_kb(self, test_db_session, mock_llm_with_kb, monkeypatch):
+        llm, _kb, _vector_store = mock_llm_with_kb
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("Answer from KB."))
         service = ArenaService(test_db_session)
-        payload = ArenaQueryPayload(
-            question="What is in the KB?",
-            temperature=0.5
-        )
-        
-        mock_model = Mock()
-        mock_tokenizer = Mock()
-        mock_tokens = ["Answer ", "from ", "KB."]
-        
-        with patch("src.core.config.LLM_Engine") as mock_engine, \
-             patch("src.domains.arena.services.get_relevant_texts_from_kb") as mock_kb:
-            
-            mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
-            mock_engine.generate_stream.return_value = iter(mock_tokens)
+        payload = ArenaQueryPayload(question="What is in the KB?", temperature=0.5)
+
+        with patch("src.domains.arena.services.get_relevant_texts_from_kb") as mock_kb:
             mock_kb.return_value = ["Relevant KB context"]
-            
-            result = []
-            async for token in service.query_llm_stream(llm.id, payload):
-                result.append(token)
-        
-        assert result == mock_tokens
-        # Verify KB retrieval was called for attached KB
+            result = [t async for t in service.query_llm_stream(llm.id, payload)]
+
+        assert "".join(result) == "Answer from KB."
         mock_kb.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_query_llm_stream_custom_params(self, test_db_session, mock_llm):
-        """Test streaming with custom generation parameters.
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
+    async def test_query_llm_stream_custom_params(self, test_db_session, mock_llm, monkeypatch):
+        # Per-request generation params must reach the model factory.
+        captured = {}
+
+        def _capture(llm, **kw):
+            captured.update(kw)
+            return GenericFakeChatModel(messages=iter([AIMessage(content="Custom response.")]))
+
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _capture)
         service = ArenaService(test_db_session)
         payload = ArenaQueryPayload(
             question="Test custom params",
             temperature=1.5,
             top_p=0.95,
             max_new_tokens=2048,
-            custom_prompt="Be concise"
+            custom_prompt="Be concise",
         )
-        
-        mock_model = Mock()
-        mock_tokenizer = Mock()
-        mock_tokens = ["Custom ", "response."]
-        
-        with patch("src.core.config.LLM_Engine") as mock_engine:
-            mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
-            mock_engine.generate_stream.return_value = iter(mock_tokens)
-            
-            result = []
-            async for token in service.query_llm_stream(mock_llm.id, payload):
-                result.append(token)
-        
-        assert result == mock_tokens
-        # Verify generate_stream was called with custom params
-        call_kwargs = mock_engine.generate_stream.call_args[1]
-        assert call_kwargs['temperature'] == 1.5
-        assert call_kwargs['top_p'] == 0.95
-        assert call_kwargs['max_tokens'] == 2048
 
-    @pytest.mark.asyncio
-    async def test_query_llm_stream_engine_failure(self, test_db_session, mock_llm):
-        """Test error handling when engine generation fails.
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
+        result = [t async for t in service.query_llm_stream(mock_llm.id, payload)]
+
+        assert "".join(result) == "Custom response."
+        assert captured["temperature"] == 1.5
+        assert captured["top_p"] == 0.95
+        assert captured["max_tokens"] == 2048
+
+    async def test_query_llm_stream_engine_failure_yields_sentinel(self, test_db_session, mock_llm, monkeypatch):
+        # Unified error policy: model-load failure yields the sentinel inline
+        # (the old code raised, which was lost after the 200 response started).
+        def _boom(llm, **kw):
+            raise RuntimeError("Model load failed")
+
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _boom)
         service = ArenaService(test_db_session)
         payload = ArenaQueryPayload(question="Trigger error")
-        
-        with patch("src.core.config.LLM_Engine") as mock_engine:
-            mock_engine.get_model_and_tokenizer.side_effect = RuntimeError("Model load failed")
-            
-            with pytest.raises(Exception) as exc_info:
-                async for _ in service.query_llm_stream(mock_llm.id, payload):
-                    pass
-            
-            assert "load" in str(exc_info.value).lower()
+
+        result = [t async for t in service.query_llm_stream(mock_llm.id, payload)]
+        assert any(ERROR_SENTINEL in t for t in result)
 
 
 # ============ Endpoint Tests ============
 
 class TestArenaEndpoints:
-    """Test suite for arena REST API endpoints with mocked engine."""
+    """Test suite for arena REST API endpoints (fake chat model)."""
 
     def test_query_endpoint_success(self, client, test_db_session, mock_llm):
-        """Test successful arena query via REST API.
-        
-        Args:
-            client: FastAPI test client.
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
-        payload = {
-            "question": "What is machine learning?",
-            "temperature": 0.7,
-            "top_p": 0.9,
-            "max_new_tokens": 512
-        }
-        
-        mock_model = Mock()
-        mock_tokenizer = Mock()
-        mock_tokens = ["Machine ", "learning ", "is ", "AI."]
-        
-        with patch("src.core.config.LLM_Engine") as mock_engine:
-            mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
-            mock_engine.generate_stream.return_value = iter(mock_tokens)
-            
-            response = client.post(
-                f"/erudi/arena/{mock_llm.id}/query",
-                json=payload
-            )
-        
+        payload = {"question": "What is machine learning?", "temperature": 0.7, "top_p": 0.9, "max_new_tokens": 512}
+        with patch.object(agent_runner, "build_chat_model", _fake_chat_model("Machine learning is AI.")):
+            response = client.post(f"/erudi/arena/{mock_llm.id}/query", json=payload)
         assert response.status_code == status.HTTP_200_OK
         assert response.text == "Machine learning is AI."
 
     def test_query_endpoint_invalid_payload(self, client, test_db_session, mock_llm):
-        """Test validation error for invalid payload.
-        
-        Args:
-            client: FastAPI test client.
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
-        payload = {
-            "question": "",  # Empty question - violates min_length=1
-            "temperature": 3.0  # Out of range (max 2.0)
-        }
-        
-        response = client.post(
-            f"/erudi/arena/{mock_llm.id}/query",
-            json=payload
-        )
-        
+        payload = {"question": "", "temperature": 3.0}  # empty + out-of-range
+        response = client.post(f"/erudi/arena/{mock_llm.id}/query", json=payload)
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
     def test_query_endpoint_model_not_found(self, client):
-        """Test 404 error when querying non-existent model.
-        
-        Args:
-            client: FastAPI test client.
-        """
-        payload = {
-            "question": "Test question"
-        }
-        
-        response = client.post(
-            "/erudi/arena/999/query",
-            json=payload
-        )
-        
+        response = client.post("/erudi/arena/999/query", json={"question": "Test question"})
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_query_endpoint_with_custom_prompt(self, client, mock_llm):
-        """Test arena query with custom prompt.
-        
-        Args:
-            client: FastAPI test client.
-            mock_llm: LLM entity fixture.
-        """
-        payload = {
-            "question": "Explain quantum physics",
-            "custom_prompt": "Use simple language for a child",
-            "temperature": 0.8
-        }
-        
-        mock_model = Mock()
-        mock_tokenizer = Mock()
-        mock_tokens = ["Quantum ", "is ", "tiny ", "stuff."]
-        
-        with patch("src.core.config.LLM_Engine") as mock_engine:
-            mock_engine.get_model_and_tokenizer.return_value = (mock_model, mock_tokenizer)
-            mock_engine.generate_stream.return_value = iter(mock_tokens)
-            
-            response = client.post(
-                f"/erudi/arena/{mock_llm.id}/query",
-                json=payload
-            )
-        
+        payload = {"question": "Explain quantum physics", "custom_prompt": "Use simple language for a child", "temperature": 0.8}
+        with patch.object(agent_runner, "build_chat_model", _fake_chat_model("Quantum is tiny stuff.")):
+            response = client.post(f"/erudi/arena/{mock_llm.id}/query", json=payload)
         assert response.status_code == status.HTTP_200_OK
         assert "Quantum" in response.text
