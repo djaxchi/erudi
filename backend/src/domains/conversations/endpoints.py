@@ -90,10 +90,7 @@ Warning:
 """
 
 
-import asyncio
-import queue
-from concurrent.futures import ThreadPoolExecutor
-from typing import AsyncGenerator, List
+from typing import List
 
 from fastapi import Depends, APIRouter
 from fastapi.concurrency import run_in_threadpool
@@ -117,58 +114,17 @@ from src.domains.conversations.services import ConversationService
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
-
-def _mlx_thread_initializer() -> None:
-    """Warm up MLX GPU streams in the persistent generation thread.
-
-    MLX creates thread-local GPU streams on first use. Running a trivial eval
-    here ensures Stream(gpu, 0) exists before any generation call is made,
-    which prevents the 'There is no Stream(gpu, 0) in current thread' crash.
-    """
-    try:
-        import mlx.core as mx
-        mx.eval(mx.array([1.0]))
-    except Exception:
-        pass
-
-
-_MLX_EXECUTOR = ThreadPoolExecutor(
-    max_workers=1,
-    thread_name_prefix="mlx-generation",
-    initializer=_mlx_thread_initializer,
-)
-
-
-async def _stream_on_single_thread(
-    sync_generator_fn, *args, **kwargs
-) -> AsyncGenerator[str, None]:
-    """Run a sync generator on a persistent single MLX thread and yield its values.
-
-    Uses a single-worker ThreadPoolExecutor so the same OS thread handles every
-    generation request. MLX GPU streams are thread-local; initializing them once
-    in the executor thread (via _mlx_thread_initializer) and reusing that thread
-    avoids the Stream(gpu, 0) crash that occurs when next() is called from an
-    arbitrary or freshly-created thread.
-    """
-    token_queue: queue.Queue = queue.Queue()
-
-    def _run() -> None:
-        try:
-            for token in sync_generator_fn(*args, **kwargs):
-                token_queue.put(token)
-        finally:
-            token_queue.put(None)  # sentinel
-
-    loop = asyncio.get_event_loop()
-    future = loop.run_in_executor(_MLX_EXECUTOR, _run)
-
-    while True:
-        token = await loop.run_in_executor(None, token_queue.get)
-        if token is None:
-            break
-        yield token
-
-    await future
+# Note (refactor/mlx-server-subprocess, Phase 3):
+# The former `_MLX_EXECUTOR` / `_mlx_thread_initializer` / `_stream_on_single_thread`
+# wrapper was needed because the old in-process MLX engine called
+# `mlx_lm.stream_generate` directly: GPU streams are thread-local, so each
+# generation request had to land on the same persistent OS thread that had
+# pre-warmed `Stream(gpu, 0)` (commits cefdc7a, 40fb55e). Now that MLX_Engine
+# spawns `mlx_lm.server` in a child process, the GPU stream lives entirely in
+# that child — the parent FastAPI process never touches MLX. StreamingResponse
+# can iterate the sync generator returned by ConversationService directly;
+# Starlette wraps it via `iterate_in_threadpool` (any worker thread is fine).
+# This is the same pattern arena/endpoints.py:114 has always used.
 
 
 @router.get("/debug/test_model/{llm_id}")
@@ -631,9 +587,7 @@ async def generate_title(
     """
     """Generate a title for the conversation based on the first message."""
     return StreamingResponse(
-        _stream_on_single_thread(
-            service.generate_title_stream, conversation_id, payload.question
-        ),
+        service.generate_title_stream(conversation_id, payload.question),
         media_type="text/plain",
         headers={
             "Cache-Control": "no-cache",
@@ -683,9 +637,7 @@ async def query_and_respond(
     """
     """Query the conversation and get a streaming response."""
     return StreamingResponse(
-        _stream_on_single_thread(
-            service.query_and_respond_stream, conversation_id, payload
-        ),
+        service.query_and_respond_stream(conversation_id, payload),
         media_type="text/plain",
         headers={
             "Cache-Control": "no-cache",

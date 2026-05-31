@@ -1,88 +1,119 @@
-"""MLX engine for Apple Silicon inference using Metal Performance Shaders.
+"""MLX engine for Apple Silicon inference via `mlx_lm.server` subprocess.
 
-This module implements the MLX backend for local LLM inference on Mac devices
-with M1/M2/M3 chips. It provides:
-- 4-bit quantization for memory efficiency
-- Metal GPU acceleration via MLX framework
-- Thread-safe model loading and generation
-- Automatic model caching and cleanup
+Inference is delegated to an out-of-process `mlx_lm.server` HTTP server
+(OpenAI-compatible), spawned by `multiprocessing.Process` and reached over
+loopback HTTP — exactly aligned with the CPU/CUDA pattern that wraps the
+`llama-server` binary. Quantization helpers (`quant_and_save_from_hf_format`)
+and Apple Silicon hardware detection remain in-process: they don't need the
+server and would only inflate cold-start time if they did.
 
 Architecture:
-    MLX Engine (Singleton):
-    ┌───────────────────────────────────────────────────────────┐
-    │ get_model_and_tokenizer()                                 │
-    │  └─> Load quantized model from disk → cache in memory    │
-    └───────────────────────────────────────────────────────────┘
-                            ↓
-    ┌───────────────────────────────────────────────────────────┐
-    │ generate_stream()                                         │
-    │  1. Apply chat template                                   │
-    │  2. Configure sampler (temp, top_p, top_k)                │
-    │  3. Stream tokens via mlx_lm.stream_generate()            │
-    │  4. Update last_used timestamp                            │
-    └───────────────────────────────────────────────────────────┘
-                            ↓
-    ┌───────────────────────────────────────────────────────────┐
-    │ Cleanup Task (30s interval)                               │
-    │  └─> Free model if idle > 300s                            │
-    └───────────────────────────────────────────────────────────┘
+    MLX_Engine (singleton)
+    ┌───────────────────────────────────────────────────────────────┐
+    │ get_model_and_tokenizer(llm_id, path)                         │
+    │  1. Pick free TCP port (9080+)                                │
+    │  2. Spawn child: mp.Process(target=run_mlx_server, args=...)  │
+    │  3. Poll GET /health until 200 (≤120s)                        │
+    │  4. atexit.register(terminate)                                │
+    │  5. Cache handle {pid,proc,port,base_url,alias,model_path}    │
+    └───────────────────────────────────────────────────────────────┘
+                                  ↓
+    ┌───────────────────────────────────────────────────────────────┐
+    │ generate_stream(model, tokenizer, prompt, ...)                │
+    │  1. POST {base_url}/v1/chat/completions with stream=True      │
+    │  2. Parse SSE byte stream (buffer + newline split, UTF-8 safe)│
+    │  3. Yield choices[0].delta.content; drop delta.reasoning      │
+    └───────────────────────────────────────────────────────────────┘
+                                  ↓
+    ┌───────────────────────────────────────────────────────────────┐
+    │ cleanup() — override                                          │
+    │  └─> SIGTERM child → join(5s) → SIGKILL if needed             │
+    │      → wait_port_closed → super().cleanup()                   │
+    └───────────────────────────────────────────────────────────────┘
+
+Why multiprocessing instead of subprocess.Popen([sys.executable, "-m", ...])?
+    In a PyInstaller frozen build, `sys.executable` is the launcher binary,
+    not a Python interpreter, so the `-m` flag is a no-op. `mp.spawn`
+    (already configured in `backend/run.py:143-160` via `mp.freeze_support()`
+    + `set_start_method("spawn", force=True)`) re-executes the binary in
+    child mode and reconstitutes the import graph — the same `run_mlx_server`
+    target works in dev (real Python) and in prod (frozen).
+
+Why the `<|channel>thought ... <channel|>` manual filter is gone:
+    `mlx_lm.server` already detects thinking-capable tokenizers
+    (`tokenizer_utils._infer_thinking`) and surfaces reasoning text in a
+    dedicated `choices[0].delta.reasoning` field — we simply ignore it for
+    iso-behaviour with the previous filter.
+
+Why the `_MLX_EXECUTOR` thread bottleneck is gone:
+    Generation now runs in a separate OS process; the GPU stream is
+    initialised inside that child, fully isolated from the FastAPI parent.
+    The Stream(gpu, 0) crash that motivated the persistent thread executor
+    (commits cefdc7a, 40fb55e) is structurally impossible from the parent.
 
 Quantization Mapping:
     Maps HuggingFace model IDs to MLX-quantized 4-bit variants:
     - mistralai/Mistral-7B-Instruct-v0.3 → mlx-community/.../4bit
     - google/gemma-2-2b-it → mlx-community/.../4bit
-    - etc.
+    Used by the downloader to fetch the right mlx-community/* repo;
+    `quant_and_save_from_hf_format` handles HF-SafeTensors → MLX 4-bit
+    conversion via `mlx_lm.convert()` (in-process — no subprocess).
 
 Example:
-    Load and generate with MLX engine::
+    ::
 
         from src.engines.mlx_engine import MLX_Engine
 
-        # Load model
         model, tokenizer = MLX_Engine.get_model_and_tokenizer(
             llm_id="mistral-7b",
             llm_local_path="/path/to/mlx/model"
         )
-
-        # Stream generation
-        prompt = [{"role": "user", "content": "Hello!"}]
         for token in MLX_Engine.generate_stream(
-            model, tokenizer, prompt,
-            max_tokens=512, temperature=0.7
+            model, tokenizer,
+            prompt=[{"role": "user", "content": "Hello!"}],
+            max_tokens=512, temperature=0.7, top_p=0.9,
         ):
             print(token, end="", flush=True)
-
-Note:
-    - Requires mlx_lm library (installed on Mac Silicon only)
-    - Models are 4-bit quantized for 4x memory savings
-    - Thread-safe via cls._lock for concurrent requests
-    - Automatic cleanup after 5 minutes idle time
+        MLX_Engine.cleanup()
 
 Warning:
     Only use on Apple Silicon. On other platforms, BaseEngine.get_engine()
     will select CUDA_Engine or CPU_Engine instead.
 """
 
-import os
-import shutil
+from __future__ import annotations
+
+import atexit
+import importlib  # used by quant_and_save_from_hf_format
+import json
 import logging
-import importlib
-import subprocess
+import multiprocessing as mp
+import os
 import platform
+import shutil
+import socket
+import subprocess
 import time
 from datetime import datetime
-from typing import Optional, Tuple, Any, Generator, Union, Dict
-from src.engines.base_engine import BaseEngine
-from src.core.exceptions import (
-    QuantizationException,
-    ModelLoadingException,
-    GenerationException,
-    TokenizationException,
-    InsufficientMemoryException,
-    FileSystemException,
-    HardwareException,
-)
 from pathlib import Path
+from typing import Any, Dict, Generator, Optional, Tuple, Union
+
+try:
+    import requests  # HTTP client to mlx_lm.server; runtime-checked by _assert_requests
+except Exception:
+    requests = None  # type: ignore[assignment]
+
+from src.engines.base_engine import BaseEngine
+from src.engines._mlx_server_runner import run_mlx_server
+from src.core.exceptions import (
+    EngineException,
+    FileSystemException,
+    GenerationException,
+    HardwareException,
+    InsufficientMemoryException,
+    QuantizationException,
+)
+from src.core.logging import logger
 
 class MLX_Engine(BaseEngine):
     """Singleton Engine for MLX models and tokenizers runtimes.
@@ -179,320 +210,343 @@ class MLX_Engine(BaseEngine):
                 trace=str(e)
             )
 
-    @classmethod
-    def _add_stop_sequences_to_tokenizer(cls, tokenizer: Any) -> None:
-        """Add model-specific stop sequences to tokenizer's EOS token ID set.
-        
-        Args:
-            tokenizer: The MLX TokenizerWrapper to modify.
-            
-        Note:
-            Reads model_type from cls._model.model_type attribute.
-            Uses tokenizer.add_eos_token() which converts string to token ID.
-        """
-        # Check if model is loaded
-        if not cls._model:
-            logging.warning("Model not loaded, cannot detect model type for stop sequences")
-            return
-        
-        # Get model_type from the loaded model
-        model_type = None
-        if hasattr(cls._model, 'model_type'):
-            model_type = str(cls._model.model_type).lower()
-        elif hasattr(cls._model, '__class__'):
-            # Fallback: check module name
-            module_name = cls._model.__class__.__module__.lower()
-            if 'gemma' in module_name:
-                model_type = 'gemma'
-        
-        if not model_type:
-            logging.debug("Could not determine model type for stop sequences")
-            return
-        
-        # Gemma models need explicit <end_of_turn> as EOS token
-        if "gemma" in model_type:
-            try:
-                tokenizer.add_eos_token("<end_of_turn>")
-                logging.info(f"Added '<end_of_turn>' to EOS token IDs for {model_type}")
-            except Exception as e:
-                logging.warning(f"Failed to add EOS token for {model_type}: {e}")
+    # ======================= SUBPROCESS HTTP SERVER (mlx_lm.server) =======================
+    #
+    # Inference goes through a subprocess `mlx_lm.server` (OpenAI-compatible HTTP),
+    # spawned via `multiprocessing.Process(target=run_mlx_server, args=([argv],))`.
+    # Why `multiprocessing` and not `subprocess.Popen([sys.executable, "-m", ...])`:
+    # in a PyInstaller frozen build, `sys.executable` is the launcher binary, not
+    # a Python interpreter. `mp.spawn` (configured in `backend/run.py`) re-executes
+    # the binary in child mode and reconstitutes the import graph, so the same
+    # `run_mlx_server` target works in dev (real Python) and in prod (frozen).
 
     @classmethod
-    def generate_stream(
-        cls,
-        model: Any,
-        tokenizer: Any,
-        prompt: list[dict[str, str]],
-        max_tokens: int = 1024,
-        temperature: float = 0.1,
-        top_p: float = 0.5,
-        top_k: int = 64,
-        repetition_penalty: Optional[float] = None,
-        repetition_context_size: Optional[int] = 1024,
-        min_p: float = 0.0,
-        **kwargs
-    ) -> Generator[str, None, None]:
-        """Generate streaming response from the model.
-        
-        Args:
-            model: The loaded MLX model.
-            tokenizer: The tokenizer associated with the model.
-            prompt: List of dictionaries with 'role' and 'content' keys
-            max_tokens: Maximum number of tokens to generate
-            temperature: Sampling temperature
-            top_p: Nucleus sampling probability threshold
-            top_k: Top-k sampling threshold
-            repetition_penalty: Penalty for repeating tokens
-            repetition_context_size: Number of past tokens to consider for repetition
-            min_p: Minimum probability for nucleus sampling
-            
-        Yields:
-            Generated text tokens
-        
-        Raises:
-            Exception: If model loading or generation fails
-        
-        Note:
-            Detects and handles model-specific stop sequences for models where
-            tokenizer EOS detection is insufficient (e.g., some Gemmas (270M)).
-        """
-
-        mlx_lm = importlib.import_module("mlx_lm")
-        
-        # Log consumed parameters
-        consumed_params = {
-            'max_tokens': max_tokens,
-            'temperature': temperature,
-            'top_p': top_p,
-            'top_k': top_k,
-            'repetition_penalty': repetition_penalty,
-            'repetition_context_size': repetition_context_size,
-            'min_p': min_p
-        }
-        if kwargs:
-            logging.debug(f"MLX_Engine ignoring unsupported params: {list(kwargs.keys())}")
-        logging.debug(f"MLX_Engine consuming params: {consumed_params}")
-
-        with cls._lock:
-            try:
-                # Add model-specific stop sequences to tokenizer if needed
-                cls._add_stop_sequences_to_tokenizer(tokenizer)
-                
-                # Tokenize prompt
-                prompt_tokens = tokenizer.apply_chat_template(prompt, add_generation_prompt=True)
-            except Exception as e:
-                raise TokenizationException(
-                    f"Failed to apply chat template: {e}",
-                    trace=str(e)
-                )
-            
-            try:
-                # Create sampler
-                sampler = mlx_lm.sample_utils.make_sampler(
-                    temperature,
-                    top_p,
-                    min_p=min_p,
-                    top_k=top_k,
-                )
-                # Build logits processors
-                logits_processors = mlx_lm.sample_utils.make_logits_processors(
-                repetition_penalty=repetition_penalty,
-                repetition_context_size=repetition_context_size,
+    def _assert_requests(cls) -> None:
+        """Raise a clear EngineException if the `requests` lib is unavailable."""
+        if requests is None:
+            raise EngineException(
+                "Missing dependency 'requests'. Install it in the runtime environment."
             )
 
-                # Generate stream
-                text = ""
-                logging.info("=" * 10)
+    @classmethod
+    def _pick_free_port(cls, start: int = 9080, limit: int = 100) -> int:
+        """Return the first free TCP port in [start, start+limit) on 127.0.0.1.
 
-                # Stateful filter for thinking blocks: <|channel>thought ... <channel|>
-                THINK_START = "<|channel>thought"
-                THINK_END = "<channel|>"
-                in_thinking = False
-                think_buf = ""  # accumulates partial tag matches while uncertain
+        Distinct range from CPU_Engine (8080+) and the Erudi backend itself
+        (8765–8799) to avoid collisions when several engines are evaluated
+        on the same host (rare, but cheap to guarantee).
+        """
+        for port in range(start, start + limit):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    s.bind(("127.0.0.1", port))
+                    return port
+                except OSError:
+                    continue
+        raise EngineException("No free TCP port found for mlx_lm.server.")
 
-                for response in mlx_lm.stream_generate(
-                    model,
-                    tokenizer,
-                    prompt_tokens,
-                    max_tokens=max_tokens,
-                    sampler=sampler,
-                    logits_processors=logits_processors if logits_processors != [] else None,
-                    prompt_cache=None
-                ):
-                    if not response:
-                        continue
+    @classmethod
+    def _probe_ready(cls, base_url: str, timeout_s: float = 120.0) -> None:
+        """Poll `GET {base_url}/health` until 200 or timeout.
 
-                    chunk = response.text
+        Uses the dedicated `/health` endpoint of mlx_lm.server (lighter than
+        a `/v1/chat/completions` ping with a fake payload).
+        """
+        cls._assert_requests()
+        url = f"{base_url}/health"
+        t0 = time.time()
+        while time.time() - t0 < timeout_s:
+            try:
+                r = requests.get(url, timeout=1.5)
+                if r.status_code == 200:
+                    return
+            except Exception:
+                pass
+            time.sleep(0.4)
+        raise EngineException(
+            f"mlx_lm.server did not become ready at {base_url} within {timeout_s}s"
+        )
 
-                    if in_thinking:
-                        # Look for end tag in accumulated buffer + new chunk
-                        combined = think_buf + chunk
-                        idx = combined.find(THINK_END)
-                        if idx != -1:
-                            # End tag found — emit everything after it
-                            in_thinking = False
-                            think_buf = ""
-                            after = combined[idx + len(THINK_END):]
-                            if after:
-                                token_repr = after.replace('\n', '\\n').replace('\t', '\\t')
-                                logging.info(f"Yielding token: {token_repr}")
-                                text += after
-                                yield after
-                        else:
-                            # Still inside thinking block — discard, keep tail for partial match
-                            think_buf = combined[-(len(THINK_END) - 1):]
-                    else:
-                        # Not in thinking block — check for start tag
-                        combined = think_buf + chunk
-                        idx = combined.find(THINK_START)
-                        if idx != -1:
-                            # Emit everything before the tag, then enter thinking mode
-                            before = combined[:idx]
-                            if before:
-                                token_repr = before.replace('\n', '\\n').replace('\t', '\\t')
-                                logging.info(f"Yielding token: {token_repr}")
-                                text += before
-                                yield before
-                            in_thinking = True
-                            think_buf = ""
-                        else:
-                            # Check if tail could be the start of a tag (partial match)
-                            tail_len = len(THINK_START) - 1
-                            tail = combined[-tail_len:]
-                            safe = combined[:-tail_len] if len(combined) > tail_len else ""
-                            if THINK_START.startswith(tail) and tail:
-                                # Hold the tail — might be a partial start tag
-                                think_buf = tail
-                                if safe:
-                                    token_repr = safe.replace('\n', '\\n').replace('\t', '\\t')
-                                    logging.info(f"Yielding token: {token_repr}")
-                                    text += safe
-                                    yield safe
-                            else:
-                                # Nothing suspicious — flush everything
-                                think_buf = ""
-                                token_repr = combined.replace('\n', '\\n').replace('\t', '\\t')
-                                logging.info(f"Yielding token: {token_repr}")
-                                text += combined
-                                yield combined
+    @classmethod
+    def _start_server(
+        cls,
+        model_path: Path,
+        alias: str,
+        port: int,
+    ) -> Dict[str, Any]:
+        """Spawn `mlx_lm.server` in a child process and wait for readiness.
 
-                # Flush any remaining safe buffer content
-                if think_buf and not in_thinking:
-                    text += think_buf
-                    yield think_buf
+        Returns a handle dict matching the CPU/CUDA twin shape so that the
+        rest of the codebase can treat all three engines uniformly.
+        """
+        argv = [
+            "mlx_lm.server",
+            "--model", str(model_path),
+            "--host", "127.0.0.1",
+            "--port", str(port),
+            "--log-level", "INFO",
+        ]
 
-                logging.info("=" * 10)
+        proc = mp.Process(target=run_mlx_server, args=(argv,), daemon=False)
+        proc.start()
 
-                if len(text) == 0:
-                    logging.info("No text generated for this prompt")
-                
-                logging.info(f"Generation: {response.generation_tokens} tokens")
-                logging.info(f"{response.generation_tps:.3f} tokens-per-sec")
-                logging.info(f"Peak memory: {response.peak_memory:.3f} GB")
+        base_url = f"http://127.0.0.1:{port}"
+        try:
+            cls._probe_ready(base_url, timeout_s=120.0)
+        except Exception:
+            # If readiness fails, kill the child so it doesn't outlive us.
+            cls._terminate_process(proc)
+            raise
 
-                cls._last_used = datetime.now()  # Update last use time
-            except MemoryError as e:
-                raise InsufficientMemoryException(
-                    "text generation",
-                    trace=str(e)
-                )
-            except Exception as e:
-                logging.exception("Generation failed")
-                raise GenerationException(
-                    f"MLX generation failed: {e}",
-                    trace=str(e)
-                )
-    
+        # Wire cleanup to interpreter exit so a crashed FastAPI parent does
+        # not leak a zombie `mlx_lm.server` (mirrors cpu_engine.py:213).
+        atexit.register(lambda: cls._terminate_process(proc))
+
+        handle: Dict[str, Any] = {
+            "pid": proc.pid,
+            "proc": proc,
+            "port": port,
+            "base_url": base_url,
+            "alias": alias,
+            "model_path": str(model_path),
+        }
+        return handle
+
+    @classmethod
+    def _terminate_process(cls, proc) -> None:
+        """Idempotently terminate an `mp.Process`, escalating to SIGKILL if needed.
+
+        Accepts `None` (no-op) and `MagicMock`-like proxies for testability.
+        Mirrors the bounded-time semantics of cpu_engine.py:226-240, but uses
+        `mp.Process` API (`terminate` = SIGTERM, `kill` = SIGKILL).
+        """
+        if not proc:
+            return
+        try:
+            if proc.is_alive():
+                proc.terminate()
+                proc.join(timeout=5)
+                if proc.is_alive():
+                    proc.kill()
+                    proc.join(timeout=2)
+        except Exception:
+            # Best-effort cleanup; never let teardown errors mask the real
+            # failure that triggered termination in the first place.
+            pass
+
+    @classmethod
+    def _server_is_alive(cls) -> bool:
+        """Return True iff the cached model handle wraps a still-running child."""
+        prev = cls._model
+        if not isinstance(prev, dict):
+            return False
+        proc = prev.get("proc")
+        return bool(proc and proc.is_alive())
+
+    @classmethod
+    def _wait_port_closed(cls, port: int, timeout_s: float = 3.0) -> None:
+        """Poll until the OS releases `port` (or `timeout_s` elapses).
+
+        Used after `_terminate_process` to ensure that a subsequent spawn on
+        the same port doesn't race the kernel's TIME_WAIT cleanup.
+        """
+        t0 = time.time()
+        while time.time() - t0 < timeout_s:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.2)
+                if s.connect_ex(("127.0.0.1", port)) != 0:
+                    return
+            time.sleep(0.1)
+
+    @classmethod
+    def _stop_server_if_running(cls) -> None:
+        """Best-effort: terminate the current subprocess and wait for port release."""
+        prev = cls._model
+        if not isinstance(prev, dict):
+            return
+        proc = prev.get("proc")
+        port = prev.get("port")
+        try:
+            if proc:
+                cls._terminate_process(proc)
+            if port is not None:
+                try:
+                    cls._wait_port_closed(int(port))
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"[MLX_Engine] graceful stop failed: {e}")
+
+    # ======================= ABSTRACT METHODS (BaseEngine contract) =======================
+
     @classmethod
     def get_model_and_tokenizer(
         cls,
         llm_id: str,
         llm_local_path: Union[str, Path],
     ) -> Tuple[Any, Any]:
-        """Get or load a model and its tokenizer.
-        
-        Args:
-            llm_id: The LLM model id to load.
-            llm_local_dir: The local path to the llm model and tokenizer weights.
+        """Spawn (or reuse) an `mlx_lm.server` subprocess for the given model.
 
-            
+        Singleton semantics: a second call with the same `llm_id` reuses the
+        existing subprocess; a call with a different `llm_id` terminates the
+        old child before spawning a new one.
+
         Returns:
-            Tuple of (model, tokenizer).
-            
-        Thread-safe and ensures only one copy of the model exists.
+            (handle_dict, tokenizer_dict) — handle is the same shape used by
+            CPU_Engine / CUDA_Engine; tokenizer is a remote-provider placeholder
+            (the server handles `apply_chat_template` internally).
         """
-
+        logger.info(f"[MLX_Engine] Loading model '{llm_id}' from {llm_local_path} via mlx_lm.server...")
         with cls._lock:
-            if cls._should_not_reload_model(llm_id=llm_id):
+            if cls._should_not_reload_model(llm_id):
                 return cls._return_cached_model_and_tokenizer()
-            
-            # Need to load new model
-            logging.info(f"Loading new model {llm_id}, cleaning up old model ({cls._model_id}) if exists")
-            cls.cleanup()  # Clean old model if exists
-            cls._load_model(llm_id=llm_id, llm_local_path=llm_local_path)
-            cls._last_used = datetime.now()
-            return cls._model, cls._tokenizer
-    
-    @classmethod
-    def _load_model(
-        cls,
-        llm_id: str,
-        llm_local_path: Union[str, Path],
-    ) -> None:
-        """Internal method to load MLX model and tokenizer into memory.
 
-        Args:
-            llm_id: Model identifier for caching (e.g., "mistral-7b").
-            llm_local_path: Path to quantized MLX model directory.
+            cls._assert_requests()
+            path = Path(llm_local_path).resolve()
+            if not path.exists():
+                raise FileSystemException(f"MLX model path not found: {path}")
 
-        Returns:
-            None. Sets cls._model, cls._tokenizer, cls._model_id.
+            # Kill previous subprocess if any
+            prev = cls._model
+            if isinstance(prev, dict) and prev.get("proc") is not None:
+                cls._terminate_process(prev["proc"])
 
-        Raises:
-            Exception: If mlx_lm.load() fails (missing weights, incompatible format).
+            alias = f"erudi-{llm_id}"
+            port = cls._pick_free_port()
+            handle = cls._start_server(model_path=path, alias=alias, port=port)
 
-        Note:
-            Clears cached model state on failure to prevent inconsistencies.
-        """
-        """Internal method to load a model and its tokenizer.
-        
-        Args:
-            llm: The LLM model to load.
-        """
-
-        mlx_lm = importlib.import_module("mlx_lm")
-
-        logging.info(f"Loading MLX model and tokenizer for {llm_id}...")
-        start = datetime.now()
-        try:
-            cls._model, cls._tokenizer = mlx_lm.load(llm_local_path)
+            cls._model = handle
+            cls._tokenizer = {"type": "remote", "provider": "mlx-lm-server"}
             cls._model_id = llm_id
-            logging.info(f"Model and tokenizer loaded in {datetime.now() - start}")
-        except FileNotFoundError as e:
-            cls._model = None
-            cls._tokenizer = None
-            cls._model_id = None
-            raise FileSystemException(
-                f"Model not found at {llm_local_path}",
-                trace=str(e)
+            cls._last_used = datetime.now()
+            logger.info(
+                f"[MLX_Engine] Model loaded via mlx_lm.server on {handle['base_url']} alias={alias}"
             )
-        except MemoryError as e:
-            cls._model = None
-            cls._tokenizer = None
-            cls._model_id = None
-            raise InsufficientMemoryException(
-                "model loading",
-                trace=str(e)
+            return cls._model, cls._tokenizer
+
+    @classmethod
+    def generate_stream(
+        cls,
+        model: Any,
+        tokenizer: Any,
+        prompt: list,
+        max_tokens: int,
+        temperature: float,
+        top_p: float,
+        **kwargs,
+    ) -> Generator[str, None, None]:
+        """Stream tokens from `mlx_lm.server` via `/v1/chat/completions` (SSE).
+
+        Yields the `choices[0].delta.content` strings. The `delta.reasoning`
+        channel (emitted by thinking-capable models) is dropped silently to
+        preserve iso-behaviour with the previous in-process thinking filter
+        (`<|channel>thought ... <channel|>`).
+
+        Optional kwargs forwarded to the server (when set):
+            top_k, min_p, repetition_penalty, repetition_context_size,
+            seed, stop.
+        Other kwargs are logged at DEBUG and dropped — mirrors CPU_Engine
+        (cpu_engine.py:607-608).
+        """
+        if not isinstance(model, dict) or "base_url" not in model:
+            raise EngineException(
+                "Invalid model handle for MLX_Engine. Call get_model_and_tokenizer() first."
             )
+
+        cls._assert_requests()
+        url = f"{model['base_url']}/v1/chat/completions"
+
+        # Build payload — defaults match what the server already understands.
+        # We send `model='default_model'` because mlx_lm.server falls back to
+        # whatever was loaded via `--model` at startup when this sentinel is
+        # used (server.py:1163). Sending the actual path would also work but
+        # adds a per-request file-existence check on the server side.
+        payload: Dict[str, Any] = {
+            "model": "default_model",
+            "messages": prompt,
+            "max_tokens": max_tokens,
+            "temperature": float(temperature),
+            "top_p": float(top_p),
+            "stream": True,
+        }
+        _FORWARDED = {
+            "top_k",
+            "min_p",
+            "repetition_penalty",
+            "repetition_context_size",
+            "seed",
+            "stop",
+        }
+        for k in _FORWARDED:
+            if k in kwargs and kwargs[k] is not None:
+                payload[k] = kwargs[k]
+
+        ignored = [k for k in kwargs if k not in _FORWARDED]
+        if ignored:
+            logger.debug(f"[MLX_Engine] ignoring unsupported params: {ignored}")
+
+        # Mark active so the idle-cleanup monitor doesn't reap us mid-stream.
+        with cls._lock:
+            cls._last_used = None
+
+        try:
+            with requests.post(url, json=payload, stream=True, timeout=600) as r:
+                r.raise_for_status()
+                # Accumulate raw bytes and split on newlines manually so that
+                # UTF-8 multi-byte sequences (em dash, curly quotes, etc.) are
+                # never passed through requests' ISO-8859-1 fallback decoder
+                # (same pattern as cpu_engine.py:629-652).
+                buf = b""
+                done = False
+                for chunk in r.iter_content(chunk_size=None):
+                    buf += chunk
+                    while b"\n" in buf:
+                        raw_line, buf = buf.split(b"\n", 1)
+                        line = raw_line.rstrip(b"\r").decode("utf-8")
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data = line[6:].strip()
+                            if data == "[DONE]":
+                                done = True
+                                break
+                            try:
+                                obj = json.loads(data)
+                                choices = obj.get("choices") or []
+                                if not choices:
+                                    continue
+                                delta = choices[0].get("delta") or {}
+                                content = delta.get("content")
+                                # `reasoning` (thinking channel) is intentionally
+                                # ignored — see docstring.
+                                if content:
+                                    yield content
+                            except Exception:
+                                # Malformed SSE line — log and keep going so a
+                                # transient parse error doesn't abort the whole
+                                # generation.
+                                logger.debug("[MLX_Engine] skipping malformed SSE line")
+                                continue
+                    if done:
+                        break
         except Exception as e:
-            cls._model = None
-            cls._tokenizer = None
-            cls._model_id = None
-            logging.error(f"Failed to load model: {e}")
-            raise ModelLoadingException(
-                f"Failed to load MLX model: {e}",
-                trace=str(e)
-            )
+            raise EngineException(message="MLX_Engine streaming failed", trace=e)
+        finally:
+            with cls._lock:
+                cls._last_used = datetime.now()
+
+    @classmethod
+    def cleanup(cls) -> None:
+        """Terminate the subprocess and clear the cached handle.
+
+        Overrides BaseEngine.cleanup: in addition to clearing class state,
+        we kill the child `mlx_lm.server`. Otherwise the model would stay
+        loaded in the child indefinitely.
+        """
+        with cls._lock:
+            cls._stop_server_if_running()
+            return super().cleanup()
 
     # ======================= HARDWARE DETECTION & EVALUATION =======================
     
