@@ -87,15 +87,28 @@ src/engines/
 
 All three inference engines follow the same pattern: they spawn an
 OpenAI-compatible HTTP server in a child process and talk to it over
-`http://127.0.0.1:<port>/v1/chat/completions` (streaming SSE). CPU/CUDA wrap
-the `llama-server` binary via `subprocess.Popen`; MLX wraps `mlx_lm.server`
-via `multiprocessing.Process` (because PyInstaller frozen builds have no
-Python interpreter at `sys.executable` to pass `-m` to). The streaming
-loop, port-pick, readiness probe, and termination logic are intentionally
-duplicated across the three files — a follow-up PR will factor them into a
-shared `_LlamaServerLikeEngine` base.
+`http://127.0.0.1:<port>/v1/chat/completions` (streaming SSE). The shared
+lifecycle (port pick, two-stage `GET /health` + chat-ping probe, SSE
+byte-buffer parser, atexit storage, idle-cleanup active marker, kwarg
+translation) lives in **`BaseChatServerEngine`**. **`BaseLlamaCppEngine`**
+sits between it and the CPU/CUDA concretes to factor the bits specific
+to the `llama-server` binary (Popen lifecycle, GGUF picker, install-dir
+resolution, `repetition_penalty → repeat_penalty` wire-name rename).
 
-Adding a new engine: subclass `BaseEngine`, implement all abstract methods, register it in `base_engine.get_engine()`.
+Inheritance:
+```
+BaseEngine
+└── BaseChatServerEngine
+    ├── MLX_Engine        (mp.Process + mlx_lm.server)
+    └── BaseLlamaCppEngine
+        ├── CPU_Engine    (Popen + llama-server, -ngl 0)
+        └── CUDA_Engine   (Popen + llama-server cuda, -ngl <computed>)
+```
+
+Adding a new chat-server engine: subclass `BaseChatServerEngine` (or
+`BaseLlamaCppEngine` if it wraps `llama-server`) and implement the four
+hooks: `_spawn_child`, `_terminate_process`, `_proc_is_alive`,
+`_resolve_model_artifact`. Register the class in `base_engine.get_engine()`.
 
 ### API domains
 

@@ -134,6 +134,8 @@ _hidden_common = [
     "src.entities.TrainingJob",
     "src.entities.VectorStore",
     "src.engines.base_engine",
+    "src.engines.base_chat_server_engine",
+    "src.engines.base_llama_cpp_engine",
     "src.engines.cuda_engine",
     "src.engines.cpu_engine",
     "src.engines.embedder_engine",
