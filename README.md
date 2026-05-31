@@ -152,7 +152,7 @@ Windows/Linux + NVIDIA  →  CUDA_Engine  (llama-server with CUDA offload)
 Windows/Linux, no GPU   →  CPU_Engine   (llama-server, CPU only)
 ```
 
-All GPU inference goes through `llama-server` from llama.cpp. The bundled PyTorch is CPU-only and used only for sentence-transformers embeddings (Knowledge Base and conversation memory).
+All inference engines run an OpenAI-compatible HTTP server in a child process and talk to it over `http://127.0.0.1:<port>/v1/chat/completions`. Windows/Linux NVIDIA and CPU fallback use `llama-server` from llama.cpp; macOS Apple Silicon uses `mlx_lm.server`. The bundled PyTorch is CPU-only and used only for sentence-transformers embeddings (Knowledge Base and conversation memory).
 
 ---
 
