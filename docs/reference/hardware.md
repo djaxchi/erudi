@@ -478,7 +478,7 @@ console.log(hw.chip_model);  // Still works!
 **Solution:** Use refresh endpoint
 
 ```bash
-curl -X POST http://localhost:8000/hardware/refresh
+curl -X POST http://127.0.0.1:8765/hardware/refresh
 ```
 
 ### Issue: Frontend Shows "Error fetching"

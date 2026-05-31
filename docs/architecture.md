@@ -83,43 +83,78 @@ Erudi suit une **architecture hexagonale** avec séparation claire entre domaine
 
 ## Architecture Multi-Engine
 
-### Pattern Strategy
+### Pattern uniforme « subprocess + HTTP OpenAI-compat »
 
-Erudi utilise le pattern **Strategy** pour supporter plusieurs backends d'inférence :
+Les trois engines d'inférence suivent le **même pattern** : ils spawnent un
+serveur HTTP OpenAI-compatible dans un processus enfant et communiquent
+avec lui en SSE sur `http://127.0.0.1:<port>/v1/chat/completions`. Cette
+uniformité, acquise par la PR `refactor/mlx-server-subprocess`, permet à
+terme de wrapper les trois engines derrière un unique `ChatOpenAI(base_url=...)`
+(LangChain) sans code custom par backend.
 
-```python
-# backend/src/engines/base_engine.py
-class BaseEngine(ABC):
-    @classmethod
-    def get_engine(cls) -> BaseEngine:
-        """Auto-select engine based on hardware."""
-        if MLX_Engine.is_available():
-            return MLX_Engine()
-        elif CUDA_Engine.is_available():
-            return CUDA_Engine()
-        else:
-            return CPU_Engine()
-    
-    @abstractmethod
-    async def generate_stream(self, prompt, params):
-        """Unified interface for all engines."""
-        pass
+```
+            ┌───────────────────────────────────┐
+            │ FastAPI backend (parent process)  │
+            │   src/engines/<engine>.py         │
+            │      └─ requests.post(stream=True)│
+            └────────────────┬──────────────────┘
+                             │  HTTP SSE
+                             ▼
+            ┌───────────────────────────────────┐
+            │ OpenAI-compatible HTTP server     │
+            │   /v1/chat/completions  /health   │
+            │   (child process)                 │
+            └───────────────────────────────────┘
 ```
 
-### Engines Disponibles
+Différence d'invocation child :
+- **CPU/CUDA** : `subprocess.Popen([llama-server, ...])` — binary natif (`backend/artifacts/llama-cpp/<cpu|cuda>/bin/llama-server`).
+- **MLX** : `multiprocessing.Process(target=run_mlx_server, args=(argv,))` — pas de binary natif côté MLX, donc on utilise `mp.spawn` (déjà configuré dans `backend/run.py` via `mp.freeze_support()` + `set_start_method("spawn", force=True)`). Cette approche fonctionne identiquement en dev (vrai Python) et en PyInstaller frozen où `sys.executable` est le binary launcher (impossible d'utiliser `Popen([sys.executable, "-m", "mlx_lm.server"])`).
 
-| Engine | Platform | Accélération | Status |
-|--------|----------|--------------|--------|
-| **MLX_Engine** | Mac Silicon (M1/M2/M3) | Apple Neural Engine + GPU | ✅ Production |
-| **CUDA_Engine** | Linux/Windows + NVIDIA | CUDA + cuDNN | 🚧 Stub |
-| **CPU_Engine** | Toutes plateformes | CPU only (lent) | 🚧 Stub |
+```python
+# backend/src/engines/base_engine.py  (simplifié)
+class BaseEngine(ABC):
+    @classmethod
+    def get_engine(cls) -> type["BaseEngine"]:
+        """Auto-select engine based on hardware."""
+        if platform.system() == "Darwin" and "arm" in platform.machine():
+            return MLX_Engine
+        if cuda_available():
+            return CUDA_Engine
+        return CPU_Engine
 
-### Sélection Automatique
+    @classmethod
+    @abstractmethod
+    def generate_stream(cls, model, tokenizer, prompt, max_tokens, temperature, top_p, **kwargs):
+        """Stream tokens from the loaded model. Sync generator → wrapped by Starlette."""
+        ...
+```
 
-Au démarrage (`lifespan`), l'engine est auto-sélectionné :
-1. **MLX** si Apple Silicon détecté (`platform.processor() == 'arm'`)
-2. **CUDA** si GPU NVIDIA détecté (`torch.cuda.is_available()`)
-3. **CPU** en fallback
+### Engines disponibles
+
+| Engine | Platform | Backend | Lancement child | Port range | Status |
+|--------|----------|---------|------------------|------------|--------|
+| **MLX_Engine** | Mac Silicon (M1/M2/M3/M4) | `mlx_lm.server` | `mp.Process` | 9080+ | 🚧 macOS build en cours |
+| **CUDA_Engine** | Windows + NVIDIA | `llama-server` (CUDA build) | `subprocess.Popen` | 8080+ | ✅ Shippé Windows |
+| **CUDA_Engine** | Linux + NVIDIA | `llama-server` (CUDA build) | `subprocess.Popen` | 8080+ | 🚧 Planifié |
+| **CPU_Engine** | Windows / Linux / macOS Intel | `llama-server` (CPU build) | `subprocess.Popen` | 8080+ | ✅ Shippé Windows ; 🚧 ailleurs |
+
+Le backend FastAPI lui-même écoute sur 8765-8799 (cf `backend/run.py:72`),
+distinct des port ranges engine pour éviter les collisions sur les machines
+de dev qui font tourner plusieurs engines successivement.
+
+### Sélection automatique
+
+Au démarrage (`lifespan`), l'engine est auto-sélectionné par
+`BaseEngine.get_engine()` (cf. `backend/src/engines/base_engine.py:507`) :
+
+1. **macOS ARM** → `MLX_Engine`
+2. **macOS Intel** → `CPU_Engine`
+3. **Linux/Windows + CUDA détecté (pynvml)** → `CUDA_Engine`
+4. **Sinon** → `CPU_Engine`
+
+Override pour test : `ERUDI_FORCE_CPU=1` court-circuite la détection GPU
+et force `CPU_Engine`.
 
 Voir [Engines Reference](reference/engines.md) pour détails d'implémentation.
 

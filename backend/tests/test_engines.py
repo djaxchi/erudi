@@ -9,6 +9,7 @@ from src.engines.mlx_engine import MLX_Engine
 from src.engines.cuda_engine import CUDA_Engine
 from src.engines.cpu_engine import CPU_Engine
 from src.entities.HardwareProfile import HardwareProfile
+from tests._helpers import is_cuda_platform, is_mlx_platform
 
 
 class TestEngineFlatHardwareData:
@@ -70,7 +71,7 @@ class TestEngineFlatHardwareData:
                 assert 0 <= score <= 100, f"{key} out of range: {score}"
     
     @pytest.mark.skipif(
-        BaseEngine.get_engine().__name__ != "MLX_Engine",
+        not is_mlx_platform(),
         reason="MLX-specific test, only runs on Apple Silicon"
     )
     def test_mlx_specific_fields(self):
@@ -85,7 +86,7 @@ class TestEngineFlatHardwareData:
         assert data.get("unified_memory") is True
     
     @pytest.mark.skipif(
-        BaseEngine.get_engine().__name__ != "CUDA_Engine",
+        not is_cuda_platform(),
         reason="CUDA-specific test, only runs on NVIDIA systems"
     )
     def test_cuda_specific_fields(self):

@@ -90,10 +90,7 @@ Warning:
 """
 
 
-import asyncio
-import queue
-from concurrent.futures import ThreadPoolExecutor
-from typing import AsyncGenerator, List
+from typing import List
 
 from fastapi import Depends, APIRouter
 from fastapi.concurrency import run_in_threadpool
@@ -117,99 +114,11 @@ from src.domains.conversations.services import ConversationService
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
-
-def _mlx_thread_initializer() -> None:
-    """Warm up MLX GPU streams in the persistent generation thread.
-
-    MLX creates thread-local GPU streams on first use. Running a trivial eval
-    here ensures Stream(gpu, 0) exists before any generation call is made,
-    which prevents the 'There is no Stream(gpu, 0) in current thread' crash.
-    """
-    try:
-        import mlx.core as mx
-        mx.eval(mx.array([1.0]))
-    except Exception:
-        pass
-
-
-_MLX_EXECUTOR = ThreadPoolExecutor(
-    max_workers=1,
-    thread_name_prefix="mlx-generation",
-    initializer=_mlx_thread_initializer,
-)
-
-
-async def _stream_on_single_thread(
-    sync_generator_fn, *args, **kwargs
-) -> AsyncGenerator[str, None]:
-    """Run a sync generator on a persistent single MLX thread and yield its values.
-
-    Uses a single-worker ThreadPoolExecutor so the same OS thread handles every
-    generation request. MLX GPU streams are thread-local; initializing them once
-    in the executor thread (via _mlx_thread_initializer) and reusing that thread
-    avoids the Stream(gpu, 0) crash that occurs when next() is called from an
-    arbitrary or freshly-created thread.
-    """
-    token_queue: queue.Queue = queue.Queue()
-
-    def _run() -> None:
-        try:
-            for token in sync_generator_fn(*args, **kwargs):
-                token_queue.put(token)
-        finally:
-            token_queue.put(None)  # sentinel
-
-    loop = asyncio.get_event_loop()
-    future = loop.run_in_executor(_MLX_EXECUTOR, _run)
-
-    while True:
-        token = await loop.run_in_executor(None, token_queue.get)
-        if token is None:
-            break
-        yield token
-
-    await future
-
-
-@router.get("/debug/test_model/{llm_id}")
-async def debug_test_model(llm_id: int, db: Session = Depends(get_db)):
-    """Temporary debug endpoint to test model loading and generation."""
-    import traceback
-    from src.core import config
-    from src.entities.Llm import Llm
-    result = {"steps": []}
-    try:
-        llm = db.query(Llm).filter(Llm.id == llm_id).first()
-        if not llm:
-            return {"error": f"LLM {llm_id} not found"}
-        result["steps"].append(f"Found LLM: {llm.name}, local={llm.local}, link={llm.link}")
-
-        import os
-        link_exists = os.path.exists(llm.link)
-        result["steps"].append(f"Path exists: {link_exists}")
-        if link_exists:
-            contents = os.listdir(llm.link)
-            result["steps"].append(f"Path contents: {contents}")
-
-        model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(
-            llm_id=llm.id, llm_local_path=llm.link
-        )
-        result["steps"].append(f"Model loaded: {type(model).__name__}")
-
-        output = ""
-        for text in config.LLM_Engine.generate_stream(
-            model=model, tokenizer=tokenizer, prompt="Hello",
-            max_tokens=5, temperature=1.0, top_p=0.95,
-            repetition_penalty=1.2, repetition_context_size=5,
-        ):
-            output += text
-        result["steps"].append(f"Generated: {repr(output)}")
-        result["success"] = True
-    except Exception as e:
-        result["error"] = f"{type(e).__name__}: {e}"
-        result["traceback"] = traceback.format_exc()
-        result["success"] = False
-    return result
+# MLX_Engine spawns `mlx_lm.server` in a child process, so the GPU stream lives
+# entirely in the child — the parent FastAPI process never touches MLX. Starlette
+# wraps the sync generator returned by ConversationService via
+# `iterate_in_threadpool`, any worker thread is fine. Same pattern as
+# `arena/endpoints.py:114`.
 
 
 def get_conversation_repository(db: Session = Depends(get_db)) -> ConversationRepository:
@@ -631,9 +540,7 @@ async def generate_title(
     """
     """Generate a title for the conversation based on the first message."""
     return StreamingResponse(
-        _stream_on_single_thread(
-            service.generate_title_stream, conversation_id, payload.question
-        ),
+        service.generate_title_stream(conversation_id, payload.question),
         media_type="text/plain",
         headers={
             "Cache-Control": "no-cache",
@@ -683,9 +590,7 @@ async def query_and_respond(
     """
     """Query the conversation and get a streaming response."""
     return StreamingResponse(
-        _stream_on_single_thread(
-            service.query_and_respond_stream, conversation_id, payload
-        ),
+        service.query_and_respond_stream(conversation_id, payload),
         media_type="text/plain",
         headers={
             "Cache-Control": "no-cache",

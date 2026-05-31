@@ -46,4 +46,4 @@ jobs:
       - name: Tests
         run: |
           cd backend
-          venv/bin/pytest tests/ -x -q --ignore=tests/e2e
+          venv/bin/pytest tests/ -x -q --ignore=tests/e2e -m "not mlx_only"

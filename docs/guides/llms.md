@@ -67,7 +67,7 @@ Le domaine **LLMs** gère le catalogue de modèles et leurs opérations :
 ### Lister les Modèles Disponibles
 
 ```bash
-curl http://localhost:8000/erudi/llms
+curl http://127.0.0.1:8765/erudi/llms
 ```
 
 Retourne tous les modèles (remote et local) :
@@ -90,7 +90,7 @@ Retourne tous les modèles (remote et local) :
 ### Rechercher un Modèle
 
 ```bash
-curl http://localhost:8000/erudi/llms/search?query=gemma
+curl http://127.0.0.1:8765/erudi/llms/search?query=gemma
 ```
 
 Filtre par nom (case-insensitive).
@@ -100,7 +100,7 @@ Filtre par nom (case-insensitive).
 ### Télécharger et Quantizer (MLX)
 
 ```bash
-curl -X POST http://localhost:8000/erudi/llms/download \
+curl -X POST http://127.0.0.1:8765/erudi/llms/download \
   -H "Content-Type: application/json" \
   -d '{
     "remote_model_id": "mistralai/Mistral-7B-Instruct-v0.3",
@@ -129,7 +129,7 @@ Réponse :
 ### Surveiller le Téléchargement
 
 ```bash
-curl http://localhost:8000/erudi/llms/download/1
+curl http://127.0.0.1:8765/erudi/llms/download/1
 ```
 
 Réponse en cours :
@@ -155,7 +155,7 @@ Réponse en cours :
 ### Annuler un Téléchargement
 
 ```bash
-curl -X POST http://localhost:8000/erudi/llms/download/1/cancel
+curl -X POST http://127.0.0.1:8765/erudi/llms/download/1/cancel
 ```
 
 ## Gestion de la Mémoire
@@ -167,7 +167,7 @@ Le chargement est **automatique** lors de la première génération. Pas besoin 
 ### Vérifier le Statut
 
 ```bash
-curl http://localhost:8000/erudi/hardware/static
+curl http://127.0.0.1:8765/erudi/hardware/static
 ```
 
 Retourne :
@@ -178,7 +178,7 @@ Retourne :
 ### Décharger un Modèle
 
 ```bash
-curl -X POST http://localhost:8000/erudi/llms/unload
+curl -X POST http://127.0.0.1:8765/erudi/llms/unload
 ```
 
 Libère immédiatement la mémoire (VRAM/RAM).
@@ -195,7 +195,7 @@ Voir `backend/src/core/api.py::cleanup_loop()`.
 ## Supprimer un Modèle
 
 ```bash
-curl -X DELETE http://localhost:8000/erudi/llms/1
+curl -X DELETE http://127.0.0.1:8765/erudi/llms/1
 ```
 
 Supprime :
@@ -224,19 +224,25 @@ Supprime :
 
 ### CUDA (NVIDIA)
 
-**Status** : Stub (non implémenté)
+**Status** : ✅ Shippé Windows · 🚧 Linux planifié
 
-Futur support :
-- BitsAndBytes 4-bit/8-bit
-- GPTQ
-- AWQ
+Format GGUF via le binary `llama-server` (CUDA build). Priorité de
+sélection automatique parmi les variantes `.gguf` présentes :
+`Q4_K_M > Q4_0 > Q5_K_M > Q8_0 > FP16` (cf `cpu_engine.py:_select_gguf` —
+même heuristique côté CUDA).
+
+- **Q4_K_M** : taille ~30% original, perte minime, default recommandé
+- **Q8_0** : taille ~50%, qualité quasi-FP16
+- **FP16** : fallback non quantisé
 
 ### CPU
 
-**Status** : Stub (non implémenté)
+**Status** : ✅ Shippé Windows · 🚧 macOS Intel + Linux planifiés
 
-Futur support :
-- GGUF quantization (llama.cpp)
+Même binary `llama-server` (CPU build), même formats GGUF que CUDA.
+Inférence multi-thread auto-détectée (`os.cpu_count()`). Significativement
+plus lent que CUDA ou MLX — utilisé comme fallback quand aucun
+accélérateur n'est dispo.
 
 ## Attachement Knowledge Base
 
@@ -247,7 +253,7 @@ Voir [Guide Knowledge Base](knowledge_base.md) pour créer un KB.
 Effectué automatiquement lors de la création du KB :
 
 ```bash
-curl -X POST http://localhost:8000/erudi/knowledge_base \
+curl -X POST http://127.0.0.1:8765/erudi/knowledge_base \
   -F "base_model_id=1" \
   -F "files=@document.pdf"
 ```
@@ -260,7 +266,7 @@ Crée :
 ### Détacher un KB
 
 ```bash
-curl -X DELETE http://localhost:8000/erudi/knowledge_base/{kb_id}
+curl -X DELETE http://127.0.0.1:8765/erudi/knowledge_base/{kb_id}
 ```
 
 Supprime le KB et reset le modèle.
@@ -308,7 +314,7 @@ Supprime le KB et reset le modèle.
 Consulter `error_message` du DownloadJob :
 
 ```bash
-curl http://localhost:8000/erudi/llms/download/1 | jq .error_message
+curl http://127.0.0.1:8765/erudi/llms/download/1 | jq .error_message
 ```
 
 **Erreurs courantes** :
@@ -337,7 +343,7 @@ tail -f backend/logs/app.log | grep "load_model"
 import requests
 import time
 
-base_url = 'http://localhost:8000/erudi'
+base_url = 'http://127.0.0.1:8765/erudi'
 
 # 1. Télécharger et quantizer Mistral 7B
 resp = requests.post(f'{base_url}/llms/download', json={
