@@ -86,6 +86,10 @@ from src.launcher import ensure_runtime_paths_initialized
 load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN", None)
 
+# Restrict LangGraph checkpoint (msgpack) deserialization to known-safe types.
+# Set before any langgraph serializer is constructed.
+os.environ.setdefault("LANGGRAPH_STRICT_MSGPACK", "true")
+
 # ============ Runtime Paths ============
 
 _RUNTIME_PATHS = ensure_runtime_paths_initialized()
@@ -105,6 +109,12 @@ TRAINING_DATASETS_DIR = DATA_ROOT / "training_datasets"
 DATA_ROOT.mkdir(parents=True, exist_ok=True)
 db_path = DATA_ROOT / "erudi.db"
 DATABASE_URL = f"sqlite:///{db_path}"
+
+# LangGraph conversation-state checkpointer lives in a SEPARATE SQLite file in
+# the same DATA_ROOT (so it follows dev/prod redirection via runtime_paths).
+# Kept apart from erudi.db so the LangGraph-managed schema never mixes with the
+# SQLAlchemy/alembic business schema. Passed to AsyncSqliteSaver as a raw path.
+CHECKPOINT_DB_PATH = DATA_ROOT / "erudi-checkpoints.db"
 
 # ============ Directory Creation ============
 
