@@ -133,6 +133,43 @@ async def test_repair_alternation_appends_ai_after_dangling_human(monkeypatch):
     assert ERROR_SENTINEL in msgs[-1].content
 
 
+def test_build_middleware_returns_summarization_middleware():
+    from langchain.agents.middleware import SummarizationMiddleware
+
+    built = AgentRunner()._build_middleware(GenericFakeChatModel(messages=iter([])))
+    assert len(built) == 1 and isinstance(built[0], SummarizationMiddleware)
+
+
+async def test_summarization_compacts_checkpointer_state(monkeypatch):
+    import itertools
+
+    # Lower the thresholds so summarization fires within a few turns.
+    monkeypatch.setattr(runner_module, "SUMMARY_TRIGGER_MESSAGES", 6)
+    monkeypatch.setattr(runner_module, "SUMMARY_KEEP_MESSAGES", 2)
+
+    def infinite():
+        for i in itertools.count():
+            yield AIMessage(content=f"answer {i} with several words here")
+
+    fake = GenericFakeChatModel(messages=infinite())
+    monkeypatch.setattr(runner_module, "build_chat_model", lambda llm, **kw: fake)
+
+    cp = InMemorySaver()
+    runner = AgentRunner(checkpointer=cp)
+    for turn in range(5):
+        async for _ in runner.astream_text(
+            llm=_Llm(), user_message=f"q{turn}", system_prompt="s",
+            params=_PARAMS, thread_id="c1", summarize=True,
+        ):
+            pass
+
+    probe = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    msgs = (await probe.aget_state({"configurable": {"thread_id": "c1"}})).values["messages"]
+    # 5 turns = 10 messages un-summarized; compaction keeps the agent context bounded.
+    assert len(msgs) < 10
+    assert any("summary of the conversation" in m.content.lower() for m in msgs)
+
+
 def test_build_chat_model_uses_engine_handle(monkeypatch):
     # build_chat_model must point ChatOpenAI at the engine base_url and use the
     # engine's _payload_model_value (MLX sentinel), not handle["alias"].

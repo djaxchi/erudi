@@ -22,12 +22,22 @@ from typing import AsyncIterator, Optional
 
 from fastapi.concurrency import run_in_threadpool
 from langchain.agents import create_agent
+from langchain.agents.middleware import SummarizationMiddleware
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from src.agents.model_factory import build_chat_model
 from src.core import config
 from src.core.logging import logger
+
+# Auto-summarization thresholds (message-count based — token triggers need a
+# model profile the local server doesn't expose). Once a conversation's agent
+# state exceeds the trigger, older turns are summarized by the same local model
+# and replaced in the checkpointer state; the Message table keeps the full
+# history for display.
+SUMMARY_TRIGGER_MESSAGES = 20
+SUMMARY_KEEP_MESSAGES = 10
 
 # Frontend detects this prefix (substring match) to render an error turn in red.
 # Keep it; the message intentionally carries NO traceback (avoids info leak).
@@ -144,8 +154,20 @@ class AgentRunner:
                 return
 
     def _build_middleware(self, model):
-        """Summarization middleware is wired here in P5; empty for now."""
-        return []
+        """Auto-summarization using the SAME local model, triggered by message count.
+
+        The middleware rewrites the checkpointer state (drops old turns, inserts a
+        summary) so the agent's context stays bounded; the Message table is
+        untouched, so the UI still shows the full conversation.
+        """
+        return [
+            SummarizationMiddleware(
+                model=model,
+                trigger=("messages", SUMMARY_TRIGGER_MESSAGES),
+                keep=("messages", SUMMARY_KEEP_MESSAGES),
+                token_counter=count_tokens_approximately,
+            )
+        ]
 
     async def _repair_alternation(self, agent, run_config) -> None:
         """Preserve role alternation in the checkpointer after a failed turn.
