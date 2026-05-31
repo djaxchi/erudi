@@ -83,38 +83,29 @@ Warning:
 
 from __future__ import annotations
 
-import atexit
 import importlib  # used by quant_and_save_from_hf_format
-import json
 import logging
 import multiprocessing as mp
 import os
 import platform
 import shutil
-import socket
 import subprocess
-import time
+import time  # used by hardware warm-up loop
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 
-try:
-    import requests  # HTTP client to mlx_lm.server; runtime-checked by _assert_requests
-except Exception:
-    requests = None  # type: ignore[assignment]
-
-from src.engines.base_engine import BaseEngine
+from src.engines.base_chat_server_engine import BaseChatServerEngine
 from src.engines._mlx_server_runner import run_mlx_server
 from src.core.exceptions import (
-    EngineException,
     FileSystemException,
     HardwareException,
     InsufficientMemoryException,
     QuantizationException,
 )
-from src.core.logging import logger
 
-class MLX_Engine(BaseEngine):
+
+class MLX_Engine(BaseChatServerEngine):
     """Singleton Engine for MLX models and tokenizers runtimes.
     Built for Apple Silicon Backends.
     """
@@ -213,72 +204,50 @@ class MLX_Engine(BaseEngine):
     #
     # Inference goes through a subprocess `mlx_lm.server` (OpenAI-compatible HTTP),
     # spawned via `multiprocessing.Process(target=run_mlx_server, args=([argv],))`.
+    # The shared lifecycle (port pick, /health + chat-ping probe, SSE parsing,
+    # atexit, idle cleanup) lives in `BaseChatServerEngine`. Only the hooks
+    # below are MLX-specific.
+    #
     # Why `multiprocessing` and not `subprocess.Popen([sys.executable, "-m", ...])`:
     # in a PyInstaller frozen build, `sys.executable` is the launcher binary, not
     # a Python interpreter. `mp.spawn` (configured in `backend/run.py`) re-executes
     # the binary in child mode and reconstitutes the import graph, so the same
     # `run_mlx_server` target works in dev (real Python) and in prod (frozen).
 
-    @classmethod
-    def _assert_requests(cls) -> None:
-        """Raise a clear EngineException if the `requests` lib is unavailable."""
-        if requests is None:
-            raise EngineException(
-                "Missing dependency 'requests'. Install it in the runtime environment."
-            )
+    # --- BaseChatServerEngine config overrides ---
+    _port_range_start = 9080
+    _server_name = "mlx_lm.server"
+    _tokenizer_provider = "mlx-lm-server"
+    # mlx_lm.server uses HF/transformers kwarg names natively (repetition_penalty,
+    # repetition_context_size, top_k, ...), so the default `_forwarded_kwargs`
+    # set from the base + identity `_translate_payload_kwargs` already match.
+
+    @staticmethod
+    def _payload_model_value(handle: Dict[str, Any]) -> str:
+        """mlx_lm.server falls back from this sentinel to whatever was loaded
+        with `--model` at startup (server.py:1163). Sending the actual path
+        would also work but adds a per-request file existence check on the
+        server side."""
+        return "default_model"
 
     @classmethod
-    def _pick_free_port(cls, start: int = 9080, limit: int = 100) -> int:
-        """Return the first free TCP port in [start, start+limit) on 127.0.0.1.
-
-        Distinct range from CPU_Engine (8080+) and the Erudi backend itself
-        (8765–8799) to avoid collisions when several engines are evaluated
-        on the same host (rare, but cheap to guarantee).
-        """
-        for port in range(start, start + limit):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                try:
-                    s.bind(("127.0.0.1", port))
-                    return port
-                except OSError:
-                    continue
-        raise EngineException("No free TCP port found for mlx_lm.server.")
+    def _resolve_model_artifact(cls, llm_local_path: Union[str, Path]) -> Path:
+        """MLX models are directories containing weights + tokenizer."""
+        path = Path(llm_local_path).resolve()
+        if not path.exists():
+            raise FileSystemException(f"MLX model path not found: {path}")
+        return path
 
     @classmethod
-    def _probe_ready(cls, base_url: str, timeout_s: float = 120.0) -> None:
-        """Poll `GET {base_url}/health` until 200 or timeout.
-
-        Uses the dedicated `/health` endpoint of mlx_lm.server (lighter than
-        a `/v1/chat/completions` ping with a fake payload).
-        """
-        cls._assert_requests()
-        url = f"{base_url}/health"
-        t0 = time.time()
-        while time.time() - t0 < timeout_s:
-            try:
-                r = requests.get(url, timeout=1.5)
-                if r.status_code == 200:
-                    return
-            except Exception:
-                pass
-            time.sleep(0.4)
-        raise EngineException(
-            f"mlx_lm.server did not become ready at {base_url} within {timeout_s}s"
-        )
-
-    @classmethod
-    def _start_server(
+    def _spawn_child(
         cls,
+        *,
         model_path: Path,
         alias: str,
         port: int,
+        **ctx: Any,
     ) -> Dict[str, Any]:
-        """Spawn `mlx_lm.server` in a child process and wait for readiness.
-
-        Returns a handle dict matching the CPU/CUDA twin shape so that the
-        rest of the codebase can treat all three engines uniformly.
-        """
+        """Spawn `mlx_lm.server` as an mp.Process. Returns the handle dict."""
         argv = [
             "mlx_lm.server",
             "--model", str(model_path),
@@ -286,31 +255,16 @@ class MLX_Engine(BaseEngine):
             "--port", str(port),
             "--log-level", "INFO",
         ]
-
         proc = mp.Process(target=run_mlx_server, args=(argv,), daemon=False)
         proc.start()
-
-        base_url = f"http://127.0.0.1:{port}"
-        try:
-            cls._probe_ready(base_url, timeout_s=120.0)
-        except Exception:
-            # If readiness fails, kill the child so it doesn't outlive us.
-            cls._terminate_process(proc)
-            raise
-
-        # Wire cleanup to interpreter exit so a crashed FastAPI parent does
-        # not leak a zombie `mlx_lm.server` (mirrors cpu_engine.py:213).
-        atexit.register(lambda: cls._terminate_process(proc))
-
-        handle: Dict[str, Any] = {
+        return {
             "pid": proc.pid,
             "proc": proc,
             "port": port,
-            "base_url": base_url,
+            "base_url": f"http://127.0.0.1:{port}",
             "alias": alias,
             "model_path": str(model_path),
         }
-        return handle
 
     @classmethod
     def _terminate_process(cls, proc) -> None:
@@ -335,217 +289,19 @@ class MLX_Engine(BaseEngine):
             pass
 
     @classmethod
-    def _server_is_alive(cls) -> bool:
-        """Return True iff the cached model handle wraps a still-running child."""
-        prev = cls._model
-        if not isinstance(prev, dict):
+    def _proc_is_alive(cls, proc: Any) -> bool:
+        """Whether the spawned `mp.Process` is still running.
+
+        Used by `BaseChatServerEngine._probe_ready` to detect early child
+        crashes (otherwise the probe would time out at 120s with no hint
+        about why the child went away).
+        """
+        if proc is None:
             return False
-        proc = prev.get("proc")
-        return bool(proc and proc.is_alive())
-
-    @classmethod
-    def _wait_port_closed(cls, port: int, timeout_s: float = 3.0) -> None:
-        """Poll until the OS releases `port` (or `timeout_s` elapses).
-
-        Used after `_terminate_process` to ensure that a subsequent spawn on
-        the same port doesn't race the kernel's TIME_WAIT cleanup.
-        """
-        t0 = time.time()
-        while time.time() - t0 < timeout_s:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(0.2)
-                if s.connect_ex(("127.0.0.1", port)) != 0:
-                    return
-            time.sleep(0.1)
-
-    @classmethod
-    def _stop_server_if_running(cls) -> None:
-        """Best-effort: terminate the current subprocess and wait for port release."""
-        prev = cls._model
-        if not isinstance(prev, dict):
-            return
-        proc = prev.get("proc")
-        port = prev.get("port")
         try:
-            if proc:
-                cls._terminate_process(proc)
-            if port is not None:
-                try:
-                    cls._wait_port_closed(int(port))
-                except Exception:
-                    pass
-        except Exception as e:
-            logger.warning(f"[MLX_Engine] graceful stop failed: {e}")
-
-    # ======================= ABSTRACT METHODS (BaseEngine contract) =======================
-
-    @classmethod
-    def get_model_and_tokenizer(
-        cls,
-        llm_id: str,
-        llm_local_path: Union[str, Path],
-    ) -> Tuple[Any, Any]:
-        """Spawn (or reuse) an `mlx_lm.server` subprocess for the given model.
-
-        Singleton semantics: a second call with the same `llm_id` reuses the
-        existing subprocess; a call with a different `llm_id` terminates the
-        old child before spawning a new one.
-
-        Returns:
-            (handle_dict, tokenizer_dict) — handle is the same shape used by
-            CPU_Engine / CUDA_Engine; tokenizer is a remote-provider placeholder
-            (the server handles `apply_chat_template` internally).
-        """
-        logger.info(f"[MLX_Engine] Loading model '{llm_id}' from {llm_local_path} via mlx_lm.server...")
-        with cls._lock:
-            if cls._should_not_reload_model(llm_id):
-                return cls._return_cached_model_and_tokenizer()
-
-            cls._assert_requests()
-            path = Path(llm_local_path).resolve()
-            if not path.exists():
-                raise FileSystemException(f"MLX model path not found: {path}")
-
-            # Kill previous subprocess if any
-            prev = cls._model
-            if isinstance(prev, dict) and prev.get("proc") is not None:
-                cls._terminate_process(prev["proc"])
-
-            alias = f"erudi-{llm_id}"
-            port = cls._pick_free_port()
-            handle = cls._start_server(model_path=path, alias=alias, port=port)
-
-            cls._model = handle
-            cls._tokenizer = {"type": "remote", "provider": "mlx-lm-server"}
-            cls._model_id = llm_id
-            cls._last_used = datetime.now()
-            logger.info(
-                f"[MLX_Engine] Model loaded via mlx_lm.server on {handle['base_url']} alias={alias}"
-            )
-            return cls._model, cls._tokenizer
-
-    @classmethod
-    def generate_stream(
-        cls,
-        model: Any,
-        tokenizer: Any,
-        prompt: list,
-        max_tokens: int,
-        temperature: float,
-        top_p: float,
-        **kwargs,
-    ) -> Generator[str, None, None]:
-        """Stream tokens from `mlx_lm.server` via `/v1/chat/completions` (SSE).
-
-        Yields the `choices[0].delta.content` strings. The `delta.reasoning`
-        channel (emitted by thinking-capable models) is dropped silently to
-        preserve iso-behaviour with the previous in-process thinking filter
-        (`<|channel>thought ... <channel|>`).
-
-        Optional kwargs forwarded to the server (when set):
-            top_k, min_p, repetition_penalty, repetition_context_size,
-            seed, stop.
-        Other kwargs are logged at DEBUG and dropped — mirrors CPU_Engine
-        (cpu_engine.py:607-608).
-        """
-        if not isinstance(model, dict) or "base_url" not in model:
-            raise EngineException(
-                "Invalid model handle for MLX_Engine. Call get_model_and_tokenizer() first."
-            )
-
-        cls._assert_requests()
-        url = f"{model['base_url']}/v1/chat/completions"
-
-        # Build payload — defaults match what the server already understands.
-        # We send `model='default_model'` because mlx_lm.server falls back to
-        # whatever was loaded via `--model` at startup when this sentinel is
-        # used (server.py:1163). Sending the actual path would also work but
-        # adds a per-request file-existence check on the server side.
-        payload: Dict[str, Any] = {
-            "model": "default_model",
-            "messages": prompt,
-            "max_tokens": max_tokens,
-            "temperature": float(temperature),
-            "top_p": float(top_p),
-            "stream": True,
-        }
-        _FORWARDED = {
-            "top_k",
-            "min_p",
-            "repetition_penalty",
-            "repetition_context_size",
-            "seed",
-            "stop",
-        }
-        for k in _FORWARDED:
-            if k in kwargs and kwargs[k] is not None:
-                payload[k] = kwargs[k]
-
-        ignored = [k for k in kwargs if k not in _FORWARDED]
-        if ignored:
-            logger.debug(f"[MLX_Engine] ignoring unsupported params: {ignored}")
-
-        # Mark active so the idle-cleanup monitor doesn't reap us mid-stream.
-        with cls._lock:
-            cls._last_used = None
-
-        try:
-            with requests.post(url, json=payload, stream=True, timeout=600) as r:
-                r.raise_for_status()
-                # Accumulate raw bytes and split on newlines manually so that
-                # UTF-8 multi-byte sequences (em dash, curly quotes, etc.) are
-                # never passed through requests' ISO-8859-1 fallback decoder
-                # (same pattern as cpu_engine.py:629-652).
-                buf = b""
-                done = False
-                for chunk in r.iter_content(chunk_size=None):
-                    buf += chunk
-                    while b"\n" in buf:
-                        raw_line, buf = buf.split(b"\n", 1)
-                        line = raw_line.rstrip(b"\r").decode("utf-8")
-                        if not line:
-                            continue
-                        if line.startswith("data: "):
-                            data = line[6:].strip()
-                            if data == "[DONE]":
-                                done = True
-                                break
-                            try:
-                                obj = json.loads(data)
-                                choices = obj.get("choices") or []
-                                if not choices:
-                                    continue
-                                delta = choices[0].get("delta") or {}
-                                content = delta.get("content")
-                                # `reasoning` (thinking channel) is intentionally
-                                # ignored — see docstring.
-                                if content:
-                                    yield content
-                            except Exception:
-                                # Malformed SSE line — log and keep going so a
-                                # transient parse error doesn't abort the whole
-                                # generation.
-                                logger.debug("[MLX_Engine] skipping malformed SSE line")
-                                continue
-                    if done:
-                        break
-        except Exception as e:
-            raise EngineException(message="MLX_Engine streaming failed", trace=e)
-        finally:
-            with cls._lock:
-                cls._last_used = datetime.now()
-
-    @classmethod
-    def cleanup(cls) -> None:
-        """Terminate the subprocess and clear the cached handle.
-
-        Overrides BaseEngine.cleanup: in addition to clearing class state,
-        we kill the child `mlx_lm.server`. Otherwise the model would stay
-        loaded in the child indefinitely.
-        """
-        with cls._lock:
-            cls._stop_server_if_running()
-            return super().cleanup()
+            return bool(proc.is_alive())
+        except Exception:
+            return False
 
     # ======================= HARDWARE DETECTION & EVALUATION =======================
     

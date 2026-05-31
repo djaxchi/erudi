@@ -125,6 +125,8 @@ a = Analysis(
         "src.entities.TrainingJob",
         "src.entities.VectorStore",
         "src.engines.base_engine",
+        "src.engines.base_chat_server_engine",
+        "src.engines.base_llama_cpp_engine",
         "src.engines.mlx_engine",
         "src.engines._mlx_server_runner",  # picklable target for mp.Process spawning mlx_lm.server
         "mlx_lm.server",  # imported lazily inside the runner; collect_all may miss it

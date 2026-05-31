@@ -563,10 +563,18 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 raise
             return llm_engine
         except Exception as e:
-            raise EngineException(message="Error selecting the LLM Engine.", trace=e)
+            raise EngineException(
+                message="Error selecting the LLM Engine.",
+                trace=f"{type(e).__name__}: {e}",
+            )
 
     @classmethod
     def _should_cleanup(cls) -> bool:
+        # Active-marker contract: `_last_used = None` means a stream is in
+        # flight (set by `BaseChatServerEngine.generate_stream`). Returning
+        # False here is what blocks the idle monitor from reaping the model
+        # mid-generation. Do not weaken without a coordinated change to
+        # every engine's `generate_stream`.
         if cls._last_used is None or cls._model is None:
             return False
         idle_time = datetime.now() - cls._last_used

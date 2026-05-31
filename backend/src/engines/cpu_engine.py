@@ -77,215 +77,79 @@ Warning:
 from __future__ import annotations
 import os
 import sys
-import time
-import json
-import subprocess
-import signal
-import atexit
 import platform
-import socket
 import shutil
+import subprocess  # used by quant_and_save_from_hf_format + hardware probes
+import time  # used by hardware warm-up loop
 from pathlib import Path
-from typing import Any, Optional, Tuple, Generator, Union, Dict, List
+from typing import Any, Dict, List, Union
 
-try:
-    import requests  # required for HTTP calls to llama-server
-except Exception as _e:
-    requests = None  # We will raise a clear EngineException at runtime
-
-from src.engines.base_engine import BaseEngine
+from src.engines.base_llama_cpp_engine import BaseLlamaCppEngine
 from src.core.exceptions import EngineException
 from src.core.logging import logger
 from src.core.config import ROOT_DIR
 
 
-class CPU_Engine(BaseEngine):
+class CPU_Engine(BaseLlamaCppEngine):
     """
     CPU Engine using llama.cpp's HTTP server (llama-server).
-    - get_model_and_tokenizer() starts a local llama-server process bound to 127.0.0.1
-    - generate_stream() talks to /v1/chat/completions with OpenAI-compatible payload
-    - quant_and_save_from_hf_format() optionally converts HF -> GGUF via llama.cpp tooling
+
+    Inherits the subprocess + SSE lifecycle from BaseChatServerEngine and the
+    llama-cpp specifics (Popen, GGUF picking, llama-server location) from
+    BaseLlamaCppEngine. Only `_build_spawn_argv` + `_prepare_spawn_context`
+    + class attrs are CPU-specific here.
+
     Notes:
       * "model" is a dict handle for the running server (pid, port, alias, base_url)
       * "tokenizer" is a placeholder (HTTP server abstracts tokenization)
     """
-    
+
+    # --- BaseChatServerEngine config overrides ---
+    _server_name = "llama-server"
+    _tokenizer_provider = "llama-server"
+    # _port_range_start = 8080 (inherited from BaseLlamaCppEngine)
+    # _use_cuda_build = False (inherited from BaseLlamaCppEngine)
+
     MODEL_MAPPING = {
         # Ignore for the moment, to be worked on later
     }
 
-    # ---------- Private helpers (internal, not part of BaseEngine API) ----------
+    # ---------- CPU-specific spawn hooks ----------
 
     @classmethod
-    def _assert_requests(cls):
-        if requests is None:
-            raise EngineException("Missing dependency 'requests'. Install it in the runtime environment.")
+    def _prepare_spawn_context(cls) -> Dict[str, Any]:
+        """Resolve the per-spawn CPU context: context window, thread count,
+        and the fixed `gpu_layers=0` (CPU-only inference)."""
+        return {
+            "ctx_size": int(os.environ.get("ERUDI_CTX", "4096")),
+            "threads": max(1, os.cpu_count() or 1),
+            "gpu_layers": 0,
+        }
 
     @classmethod
-    def _default_install_dir(cls) -> Path:
-        # Where your build script installs llama.cpp artifacts
-        llama_root = ROOT_DIR / "artifacts" / "llama-cpp" / "cpu" / "bin"
-        return llama_root
-
-    @classmethod
-    def _find_llama_server(cls, install_dir: Path) -> Path:
-        exe = "llama-server.exe" if os.name == "nt" else "llama-server"
-        p = install_dir / exe
-        if not p.exists():
-            fallback = ROOT_DIR / "artifacts" / "llama-cpp" / "cuda" / "bin" / exe
-            if fallback.exists():
-                return fallback
-            raise EngineException(f"llama-server not found at {p}. Make sure you built llama.cpp correctly.")
-        return p
-
-    @classmethod
-    def _pick_free_port(cls, start: int = 8080, limit: int = 100) -> int:
-        for port in range(start, start + limit):
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                try:
-                    s.bind(("127.0.0.1", port))
-                    return port
-                except OSError:
-                    continue
-        raise EngineException("No free TCP port found for llama-server.")
-
-    @classmethod
-    def _probe_ready(cls, base_url: str, model_alias: str, timeout_s: float = 90.0) -> None:
-        cls._assert_requests()
-        t0 = time.time()
-        url = f"{base_url}/v1/chat/completions"
-        payload = {"model": model_alias, "messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}
-        while time.time() - t0 < timeout_s:
-            try:
-                r = requests.post(url, json=payload, timeout=1.5)
-                if r.status_code in (200, 400):
-                    return
-            except Exception:
-                pass
-            time.sleep(0.4)
-        raise EngineException("llama-server did not become ready within timeout.")
-
-    @classmethod
-    def _start_server(
+    def _build_spawn_argv(
         cls,
+        *,
+        llama_server: Path,
         model_gguf: Path,
-        install_dir: Path,
         alias: str,
-        ctx: int,
-        threads: Optional[int],
+        port: int,
+        ctx_size: int = 4096,
+        threads: int = 1,
         gpu_layers: int = 0,
-        port: Optional[int] = None,
-        extra_args: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        server_path = cls._find_llama_server(install_dir)
-        if threads is None:
-            threads = max(1, os.cpu_count() or 1)
-        port = port or cls._pick_free_port()
-
-        args = [
-            str(server_path),
+        **_ignored: Any,
+    ) -> List[Any]:
+        """CPU CLI for llama-server: forces `-ngl 0`, sized context, native threads."""
+        return [
+            str(llama_server),
             "-m", str(model_gguf),
             "--host", "127.0.0.1",
             "--port", str(port),
             "--alias", alias,
-            "-c", str(ctx),
+            "-c", str(ctx_size),
             "--threads", str(threads),
-            "-ngl", str(gpu_layers),  # force CPU
+            "-ngl", str(gpu_layers),
         ]
-        if extra_args:
-            args += extra_args
-
-        # Start detached but keep handle to terminate later
-        proc = subprocess.Popen(
-            args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            bufsize=1,
-            env=os.environ.copy(),
-        )
-
-        base_url = f"http://127.0.0.1:{port}"
-        cls._probe_ready(base_url, alias)
-
-        # Ensure cleanup on interpreter exit
-        atexit.register(lambda: cls._terminate_process(proc))
-
-        return {
-            "pid": proc.pid,
-            "proc": proc,
-            "port": port,
-            "base_url": base_url,
-            "alias": alias,
-            "model_path": str(model_gguf),
-            "threads": threads,
-        }
-
-    @classmethod
-    def _terminate_process(cls, proc: subprocess.Popen):
-        if not proc:
-            return
-        try:
-            if proc.poll() is None:
-                if platform.system() == "Windows":
-                    proc.terminate()
-                else:
-                    proc.send_signal(signal.SIGINT)
-                try:
-                    proc.wait(timeout=5)
-                except Exception:
-                    proc.kill()
-        except Exception:
-            pass
-
-    @classmethod
-    def _select_gguf(cls, llm_local_path: Union[str, Path]) -> Path:
-        """Select the best GGUF file from the given path.
-        
-        Priority order if multiple GGUFs exist:
-        1. Prefer known quantization types: q4_k_m > q4_0 > q5_k_m > q8_0 > f16
-        2. Fall back to smallest file (most quantized)
-        
-        Args:
-            llm_local_path: Path to .gguf file or directory containing .gguf files.
-            
-        Returns:
-            Path to the selected .gguf file.
-            
-        Raises:
-            FileNotFoundError: If path doesn't exist.
-            EngineException: If path is not .gguf or directory contains no .gguf files.
-        """
-        p = Path(llm_local_path).resolve()
-        if not p.exists():
-            raise FileNotFoundError(f"Model path not found: {p}")
-        if p.is_file():
-            if p.suffix.lower() == ".gguf":
-                return p
-            raise EngineException(f"Expected a .gguf file. Got: {p}")
-        
-        # Directory: find all .gguf files
-        ggufs = list(p.glob("*.gguf"))
-        if not ggufs:
-            raise EngineException(f"No .gguf found in {p}. Convert or quantize first.")
-        
-        # If only one, return it
-        if len(ggufs) == 1:
-            return ggufs[0]
-        
-        # Multiple GGUFs: prioritize by quantization type
-        QUANT_PRIORITY = ["q4_k_m", "q4_0", "q5_k_m", "q8_0", "f16"]
-        for quant in QUANT_PRIORITY:
-            for gguf in ggufs:
-                if quant in gguf.stem.lower():
-                    logger.info(f"[CPU_Engine] Selected {gguf.name} (matched quant type: {quant})")
-                    return gguf
-        
-        # Fallback: smallest file (most quantized)
-        smallest = min(ggufs, key=lambda x: x.stat().st_size)
-        logger.warning(f"[CPU_Engine] No known quant pattern found. Selecting smallest: {smallest.name}")
-        return smallest
 
     @classmethod
     def _copy_auxiliary_files(cls, src: Path, dst: Path) -> None:
@@ -334,8 +198,6 @@ class CPU_Engine(BaseEngine):
             for key in list(sys.modules.keys()):
                 if "convert_hf_to_gguf" in key or key == "gguf" or key.startswith("gguf."):
                     sys.modules.pop(key, None)
-
-    # ---------- Abstract methods (required by BaseEngine) ----------
 
     @classmethod
     def quant_and_save_from_hf_format(
@@ -523,139 +385,6 @@ class CPU_Engine(BaseEngine):
             logger.info("[CPU_Engine] Skipping quantization (quantize=False), keeping FP16 GGUF")
         
         cls._copy_auxiliary_files(src, dst)
-
-    @classmethod
-    def get_model_and_tokenizer(
-        cls,
-        llm_id: str,
-        llm_local_path: Union[str, Path],
-        *args
-    ) -> Tuple[Any, Any]:
-        """
-        Starts llama-server for the given GGUF and returns (model_handle, tokenizer_placeholder).
-        Idempotent: if the same llm_id is already loaded, returns cached.
-        """
-        logger.info(f"[CPU_Engine] Loading model '{llm_id}' from {llm_local_path} via llama-server...")
-        with cls._lock:
-            # If model is already loaded and matches llm_id, return cached
-            if cls._should_not_reload_model(llm_id):
-                return cls._return_cached_model_and_tokenizer()
-
-            cls._assert_requests()
-            gguf = cls._select_gguf(llm_local_path)
-            install_dir = cls._default_install_dir()
-
-            # Kill previous process if any
-            prev = cls._model
-            if isinstance(prev, dict) and "proc" in prev and prev["proc"] is not None:
-                cls._terminate_process(prev["proc"])
-
-            # Start server
-            alias = f"erudi-{llm_id}"
-            model_handle = cls._start_server(
-                model_gguf=gguf,
-                install_dir=install_dir,
-                alias=alias,
-                ctx=int(os.environ.get("ERUDI_CTX", "4096")),
-                threads=None,
-                gpu_layers=0,
-                port=None,
-                extra_args=None,
-            )
-
-            cls._model = model_handle
-            cls._tokenizer = {"type": "remote", "provider": "llama-server"}
-            cls._model_id = llm_id
-            from datetime import datetime
-            cls._last_used = datetime.now()  # Mark as active
-            logger.info(f"[CPU_Engine] Model loaded via llama-server on {model_handle['base_url']} alias={alias}")
-            return cls._model, cls._tokenizer
-
-    @classmethod
-    def generate_stream(
-        cls,
-        model: Any,
-        tokenizer: Any,
-        prompt: list[dict[str, str]],
-        max_tokens: int,
-        temperature: float,
-        top_p: float,
-        **kwargs
-    ) -> Generator[str, None, None]:
-        """
-        Streams tokens from llama-server (/v1/chat/completions, stream=True).
-        Yields token deltas as strings.
-        
-        Note:
-            CPU_Engine only supports max_tokens, temperature, and top_p.
-            All other parameters in **kwargs are ignored.
-        """
-        if not isinstance(model, dict) or "base_url" not in model:
-            raise RuntimeError("Invalid model handle for CPU_Engine. Call get_model_and_tokenizer() first.")
-
-        cls._assert_requests()
-        base_url = model["base_url"]
-        alias = model["alias"]
-        url = f"{base_url}/v1/chat/completions"
-        
-        # Log consumed parameters
-        consumed_params = {
-            'max_tokens': max_tokens,
-            'temperature': temperature,
-            'top_p': top_p
-        }
-        if kwargs:
-            logger.debug(f"CPU_Engine ignoring unsupported params: {list(kwargs.keys())}")
-        logger.debug(f"CPU_Engine consuming params: {consumed_params}")
-
-        payload = {
-            "model": alias,
-            "messages": prompt,
-            "max_tokens": max_tokens,
-            "temperature": float(temperature),
-            "top_p": float(top_p),
-            "stream": True,
-        }
-
-        with cls._lock:
-            cls._last_used = None
-
-        try:
-            with requests.post(url, json=payload, stream=True, timeout=600) as r:
-                r.raise_for_status()
-                # Accumulate raw bytes and split on newlines manually so that
-                # UTF-8 multi-byte sequences (em dash, curly quotes, etc.) are
-                # never passed through requests' ISO-8859-1 fallback decoder.
-                buf = b""
-                done = False
-                for chunk in r.iter_content(chunk_size=None):
-                    buf += chunk
-                    while b"\n" in buf:
-                        raw_line, buf = buf.split(b"\n", 1)
-                        line = raw_line.rstrip(b"\r").decode("utf-8")
-                        if not line:
-                            continue
-                        if line.startswith("data: "):
-                            data = line[6:].strip()
-                            if data == "[DONE]":
-                                done = True
-                                break
-                            try:
-                                obj = json.loads(data)
-                                delta = obj["choices"][0].get("delta", {}).get("content")
-                                if delta:
-                                    yield delta
-                            except Exception:
-                                # ignore malformed lines
-                                continue
-                    if done:
-                        break
-        except Exception as e:
-            raise EngineException(message="CPU_Engine streaming failed", trace=e)
-        finally:
-            with cls._lock:
-                from datetime import datetime
-                cls._last_used = datetime.now()
 
     @classmethod
     def get_hardware_info(cls) -> Dict[str, Any]:
@@ -1064,49 +793,3 @@ class CPU_Engine(BaseEngine):
         """
         # get_performance_evaluation() already returns flat structure
         return cls.get_performance_evaluation()
-    
-    @classmethod
-    def _server_is_alive(cls) -> bool:
-        prev = cls._model
-        if not isinstance(prev, dict):
-            return False
-        proc = prev.get("proc")
-        return bool(proc and proc.poll() is None)
-
-    @classmethod
-    def _wait_port_closed(cls, port: int, timeout_s: float = 3.0) -> None:
-        import socket
-        import time
-        t0 = time.time()
-        while time.time() - t0 < timeout_s:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(0.2)
-                if s.connect_ex(("127.0.0.1", port)) != 0:
-                    return
-            time.sleep(0.1)
-
-    @classmethod
-    def _stop_server_if_running(cls) -> None:
-        prev = cls._model
-        if not isinstance(prev, dict):
-            return
-        proc = prev.get("proc")
-        port = prev.get("port")
-        try:
-            if proc:
-                cls._terminate_process(proc)  # already OS-guarded
-            if port is not None:
-                try:
-                    cls._wait_port_closed(int(port))
-                except Exception:
-                    pass
-        except Exception as e:
-            from src.core.logging import logger
-            logger.warning(f"[CPU_Engine] graceful stop failed: {e}")
-
-    @classmethod
-    def cleanup(cls) -> None:
-        # Ensure the external server process is killed, then clear base state.
-        with cls._lock:
-            cls._stop_server_if_running()
-            return super().cleanup()
