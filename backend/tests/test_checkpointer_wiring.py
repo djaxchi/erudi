@@ -61,6 +61,26 @@ async def test_open_checkpointer_creates_tables_and_isolates_threads():
             assert await saver.aget_tuple(cfg_b) is not None
 
 
+async def test_checkpoint_state_survives_reopen_on_disk():
+    # IT6: state written to the on-disk checkpoint DB survives closing and
+    # reopening the SAME file — proving conversations persist across an app
+    # restart (production holds the saver open for the whole lifespan, but a
+    # relaunch must restore prior threads from disk).
+    from src.agents.checkpoint import open_checkpointer
+
+    with tempfile.TemporaryDirectory() as d:
+        db = Path(d) / "cp.db"
+        cfg = {"configurable": {"thread_id": "persist", "checkpoint_ns": ""}}
+
+        async with open_checkpointer(db) as saver:
+            await saver.aput(cfg, empty_checkpoint(), {"source": "input", "step": 0}, {})
+            assert await saver.aget_tuple(cfg) is not None
+
+        # Reopen the same file (simulates a process restart).
+        async with open_checkpointer(db) as saver2:
+            assert await saver2.aget_tuple(cfg) is not None
+
+
 def test_get_checkpointer_reads_app_state():
     from src.agents.checkpoint import get_checkpointer
 

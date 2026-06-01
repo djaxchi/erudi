@@ -187,3 +187,125 @@ def test_build_chat_model_uses_engine_handle(monkeypatch):
     assert chat.model_name == "default_model"
     assert chat.openai_api_base == "http://127.0.0.1:8080/v1"
     assert chat.temperature == 0.3
+    # Repetition controls restored on the ChatOpenAI path (regression: tiny models
+    # looped without them). Identity engine (no _translate_payload_kwargs) => HF names.
+    assert chat.extra_body == {"repetition_penalty": 1.2, "repetition_context_size": 5}
+
+
+def test_build_chat_model_translates_extra_body_per_engine(monkeypatch):
+    # llama.cpp engines rename repetition_penalty -> repeat_penalty (and
+    # repetition_context_size -> repeat_last_n). build_chat_model must route the
+    # repetition controls through the engine's _translate_payload_kwargs so each
+    # local server receives its own wire names in extra_body.
+    class _LlamaEngine:
+        @staticmethod
+        def get_model_and_tokenizer(llm_id, link):
+            return ({"base_url": "http://127.0.0.1:9090", "alias": f"erudi-{llm_id}"}, {})
+
+        @staticmethod
+        def _payload_model_value(handle):
+            return handle["alias"]
+
+        @staticmethod
+        def _translate_payload_kwargs(kw):
+            rename = {
+                "repetition_penalty": "repeat_penalty",
+                "repetition_context_size": "repeat_last_n",
+            }
+            return {rename.get(k, k): v for k, v in kw.items()}
+
+    monkeypatch.setattr(config, "LLM_Engine", _LlamaEngine)
+    chat = build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55)
+    assert chat.extra_body == {"repeat_penalty": 1.2, "repeat_last_n": 5}
+
+
+# ===== Integration (IT3 / IT5 / IT11) — PR1 E2E validation, runner level =====
+
+
+async def test_thread_id_isolation_no_cross_bleed(monkeypatch):
+    # IT3: two conversations -> two checkpointer threads; neither leaks into the
+    # other (each thread's history holds only its own user messages).
+    import itertools
+
+    def infinite():
+        for i in itertools.count():
+            yield AIMessage(content=f"reply {i}")
+
+    monkeypatch.setattr(
+        runner_module,
+        "build_chat_model",
+        lambda llm, **kw: GenericFakeChatModel(messages=infinite()),
+    )
+    cp = InMemorySaver()
+    runner = AgentRunner(checkpointer=cp)
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="alpha", system_prompt="s", params=_PARAMS, thread_id="conv-1"
+    ):
+        pass
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="beta", system_prompt="s", params=_PARAMS, thread_id="conv-2"
+    ):
+        pass
+
+    probe = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    msgs_1 = (await probe.aget_state({"configurable": {"thread_id": "conv-1"}})).values["messages"]
+    msgs_2 = (await probe.aget_state({"configurable": {"thread_id": "conv-2"}})).values["messages"]
+    assert [m.content for m in msgs_1 if m.type == "human"] == ["alpha"]
+    assert [m.content for m in msgs_2 if m.type == "human"] == ["beta"]
+
+
+async def test_purged_thread_starts_fresh_no_resurrection(monkeypatch):
+    # IT5 (BLOCKER B3): once a thread is purged (conversation deleted), reusing the
+    # same thread_id — SQLite reuses autoincrement ids — must start a FRESH thread,
+    # never resurrecting the deleted conversation's history.
+    monkeypatch.setattr(
+        runner_module,
+        "build_chat_model",
+        lambda llm, **kw: GenericFakeChatModel(
+            messages=iter([AIMessage(content="a"), AIMessage(content="b")])
+        ),
+    )
+    cp = InMemorySaver()
+    runner = AgentRunner(checkpointer=cp)
+    cfg = {"configurable": {"thread_id": "5"}}
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="old-secret", system_prompt="s", params=_PARAMS, thread_id="5"
+    ):
+        pass
+    await cp.adelete_thread("5")
+    assert await cp.aget_tuple(cfg) is None
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="brand-new", system_prompt="s", params=_PARAMS, thread_id="5"
+    ):
+        pass
+
+    probe = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    msgs = (await probe.aget_state(cfg)).values["messages"]
+    # Only the new turn — the deleted "old-secret" turn must NOT reappear.
+    assert [m.type for m in msgs] == ["human", "ai"]
+    assert [m.content for m in msgs if m.type == "human"] == ["brand-new"]
+
+
+async def test_astream_holds_active_marker_across_whole_stream(monkeypatch):
+    # IT11: the runner wraps model resolution + the ENTIRE token stream in
+    # engine.generation_guard, so the active marker (_last_used=None) is held for
+    # every token — the idle-cleanup monitor cannot reap the model mid-stream.
+    monkeypatch.setattr(
+        runner_module,
+        "build_chat_model",
+        lambda llm, **kw: GenericFakeChatModel(messages=iter([AIMessage(content="one two three")])),
+    )
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    observed = []
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="hi", system_prompt="s", params=_PARAMS, thread_id="c1"
+    ):
+        observed.append(config.LLM_Engine._last_used)
+
+    assert observed and all(marker is None for marker in observed)
+    # Marker restored once the stream completes (model becomes reapable again).
+    assert config.LLM_Engine._last_used is not None
