@@ -13,6 +13,15 @@ from langchain_openai import ChatOpenAI
 
 from src.core import config
 
+# Sampling controls the bare OpenAI wire schema lacks but local models need to
+# avoid degenerate repetition loops. These mirror the pre-LangChain engine
+# defaults: the hand-rolled path passed repetition_penalty=1.2 +
+# repetition_context_size=5 to EVERY generation. Dropping them on the ChatOpenAI
+# path made even tiny models (e.g. Gemma-270M) loop on trivial prompts, so they
+# are restored here.
+DEFAULT_REPETITION_PENALTY = 1.2
+DEFAULT_REPETITION_CONTEXT_SIZE = 5
+
 
 def build_chat_model(
     llm,
@@ -20,6 +29,8 @@ def build_chat_model(
     temperature: float,
     top_p: float,
     max_tokens: int,
+    repetition_penalty: float = DEFAULT_REPETITION_PENALTY,
+    repetition_context_size: int = DEFAULT_REPETITION_CONTEXT_SIZE,
 ) -> ChatOpenAI:
     """Resolve the engine child for ``llm`` and wrap it as a ``ChatOpenAI``.
 
@@ -37,6 +48,20 @@ def build_chat_model(
     engine = config.LLM_Engine
     handle, _tokenizer = engine.get_model_and_tokenizer(llm.id, llm.link)
     model_field = engine._payload_model_value(handle)
+
+    # Extra sampling params absent from the OpenAI wire schema. mlx_lm.server reads
+    # the HF names natively; llama.cpp engines translate them to their wire names
+    # (repeat_penalty / repeat_last_n) via ``_translate_payload_kwargs``. Sent via
+    # ChatOpenAI.extra_body so they land in the local server's chat-completions
+    # body. (getattr keeps non-server engines / test stubs working via identity.)
+    translate = getattr(engine, "_translate_payload_kwargs", lambda kw: kw)
+    extra_body = translate(
+        {
+            "repetition_penalty": repetition_penalty,
+            "repetition_context_size": repetition_context_size,
+        }
+    )
+
     return ChatOpenAI(
         base_url=f"{handle['base_url']}/v1",
         api_key="not-needed",  # local server ignores it; explicit avoids OPENAI_API_KEY lookup
@@ -44,6 +69,7 @@ def build_chat_model(
         temperature=temperature,
         top_p=top_p,
         max_tokens=max_tokens,
+        extra_body=extra_body,  # restore small-model coherence (repetition controls)
         timeout=None,       # cold model load can stall several seconds before first token
         max_retries=0,      # don't silently double-submit a slow local generation
         streaming=True,
