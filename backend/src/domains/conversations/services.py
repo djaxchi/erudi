@@ -12,6 +12,7 @@ consumes them directly on the event loop); all synchronous SQLAlchemy work is
 wrapped in ``run_in_threadpool`` so DB commits never block the loop.
 """
 
+import re
 from typing import AsyncGenerator, List, Optional
 
 from fastapi.concurrency import run_in_threadpool
@@ -25,6 +26,36 @@ from src.domains.conversations.schemas import ConversationQuery
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
 from src.core.exceptions import ModelNotFoundException
+
+
+def _sanitize_title(raw: str, *, max_words: int = 6, max_chars: int = 48) -> str:
+    """Clean a model-generated conversation title.
+
+    Tiny local models occasionally emit markdown noise on instruction-style first
+    messages (e.g. a repeated ```json fence). Strip code fences / backticks /
+    wrapping quotes / list markers, keep the first line, collapse consecutive
+    duplicate words, and cap length. Returns "" when nothing usable remains so the
+    caller can fall back to the default name.
+    """
+    if not raw:
+        return ""
+    # Remove fenced-code markers (```lang) and stray backticks.
+    text = re.sub(r"```[a-zA-Z0-9]*", " ", raw).replace("`", " ")
+    # Titles are single-line; keep the first non-empty line.
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    text = lines[0] if lines else ""
+    # Drop wrapping quotes and leading list/heading punctuation.
+    text = text.strip(" \"'#*-•.").strip()
+    # Collapse consecutive duplicate words ("json json json" -> "json").
+    out: list[str] = []
+    for word in text.split():
+        if not out or out[-1].lower() != word.lower():
+            out.append(word)
+    text = " ".join(out[:max_words])[:max_chars].strip()
+    # Reject leftovers that are only a fence language tag / generic noise.
+    if text.lower() in {"", "json", "code", "markdown", "text", "title"}:
+        return ""
+    return text
 
 
 class ConversationService:
@@ -233,7 +264,7 @@ class ConversationService:
                 generated_title += chunk
                 yield chunk
         finally:
-            final_title = generated_title.strip() or "New Conversation"
+            final_title = _sanitize_title(generated_title) or "New Conversation"
             await run_in_threadpool(self._save_title, conversation_id, final_title)
 
     # ===================== Sync DB helpers (run in threadpool) =====================
