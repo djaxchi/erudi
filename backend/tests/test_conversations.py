@@ -20,7 +20,7 @@ import src.agents.runner as agent_runner
 from src.core import config
 from src.engines.base_engine import BaseEngine
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
-from src.domains.conversations.services import ConversationService
+from src.domains.conversations.services import ConversationService, _sanitize_title
 from src.domains.conversations.schemas import (
     ConversationCreate,
     ConversationUpdate,
@@ -382,6 +382,20 @@ class TestConversationService:
         updated_conv = service.conversation_repo.get_conversation_by_id(conversation.id)
         assert updated_conv.name == "New Conversation"
 
+    async def test_generate_title_sanitizes_junk_to_default(self, test_db_session, mock_llm, monkeypatch):
+        """A junk title (markdown fence repetition from a tiny model) is sanitized
+        away, so the conversation keeps the default name instead of '```json…'."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("```json\n```json\n```json"))
+        service = ConversationService(test_db_session)
+        conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
+
+        async for _ in service.generate_title_stream(conversation.id, "Remember this word: SUN. Reply OK."):
+            pass
+
+        updated_conv = service.conversation_repo.get_conversation_by_id(conversation.id)
+        assert updated_conv.name == "New Conversation"
+
     async def test_query_and_respond_stream(self, test_db_session, mock_llm, monkeypatch):
         """Query streams the agent response (raw text) and persists both messages."""
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
@@ -428,6 +442,55 @@ class TestConversationService:
 
         messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 4
+
+    async def test_delete_conversation_purges_checkpointer_thread(self, test_db_session, mock_llm, monkeypatch):
+        """IT4 (BLOCKER B3): deleting a conversation purges its checkpointer thread,
+        not just the DB rows. SQLite reuses autoincrement ids, so a stale thread
+        would otherwise leak a deleted conversation's agent context into a new one.
+        """
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("An answer."))
+        checkpointer = InMemorySaver()
+        service = ConversationService(test_db_session, checkpointer)
+        conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=512)
+
+        payload = ConversationQuery(question="Hello there", temperature=0.7)
+        async for _ in service.query_and_respond_stream(conversation.id, payload):
+            pass
+
+        cfg = {"configurable": {"thread_id": str(conversation.id)}}
+        assert await checkpointer.aget_tuple(cfg) is not None  # thread created by the turn
+
+        await service.delete_conversation(conversation.id)
+
+        assert await checkpointer.aget_tuple(cfg) is None  # B3: thread purged
+
+    async def test_query_failure_persists_sentinel_without_traceback(self, test_db_session, mock_llm, monkeypatch):
+        """IT9 (G1): a generation failure persists an llm message carrying the error
+        sentinel and NO traceback / internal detail (no info leak), so the UI can
+        render an error turn while the user message stays persisted.
+        """
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+
+        def _boom(llm, **kw):
+            raise RuntimeError("model load failed: /secret/leak/path")
+
+        monkeypatch.setattr(agent_runner, "build_chat_model", _boom)
+        service = ConversationService(test_db_session, InMemorySaver())
+        conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=512)
+
+        payload = ConversationQuery(question="Trigger failure", temperature=0.7)
+        result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
+
+        assert any("[ERROR_MESSAGE_SYSTEM]" in t for t in result)
+        messages = service.message_repo.get_messages_by_conversation(conversation.id)
+        # user message persisted up-front + the llm error message
+        assert len(messages) == 2
+        assert messages[0].sender == "user"
+        assert messages[1].sender == "llm"
+        assert "[ERROR_MESSAGE_SYSTEM]" in messages[1].content
+        assert "Traceback" not in messages[1].content
+        assert "/secret/leak/path" not in messages[1].content
 
 
 # ============ Endpoint Tests ============
@@ -656,9 +719,30 @@ class TestConversationEndpoints:
         message = msg_repo.create_message(conversation.id, "Delete me", "user")
         
         response = client.delete(f"/erudi/conversations/messages/{message.id}")
-        
+
         assert response.status_code == status.HTTP_200_OK
-        
+
         # Verify deleted
         messages = msg_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 0
+
+
+# ============ Title sanitization (tiny-model junk titles) ============
+
+class TestTitleSanitization:
+    """Unit tests for _sanitize_title (strip markdown noise / repetition / caps)."""
+
+    @pytest.mark.parametrize("raw,expected", [
+        ("```json\n```json\n```json\n```json", ""),   # fenced repetition -> empty
+        ("Paris, City of Light", "Paris, City of Light"),
+        ('"Pizza Recipe"', "Pizza Recipe"),            # wrapping quotes stripped
+        ("json json json", ""),                         # dedupe -> 'json' -> rejected
+        ("# Google Founding Team", "Google Founding Team"),  # heading marker stripped
+        ("```\ntext\n```", ""),                         # fence + generic noise -> empty
+        ("", ""),
+    ])
+    def test_sanitize_title(self, raw, expected):
+        assert _sanitize_title(raw) == expected
+
+    def test_sanitize_title_caps_word_count(self):
+        assert _sanitize_title("one two three four five six seven eight") == "one two three four five six"
