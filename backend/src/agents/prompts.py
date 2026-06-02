@@ -32,7 +32,6 @@ def build_agent_system_prompt(
     sys_prompt = build_system_prompt(
         model_name=llm.name,
         size_category=strategy["system_prompt_size_category"],
-        long_term_memory=None,  # summary now lives in the checkpointer (SummarizationMiddleware)
         starred_messages=starred_messages or None,
     )
 
