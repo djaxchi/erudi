@@ -15,25 +15,25 @@ The pattern:
 4. Register an `atexit` handler stored on the class so we can unregister it
    before a model switch (fixes the original closure leak — without this,
    every swap would leak a stale handler holding a dead `proc`).
-5. Stream tokens via `POST /v1/chat/completions` (SSE), with a per-engine
-   `_translate_payload_kwargs` hook for upstream kwarg-name divergence
-   (mlx_lm.server uses HF/transformers names, llama-server uses its own).
+5. Hand back the child's `base_url` + a per-engine `_translate_payload_kwargs`
+   hook (mlx_lm.server uses HF/transformers names, llama-server uses its own).
+   The agent layer streams tokens over this `base_url` via `ChatOpenAI`; the
+   engine no longer parses SSE itself.
 
-The active-marker pattern (`_last_used = None` while streaming, restored in
-`finally`) is preserved. It relies on `BaseEngine._should_cleanup` returning
-False when `_last_used is None`. See the matching note in `base_engine.py`.
+The active-marker pattern (`_last_used = None` during a generation, restored
+afterwards) lives in `BaseEngine.generation_guard`, which the agent layer
+wraps around model resolution + the whole token stream.
 """
 
 from __future__ import annotations
 
 import atexit
-import json
 import socket
 import time
 from abc import abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Dict, FrozenSet, Generator, List, Optional, Tuple, Union
+from typing import Any, Callable, ClassVar, Dict, Optional, Tuple, Union
 
 import requests
 
@@ -58,12 +58,6 @@ class BaseChatServerEngine(BaseEngine):
     _tokenizer_provider: ClassVar[str] = ""  # must override
     _probe_timeout_s: ClassVar[float] = 120.0
     _probe_poll_interval_s: ClassVar[float] = 0.4
-    # Engine-agnostic kwarg vocabulary (HF/transformers names — what services.py uses).
-    # Subclasses MAY extend this set. The base list is intersected with what every
-    # upstream accepts; subclasses translate to their wire names in `_translate_payload_kwargs`.
-    _forwarded_kwargs: ClassVar[FrozenSet[str]] = frozenset({
-        "top_k", "min_p", "repetition_penalty", "repetition_context_size", "seed", "stop",
-    })
 
     # ====================== Per-class state ======================
     # Stored separately from `_model` so we can unregister the atexit handler
@@ -395,104 +389,3 @@ class BaseChatServerEngine(BaseEngine):
                 f"[{cls.__name__}] Model loaded on {handle['base_url']} alias={alias}"
             )
             return cls._model, cls._tokenizer
-
-    @classmethod
-    def generate_stream(
-        cls,
-        model: Any,
-        tokenizer: Any,
-        prompt: List[Dict[str, str]],
-        max_tokens: int,
-        temperature: float,
-        top_p: float,
-        **kwargs: Any,
-    ) -> Generator[str, None, None]:
-        """Stream tokens from `/v1/chat/completions` via SSE.
-
-        Active marker: `cls._last_used = None` while streaming so the idle
-        cleanup monitor (`BaseEngine._cleanup_monitor`) does not reap the
-        child mid-stream. Restored to `datetime.now()` in the `finally`.
-
-        SSE parsing accumulates raw bytes and splits on newlines manually so
-        UTF-8 multi-byte sequences (em dash, curly quotes, CJK) are never
-        passed through requests' ISO-8859-1 fallback decoder. SSE comments
-        (lines starting with `:`, e.g., `: keepalive`) are skipped silently.
-
-        Unsupported kwargs (not in `_forwarded_kwargs`) are dropped with a
-        DEBUG log entry. Forwarded kwargs are passed through
-        `_translate_payload_kwargs` so subclasses can rename them for the
-        upstream server.
-        """
-        if not isinstance(model, dict) or "base_url" not in model:
-            raise EngineException(
-                message=(
-                    f"Invalid model handle for {cls.__name__}. "
-                    f"Call get_model_and_tokenizer() first."
-                ),
-            )
-        cls._assert_requests()
-        forwarded = {
-            k: v for k, v in kwargs.items()
-            if k in cls._forwarded_kwargs and v is not None
-        }
-        translated = cls._translate_payload_kwargs(forwarded)
-        ignored = [k for k in kwargs if k not in cls._forwarded_kwargs]
-        if ignored:
-            logger.debug(f"[{cls.__name__}] dropping unsupported kwargs: {ignored}")
-        payload: Dict[str, Any] = {
-            "model": cls._payload_model_value(model),
-            "messages": prompt,
-            "max_tokens": max_tokens,
-            "temperature": float(temperature),
-            "top_p": float(top_p),
-            "stream": True,
-            **translated,
-        }
-        url = f"{model['base_url']}/v1/chat/completions"
-        with cls._lock:
-            cls._last_used = None  # active marker — see docstring
-        try:
-            with requests.post(url, json=payload, stream=True, timeout=600) as r:
-                r.raise_for_status()
-                buf = b""
-                done = False
-                for chunk in r.iter_content(chunk_size=None):
-                    buf += chunk
-                    while b"\n" in buf:
-                        raw_line, buf = buf.split(b"\n", 1)
-                        line = raw_line.rstrip(b"\r").decode("utf-8")
-                        if not line:
-                            continue
-                        # SSE comment / keepalive — skip.
-                        if line.startswith(":"):
-                            continue
-                        if not line.startswith("data: "):
-                            continue
-                        data = line[6:].strip()
-                        if data == "[DONE]":
-                            done = True
-                            break
-                        try:
-                            obj = json.loads(data)
-                            choices = obj.get("choices") or []
-                            if not choices:
-                                continue
-                            delta = choices[0].get("delta") or {}
-                            content = delta.get("content")
-                            if content:
-                                yield content
-                        except Exception:
-                            logger.debug(
-                                f"[{cls.__name__}] skipping malformed SSE line"
-                            )
-                            continue
-                    if done:
-                        break
-        except Exception as e:
-            raise EngineException(
-                message=f"{cls.__name__} streaming failed",
-                trace=f"{type(e).__name__}: {e}",
-            )
-        finally:
-            with cls._lock:
-                cls._last_used = datetime.now()
