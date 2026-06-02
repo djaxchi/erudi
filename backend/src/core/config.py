@@ -59,9 +59,9 @@ Example:
             api = config.get_hf_api()
             api.whoami()  # Verify token validity
 
-        # Use engine (after lifespan startup)
-        async for token in config.LLM_Engine.generate_stream(prompt, params):
-            yield token
+        # Use engine (after lifespan startup): resolve the model server,
+        # then stream from it via the agent layer (ChatOpenAI(base_url=...)).
+        model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(llm_id, path)
 
 Note:
     All directories are created automatically at module import time.

@@ -1,10 +1,10 @@
 """Build a ``ChatOpenAI`` pointed at the local engine's OpenAI-compatible server.
 
 The engine (MLX/CUDA/CPU) spawns a child server and exposes its
-``/v1/chat/completions`` endpoint; ``ChatOpenAI(base_url=...)`` talks to it. The
-engine's own ``generate_stream``/SSE parser is bypassed on this path, but
-``get_model_and_tokenizer`` is still the authority that spawns/selects the child
-and hands back the ``base_url``.
+``/v1/chat/completions`` endpoint; ``ChatOpenAI(base_url=...)`` talks to it.
+``get_model_and_tokenizer`` is the authority that spawns/selects the child and
+hands back the ``base_url``; the engine no longer parses SSE itself — token
+streaming is owned by this ``ChatOpenAI`` layer.
 """
 
 from __future__ import annotations

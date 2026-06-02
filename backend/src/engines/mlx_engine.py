@@ -19,10 +19,9 @@ Architecture:
     └───────────────────────────────────────────────────────────────┘
                                   ↓
     ┌───────────────────────────────────────────────────────────────┐
-    │ generate_stream(model, tokenizer, prompt, ...)                │
-    │  1. POST {base_url}/v1/chat/completions with stream=True      │
-    │  2. Parse SSE byte stream (buffer + newline split, UTF-8 safe)│
-    │  3. Yield choices[0].delta.content; drop delta.reasoning      │
+    │ token streaming lives in the agent layer, not the engine:     │
+    │   AgentRunner → ChatOpenAI(base_url) → POST /v1/chat/...      │
+    │   ChatOpenAI yields delta.content, ignores delta.reasoning    │
     └───────────────────────────────────────────────────────────────┘
                                   ↓
     ┌───────────────────────────────────────────────────────────────┐
@@ -42,8 +41,8 @@ Why multiprocessing instead of subprocess.Popen([sys.executable, "-m", ...])?
 Why the `<|channel>thought ... <channel|>` manual filter is gone:
     `mlx_lm.server` already detects thinking-capable tokenizers
     (`tokenizer_utils._infer_thinking`) and surfaces reasoning text in a
-    dedicated `choices[0].delta.reasoning` field — we simply ignore it for
-    iso-behaviour with the previous filter.
+    dedicated `choices[0].delta.reasoning` field — the agent layer (ChatOpenAI)
+    simply ignores it, matching the previous in-engine filter.
 
 Why the `_MLX_EXECUTOR` thread bottleneck is gone:
     Generation now runs in a separate OS process; the GPU stream is
@@ -68,12 +67,8 @@ Example:
             llm_id="mistral-7b",
             llm_local_path="/path/to/mlx/model"
         )
-        for token in MLX_Engine.generate_stream(
-            model, tokenizer,
-            prompt=[{"role": "user", "content": "Hello!"}],
-            max_tokens=512, temperature=0.7, top_p=0.9,
-        ):
-            print(token, end="", flush=True)
+        # Token streaming is driven by the agent layer (ChatOpenAI(base_url=...)),
+        # not the engine; ``model["base_url"]`` is what it connects to.
         MLX_Engine.cleanup()
 
 Warning:
@@ -219,8 +214,8 @@ class MLX_Engine(BaseChatServerEngine):
     _server_name = "mlx_lm.server"
     _tokenizer_provider = "mlx-lm-server"
     # mlx_lm.server uses HF/transformers kwarg names natively (repetition_penalty,
-    # repetition_context_size, top_k, ...), so the default `_forwarded_kwargs`
-    # set from the base + identity `_translate_payload_kwargs` already match.
+    # repetition_context_size, top_k, ...), so MLX keeps the identity
+    # `_translate_payload_kwargs`; model_factory sends them via ChatOpenAI extra_body.
 
     @staticmethod
     def _payload_model_value(handle: Dict[str, Any]) -> str:

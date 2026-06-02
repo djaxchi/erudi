@@ -26,10 +26,9 @@ Architecture:
     └───────────────────────────────────────────────────────────┘
                             ↓
     ┌───────────────────────────────────────────────────────────┐
-    │ generate_stream()                                         │
-    │  1. POST to /v1/chat/completions with stream=True         │
-    │  2. Parse SSE events (Server-Sent Events)                 │
-    │  3. Yield token deltas                                    │
+    │ token streaming lives in the agent layer, not the engine: │
+    │   AgentRunner → ChatOpenAI(base_url) → POST /v1/chat/...  │
+    │   the engine only spawns / probes / reaps the server      │
     └───────────────────────────────────────────────────────────┘
                             ↓
     ┌───────────────────────────────────────────────────────────┐
@@ -47,11 +46,8 @@ Example:
             llm_local_path="/path/to/model.gguf"
         )
 
-        for token in CPU_Engine.generate_stream(
-            model, tokenizer, prompt,
-            max_tokens=256, temperature=0.7
-        ):
-            print(token, end="")
+        # Token streaming is driven by the agent layer (ChatOpenAI(base_url=...)),
+        # not the engine; ``model["base_url"]`` is what it connects to.
 
 Note:
     BaseEngine.get_engine() will automatically select CPU_Engine if:

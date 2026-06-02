@@ -27,15 +27,10 @@ Examples:
             llm_local_path="backend/data/models/llama-7b"
         )
     
-    Stream tokens:
-        for token in engine_class.generate_stream(
-            model, tokenizer,
-            prompt=[{"role": "user", "content": "Hello"}],
-            max_tokens=100,
-            temperature=0.7,
-            top_p=0.9
-        ):
-            print(token, end="", flush=True)
+    Stream tokens (driven by the agent layer, not the engine):
+        the model handle's ``base_url`` is consumed by ``ChatOpenAI`` in
+        ``src.agents.model_factory``; the engine only spawns / probes /
+        reaps the OpenAI-compatible server.
 
 """
 
@@ -44,7 +39,7 @@ import threading
 import platform
 import os
 from datetime import datetime, timedelta
-from typing import Any, Optional, Tuple, Generator, Union, Type, Dict
+from typing import Any, Optional, Tuple, Union, Type, Dict
 from abc import ABC, abstractmethod, ABCMeta
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -192,58 +187,6 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         """
         pass
 
-    @classmethod
-    @abstractmethod
-    def generate_stream(
-        cls,
-        model: Any,
-        tokenizer: Any,
-        prompt: list[dict[str, str]],
-        max_tokens: int,
-        temperature: float,
-        top_p: float,
-        **kwargs
-    ) -> Generator[str, None, None]:
-        """Generate text tokens in streaming fashion.
-        
-        Yields tokens one-by-one as they are generated, enabling real-time
-        response streaming to clients.
-        
-        Args:
-            model: Loaded model instance from get_model_and_tokenizer.
-            tokenizer: Loaded tokenizer instance.
-            prompt: Chat-style messages, e.g., [{"role": "user", "content": "Hi"}].
-            max_tokens: Maximum tokens to generate.
-            temperature: Sampling temperature (0.0 = greedy, higher = more random).
-            top_p: Nucleus sampling threshold (0.0-1.0).
-            **kwargs: Engine-specific generation parameters (e.g., repetition_penalty, 
-                     top_k, min_p). Unsupported parameters are silently ignored by
-                     individual engine implementations.
-            
-        Yields:
-            String tokens as they are generated.
-            
-        Raises:
-            EngineException: If inference fails (OOM, model error, etc.).
-            RuntimeError: If model or tokenizer is not initialized.
-            
-        Note:
-            Each engine logs which parameters it consumes and which it ignores.
-            This allows service layer to pass all desired parameters without
-            conditional logic based on engine type.
-            
-        Examples:
-            for token in engine.generate_stream(
-                model, tokenizer,
-                prompt=[{"role": "user", "content": "Hello"}],
-                max_tokens=100,
-                temperature=0.7,
-                top_p=0.9
-            ):
-                print(token, end="", flush=True)
-
-        """
-        pass
 
     # ======================= HARDWARE DETECTION & EVALUATION =======================
     @classmethod
@@ -577,11 +520,9 @@ class BaseEngine(ABC, metaclass=EngineMeta):
 
     @classmethod
     def _should_cleanup(cls) -> bool:
-        # Active-marker contract: `_last_used = None` means a stream is in
-        # flight (set by `BaseChatServerEngine.generate_stream`). Returning
-        # False here is what blocks the idle monitor from reaping the model
-        # mid-generation. Do not weaken without a coordinated change to
-        # every engine's `generate_stream`.
+        # Active-marker contract: `_last_used = None` means a generation is
+        # in flight (set by `generation_guard`). Returning False here is what
+        # blocks the idle monitor from reaping the model mid-generation.
         if cls._last_used is None or cls._model is None:
             return False
         idle_time = datetime.now() - cls._last_used
