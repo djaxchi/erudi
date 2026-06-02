@@ -18,7 +18,6 @@ from typing import AsyncGenerator, List, Optional
 from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
-from src.core import config
 from src.agents.prompts import build_agent_system_prompt
 from src.agents.runner import AgentRunner, GenParams, ERROR_MESSAGE
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
@@ -165,7 +164,6 @@ class ConversationService:
             sender="llm",
         )
         self.conversation_repo.update_last_message_time(conversation_id)
-        config.LLM_Engine.cleanup()
         return message.id
 
     # ===================== Streaming generation =====================

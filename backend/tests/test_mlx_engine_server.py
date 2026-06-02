@@ -403,6 +403,35 @@ class TestSubprocessReal:
         finally:
             MLX_Engine.cleanup()
 
+    async def test_idle_tick_reaps_real_subprocess_without_deadlock(self, mlx_test_model_path):
+        """Wave C regression: the idle-cleanup tick reaps a REAL child subprocess
+        without the old reentrant-lock deadlock (the monitor held ``cls._lock``
+        then called a ``cleanup()`` that re-acquired the same non-reentrant lock).
+        The tick must complete promptly and the child must actually die.
+        """
+        import asyncio
+        from datetime import datetime, timedelta
+
+        MLX_Engine.get_model_and_tokenizer(
+            llm_id="qwen-test", llm_local_path=str(mlx_test_model_path),
+        )
+        proc = MLX_Engine._model["proc"]
+        assert proc.is_alive()
+        try:
+            # Backdate the idle clock so the next tick treats the model as reapable.
+            MLX_Engine._last_used = datetime.now() - timedelta(seconds=10_000)
+            assert MLX_Engine._should_cleanup() is True
+            # Must NOT hang — the old reentrant-lock path would deadlock here.
+            await asyncio.wait_for(MLX_Engine._cleanup_tick(), timeout=15)
+            assert MLX_Engine._model is None  # engine state reset
+            for _ in range(30):
+                if not proc.is_alive():
+                    break
+                time.sleep(0.1)
+            assert not proc.is_alive(), "real subprocess was not terminated by the idle tick"
+        finally:
+            MLX_Engine.cleanup()
+
 
 def _build_real_mlx_chat_model(llm_id, model_path, *, max_tokens):
     """Spawn the real mlx_lm.server for `model_path` and wrap it as the live

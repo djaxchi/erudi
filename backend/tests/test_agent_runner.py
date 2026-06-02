@@ -289,10 +289,11 @@ async def test_purged_thread_starts_fresh_no_resurrection(monkeypatch):
     assert [m.content for m in msgs if m.type == "human"] == ["brand-new"]
 
 
-async def test_astream_holds_active_marker_across_whole_stream(monkeypatch):
+async def test_astream_holds_generation_lock_across_whole_stream(monkeypatch):
     # IT11: the runner wraps model resolution + the ENTIRE token stream in
-    # engine.generation_guard, so the active marker (_last_used=None) is held for
-    # every token — the idle-cleanup monitor cannot reap the model mid-stream.
+    # engine.generation_guard, so the shared generation lock is held for every
+    # token. The idle-cleanup tick takes that same lock, so it can never reap
+    # the model mid-stream.
     monkeypatch.setattr(
         runner_module,
         "build_chat_model",
@@ -300,12 +301,13 @@ async def test_astream_holds_active_marker_across_whole_stream(monkeypatch):
     )
     runner = AgentRunner(checkpointer=InMemorySaver())
 
-    observed = []
+    observed_locked = []
     async for _ in runner.astream_text(
         llm=_Llm(), user_message="hi", system_prompt="s", params=_PARAMS, thread_id="c1"
     ):
-        observed.append(config.LLM_Engine._last_used)
+        lock = _FakeEngine._generation_lock
+        observed_locked.append(lock is not None and lock.locked())
 
-    assert observed and all(marker is None for marker in observed)
-    # Marker restored once the stream completes (model becomes reapable again).
-    assert config.LLM_Engine._last_used is not None
+    assert observed_locked and all(observed_locked)  # lock held for every token
+    # Released once the stream completes (model reapable again).
+    assert _FakeEngine._generation_lock is None or not _FakeEngine._generation_lock.locked()

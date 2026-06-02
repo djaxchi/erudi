@@ -346,12 +346,9 @@ class TestConversationService:
         service = ConversationService(test_db_session)
         
         conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
-        
-        with patch("src.core.config.LLM_Engine") as mock_engine:
-            mock_engine.cleanup.return_value = None
-            
-            message_id = service.store_error_message(conversation.id)
-        
+
+        message_id = service.store_error_message(conversation.id)
+
         assert message_id is not None
         messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 1

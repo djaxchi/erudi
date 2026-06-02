@@ -35,7 +35,6 @@ Examples:
 """
 
 import asyncio
-import threading
 import platform
 import os
 from datetime import datetime, timedelta
@@ -73,7 +72,6 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         _tokenizer: Currently loaded tokenizer instance.
         _model_id: ID of the currently loaded model.
         _last_used: Timestamp of last model access for cleanup tracking.
-        _lock: Thread lock for safe concurrent access.
         _cleanup_task: Async task monitoring idle time.
         _max_idle_time: Seconds before automatic memory cleanup (default: 300).
         MODEL_MAPPING: Dictionary mapping model architectures to classes.
@@ -89,7 +87,6 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     _tokenizer: Optional[Any] = None
     _model_id: Optional[int] = None
     _last_used: Optional[datetime] = None
-    _lock = threading.Lock()
 
     # Serializes a full generation (model resolution + stream) on the
     # single-model engine. Lazily created and rebound per running loop so each
@@ -561,25 +558,21 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         guard so that:
           - concurrent requests for different models can't thrash the
             single-model engine subprocess (they serialize on one asyncio lock);
-          - the idle-cleanup monitor never reaps the model mid-stream — entering
-            the guard sets the ``_last_used = None`` active marker (so
-            ``_should_cleanup`` returns ``False``), restored on exit.
+          - the idle-cleanup tick (``_cleanup_tick``) shares this SAME lock, so
+            it cannot run — let alone reap the model — while a generation is in
+            flight. It waits until the guard exits, by which point the idle
+            clock has been refreshed, so no mid-generation teardown is possible.
 
         This is the engine-level home of the invariant that ``generate_stream``
         used to carry; it lives here (not in the agent layer) to keep subprocess
         lifecycle and concurrency inside the engine encapsulation.
         """
-        lock = cls._generation_lock_for_running_loop()
-        async with lock:
-            # Set/restore the marker under the threading lock so it is atomic
-            # w.r.t. the cleanup monitor's `with _lock: _should_cleanup()` check.
-            with cls._lock:
-                cls._last_used = None
+        async with cls._generation_lock_for_running_loop():
             try:
                 yield
             finally:
-                with cls._lock:
-                    cls._last_used = datetime.now()
+                # Restart the idle clock from the end of the generation.
+                cls._last_used = datetime.now()
 
     @classmethod
     def cleanup(cls) -> None:
@@ -601,6 +594,18 @@ class BaseEngine(ABC, metaclass=EngineMeta):
             gc.collect()
 
     @classmethod
+    async def _cleanup_tick(cls):
+        """One idle-check pass: reap the model iff it has been idle too long.
+
+        Acquires the SAME asyncio lock as ``generation_guard`` (so it can never
+        run during a generation) and runs the blocking ``cleanup()`` — which
+        kills the child subprocess — off the event loop via ``asyncio.to_thread``.
+        """
+        async with cls._generation_lock_for_running_loop():
+            if cls._should_cleanup():
+                await asyncio.to_thread(cls.cleanup)
+
+    @classmethod
     async def _cleanup_monitor(cls):
         """Background task monitoring idle time and triggering cleanup.
         
@@ -613,9 +618,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         """
         while True:
             await asyncio.sleep(300)
-            with cls._lock:
-                if cls._should_cleanup():
-                    cls.cleanup()
+            await cls._cleanup_tick()
 
     @classmethod
     def start_cleanup_task(cls):
