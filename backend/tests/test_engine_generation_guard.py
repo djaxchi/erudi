@@ -1,12 +1,14 @@
-"""P2 — engine generation guard (resolves review BLOCKER B1 + MAJOR M1).
+"""P2 / Wave C — engine generation guard + idle-cleanup serialization.
 
-``generate_stream`` used to carry the active-marker invariant (``_last_used =
-None`` suppresses the idle-cleanup monitor for the duration of a stream). The
-LangChain path streams through ``ChatOpenAI`` directly, so the invariant is
-re-homed in an engine-level ``generation_guard`` that the agent layer wraps
-around model resolution + the whole stream. The guard also serializes
-generations so concurrent different-model requests can't thrash the single-model
-engine subprocess.
+The agent layer wraps model resolution + the whole token stream in
+``generation_guard``. Idle cleanup (``_cleanup_tick``, looped every 300s by
+``_cleanup_monitor``) shares the SAME asyncio lock as the guard, so:
+
+  - the monitor can never reap a model mid-generation (it waits on the lock),
+    which is the structural form of review BLOCKER B1;
+  - the old reentrant ``threading.Lock`` deadlock (monitor held ``cls._lock``
+    then called ``cleanup()`` which re-acquired it) is impossible — there is no
+    ``threading.Lock`` left to re-enter.
 """
 
 import asyncio
@@ -27,36 +29,39 @@ class _GuardEngine(BaseEngine):
 def _reset():
     _GuardEngine._model = None
     _GuardEngine._tokenizer = None
+    _GuardEngine._model_id = None
     _GuardEngine._last_used = None
 
 
-async def test_guard_blocks_idle_cleanup_mid_stream():
-    # Simulate a model that has been idle long enough to be reaped.
+# ───────────────────────── generation_guard ─────────────────────────
+
+async def test_guard_refreshes_idle_clock_on_exit():
+    # A model idle long enough to be reaped right now.
     _GuardEngine._model = object()
+    _GuardEngine._model_id = "x"
     _GuardEngine._last_used = datetime.now() - timedelta(seconds=10_000)
     try:
         assert _GuardEngine._should_cleanup() is True  # would be reaped right now
         async with _GuardEngine.generation_guard():
-            # B1: marker None -> idle monitor must NOT tear down the model.
-            assert _GuardEngine._last_used is None
-            assert _GuardEngine._should_cleanup() is False
-        # restored to a fresh timestamp on exit -> no longer idle.
+            pass
+        # Exiting the guard refreshes _last_used -> no longer idle.
         assert _GuardEngine._last_used is not None
         assert _GuardEngine._should_cleanup() is False
     finally:
         _reset()
 
 
-async def test_guard_restores_marker_on_exception():
+async def test_guard_refreshes_idle_clock_on_exception():
     _GuardEngine._model = object()
-    _GuardEngine._last_used = datetime.now()
+    _GuardEngine._model_id = "x"
+    _GuardEngine._last_used = datetime.now() - timedelta(seconds=10_000)
     try:
         with pytest.raises(ValueError):
             async with _GuardEngine.generation_guard():
-                assert _GuardEngine._last_used is None
                 raise ValueError("boom")
-        # marker restored despite the error (so the model isn't pinned forever).
-        assert _GuardEngine._last_used is not None
+        # Clock refreshed despite the error: the model isn't pinned-idle forever
+        # and the shared lock is released for the next generation.
+        assert _GuardEngine._should_cleanup() is False
     finally:
         _reset()
 
@@ -78,5 +83,58 @@ async def test_guard_serializes_concurrent_generations():
             ["A-enter", "A-exit", "B-enter", "B-exit"],
             ["B-enter", "B-exit", "A-enter", "A-exit"],
         )
+    finally:
+        _reset()
+
+
+# ─────────────────────── idle cleanup (_cleanup_tick) ───────────────────────
+
+async def test_idle_tick_reaps_when_idle():
+    """The idle tick reaps an idle model — and crucially does NOT deadlock.
+
+    The old reentrant ``cls._lock`` path (monitor held the lock then called a
+    ``cleanup()`` that re-acquired it) would hang here forever; ``wait_for``
+    asserts the tick completes promptly.
+    """
+    _GuardEngine._model = object()
+    _GuardEngine._model_id = "x"
+    _GuardEngine._last_used = datetime.now() - timedelta(seconds=10_000)
+    try:
+        assert _GuardEngine._should_cleanup() is True
+        await asyncio.wait_for(_GuardEngine._cleanup_tick(), timeout=5)
+        assert _GuardEngine._model is None  # reaped
+    finally:
+        _reset()
+
+
+async def test_idle_tick_noop_when_recent():
+    _GuardEngine._model = object()
+    _GuardEngine._model_id = "x"
+    _GuardEngine._last_used = datetime.now()
+    try:
+        assert _GuardEngine._should_cleanup() is False
+        await asyncio.wait_for(_GuardEngine._cleanup_tick(), timeout=5)
+        assert _GuardEngine._model is not None  # untouched
+    finally:
+        _reset()
+
+
+async def test_idle_tick_cannot_reap_during_generation():
+    """B1 (reinforced): while a generation holds the guard, a concurrent idle
+    tick is blocked on the shared lock and cannot reap the model. After the
+    guard exits, the refreshed idle clock prevents a reap anyway.
+    """
+    _GuardEngine._model = object()
+    _GuardEngine._model_id = "x"
+    _GuardEngine._last_used = datetime.now() - timedelta(seconds=10_000)
+    try:
+        async with _GuardEngine.generation_guard():
+            tick = asyncio.create_task(_GuardEngine._cleanup_tick())
+            await asyncio.sleep(0.05)  # let the tick try to acquire the lock
+            assert _GuardEngine._model is not None  # still alive — tick is waiting
+            assert not tick.done()
+        # Guard released: the tick runs, but _last_used was refreshed -> no reap.
+        await asyncio.wait_for(tick, timeout=5)
+        assert _GuardEngine._model is not None
     finally:
         _reset()

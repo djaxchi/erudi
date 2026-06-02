@@ -201,7 +201,7 @@ async def lifespan(app: FastAPI):
             # Cleanup runs automatically on shutdown
 
     Note:
-        The cleanup task runs every 30 seconds to free inactive model memory.
+        The cleanup task runs every 300 seconds to free inactive model memory.
         See BaseEngine.start_cleanup_task() for details.
 
     Lifecycle Flow:
@@ -209,7 +209,7 @@ async def lifespan(app: FastAPI):
         2. Select engine via platform detection (BaseEngine.get_engine)
         3. Create database tables if not exist (createTables)
         4. Seed database with default models (startup_populate_database)
-        5. Start cleanup background task (30s interval)
+        5. Start cleanup background task (300s interval)
         6. **[YIELD]** → Application handles requests
         7. Log shutdown message
         8. Stop cleanup task

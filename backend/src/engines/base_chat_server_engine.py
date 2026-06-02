@@ -20,9 +20,10 @@ The pattern:
    The agent layer streams tokens over this `base_url` via `ChatOpenAI`; the
    engine no longer parses SSE itself.
 
-The active-marker pattern (`_last_used = None` during a generation, restored
-afterwards) lives in `BaseEngine.generation_guard`, which the agent layer
-wraps around model resolution + the whole token stream.
+Generation serialization + idle-cleanup suppression live in
+`BaseEngine.generation_guard`, which the agent layer wraps around model
+resolution + the whole token stream. The idle-cleanup tick shares the guard's
+asyncio lock, so the child is never terminated mid-generation.
 """
 
 from __future__ import annotations
@@ -321,9 +322,8 @@ class BaseChatServerEngine(BaseEngine):
         Called by `BaseEngine._cleanup_monitor` after 300s of idle, or
         explicitly when switching models.
         """
-        with cls._lock:
-            cls._stop_server_if_running()
-            return super().cleanup()
+        cls._stop_server_if_running()
+        return super().cleanup()
 
     # ====================== Template methods ======================
     @classmethod
@@ -371,21 +371,22 @@ class BaseChatServerEngine(BaseEngine):
             f"[{cls.__name__}] Loading model '{llm_id}' from {llm_local_path} "
             f"via {cls._server_name}..."
         )
-        with cls._lock:
-            if cls._should_not_reload_model(llm_id):
-                return cls._return_cached_model_and_tokenizer()
-            cls._assert_requests()
-            resolved = cls._resolve_model_artifact(llm_local_path)
-            # Stop previous child (also unregisters its stale atexit handler).
-            cls._stop_server_if_running()
-            alias = f"{cls._server_alias_prefix}{llm_id}"
-            port = cls._pick_free_port()
-            handle = cls._start_server(model_path=resolved, alias=alias, port=port)
-            cls._model = handle
-            cls._tokenizer = {"type": "remote", "provider": cls._tokenizer_provider}
-            cls._model_id = llm_id
-            cls._last_used = datetime.now()
-            logger.info(
-                f"[{cls.__name__}] Model loaded on {handle['base_url']} alias={alias}"
-            )
-            return cls._model, cls._tokenizer
+        # Serialized by the caller's generation_guard (same asyncio lock as the
+        # idle-cleanup tick), so no threading lock is needed around the swap.
+        if cls._should_not_reload_model(llm_id):
+            return cls._return_cached_model_and_tokenizer()
+        cls._assert_requests()
+        resolved = cls._resolve_model_artifact(llm_local_path)
+        # Stop previous child (also unregisters its stale atexit handler).
+        cls._stop_server_if_running()
+        alias = f"{cls._server_alias_prefix}{llm_id}"
+        port = cls._pick_free_port()
+        handle = cls._start_server(model_path=resolved, alias=alias, port=port)
+        cls._model = handle
+        cls._tokenizer = {"type": "remote", "provider": cls._tokenizer_provider}
+        cls._model_id = llm_id
+        cls._last_used = datetime.now()
+        logger.info(
+            f"[{cls.__name__}] Model loaded on {handle['base_url']} alias={alias}"
+        )
+        return cls._model, cls._tokenizer
