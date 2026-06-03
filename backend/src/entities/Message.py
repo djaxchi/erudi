@@ -19,9 +19,7 @@ Example:
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Text
 from sqlalchemy.orm import relationship, validates
-from sqlalchemy.ext.hybrid import hybrid_property
 from src.database.core import Base
-from src.core.logging import logger
 
 
 class Message(Base):
@@ -39,12 +37,10 @@ class Message(Base):
         starred: True if user starred for importance (used in memory injection).
         is_embedding_cached: True if embedding computed and cached (RAG optimization).
         conversation: Relationship to Conversation entity.
-        age: Hybrid property returning message age in seconds.
 
     Example:
         >>> msg = Message(conversation_id=42, sender="user", content="Hello!")
-        >>> msg.star()
-        >>> print(msg.starred)  # True
+        >>> print(msg.starred)  # False (starring is done via MessageRepository)
     """
     __tablename__ = "messages"
 
@@ -97,26 +93,6 @@ class Message(Base):
             raise ValueError("Message content too long (max 32K chars)")
         return content
 
-    @hybrid_property
-    def age(self) -> float:
-        """Get message age in seconds since creation.
-
-        Returns:
-            Time elapsed in seconds.
-        """
-        return (datetime.utcnow() - self.timestamp).total_seconds()
-
-    def star(self) -> None:
-        """Mark message as starred (important) for memory injection."""
-        if not self.starred:
-            self.starred = True
-            logger.info(f"Message {self.id} starred")
-
-    def unstar(self) -> None:
-        """Remove starred status from message."""
-        if self.starred:
-            self.starred = False
-            logger.info(f"Message {self.id} unstarred")
 
     def __repr__(self) -> str:
         """String representation of the message."""
