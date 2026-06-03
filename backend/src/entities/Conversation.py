@@ -52,8 +52,7 @@ class Conversation(Base):
 
     Example:
         >>> conv = Conversation(llm_id=42, name="Debug Session", temperature=0.3, max_tokens=4096)
-        >>> conv.add_message("Hello!", "user")
-        >>> print(conv.message_count)  # 1
+        >>> print(conv.message_count)  # 0 (messages are added via MessageRepository)
     """
     __tablename__ = "conversations"
 
@@ -152,30 +151,6 @@ class Conversation(Base):
             return max(msg.timestamp for msg in self.messages)
         return self.created_at
 
-    def add_message(self, content: str, sender: str):  # noqa: F821
-        """Add a new message to this conversation and update timestamp.
-
-        Args:
-            content: Message text content.
-            sender: Message sender ("user" or "assistant").
-
-        Returns:
-            The created Message instance.
-
-        Example:
-            >>> conv.add_message("Hello!", "user")
-            >>> conv.add_message("Hi there!", "assistant")
-            >>> print(conv.message_count)  # 2
-        """
-        from src.entities.Message import Message
-        message = Message(
-            conversation_id=self.id,
-            content=content,
-            sender=sender
-        )
-        self.messages.append(message)
-        self.updated_at = datetime.utcnow()
-        return message
 
     def __repr__(self) -> str:
         """String representation of the conversation."""
