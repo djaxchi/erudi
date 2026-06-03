@@ -10,7 +10,7 @@ This module defines request/response schemas for:
 Schema Hierarchy:
     ::
 
-        MessageBase → MessageCreate, MessageResponse
+        MessageBase → MessageResponse
         ConversationBase → ConversationCreate, ConversationUpdate, ConversationResponse
         ConversationResponse → ConversationWithMessagesResponse
 
@@ -38,7 +38,6 @@ Example:
         query = ConversationQuery(
             question="Explain asyncio in Python",
             temperature=0.5,
-            n_last_turns_to_get=10  # Include last 10 turns in context
         )
 
 Note:
@@ -81,19 +80,7 @@ class MessageBase(BaseModel):
             raise ValueError('Sender must be either "user", "assistant", or "llm"')
         return v
 
-class MessageCreate(MessageBase):
-    """Schema for creating new messages (inherits all MessageBase fields).
 
-    Example:
-        ::
-
-            message = MessageCreate(
-                sender="user",
-                content="What is the capital of France?"
-            )
-    """
-    """Schema for creating new messages."""
-    pass
 
 class MessageResponse(MessageBase):
     """Schema for message responses with database fields.
@@ -257,7 +244,6 @@ class ConversationQuery(BaseModel):
         top_p: Optional top_p override for this query only.
         max_new_tokens: Optional max_tokens override for this query only.
         custom_prompt: Optional system prompt override for this query only.
-        n_last_turns_to_get: Number of recent conversation turns to include.
 
     Example:
         ::
@@ -265,7 +251,6 @@ class ConversationQuery(BaseModel):
             query = ConversationQuery(
                 question="Explain list comprehensions",
                 temperature=0.3,
-                n_last_turns_to_get=5  # Include last 5 turns for context
             )
     """
     question: str
@@ -273,23 +258,8 @@ class ConversationQuery(BaseModel):
     top_p: Optional[float] = None
     max_new_tokens: Optional[int] = None
     custom_prompt: Optional[str] = None
-    n_last_turns_to_get: Optional[int] = None
 
-class ConversationDeleteBulk(BaseModel):
-    """Schema for bulk conversation deletion requests.
 
-    Attributes:
-        conversation_ids: List of conversation IDs to delete.
-
-    Example:
-        ::
-
-            DELETE /conversations/delete_bulk
-            {
-              "conversation_ids": [10, 15, 23, 42]
-            }
-    """
-    conversation_ids: List[int]
 
 
 class MessageStarRequest(BaseModel):

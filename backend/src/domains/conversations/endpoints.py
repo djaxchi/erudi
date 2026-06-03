@@ -2,11 +2,10 @@
 
 This module provides REST endpoints for:
 - Creating and managing conversations (chat sessions)
-- Fetching and deleting messages
+- Fetching messages
 - Streaming AI responses with token-by-token generation
 - Starring/unstarring messages for bookmarking
 - Auto-generating conversation titles
-- Bulk operations (delete multiple conversations)
 
 Architecture:
     Conversation Flow:
@@ -43,11 +42,9 @@ Endpoints:
     - POST / → Create new conversation
     - PATCH /{conversation_id} → Update conversation (name, LLM, params)
     - DELETE /{conversation_id} → Delete single conversation
-    - POST /bulk_delete → Delete multiple conversations
     - POST /{conversation_id}/query → Stream AI response
     - POST /{conversation_id}/generate_title → Stream title generation
     - GET /{conversation_id}/fetch_messages → List messages
-    - DELETE /messages/{message_id} → Delete single message
     - PATCH /messages/{message_id}/star → Star/unstar message
 
 Example:
@@ -101,7 +98,6 @@ from src.database.core import get_db
 from src.agents.checkpoint import get_checkpointer
 from src.domains.conversations.schemas import (
     ConversationCreate,
-    ConversationDeleteBulk,
     ConversationQuery,
     ConversationResponse,
     ConversationUpdate,
@@ -236,38 +232,6 @@ async def get_messages_by_conversation(
     )
 
 
-@router.delete("/messages/{message_id}")
-async def delete_message(
-    message_id: int,
-    message_repo: MessageRepository = Depends(get_message_repository),
-    db: Session = Depends(get_db),
-):
-    """Delete a specific message by its ID (soft delete).
-
-    Args:
-        message_id: ID of the message to delete.
-        message_repo: Injected message repository.
-        db: Database session for transaction control.
-
-    Returns:
-        dict: Success confirmation message.
-
-    Example:
-        ::
-
-            DELETE /erudi/conversations/messages/123
-            → {"message": "Message deleted successfully"}
-    """
-    """
-    Delete a specific message by its ID.
-    """
-    try:
-        await run_in_threadpool(message_repo.delete_message, message_id)
-        db.commit()
-        return {"message": "Message deleted successfully"}
-    except Exception:
-        db.rollback()
-        raise
 
 
 @router.get("/", response_model=List[ConversationResponse])
@@ -602,41 +566,6 @@ async def query_and_respond(
     )
 
 
-@router.post("/delete_bulk")
-async def delete_bulk(
-    payload: ConversationDeleteBulk,
-    service: ConversationService = Depends(get_conversation_service),
-    db: Session = Depends(get_db),
-):
-    """Delete multiple conversations in a single request (bulk operation).
-
-    Args:
-        payload: ConversationDeleteBulk with list of conversation_ids to delete.
-        service: Injected conversation service.
-        db: Database session for transaction control.
-
-    Returns:
-        dict: Success confirmation message.
-
-    Example:
-        ::
-
-            POST /erudi/conversations/delete_bulk
-            {
-              "conversation_ids": [10, 15, 23, 42]
-            }
-            → {"message": "Conversations deleted successfully"}
-
-    Warning:
-        All messages in deleted conversations are also removed (cascade delete).
-    """
-    """Delete multiple conversations by their IDs (body JSON)."""
-    try:
-        await service.delete_conversations_bulk(payload.conversation_ids)
-        return {"message": "Conversations deleted successfully"}
-    except Exception:
-        db.rollback()
-        raise
 
 
 @router.post("/{conversation_id}/store_error_message")
