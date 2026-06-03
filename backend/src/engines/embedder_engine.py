@@ -63,7 +63,6 @@ Migration from utils.inference_utils:
 See Also:
     - src.engines.base_engine: LLM inference engine abstraction
     - src.utils.kb_utils: Uses embedder for RAG operations
-    - src.domains.conversations.utils.embedding: Uses embedder for chat
 """
 import os
 
@@ -130,7 +129,6 @@ class Embedder_Engine:
     See Also:
         src.utils.kb_utils.get_relevant_texts_from_kb: Uses for query encoding
         src.domains.knowledge_base: Uses for KB vector creation
-        src.domains.conversations.utils.embedding: Uses for semantic search
     """
     _instance = None
     MODEL_NAME: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

@@ -19,8 +19,8 @@ Architecture:
             ↓
     ┌──────────────┐
     │ ArenaService │ ← get_prompting_strategy(param_size)
-    │.query_llm_   │ ← build_system_prompt() + KB context
-    │ stream()     │ ← config.LLM_Engine.generate_stream()
+    │.query_llm_   │ ← build_agent_system_prompt() + KB context
+    │ stream()     │ ← AgentRunner (stateless) → ChatOpenAI(base_url)
     └───────┬──────┘
             │ (2) Yield tokens via StreamingResponse
             ↓

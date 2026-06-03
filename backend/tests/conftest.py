@@ -140,7 +140,11 @@ def client(test_db_session):
     # Initialize engine for tests
     if not config.LLM_Engine:
         config.LLM_Engine = BaseEngine.get_engine()
-    
+
+    # Provide an in-memory checkpointer (production lifespan is bypassed here).
+    from langgraph.checkpoint.memory import InMemorySaver
+    test_app.state.checkpointer = InMemorySaver()
+
     with TestClient(test_app, raise_server_exceptions=False) as test_client:
         yield test_client
     

@@ -3,8 +3,8 @@
 This file is written **before** the implementation (TDD-RED phase). All tests
 target the post-refactor API described in `plan: refactor/mlx-server-subprocess`.
 Until Phase 2 lands the new `MLX_Engine` implementation, these tests should
-fail (typically with `AttributeError` on missing internal methods, or with
-content-mismatch on `generate_stream` SSE parsing).
+exercise the post-refactor server-mode API (spawn / probe / cleanup / swap)
+and the regressions now run over the live ChatOpenAI path.
 
 Test sections:
     - **Unit** (`@pytest.mark.unit`): fully mocked, no MLX dependency, no
@@ -41,7 +41,6 @@ from __future__ import annotations
 
 import json
 import socket as _stdlib_socket
-import threading
 import time
 from pathlib import Path
 from typing import Iterator, List
@@ -233,204 +232,6 @@ class TestTerminateProcess:
         MLX_Engine._terminate_process(None)  # no exception
 
 
-# =====================================================================
-# UNIT — generate_stream (SSE parsing)
-# =====================================================================
-
-@pytest.mark.unit
-class TestGenerateStreamSSEParsing:
-    """Validates that `generate_stream` correctly parses the mlx_lm.server SSE.
-
-    The new impl is expected to:
-      - POST to `{base_url}/v1/chat/completions` with `stream=True`
-      - Yield `choices[0].delta.content` strings (non-empty only)
-      - Ignore the `[DONE]` terminator
-      - Silently drop `choices[0].delta.reasoning` (thinking channel)
-      - Survive malformed JSON lines without raising
-    """
-
-    def _fake_model(self, port: int = 9090) -> dict:
-        return {
-            "pid": 1,
-            "proc": MagicMock(),
-            "port": port,
-            "base_url": f"http://127.0.0.1:{port}",
-            "alias": "erudi-test",
-            "model_path": "/x",
-        }
-
-    def _fake_tokenizer(self) -> dict:
-        return {"type": "remote", "provider": "mlx-lm-server"}
-
-    def test_yields_concatenated_delta_content(self):
-        chunks = _sse_bytes([
-            {"choices": [{"delta": {"content": "Hello"}}]},
-            {"choices": [{"delta": {"content": " "}}]},
-            {"choices": [{"delta": {"content": "world"}}]},
-            {"choices": [{"delta": {"content": ""}, "finish_reason": "stop"}]},
-            "[DONE]",
-        ])
-        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
-            mock_requests.post = _mock_streaming_post(list(chunks))
-
-            tokens = list(MLX_Engine.generate_stream(
-                model=self._fake_model(),
-                tokenizer=self._fake_tokenizer(),
-                prompt=[{"role": "user", "content": "hi"}],
-                max_tokens=10, temperature=0.5, top_p=0.9,
-            ))
-        assert "".join(tokens) == "Hello world"
-
-    def test_ignores_done_terminator(self):
-        """The literal `[DONE]` must never appear in yielded tokens."""
-        chunks = _sse_bytes([
-            {"choices": [{"delta": {"content": "X"}}]},
-            "[DONE]",
-        ])
-        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
-            mock_requests.post = _mock_streaming_post(list(chunks))
-            tokens = list(MLX_Engine.generate_stream(
-                model=self._fake_model(), tokenizer=self._fake_tokenizer(),
-                prompt=[{"role": "user", "content": "hi"}],
-                max_tokens=5, temperature=0.0, top_p=1.0,
-            ))
-        assert "[DONE]" not in "".join(tokens)
-        assert "".join(tokens) == "X"
-
-    def test_ignores_reasoning_field_by_default(self):
-        """`choices[0].delta.reasoning` (thinking-mode) is dropped silently.
-
-        Iso-behaviour with the current `<|channel>thought ... <channel|>`
-        manual filter — Phase 2 must not leak reasoning into the visible
-        token stream (modulo a future opt-in flag).
-        """
-        chunks = _sse_bytes([
-            {"choices": [{"delta": {"content": "", "reasoning": "I should think..."}}]},
-            {"choices": [{"delta": {"content": "Answer", "reasoning": ""}}]},
-            "[DONE]",
-        ])
-        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
-            mock_requests.post = _mock_streaming_post(list(chunks))
-            tokens = list(MLX_Engine.generate_stream(
-                model=self._fake_model(), tokenizer=self._fake_tokenizer(),
-                prompt=[{"role": "user", "content": "?"}],
-                max_tokens=5, temperature=0.0, top_p=1.0,
-            ))
-        out = "".join(tokens)
-        assert "I should think" not in out, (
-            "reasoning text leaked into visible stream"
-        )
-        assert out == "Answer"
-
-    def test_survives_malformed_sse_line(self):
-        """A corrupted JSON line must not abort the stream."""
-        chunks = _sse_bytes([
-            {"choices": [{"delta": {"content": "before"}}]},
-            "not json {{{",
-            {"choices": [{"delta": {"content": "after"}}]},
-            "[DONE]",
-        ])
-        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
-            mock_requests.post = _mock_streaming_post(list(chunks))
-            tokens = list(MLX_Engine.generate_stream(
-                model=self._fake_model(), tokenizer=self._fake_tokenizer(),
-                prompt=[{"role": "user", "content": "x"}],
-                max_tokens=5, temperature=0.0, top_p=1.0,
-            ))
-        assert "".join(tokens) == "beforeafter"
-
-    def test_payload_includes_stream_true_and_messages(self):
-        chunks = _sse_bytes(["[DONE]"])
-        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
-            mock_requests.post = _mock_streaming_post(list(chunks))
-            list(MLX_Engine.generate_stream(
-                model=self._fake_model(), tokenizer=self._fake_tokenizer(),
-                prompt=[{"role": "user", "content": "Q?"}],
-                max_tokens=42, temperature=0.7, top_p=0.95,
-            ))
-            assert mock_requests.post.called
-            kwargs = mock_requests.post.call_args.kwargs
-            payload = kwargs.get("json") or {}
-            assert payload.get("stream") is True
-            assert payload.get("messages") == [{"role": "user", "content": "Q?"}]
-            assert payload.get("max_tokens") == 42
-            assert payload.get("temperature") == pytest.approx(0.7)
-            assert payload.get("top_p") == pytest.approx(0.95)
-
-    def test_invalid_model_handle_raises(self):
-        """If model handle is not a dict with `base_url`, must raise clearly."""
-        with pytest.raises(Exception):
-            list(MLX_Engine.generate_stream(
-                model=Mock(),  # not a dict
-                tokenizer=self._fake_tokenizer(),
-                prompt=[{"role": "user", "content": "x"}],
-                max_tokens=1, temperature=0.0, top_p=1.0,
-            ))
-
-    def test_survives_chunk_split_mid_json(self):
-        """A JSON message split across two `iter_content` chunks must parse correctly.
-
-        Critical for UTF-8 multi-byte safety and for tolerating arbitrary TCP
-        fragmentation. The CPU/CUDA twin implements this via byte-buffer +
-        newline split (cpu_engine.py:629-652); the MLX impl must do the same.
-        """
-        chunks = [
-            b'data: {"choices":[{"delta":{"content":"Hel',  # split mid-content
-            b'lo"}}]}\n\ndata: {"choices":[{"delta":{"content":" world"}}]}\n\n',
-            b'data: [DONE]\n\n',
-        ]
-        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
-            mock_requests.post = _mock_streaming_post(chunks)
-            tokens = list(MLX_Engine.generate_stream(
-                model=self._fake_model(), tokenizer=self._fake_tokenizer(),
-                prompt=[{"role": "user", "content": "x"}],
-                max_tokens=5, temperature=0.0, top_p=1.0,
-            ))
-        assert "".join(tokens) == "Hello world", (
-            f"chunk-split JSON not reassembled correctly: {tokens!r}"
-        )
-
-    def test_http_error_status_raises(self):
-        """HTTP 4xx/5xx from the server must surface as an engine exception."""
-        from requests.exceptions import HTTPError
-        response = MagicMock()
-        response.raise_for_status.side_effect = HTTPError("500 server error")
-        cm = MagicMock()
-        cm.__enter__.return_value = response
-        cm.__exit__.return_value = False
-        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
-            mock_requests.post.return_value = cm
-
-            with pytest.raises(Exception):
-                list(MLX_Engine.generate_stream(
-                    model=self._fake_model(), tokenizer=self._fake_tokenizer(),
-                    prompt=[{"role": "user", "content": "x"}],
-                    max_tokens=5, temperature=0.0, top_p=1.0,
-                ))
-
-    def test_extra_kwargs_swallowed_without_crash(self):
-        """`generate_stream` must accept (and ignore) kwargs the server doesn't take.
-
-        The conversations service passes `repetition_penalty=1.2`,
-        `repetition_context_size=...` regardless of engine (services.py:493).
-        Both must be passed silently — the server consumes them, but if it
-        didn't, the engine must not crash.
-        """
-        chunks = _sse_bytes([
-            {"choices": [{"delta": {"content": "OK"}}]},
-            "[DONE]",
-        ])
-        with patch("src.engines.base_chat_server_engine.requests") as mock_requests:
-            mock_requests.post = _mock_streaming_post(list(chunks))
-            tokens = list(MLX_Engine.generate_stream(
-                model=self._fake_model(), tokenizer=self._fake_tokenizer(),
-                prompt=[{"role": "user", "content": "x"}],
-                max_tokens=5, temperature=0.0, top_p=1.0,
-                repetition_penalty=1.2,
-                repetition_context_size=512,
-                some_future_unknown_kwarg=True,
-            ))
-        assert "".join(tokens) == "OK"
 
 
 
@@ -540,9 +341,11 @@ class TestMlxServerRunnerHelper:
 class TestSubprocessReal:
     """Spawn a real `mlx_lm.server` against a small downloaded model.
 
-    Uses the session-scoped `mlx_test_model_path` fixture, which skips the
-    test entirely on non-Apple-Silicon hosts. Each test does its own
-    start/cleanup to validate the full lifecycle.
+    Uses the session-scoped `mlx_test_model_path` fixture, which skips on
+    non-Apple-Silicon hosts. Covers the subprocess lifecycle (spawn / health /
+    cleanup / swap); token streaming is exercised end-to-end through the live
+    ChatOpenAI path in `TestE2EConversationsRealMLX` and the regression classes
+    below.
     """
 
     def test_subprocess_starts_and_serves_health(self, mlx_test_model_path):
@@ -558,104 +361,6 @@ class TestSubprocessReal:
         finally:
             MLX_Engine.cleanup()
 
-    def test_real_stream_yields_non_empty_tokens(self, mlx_test_model_path):
-        try:
-            model, tokenizer = MLX_Engine.get_model_and_tokenizer(
-                llm_id="qwen-test", llm_local_path=str(mlx_test_model_path),
-            )
-            tokens = []
-            for tok in MLX_Engine.generate_stream(
-                model, tokenizer,
-                prompt=[{"role": "user", "content": "Say hi in one word."}],
-                max_tokens=20, temperature=0.0, top_p=1.0,
-            ):
-                tokens.append(tok)
-            full = "".join(tokens)
-            assert len(tokens) > 0, "no tokens yielded"
-            assert len(full.strip()) > 0, f"only whitespace yielded: {full!r}"
-        finally:
-            MLX_Engine.cleanup()
-
-    def test_real_stream_stops_within_max_tokens(self, mlx_test_model_path):
-        """With max_tokens cap, the stream must end (not run forever)."""
-        try:
-            model, tokenizer = MLX_Engine.get_model_and_tokenizer(
-                llm_id="qwen-test", llm_local_path=str(mlx_test_model_path),
-            )
-            t0 = time.monotonic()
-            tokens = list(MLX_Engine.generate_stream(
-                model, tokenizer,
-                prompt=[{"role": "user", "content": "Count from 1 to 100"}],
-                max_tokens=5, temperature=0.0, top_p=1.0,
-            ))
-            elapsed = time.monotonic() - t0
-            assert elapsed < 60.0, f"stream did not terminate in <60s: {elapsed:.1f}s"
-            # max_tokens=5 → at most a handful of token deltas. Loose bound
-            # because tokens may emit as partial chars in some templates.
-            assert len(tokens) <= 60
-        finally:
-            MLX_Engine.cleanup()
-
-    def test_real_chat_template_applied_for_system_role(self, mlx_test_model_path):
-        """A system+user prompt must produce a coherent response, not echo.
-
-        Validates that `mlx_lm.server` applies the model's chat template
-        (otherwise the model would treat the system instruction as user
-        text and the output would not look like a 'reply').
-        """
-        try:
-            model, tokenizer = MLX_Engine.get_model_and_tokenizer(
-                llm_id="qwen-test", llm_local_path=str(mlx_test_model_path),
-            )
-            prompt = [
-                {"role": "system", "content": "Answer with exactly the word: OK"},
-                {"role": "user", "content": "ping"},
-            ]
-            out = "".join(MLX_Engine.generate_stream(
-                model, tokenizer, prompt, max_tokens=10, temperature=0.0, top_p=1.0,
-            ))
-            # We do NOT assert "OK" verbatim (Qwen 0.5B may not be that obedient);
-            # we only assert that the output does not contain the literal system
-            # instruction verbatim (which would prove the template was skipped).
-            assert "Answer with exactly the word" not in out, (
-                "chat template was not applied — system prompt leaked into output"
-            )
-        finally:
-            MLX_Engine.cleanup()
-
-    def test_concurrent_requests_dont_crash(self, mlx_test_model_path):
-        """Regression for commits cefdc7a, 40fb55e (Stream(gpu, 0) crash).
-
-        With the subprocess isolation, multiple concurrent generate_stream
-        calls must all complete without raising. We don't assert content
-        ordering — only that no thread raises.
-        """
-        try:
-            model, tokenizer = MLX_Engine.get_model_and_tokenizer(
-                llm_id="qwen-test", llm_local_path=str(mlx_test_model_path),
-            )
-
-            errors: List[BaseException] = []
-
-            def _worker(idx: int) -> None:
-                try:
-                    list(MLX_Engine.generate_stream(
-                        model, tokenizer,
-                        prompt=[{"role": "user", "content": f"hi #{idx}"}],
-                        max_tokens=8, temperature=0.0, top_p=1.0,
-                    ))
-                except BaseException as e:  # noqa: BLE001 — surface everything
-                    errors.append(e)
-
-            threads = [threading.Thread(target=_worker, args=(i,)) for i in range(3)]
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join(timeout=120)
-            assert not errors, f"concurrent stream errors: {errors!r}"
-        finally:
-            MLX_Engine.cleanup()
-
     def test_cleanup_kills_subprocess_and_frees_port(self, mlx_test_model_path):
         model, _ = MLX_Engine.get_model_and_tokenizer(
             llm_id="qwen-test", llm_local_path=str(mlx_test_model_path),
@@ -666,14 +371,12 @@ class TestSubprocessReal:
 
         MLX_Engine.cleanup()
 
-        # Give the OS a brief moment to release the port.
         for _ in range(20):
             if not proc.is_alive():
                 break
             time.sleep(0.1)
         assert not proc.is_alive(), "subprocess survived cleanup()"
 
-        # Port should be re-bindable.
         with _stdlib_socket.socket(_stdlib_socket.AF_INET, _stdlib_socket.SOCK_STREAM) as s:
             s.setsockopt(_stdlib_socket.SOL_SOCKET, _stdlib_socket.SO_REUSEADDR, 1)
             s.bind(("127.0.0.1", port))  # must not raise
@@ -687,7 +390,6 @@ class TestSubprocessReal:
             old_proc = m1["proc"]
             assert old_proc.is_alive()
 
-            # Reuse the same path but with a different llm_id to force respawn.
             m2, _ = MLX_Engine.get_model_and_tokenizer(
                 llm_id="qwen-test-bis", llm_local_path=str(mlx_test_model_path),
             )
@@ -701,52 +403,94 @@ class TestSubprocessReal:
         finally:
             MLX_Engine.cleanup()
 
+    async def test_idle_tick_reaps_real_subprocess_without_deadlock(self, mlx_test_model_path):
+        """Wave C regression: the idle-cleanup tick reaps a REAL child subprocess
+        without the old reentrant-lock deadlock (the monitor held ``cls._lock``
+        then called a ``cleanup()`` that re-acquired the same non-reentrant lock).
+        The tick must complete promptly and the child must actually die.
+        """
+        import asyncio
+        from datetime import datetime, timedelta
 
-# =====================================================================
-# INTEGRATION — thinking-model regression (opt-in via ERUDI_TEST_THINKING=1)
-# =====================================================================
-
-@pytest.mark.mlx_only
-class TestThinkingModelRegression:
-    """The reasoning channel must NOT leak into the yielded token stream.
-
-    Activated by `mlx_thinking_model_path` (opt-in via ERUDI_TEST_THINKING=1).
-    Without this test, a Phase 2 regression that forwards `delta.reasoning`
-    to the caller would be invisible to the default suite.
-    """
-
-    def test_reasoning_text_not_in_visible_stream(self, mlx_thinking_model_path):
+        MLX_Engine.get_model_and_tokenizer(
+            llm_id="qwen-test", llm_local_path=str(mlx_test_model_path),
+        )
+        proc = MLX_Engine._model["proc"]
+        assert proc.is_alive()
         try:
-            model, tokenizer = MLX_Engine.get_model_and_tokenizer(
-                llm_id="qwen3-thinking",
-                llm_local_path=str(mlx_thinking_model_path),
-            )
-            out = "".join(MLX_Engine.generate_stream(
-                model, tokenizer,
-                prompt=[{"role": "user", "content": "What is 2+2? Reply briefly."}],
-                max_tokens=64, temperature=0.0, top_p=1.0,
-            ))
-            # Tokens specific to common thinking templates. If any of these
-            # surface, the reasoning channel is leaking.
-            forbidden = ["<think>", "</think>", "<|channel>", "<channel|>"]
-            for needle in forbidden:
-                assert needle not in out, (
-                    f"reasoning marker {needle!r} leaked into visible stream: {out!r}"
-                )
+            # Backdate the idle clock so the next tick treats the model as reapable.
+            MLX_Engine._last_used = datetime.now() - timedelta(seconds=10_000)
+            assert MLX_Engine._should_cleanup() is True
+            # Must NOT hang — the old reentrant-lock path would deadlock here.
+            await asyncio.wait_for(MLX_Engine._cleanup_tick(), timeout=15)
+            assert MLX_Engine._model is None  # engine state reset
+            for _ in range(30):
+                if not proc.is_alive():
+                    break
+                time.sleep(0.1)
+            assert not proc.is_alive(), "real subprocess was not terminated by the idle tick"
         finally:
             MLX_Engine.cleanup()
 
 
+def _build_real_mlx_chat_model(llm_id, model_path, *, max_tokens):
+    """Spawn the real mlx_lm.server for `model_path` and wrap it as the live
+    ChatOpenAI model (`build_chat_model`). Caller must `config.LLM_Engine.cleanup()`.
+    """
+    from types import SimpleNamespace
+    from src.core import config
+    from src.engines.base_engine import BaseEngine
+    from src.agents.model_factory import build_chat_model
+
+    config.LLM_Engine = BaseEngine.get_engine()
+    llm = SimpleNamespace(id=llm_id, link=str(model_path))
+    return build_chat_model(llm, temperature=0.0, top_p=1.0, max_tokens=max_tokens)
+
+
 # =====================================================================
-# INTEGRATION — Gemma EOS regression (opt-in via ERUDI_TEST_GEMMA=1)
+# INTEGRATION — thinking-model regression (ChatOpenAI path, opt-in ERUDI_TEST_THINKING=1)
+# =====================================================================
+
+@pytest.mark.mlx_only
+class TestThinkingModelRegression:
+    """The reasoning channel must NOT leak into the visible token stream on the
+    live ChatOpenAI path. Opt-in via `mlx_thinking_model_path` (ERUDI_TEST_THINKING=1).
+    A regression that folds `delta.reasoning` into visible content would otherwise
+    be invisible.
+    """
+
+    async def test_reasoning_text_not_in_visible_stream(self, mlx_thinking_model_path):
+        from langchain_core.messages import HumanMessage
+        from src.core import config
+
+        model = _build_real_mlx_chat_model(
+            "qwen3-thinking", mlx_thinking_model_path, max_tokens=64
+        )
+        try:
+            out = ""
+            async for chunk in model.astream(
+                [HumanMessage("What is 2+2? Reply briefly.")]
+            ):
+                c = chunk.content
+                if isinstance(c, str):
+                    out += c
+            for needle in ["<think>", "</think>", "<|channel>", "<channel|>"]:
+                assert needle not in out, (
+                    f"reasoning marker {needle!r} leaked into the visible "
+                    f"ChatOpenAI stream: {out!r}"
+                )
+        finally:
+            config.LLM_Engine.cleanup()
+
+
+# =====================================================================
+# INTEGRATION — Gemma EOS regression (ChatOpenAI path, opt-in ERUDI_TEST_GEMMA=1)
 # =====================================================================
 
 @pytest.mark.mlx_only
 class TestGemmaEOSRegression:
-    """Validates audit GAP #15 — Gemma `<end_of_turn>` may not stop natively.
-
-    Opt-in via ERUDI_TEST_GEMMA=1. If this test fails, Phase 2 must wire a
-    per-family `stop` fallback in the request payload.
+    """Gemma must stop on `<end_of_turn>` on the live ChatOpenAI path rather than
+    running to the token cap. Opt-in via ERUDI_TEST_GEMMA=1.
     """
 
     @pytest.fixture(scope="class")
@@ -763,25 +507,22 @@ class TestGemmaEOSRegression:
         except Exception as exc:
             pytest.skip(f"Cannot fetch Gemma model {repo!r}: {exc}")
 
-    def test_gemma_stops_within_reasonable_bound(self, gemma_path):
-        """A short instruct prompt must terminate well before max_tokens=200."""
+    async def test_gemma_stops_within_reasonable_bound(self, gemma_path):
+        from langchain_core.messages import HumanMessage
+        from src.core import config
+
+        model = _build_real_mlx_chat_model("gemma-test", gemma_path, max_tokens=200)
         try:
-            model, tokenizer = MLX_Engine.get_model_and_tokenizer(
-                llm_id="gemma-test", llm_local_path=str(gemma_path),
-            )
-            out_tokens = list(MLX_Engine.generate_stream(
-                model, tokenizer,
-                prompt=[{"role": "user", "content": "Say hello."}],
-                max_tokens=200, temperature=0.0, top_p=1.0,
-            ))
-            # If EOS works correctly, the response is short (≪ 200 tokens).
-            # If `<end_of_turn>` is not recognized, it runs to the cap.
-            assert len(out_tokens) < 150, (
-                "Gemma did not stop on <end_of_turn> — "
-                "Phase 2 must add stop=['<end_of_turn>'] in the request payload"
+            visible_chunks = 0
+            async for chunk in model.astream([HumanMessage("Say hello.")]):
+                if isinstance(chunk.content, str) and chunk.content:
+                    visible_chunks += 1
+            assert visible_chunks < 150, (
+                "Gemma did not stop on <end_of_turn> on the ChatOpenAI path "
+                "(ran to the token cap)"
             )
         finally:
-            MLX_Engine.cleanup()
+            config.LLM_Engine.cleanup()
 
 
 # =====================================================================

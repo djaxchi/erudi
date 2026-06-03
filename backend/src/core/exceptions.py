@@ -435,8 +435,8 @@ class GenerationException(AppBaseException):
     Examples:
         from src.core.exceptions import GenerationException
         try:
-            for token in engine.generate_stream(model, tokenizer, prompt):
-                yield token
+            async for chunk in chat_model.astream(messages):
+                yield chunk.content
         except Exception as e:
             raise GenerationException(f"Generation failed: {e}", trace=str(e))
 
