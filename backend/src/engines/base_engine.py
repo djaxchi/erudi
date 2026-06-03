@@ -27,25 +27,20 @@ Examples:
             llm_local_path="backend/data/models/llama-7b"
         )
     
-    Stream tokens:
-        for token in engine_class.generate_stream(
-            model, tokenizer,
-            prompt=[{"role": "user", "content": "Hello"}],
-            max_tokens=100,
-            temperature=0.7,
-            top_p=0.9
-        ):
-            print(token, end="", flush=True)
+    Stream tokens (driven by the agent layer, not the engine):
+        the model handle's ``base_url`` is consumed by ``ChatOpenAI`` in
+        ``src.agents.model_factory``; the engine only spawns / probes /
+        reaps the OpenAI-compatible server.
 
 """
 
 import asyncio
-import threading
 import platform
 import os
 from datetime import datetime, timedelta
-from typing import Any, Optional, Tuple, Generator, Union, Type, Dict
+from typing import Any, Optional, Tuple, Union, Type, Dict
 from abc import ABC, abstractmethod, ABCMeta
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from src.core.exceptions import EngineException
@@ -77,7 +72,6 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         _tokenizer: Currently loaded tokenizer instance.
         _model_id: ID of the currently loaded model.
         _last_used: Timestamp of last model access for cleanup tracking.
-        _lock: Thread lock for safe concurrent access.
         _cleanup_task: Async task monitoring idle time.
         _max_idle_time: Seconds before automatic memory cleanup (default: 300).
         MODEL_MAPPING: Dictionary mapping model architectures to classes.
@@ -93,7 +87,12 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     _tokenizer: Optional[Any] = None
     _model_id: Optional[int] = None
     _last_used: Optional[datetime] = None
-    _lock = threading.Lock()
+
+    # Serializes a full generation (model resolution + stream) on the
+    # single-model engine. Lazily created and rebound per running loop so each
+    # test (own loop) stays isolated; production has one loop -> one lock.
+    _generation_lock = None
+    _generation_lock_loop = None
 
     # --- Lifecycle management ---
     _cleanup_task = None
@@ -185,58 +184,6 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         """
         pass
 
-    @classmethod
-    @abstractmethod
-    def generate_stream(
-        cls,
-        model: Any,
-        tokenizer: Any,
-        prompt: list[dict[str, str]],
-        max_tokens: int,
-        temperature: float,
-        top_p: float,
-        **kwargs
-    ) -> Generator[str, None, None]:
-        """Generate text tokens in streaming fashion.
-        
-        Yields tokens one-by-one as they are generated, enabling real-time
-        response streaming to clients.
-        
-        Args:
-            model: Loaded model instance from get_model_and_tokenizer.
-            tokenizer: Loaded tokenizer instance.
-            prompt: Chat-style messages, e.g., [{"role": "user", "content": "Hi"}].
-            max_tokens: Maximum tokens to generate.
-            temperature: Sampling temperature (0.0 = greedy, higher = more random).
-            top_p: Nucleus sampling threshold (0.0-1.0).
-            **kwargs: Engine-specific generation parameters (e.g., repetition_penalty, 
-                     top_k, min_p). Unsupported parameters are silently ignored by
-                     individual engine implementations.
-            
-        Yields:
-            String tokens as they are generated.
-            
-        Raises:
-            EngineException: If inference fails (OOM, model error, etc.).
-            RuntimeError: If model or tokenizer is not initialized.
-            
-        Note:
-            Each engine logs which parameters it consumes and which it ignores.
-            This allows service layer to pass all desired parameters without
-            conditional logic based on engine type.
-            
-        Examples:
-            for token in engine.generate_stream(
-                model, tokenizer,
-                prompt=[{"role": "user", "content": "Hello"}],
-                max_tokens=100,
-                temperature=0.7,
-                top_p=0.9
-            ):
-                print(token, end="", flush=True)
-
-        """
-        pass
 
     # ======================= HARDWARE DETECTION & EVALUATION =======================
     @classmethod
@@ -570,11 +517,9 @@ class BaseEngine(ABC, metaclass=EngineMeta):
 
     @classmethod
     def _should_cleanup(cls) -> bool:
-        # Active-marker contract: `_last_used = None` means a stream is in
-        # flight (set by `BaseChatServerEngine.generate_stream`). Returning
-        # False here is what blocks the idle monitor from reaping the model
-        # mid-generation. Do not weaken without a coordinated change to
-        # every engine's `generate_stream`.
+        # Active-marker contract: `_last_used = None` means a generation is
+        # in flight (set by `generation_guard`). Returning False here is what
+        # blocks the idle monitor from reaping the model mid-generation.
         if cls._last_used is None or cls._model is None:
             return False
         idle_time = datetime.now() - cls._last_used
@@ -589,7 +534,46 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         cls._last_used = datetime.now()
         logger.info(f"Using cached model {cls._model_id}")
         return cls._model, cls._tokenizer
-    
+
+    @classmethod
+    def _generation_lock_for_running_loop(cls) -> "asyncio.Lock":
+        """Return an ``asyncio.Lock`` bound to the current running loop.
+
+        Recreated if the running loop changed so tests (each with their own
+        loop) stay isolated; in production there is exactly one loop, so the
+        lock is created once and shared across all engine classes.
+        """
+        loop = asyncio.get_running_loop()
+        if BaseEngine._generation_lock is None or BaseEngine._generation_lock_loop is not loop:
+            BaseEngine._generation_lock = asyncio.Lock()
+            BaseEngine._generation_lock_loop = loop
+        return BaseEngine._generation_lock
+
+    @classmethod
+    @asynccontextmanager
+    async def generation_guard(cls):
+        """Serialize a full generation and suppress idle cleanup for its duration.
+
+        The agent layer wraps model resolution + the entire token stream in this
+        guard so that:
+          - concurrent requests for different models can't thrash the
+            single-model engine subprocess (they serialize on one asyncio lock);
+          - the idle-cleanup tick (``_cleanup_tick``) shares this SAME lock, so
+            it cannot run — let alone reap the model — while a generation is in
+            flight. It waits until the guard exits, by which point the idle
+            clock has been refreshed, so no mid-generation teardown is possible.
+
+        This is the engine-level home of the invariant that ``generate_stream``
+        used to carry; it lives here (not in the agent layer) to keep subprocess
+        lifecycle and concurrency inside the engine encapsulation.
+        """
+        async with cls._generation_lock_for_running_loop():
+            try:
+                yield
+            finally:
+                # Restart the idle clock from the end of the generation.
+                cls._last_used = datetime.now()
+
     @classmethod
     def cleanup(cls) -> None:
         """Free model and tokenizer from memory, reset state.
@@ -610,6 +594,18 @@ class BaseEngine(ABC, metaclass=EngineMeta):
             gc.collect()
 
     @classmethod
+    async def _cleanup_tick(cls):
+        """One idle-check pass: reap the model iff it has been idle too long.
+
+        Acquires the SAME asyncio lock as ``generation_guard`` (so it can never
+        run during a generation) and runs the blocking ``cleanup()`` — which
+        kills the child subprocess — off the event loop via ``asyncio.to_thread``.
+        """
+        async with cls._generation_lock_for_running_loop():
+            if cls._should_cleanup():
+                await asyncio.to_thread(cls.cleanup)
+
+    @classmethod
     async def _cleanup_monitor(cls):
         """Background task monitoring idle time and triggering cleanup.
         
@@ -622,9 +618,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         """
         while True:
             await asyncio.sleep(300)
-            with cls._lock:
-                if cls._should_cleanup():
-                    cls.cleanup()
+            await cls._cleanup_tick()
 
     @classmethod
     def start_cleanup_task(cls):

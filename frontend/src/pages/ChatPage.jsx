@@ -27,8 +27,11 @@ export default function ChatPage() {
   const [isLanguageWarningExpanded, setIsLanguageWarningExpanded] = useState(false);
 
   // Parameters state
+  // Default temperature aligned with the backend default (0.2): small local
+  // models stay coherent/instruction-following at low temperature (high values
+  // like 1.0 made Gemma-270M ramble). User-adjustable via the settings slider.
   const [settings, setSettings] = useState({
-    temperature: 1.0,
+    temperature: 0.2,
     topP: 0.95,
     maxTokens: 1024,
   });

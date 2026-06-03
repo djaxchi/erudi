@@ -3,7 +3,7 @@ Repository layer for conversation domain.
 Handles all database operations.
 """
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -263,28 +263,6 @@ class ConversationRepository:
                 trace=str(e)
             )
 
-    def delete_conversations_bulk(self, conversation_ids: List[int]) -> None:
-        """
-        Delete multiple conversations in bulk.
-        
-        Args:
-            conversation_ids: List of conversation IDs to delete
-            
-        Raises:
-            DatabaseException: If deletion fails
-        """
-        try:
-            self.db.query(Conversation).filter(
-                Conversation.id.in_(conversation_ids)
-            ).delete(synchronize_session=False)
-            self.db.flush()  # Flush deletions, no commit
-            logger.info(f"Bulk deleted {len(conversation_ids)} conversations")
-        except SQLAlchemyError as e:
-            logger.error(f"Error bulk deleting conversations: {str(e)}")
-            raise DatabaseException(
-                "Could not delete conversations",
-                trace=str(e)
-            )
 
     def update_last_message_time(self, conversation_id: int) -> None:
         """
@@ -343,30 +321,6 @@ class MessageRepository:
                 trace=str(e)
             )
 
-    def get_conversation_history(
-        self, conversation_id: int
-    ) -> List[Tuple[int, str, str, any]]:
-        """
-        Get conversation history as a list of (sender, content) tuples.
-        
-        Args:
-            conversation_id: ID of the conversation
-            
-        Returns:
-            List of (id, sender, content, timestamp) tuples ordered by timestamp
-        """
-        try:
-            messages = (
-                self.db.query(Message.id, Message.sender, Message.content, Message.timestamp)
-                .filter(Message.conversation_id == conversation_id)
-                .order_by(Message.timestamp.asc())
-                .all()
-            )
-            logger.debug(f"Retrieved history with {len(messages)} messages")
-            return [(msg.id, msg.sender, msg.content, msg.timestamp) for msg in messages]
-        except SQLAlchemyError as e:
-            logger.error(f"Error retrieving conversation history: {str(e)}")
-            return []
 
     def get_starred_messages(self, conversation_id: int) -> List[str]:
         """
@@ -429,34 +383,6 @@ class MessageRepository:
                 trace=str(e)
             )
 
-    def delete_message(self, message_id: int) -> None:
-        """
-        Delete a specific message.
-        
-        Args:
-            message_id: ID of the message to delete
-            
-        Raises:
-            MessageNotFoundException: If message not found
-            DatabaseException: If deletion fails
-        """
-        try:
-            message = self.db.query(Message).filter(
-                Message.id == message_id
-            ).first()
-            if not message:
-                raise MessageNotFoundException(message_id)
-            self.db.delete(message)
-            self.db.flush()  # Flush deletion, no commit
-            logger.info(f"Deleted message {message_id}")
-        except MessageNotFoundException:
-            raise
-        except SQLAlchemyError as e:
-            logger.error(f"Error deleting message {message_id}: {str(e)}")
-            raise DatabaseException(
-                "Could not delete message",
-                trace=str(e)
-            )
 
     def star_message(self, message_id: int) -> None:
         """

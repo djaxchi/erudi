@@ -11,8 +11,7 @@ All heavy operations (FAISS, embeddings, HF API) are mocked for fast testing.
 import pytest
 import tempfile
 import os
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
+from unittest.mock import Mock, patch
 
 # File processor functions
 from src.utils.file_processor import (
@@ -268,7 +267,6 @@ class TestKBUtils:
         
         Should raise exception when is_attached_to_kb=False.
         """
-        from src.entities.Llm import Llm
         
         # Ensure LLM has no KB
         mock_llm.is_attached_to_kb = 0
@@ -445,20 +443,6 @@ class TestPromptUtils:
         # XLarge prompts are most comprehensive
         assert len(prompt) > 500
 
-    def test_build_system_prompt_with_long_term_memory(self):
-        """Test prompt generation with long-term memory injection.
-        
-        Should include conversation summary in prompt.
-        """
-        prompt = build_system_prompt(
-            model_name="Test 7B",
-            size_category="medium",
-            long_term_memory="User is working on a FastAPI project with async endpoints."
-        )
-        
-        assert isinstance(prompt, str)
-        assert "FastAPI" in prompt or "Summary" in prompt
-
     def test_build_system_prompt_with_starred_messages(self):
         """Test prompt generation with starred messages injection.
         
@@ -489,8 +473,8 @@ class TestPromptUtils:
         assert isinstance(strategy, dict)
         assert "system_prompt_size_category" in strategy
         assert strategy["system_prompt_size_category"] == "tiny"
-        assert "max_history_turns" in strategy
-        assert strategy["max_history_turns"] == 2  # Tiny models get fewer turns
+        assert strategy["use_kb_context"] is True
+        assert strategy["kb_top_k"] == 1
 
     def test_get_prompting_strategy_small(self):
         """Test strategy selection for small models (2-4B).
@@ -512,8 +496,6 @@ class TestPromptUtils:
         assert isinstance(strategy, dict)
         assert strategy["system_prompt_size_category"] == "medium"
         assert "kb_top_k" in strategy
-        assert "mtm_top_k" in strategy
-        assert "use_short_term_memory" in strategy
 
     def test_get_prompting_strategy_large(self):
         """Test strategy selection for large models (12B).
@@ -534,7 +516,7 @@ class TestPromptUtils:
         
         assert isinstance(strategy, dict)
         assert strategy["system_prompt_size_category"] == "xlarge"
-        assert strategy["max_history_turns"] == 5  # More turns for large models
+        assert strategy["kb_top_k"] == 3  # xlarge gets more KB chunks
 
     def test_get_prompting_strategy_edge_cases(self):
         """Test strategy selection with edge case sizes.
