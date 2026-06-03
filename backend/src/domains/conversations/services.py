@@ -13,7 +13,7 @@ wrapped in ``run_in_threadpool`` so DB commits never block the loop.
 """
 
 import re
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator, Optional
 
 from fastapi.concurrency import run_in_threadpool
 
@@ -130,20 +130,11 @@ class ConversationService:
         await run_in_threadpool(self._delete_conversation_db, conversation_id)
         await self._purge_thread(conversation_id)
 
-    async def delete_conversations_bulk(self, conversation_ids: List[int]) -> None:
-        """Bulk-delete conversations and purge each checkpointer thread (B3)."""
-        logger.info(f"Bulk deleting {len(conversation_ids)} conversations")
-        await run_in_threadpool(self._delete_conversations_bulk_db, conversation_ids)
-        for conversation_id in conversation_ids:
-            await self._purge_thread(conversation_id)
 
     def _delete_conversation_db(self, conversation_id: int) -> None:
         self.conversation_repo.delete_conversation(conversation_id)
         self.db.commit()
 
-    def _delete_conversations_bulk_db(self, conversation_ids: List[int]) -> None:
-        self.conversation_repo.delete_conversations_bulk(conversation_ids)
-        self.db.commit()
 
     async def _purge_thread(self, conversation_id: int) -> None:
         if self.checkpointer is None:

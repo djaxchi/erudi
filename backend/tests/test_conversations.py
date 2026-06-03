@@ -8,9 +8,8 @@ Tests cover:
 All LLM_Engine operations are mocked for fast, isolated testing.
 """
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import patch
 from fastapi import status
-from sqlalchemy.orm import Session
 
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
@@ -22,14 +21,8 @@ from src.engines.base_engine import BaseEngine
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.conversations.services import ConversationService, _sanitize_title
 from src.domains.conversations.schemas import (
-    ConversationCreate,
-    ConversationUpdate,
-    ConversationQuery,
-    MessageCreate
+    ConversationQuery
 )
-from src.entities.Conversation import Conversation
-from src.entities.Message import Message
-from src.entities.Llm import Llm
 
 
 class _FakeEngine(BaseEngine):
@@ -160,24 +153,6 @@ class TestConversationRepository:
         with pytest.raises(Exception):
             repo.get_conversation_by_id(conversation.id)
 
-    def test_delete_conversations_bulk(self, test_db_session, mock_llm):
-        """Test bulk conversation deletion.
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
-        repo = ConversationRepository(test_db_session)
-        
-        c1 = repo.create_conversation(llm_id=mock_llm.id, name="Chat 1", temperature=0.5, top_p=0.8, max_tokens=512)
-        c2 = repo.create_conversation(llm_id=mock_llm.id, name="Chat 2", temperature=0.5, top_p=0.8, max_tokens=512)
-        c3 = repo.create_conversation(llm_id=mock_llm.id, name="Chat 3", temperature=0.5, top_p=0.8, max_tokens=512)
-        
-        repo.delete_conversations_bulk([c1.id, c2.id])
-        
-        remaining = repo.get_all_conversations()
-        assert len(remaining) == 1
-        assert remaining[0].id == c3.id
 
 
 class TestMessageRepository:
@@ -230,23 +205,6 @@ class TestMessageRepository:
         assert messages[1].sender == "llm"
         assert messages[2].content == "Question 2"
 
-    def test_delete_message(self, test_db_session, mock_llm):
-        """Test message deletion.
-        
-        Args:
-            test_db_session: Database session fixture.
-            mock_llm: LLM entity fixture.
-        """
-        conv_repo = ConversationRepository(test_db_session)
-        msg_repo = MessageRepository(test_db_session)
-        
-        conversation = conv_repo.create_conversation(llm_id=mock_llm.id, name="Test", temperature=0.5, top_p=0.8, max_tokens=512)
-        message = msg_repo.create_message(conversation.id, "To delete", "user")
-        
-        msg_repo.delete_message(message.id)
-        
-        messages = msg_repo.get_messages_by_conversation(conversation.id)
-        assert len(messages) == 0
 
     def test_star_message(self, test_db_session, mock_llm):
         """Test starring/bookmarking a message.
@@ -324,17 +282,6 @@ class TestConversationService:
         with pytest.raises(Exception):
             service.conversation_repo.get_conversation_by_id(conversation.id)
 
-    async def test_delete_conversations_bulk_service(self, test_db_session, mock_llm):
-        """Test bulk deletion via service (now async)."""
-        service = ConversationService(test_db_session)
-
-        c1 = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
-        c2 = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
-
-        await service.delete_conversations_bulk([c1.id, c2.id])
-
-        remaining = service.conversation_repo.get_all_conversations()
-        assert len(remaining) == 0
 
     def test_store_error_message(self, test_db_session, mock_llm):
         """Test storing error message when generation fails.
@@ -403,7 +350,6 @@ class TestConversationService:
         payload = ConversationQuery(
             question="Explain Python decorators",
             temperature=0.7,
-            n_last_turns_to_get=5,
         )
 
         result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
@@ -430,7 +376,6 @@ class TestConversationService:
         payload = ConversationQuery(
             question="Tell me more",
             temperature=0.7,
-            n_last_turns_to_get=2,
         )
 
         result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
@@ -595,26 +540,6 @@ class TestConversationEndpoints:
         get_response = client.get(f"/erudi/conversations/{conversation_id}")
         assert get_response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_bulk_delete_conversations_endpoint(self, client, mock_llm):
-        """Test bulk conversation deletion via REST API.
-        
-        Args:
-            client: FastAPI test client.
-            mock_llm: LLM entity fixture.
-        """
-        c1 = client.post("/erudi/conversations/", json={"llm_id": mock_llm.id}).json()
-        c2 = client.post("/erudi/conversations/", json={"llm_id": mock_llm.id}).json()
-        
-        response = client.post(
-            "/erudi/conversations/delete_bulk",
-            json={"conversation_ids": [c1["id"], c2["id"]]}
-        )
-        
-        assert response.status_code == status.HTTP_200_OK
-        
-        # Verify deleted
-        all_response = client.get("/erudi/conversations/")
-        assert len(all_response.json()) == 0
 
     def test_query_endpoint_streaming(self, client, mock_llm):
         """Test streaming query endpoint with mocked engine.
@@ -699,32 +624,6 @@ class TestConversationEndpoints:
         assert messages[0]["content"] == "Hello"
         assert messages[1]["content"] == "Hi there"
 
-    def test_delete_message_endpoint(self, client, mock_llm, test_db_session):
-        """Test deleting a message via REST API.
-        
-        Args:
-            client: FastAPI test client.
-            mock_llm: LLM entity fixture.
-            test_db_session: Database session fixture.
-        """
-        from src.domains.conversations.repository import ConversationRepository, MessageRepository
-        
-        conv_repo = ConversationRepository(test_db_session)
-        msg_repo = MessageRepository(test_db_session)
-        
-        conversation = conv_repo.create_conversation(llm_id=mock_llm.id, name="Test", temperature=0.5, top_p=0.8, max_tokens=512)
-        message = msg_repo.create_message(conversation.id, "Delete me", "user")
-        
-        response = client.delete(f"/erudi/conversations/messages/{message.id}")
-
-        assert response.status_code == status.HTTP_200_OK
-
-        # Verify deleted
-        messages = msg_repo.get_messages_by_conversation(conversation.id)
-        assert len(messages) == 0
-
-
-# ============ Title sanitization (tiny-model junk titles) ============
 
 class TestTitleSanitization:
     """Unit tests for _sanitize_title (strip markdown noise / repetition / caps)."""
