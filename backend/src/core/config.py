@@ -110,12 +110,6 @@ DATA_ROOT.mkdir(parents=True, exist_ok=True)
 # lifespan (step 0: start_postgres, step 1: database.core.init_database).
 POSTGRES_DATA_DIR = DATA_ROOT / "postgres"
 
-# LangGraph conversation-state checkpointer lives in a SEPARATE SQLite file in
-# the same DATA_ROOT (so it follows dev/prod redirection via runtime_paths).
-# Kept apart from erudi.db so the LangGraph-managed schema never mixes with the
-# SQLAlchemy/alembic business schema. Passed to AsyncSqliteSaver as a raw path.
-CHECKPOINT_DB_PATH = DATA_ROOT / "erudi-checkpoints.db"
-
 # ============ Directory Creation ============
 
 LLM_DIR.mkdir(parents=True, exist_ok=True)

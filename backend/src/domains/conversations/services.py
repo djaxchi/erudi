@@ -65,7 +65,7 @@ class ConversationService:
 
         Args:
             db: SQLAlchemy session for repository operations.
-            checkpointer: LangGraph checkpointer (app-wide ``AsyncSqliteSaver``)
+            checkpointer: LangGraph checkpointer (app-wide ``AsyncPostgresSaver``)
                 for stateful conversations. ``None`` runs the agent statelessly
                 (used by tests that don't exercise persistence).
         """

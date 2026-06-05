@@ -228,9 +228,10 @@ async def lifespan(app: FastAPI):
     await create_tables()
     # await delete_all_data()
     await startup_populate_database()
-    # LangGraph conversation-state checkpointer (separate erudi-checkpoints.db),
-    # held open for the whole app lifetime and exposed on app.state.checkpointer.
-    checkpointer_cm = open_checkpointer(config.CHECKPOINT_DB_PATH)
+    # LangGraph conversation-state checkpointer (AsyncPostgresSaver on the
+    # same `erudi` database as the business schema), held open for the whole
+    # app lifetime and exposed on app.state.checkpointer.
+    checkpointer_cm = open_checkpointer(app.state.postgres.psycopg_url)
     app.state.checkpointer = await checkpointer_cm.__aenter__()
     config.LLM_Engine.start_cleanup_task()
     yield
