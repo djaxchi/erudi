@@ -62,6 +62,41 @@ class TestPostgresRuntime:
         with psycopg.connect(again.psycopg_url, autocommit=True) as conn:
             assert conn.execute("SELECT 1").fetchone()[0] == 1
 
+    @pytest.mark.integration
+    def test_stale_handle_pids_are_pruned(self, tmp_path_factory):
+        """pgserver refcounts cluster users in <pgdata>/.handle_pids.json but
+        never prunes dead pids: a crashed/SIGKILLed backend leaves a ghost
+        entry that makes every later cleanup() skip the server stop forever.
+        start_postgres must prune dead pids so the last live handle really
+        stops the cluster."""
+        import json
+        import os
+        import signal
+        import subprocess
+
+        data_dir = tmp_path_factory.mktemp("pgdata-prune")
+        try:
+            first = start_postgres(data_dir)
+            stop_postgres(first)
+
+            # Simulate a previous owner that died brutally (pid is real but dead).
+            ghost = subprocess.Popen(["sleep", "0"])
+            ghost.wait()
+            (data_dir / ".handle_pids.json").write_text(json.dumps([ghost.pid]))
+
+            handle = start_postgres(data_dir)
+            stop_postgres(handle)
+
+            # Without pruning, the ghost pid would block the stop and the
+            # postmaster would survive (postmaster.pid still present).
+            assert not (data_dir / "postmaster.pid").exists()
+        finally:
+            # The red scenario is precisely "the stop is skipped": never leak
+            # a live postmaster on the dev machine when this test regresses.
+            pid_file = data_dir / "postmaster.pid"
+            if pid_file.exists():
+                os.kill(int(pid_file.read_text().splitlines()[0]), signal.SIGTERM)
+
 
 class TestInitDatabase:
     @pytest.mark.integration

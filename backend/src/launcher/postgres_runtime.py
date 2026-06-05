@@ -18,15 +18,42 @@ explicitly from the FastAPI lifespan shutdown for a deterministic order
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import pgserver
+import psutil
 import psycopg
 
 from src.core.logging import logger
 
 DB_NAME = "erudi"
+
+
+def _prune_stale_handle_pids(data_dir: Path) -> None:
+    """Drop dead pids from pgserver's per-cluster refcount registry.
+
+    pgserver tracks cluster users in ``<pgdata>/.handle_pids.json`` but never
+    prunes dead entries: a crashed/SIGKILLed backend leaves a ghost pid that
+    makes every later ``cleanup()`` skip the server stop — forever. Pruning
+    before joining the cluster guarantees the LAST live handle really stops
+    the postmaster on graceful shutdown.
+    """
+    handle_file = data_dir / ".handle_pids.json"
+    if not handle_file.exists():
+        return
+    try:
+        pids = json.loads(handle_file.read_text() or "[]")
+        alive = [pid for pid in pids if psutil.pid_exists(pid)]
+        if alive != pids:
+            handle_file.write_text(json.dumps(alive))
+            logger.info(
+                f"Pruned stale pgserver handle pids: {sorted(set(pids) - set(alive))}"
+            )
+    except (OSError, ValueError) as exc:
+        # Unreadable/corrupt registry — pgserver will rebuild it on boot.
+        logger.warning(f"Could not prune pgserver handle pids: {exc}")
 
 
 @dataclass(frozen=True)
@@ -54,6 +81,7 @@ def start_postgres(data_dir: Path | str) -> PostgresHandle:
     """
     data_dir = Path(data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
+    _prune_stale_handle_pids(data_dir)
 
     server = pgserver.get_server(str(data_dir))
     admin_uri = server.get_uri()
