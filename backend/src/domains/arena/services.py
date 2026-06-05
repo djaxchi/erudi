@@ -18,6 +18,8 @@ engine, so model swaps don't thrash the subprocess.
 
 from typing import AsyncGenerator, Dict, Any
 
+from fastapi.concurrency import run_in_threadpool
+
 from src.core.logging import logger
 from src.utils.prompt_utils import get_prompting_strategy
 from src.utils.kb_utils import get_relevant_texts_from_kb
@@ -108,7 +110,10 @@ class ArenaService:
         param_size = llm.param_size if getattr(llm, "param_size", None) else 2
         strategy = get_prompting_strategy(param_size)
 
-        kb_context = self._build_kb_context(llm, payload.question, strategy)
+        # Hybrid retrieval is sync (embed + SQL) — run it off the event loop.
+        kb_context = await run_in_threadpool(
+            self._build_kb_context, llm, payload.question, strategy
+        )
         system_prompt = build_agent_system_prompt(llm, custom_prompt=payload.custom_prompt)
         if kb_context:
             system_prompt = f"{system_prompt}\n\n{kb_context}"
