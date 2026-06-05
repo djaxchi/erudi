@@ -20,6 +20,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from src.entities.KnowledgeBase import KnowledgeBase
+from src.entities.KnowledgeDocument import KnowledgeDocument
 from src.entities.Llm import Llm
 from src.entities.KBJob import KBJobModel
 from src.core.logging import logger
@@ -74,6 +75,61 @@ class KB_Repository:
         db.delete(kb)
         db.commit()
         logger.info(f"Deleted KnowledgeBase ID: {kb.id}")
+
+    # ============ KnowledgeDocument Operations ============
+
+    def get_document_by_hash(
+        self,
+        db: Session,
+        kb_id: int,
+        content_hash_sha256: str,
+    ) -> Optional[KnowledgeDocument]:
+        """Fetch a document by its content hash inside one KB (dedup check)."""
+        return (
+            db.query(KnowledgeDocument)
+            .filter(
+                KnowledgeDocument.kb_id == kb_id,
+                KnowledgeDocument.content_hash_sha256 == content_hash_sha256,
+            )
+            .first()
+        )
+
+    def create_document(
+        self,
+        db: Session,
+        *,
+        kb_id: int,
+        name: str,
+        content_hash_sha256: str,
+        size_bytes: int,
+    ) -> KnowledgeDocument:
+        """Create a KnowledgeDocument row (status defaults to "active").
+
+        Flushes so the id is assigned; the CALLER commits — the chunk store
+        writes through its own connection and must see the row (FK).
+        """
+        document = KnowledgeDocument(
+            kb_id=kb_id,
+            name=name,
+            content_hash_sha256=content_hash_sha256,
+            size_bytes=size_bytes,
+        )
+        db.add(document)
+        db.flush()
+        logger.info(f"Created KnowledgeDocument {document.id} ({name}) for KB {kb_id}")
+        return document
+
+    def update_document_status(
+        self,
+        db: Session,
+        document: KnowledgeDocument,
+        status: str,
+    ) -> KnowledgeDocument:
+        """Update a document's ingestion status (active/failed/pending_vision)."""
+        document.status = status
+        db.commit()
+        db.refresh(document)
+        return document
 
     # ============ Llm Operations ============
 

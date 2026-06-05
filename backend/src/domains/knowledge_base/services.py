@@ -3,31 +3,34 @@
 Implements service pattern for Knowledge Base operations: KB/assistant
 lifecycle, job state machine, and background ingestion orchestration.
 
-TRANSITIONAL NOTE (PostgreSQL/pgvector migration): the FAISS ingestion
-pipeline (KB_Indexer) died with the VectorStore entity. The new pipeline
-(DocumentReader extraction → token-accurate chunking → e5 embeddings →
-``langchain_postgres.PGVectorStore``) lands in the ingestion/vector-store
-phases of this migration; until then background jobs fail fast with an
-explicit message instead of pretending to index.
+Ingestion pipeline (per file, background task):
+    SHA-256 → dedup against the KB's KnowledgeDocument rows → register the
+    document → extract (DocumentReader, services stay format-agnostic) →
+    ``pending_vision`` stops here (image/scanned PDF, indexed by the OCR/VLM
+    tiers of a later release) → 3-pass chunking → hybrid vector store
+    (``rag.kb_chunks``). Per-file failures mark THAT document ``failed`` and
+    the run continues; the job only fails when nothing could be ingested.
 
 Classes:
     KB_Service: Business logic for KB creation, updates, and job tracking.
 
 Architecture:
     Endpoints → Services → Repository → Database
+                     ↓
+            src.ingestion (DocumentReader → chunking → vector store)
 """
+import hashlib
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from sqlalchemy.orm import Session
 
 from src.domains.knowledge_base.repository import KB_Repository
 from src.entities.KBJob import KBJobModel
+from src.ingestion.chunking import chunk_document
+from src.ingestion.reader import DocumentReader
+from src.ingestion.vector_store import add_kb_chunks
 from src.core.logging import logger
-
-_PIPELINE_REBUILD_MESSAGE = (
-    "KB ingestion pipeline is being rebuilt on PostgreSQL/pgvector — "
-    "document indexing is temporarily unavailable."
-)
 
 
 class KB_Service:
@@ -38,6 +41,7 @@ class KB_Service:
 
     def __init__(self):
         self.repo = KB_Repository()
+        self.reader = DocumentReader()
 
     def get_kb_job_status(
         self,
@@ -214,21 +218,108 @@ class KB_Service:
         file_paths: List[str],
         is_update: bool = False
     ) -> None:
-        """Process documents and index them (background task logic).
+        """Ingest documents into the KB's vector store (background task).
 
-        TRANSITIONAL: fails the job fast with an explicit message until the
-        PGVectorStore ingestion pipeline replaces the FAISS one (see module
-        docstring). The polled status endpoint then surfaces the error and
-        triggers the standard failed-job cleanup.
+        Per-file pipeline — see module docstring. Each file commits on its
+        own: the document row must be VISIBLE to the vector store's separate
+        connection (FK), and progress survives an interruption.
 
         Args:
-            db: Database session.
+            db: Database session (a fresh SessionLocal in background tasks).
             kb_job_id: KBJob ID to track progress.
             file_paths: List of file paths to process.
             is_update: True if updating existing KB, False if creating new.
         """
-        logger.warning(f"KB job {kb_job_id}: {_PIPELINE_REBUILD_MESSAGE}")
-        self._handle_indexing_error(db, kb_job_id, _PIPELINE_REBUILD_MESSAGE)
+        try:
+            kb_job = self.repo.get_kb_job_by_id(db, kb_job_id)
+            if not kb_job:
+                raise ValueError(f"KBJob {kb_job_id} not found")
+
+            self.repo.update_kb_job_status(db, kb_job, "running")
+
+            kb = self.repo.get_knowledge_base_by_id(db, kb_job.kb_id)
+            if not kb:
+                raise ValueError(f"KnowledgeBase {kb_job.kb_id} not found")
+
+            indexed, pending, skipped, failed = 0, 0, 0, 0
+            for raw_path in file_paths:
+                outcome = self._ingest_one_file(db, kb.id, raw_path)
+                if outcome == "indexed":
+                    indexed += 1
+                elif outcome == "pending_vision":
+                    pending += 1
+                elif outcome == "skipped":
+                    skipped += 1
+                else:
+                    failed += 1
+
+            logger.info(
+                f"KB job {kb_job_id} ({'update' if is_update else 'creation'}): "
+                f"{indexed} indexed, {pending} pending_vision, "
+                f"{skipped} duplicates, {failed} failed"
+            )
+
+            if failed and failed == len(file_paths):
+                raise ValueError(
+                    f"No document could be ingested ({failed} file(s) failed)"
+                )
+
+            self.repo.update_kb_job_status(db, kb_job, "completed")
+
+        except Exception as e:
+            logger.error(f"Error in KB job {kb_job_id}: {e}")
+            self._handle_indexing_error(db, kb_job_id, str(e))
+            raise
+
+    def _ingest_one_file(self, db: Session, kb_id: int, raw_path: str) -> str:
+        """Ingest one file; returns "indexed" | "pending_vision" | "skipped"
+        | "failed". Never raises — a broken file must not sink the batch."""
+        path = Path(raw_path)
+        try:
+            content = path.read_bytes()
+        except OSError as e:
+            logger.error(f"KB {kb_id}: cannot read {path.name}: {e}")
+            return "failed"
+
+        content_hash = hashlib.sha256(content).hexdigest()
+        if self.repo.get_document_by_hash(db, kb_id, content_hash):
+            logger.info(f"KB {kb_id}: {path.name} already ingested (dedup), skipping")
+            return "skipped"
+
+        document = self.repo.create_document(
+            db,
+            kb_id=kb_id,
+            name=path.name,
+            content_hash_sha256=content_hash,
+            size_bytes=len(content),
+        )
+        # Commit BEFORE indexing: the vector store writes through its own
+        # connection and the chunks' document_id FK must see this row.
+        db.commit()
+
+        try:
+            extracted = self.reader.read(path)
+
+            if extracted.status == "pending_vision":
+                self.repo.update_document_status(db, document, "pending_vision")
+                logger.info(f"KB {kb_id}: {path.name} accepted as pending_vision")
+                return "pending_vision"
+
+            chunks = chunk_document(extracted)
+            if chunks:
+                add_kb_chunks(
+                    kb_id=kb_id,
+                    document_id=document.id,
+                    source_file=path.name,
+                    chunks=chunks,
+                )
+            logger.info(f"KB {kb_id}: {path.name} indexed ({len(chunks)} chunks)")
+            return "indexed"
+
+        except Exception as e:
+            logger.error(f"KB {kb_id}: ingestion failed for {path.name}: {e}")
+            self.repo.update_document_status(db, document, "failed")
+            return "failed"
 
     def _handle_indexing_error(
         self,

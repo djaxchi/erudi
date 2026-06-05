@@ -187,7 +187,7 @@ def create_knowledge_base(
 
 
 def _run_kb_creation_task(kb_job_id: int, file_paths: List[str]) -> None:
-    """Background task to process documents and create FAISS index.
+    """Background task: ingest documents and index them into the vector store.
 
     Args:
         kb_job_id: KBJob ID to track progress.
@@ -210,7 +210,7 @@ def _run_kb_creation_task(kb_job_id: int, file_paths: List[str]) -> None:
 
 
 def _run_kb_update_task(kb_job_id: int, file_paths: List[str]) -> None:
-    """Background task to process new documents and update FAISS index.
+    """Background task: ingest new documents into the existing KB.
 
     Args:
         kb_job_id: KBJob ID to track progress.
