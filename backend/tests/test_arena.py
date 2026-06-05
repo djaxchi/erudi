@@ -84,7 +84,7 @@ class TestArenaService:
         assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
 
     async def test_query_llm_stream_with_kb(self, test_db_session, mock_llm_with_kb, monkeypatch):
-        llm, _kb, _vector_store = mock_llm_with_kb
+        llm, _kb = mock_llm_with_kb
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
         monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("Answer from KB."))
         service = ArenaService(test_db_session)

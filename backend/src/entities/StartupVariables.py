@@ -80,7 +80,3 @@ class StartupVariables(Base):
         if not isinstance(value, bool):
             raise ValueError(f"{key} must be a Boolean, got {type(value)}")
         return value
-
-    __table_args__ = (
-        {"sqlite_autoincrement": True}
-    )

@@ -516,11 +516,7 @@ def cancel_download_job(job_id: int, job_repo, llm_repo, db) -> dict:
             "Cannot cancel a job that is already completed, failed, or cancelled"
         )
 
-    # DownloadJob.local_model_id is (still) a String column holding an Llm pk:
-    # PostgreSQL refuses `integer = varchar`, so cast explicitly. SQLite used
-    # to coerce this silently. Schema fix (String → Integer FK) lands with the
-    # entity overhaul (P2b), after which this cast becomes a no-op.
-    llm = llm_repo.get_by_id(int(job.local_model_id))
+    llm = llm_repo.get_by_id(job.local_model_id)
     if not llm:
         raise ModelNotFoundException(f"LLM {job.local_model_id}")
     if llm.local != 2:

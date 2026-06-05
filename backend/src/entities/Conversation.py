@@ -25,6 +25,7 @@ from typing import Optional
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.sql import func
 from src.database.core import Base
 
 
@@ -37,15 +38,15 @@ class Conversation(Base):
 
     Attributes:
         id: Primary key (auto-increment).
-        llm_id: Foreign key to Llm (which model is used for this conversation).
-        created_at: Conversation creation timestamp (UTC).
-        updated_at: Last modification timestamp (UTC, auto-updated).
+        llm_id: Foreign key to Llm (server-side CASCADE on model delete).
+        created_at: Conversation creation timestamp (server-stamped).
+        updated_at: Last modification timestamp (server-stamped, auto-updated).
         temperature: Sampling temperature (0.0-2.0, validated).
         top_p: Nucleus sampling threshold (0.0-1.0, validated).
         max_tokens: Maximum tokens to generate (1-32768, validated).
         custom_prompt: Optional additional system instructions.
         name: Conversation title (default "New Conversation").
-        messages: Relationship to Message entities (ordered by timestamp).
+        messages: Relationship to Message entities (ordered by id = insertion order).
         llm: Relationship to Llm entity (which model).
         message_count: Hybrid property returning number of messages.
         last_message_time: Hybrid property returning last message timestamp.
@@ -57,10 +58,10 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(Integer, primary_key=True, index=True)
-    llm_id = Column(Integer, ForeignKey("llms.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+    llm_id = Column(Integer, ForeignKey("llms.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
     # Conversation parameters
     temperature = Column(Float, default=1.0)
     top_p = Column(Float, default=0.95)
@@ -68,12 +69,15 @@ class Conversation(Base):
     custom_prompt = Column(Text, default="")
     name = Column(String(255), nullable=False, index=True, default="New Conversation")
 
-    # Relationships
+    # Relationships — ordered by pk, NOT timestamp: PostgreSQL's now() is
+    # frozen per transaction, so a user/assistant pair written in the same
+    # request shares a timestamp.
     messages = relationship(
         "Message",
         back_populates="conversation",
         cascade="all, delete-orphan",
-        order_by="Message.timestamp"
+        passive_deletes=True,
+        order_by="Message.id"
     )
     llm = relationship("Llm", back_populates="conversations")
 

@@ -38,11 +38,12 @@ class TrainingJob(Base):
     __tablename__ = "training_jobs"
     
     id = Column(Integer, primary_key=True, index=True)
-    llm_id = Column(Integer, ForeignKey("llms.id"))
+    # Audit record: survives deletion of the trained Llm (server-side SET NULL).
+    llm_id = Column(Integer, ForeignKey("llms.id", ondelete="SET NULL"), nullable=True)
     status = Column(String, default="pending")  # pending, running, completed, failed
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
     progress = Column(Float, default=0.0)
     time_elapsed = Column(Float, default=0.0)
     time_left = Column(Float, default=0.0)

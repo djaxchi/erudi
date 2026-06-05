@@ -13,7 +13,7 @@ Example:
         status="pending"
     )
 """
-from sqlalchemy import Column, Integer, String, DateTime, Text, Float
+from sqlalchemy import Column, Integer, String, DateTime, Text, Float, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import validates
 from src.database.core import Base
@@ -55,14 +55,15 @@ class DownloadJobModel(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     remote_model_id = Column(String, nullable=False)
-    local_model_id = Column(String, nullable=True)
+    # Audit record: survives deletion of the temp Llm (server-side SET NULL).
+    local_model_id = Column(Integer, ForeignKey("llms.id", ondelete="SET NULL"), nullable=True)
     remote_model_link = Column(String, nullable=False)
     temp_local_model_link = Column(String, nullable=True)
     final_local_model_link = Column(String, nullable=True)
     status = Column(String, default="pending", nullable=False)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
     total_bytes = Column(Float, default=0.0, nullable=False)
     progress = Column(Float, default=0.0, nullable=False)
     total_time_elapsed = Column(Float, default=0.0, nullable=False)

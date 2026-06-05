@@ -77,15 +77,12 @@ def create_knowledge_base(
     """Create new Knowledge Base assistant or update existing one.
 
     Decision tree:
-    - If base LLM has NO KB attached: Create new specialized LLM + KB + VectorStore
+    - If base LLM has NO KB attached: Create new specialized LLM + KB
     - If base LLM HAS KB attached: Update existing KB with new documents
 
-    Background task processes documents asynchronously:
-    1. Extract text from PDFs/TXTs
-    2. Chunk text into 384-token segments
-    3. Embed chunks via sentence-transformers
-    4. Build/update FAISS index
-    5. Save index to disk and update database
+    A background task then ingests the documents asynchronously (extraction →
+    chunking → embeddings → vector store); the polled status endpoint reports
+    progress and errors.
 
     Args:
         payload: Request body with selectedModel, modelName, description, paths.

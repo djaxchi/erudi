@@ -1,7 +1,9 @@
 """SQLAlchemy entity for individual messages within conversations.
 
-Represents a single user or assistant message with metadata for starring, caching,
-and timestamp tracking. Messages belong to a Conversation and are ordered by timestamp.
+Represents a single user or assistant message with metadata for starring and
+timestamp tracking. Messages belong to a Conversation; insertion order is the
+primary key (PostgreSQL's ``now()`` is frozen per transaction, so timestamps
+can collide within one request — never order by them).
 
 Relationships:
     - conversation: Many-to-one with Conversation (parent session).
@@ -16,26 +18,25 @@ Example:
         starred=False
     )
 """
-from datetime import datetime
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Text
 from sqlalchemy.orm import relationship, validates
+from sqlalchemy.sql import func
 from src.database.core import Base
 
 
 class Message(Base):
-    """SQLAlchemy model for conversation messages with starring and caching support.
+    """SQLAlchemy model for conversation messages with starring support.
 
-    Stores individual messages within conversations, tracking sender, content, timestamp,
-    starred status (for memory injection), and embedding cache status (for RAG optimization).
+    Stores individual messages within conversations, tracking sender, content,
+    server-stamped timestamp, and starred status (for memory injection).
 
     Attributes:
-        id: Primary key (auto-increment).
-        conversation_id: Foreign key to Conversation (parent session).
+        id: Primary key (auto-increment) — also the insertion order.
+        conversation_id: Foreign key to Conversation (server-side CASCADE).
         sender: Message sender - "user" or "llm" (validated).
         content: Message text content (1-32768 chars, validated).
-        timestamp: Message creation timestamp (UTC).
+        timestamp: Message creation timestamp (server-stamped).
         starred: True if user starred for importance (used in memory injection).
-        is_embedding_cached: True if embedding computed and cached (RAG optimization).
         conversation: Relationship to Conversation entity.
 
     Example:
@@ -45,13 +46,14 @@ class Message(Base):
     __tablename__ = "messages"
 
     id = Column(Integer, primary_key=True, index=True)
-    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False)
+    conversation_id = Column(
+        Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+    )
     sender = Column(String(50), nullable=False)  # "user" or "llm"
     content = Column(Text, nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, server_default=func.now(), nullable=False)
     starred = Column(Boolean, default=False, nullable=False)
-    is_embedding_cached = Column(Boolean, default=False, nullable=False)
-    
+
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
 

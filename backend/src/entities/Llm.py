@@ -145,7 +145,3 @@ class Llm(Base):
         if not value or not value.strip():
             raise ValueError("LLM type cannot be empty")
         return value.strip()
-        
-    __table_args__ = (
-        {"sqlite_autoincrement": True}
-    )

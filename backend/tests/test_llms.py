@@ -9,21 +9,17 @@ All HuggingFace API calls and file operations are mocked for fast, isolated test
 No real model downloads or network calls occur during tests.
 """
 import pytest
-import os
 import asyncio
-from unittest.mock import Mock, patch, AsyncMock, MagicMock, call
+from unittest.mock import patch, AsyncMock
 from fastapi import status
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
 
 from src.domains.llms.repository import Llm_Repository, Download_Job_Repository
 from src.domains.llms.services import (
     DownloadTracker,
     make_callback,
-    download_llm,
     get_quantized_model_link
 )
-from src.domains.llms.schemas import LLMCreate, LLMResponse, DownloadJobResponse
 from src.entities.Llm import Llm
 from src.entities.DownloadJob import DownloadJobModel
 
@@ -198,7 +194,7 @@ class TestLlm_Repository:
 class TestDownload_Job_Repository:
     """Test suite for Download_Job_Repository database operations."""
 
-    def test_create_download_job(self, test_db_session):
+    def test_create_download_job(self, test_db_session, mock_llm):
         """Test creating a download job record.
         
         Args:
@@ -208,7 +204,7 @@ class TestDownload_Job_Repository:
         
         job_data = {
             "remote_model_id": "meta/llama-3-8b",
-            "local_model_id": 42,
+            "local_model_id": mock_llm.id,
             "remote_model_link": "https://huggingface.co/meta/llama-3-8b",
             "temp_local_model_link": "/data/temp_42",
             "final_local_model_link": "/data/models/42"
@@ -219,7 +215,7 @@ class TestDownload_Job_Repository:
         
         assert job.id is not None
         assert job.remote_model_id == "meta/llama-3-8b"
-        assert job.local_model_id == "42"  # SQLite returns strings for integer columns in some cases
+        assert job.local_model_id == mock_llm.id
         assert job.status == "pending"
         assert job.progress == 0.0
 
@@ -233,7 +229,7 @@ class TestDownload_Job_Repository:
         
         created = repo.create(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1"
@@ -255,7 +251,7 @@ class TestDownload_Job_Repository:
         
         job = repo.create(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1"
@@ -277,7 +273,7 @@ class TestDownload_Job_Repository:
         
         job = repo.create(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1"
@@ -308,7 +304,7 @@ class TestDownload_Job_Repository:
         
         job = repo.create(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1"
@@ -331,7 +327,7 @@ class TestDownload_Job_Repository:
         
         job = repo.create(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1"
@@ -356,7 +352,7 @@ class TestDownload_Job_Repository:
         # Create old job
         old_job = DownloadJobModel(
             remote_model_id="old/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/old",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1",
@@ -368,7 +364,7 @@ class TestDownload_Job_Repository:
         # Create recent job
         recent_job = DownloadJobModel(
             remote_model_id="recent/model",
-            local_model_id=2,
+            local_model_id=None,
             remote_model_link="https://hf.co/recent",
             temp_local_model_link="/temp/2",
             final_local_model_link="/models/2",
@@ -746,7 +742,7 @@ class TestDownloadJob_Endpoints:
         """
         job = DownloadJobModel(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1",
@@ -814,7 +810,7 @@ class TestDownloadJob_Endpoints:
         """
         job = DownloadJobModel(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1",
@@ -906,7 +902,7 @@ class TestDownloadJob_Entity_Validations:
         """Test creating job with valid data."""
         job = DownloadJobModel(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1",
@@ -922,7 +918,7 @@ class TestDownloadJob_Entity_Validations:
         with pytest.raises(ValueError, match="Invalid status"):
             job = DownloadJobModel(
                 remote_model_id="test/model",
-                local_model_id=1,
+                local_model_id=None,
                 remote_model_link="https://hf.co/test",
                 status="invalid_status"
             )
@@ -934,7 +930,7 @@ class TestDownloadJob_Entity_Validations:
         with pytest.raises(ValueError, match="Progress must be between"):
             job = DownloadJobModel(
                 remote_model_id="test/model",
-                local_model_id=1,
+                local_model_id=None,
                 remote_model_link="https://hf.co/test",
                 status="running",
                 progress=150.0  # Invalid
@@ -947,7 +943,7 @@ class TestDownloadJob_Entity_Validations:
         with pytest.raises(ValueError, match="must be non-negative"):
             job = DownloadJobModel(
                 remote_model_id="test/model",
-                local_model_id=1,
+                local_model_id=None,
                 remote_model_link="https://hf.co/test",
                 status="running",
                 total_bytes=-1000.0
@@ -960,7 +956,7 @@ class TestDownloadJob_Entity_Validations:
         with pytest.raises(ValueError, match="cannot be empty"):
             job = DownloadJobModel(
                 remote_model_id="",
-                local_model_id=1,
+                local_model_id=None,
                 remote_model_link="https://hf.co/test",
                 status="pending"
             )

@@ -36,8 +36,8 @@ Example:
 """
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, Float
 from sqlalchemy.schema import CheckConstraint
+from sqlalchemy.sql import func
 from src.database.core import Base
-from datetime import datetime
 
 
 class HardwareProfile(Base):
@@ -186,8 +186,8 @@ class HardwareProfile(Base):
     # TIMESTAMPS
     # ============================================================================
     
-    created_at = Column(DateTime, default=datetime.now, nullable=False)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     
     # ============================================================================
     # CONSTRAINTS

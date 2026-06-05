@@ -52,7 +52,6 @@ Example:
 
         # Use paths
         model_path = config.LLM_DIR / "Llama-3-8B"
-        index_path = config.INDEXES_DIR / "kb_123.index"
 
         # Check HuggingFace authentication
         if config.HF_TOKEN:
@@ -99,7 +98,6 @@ LOG_DIR = _RUNTIME_PATHS.log_dir
 
 # ============ Directory Paths ============
 
-INDEXES_DIR = DATA_ROOT / "indexes"
 LLM_DIR = DATA_ROOT / "models"
 CACHE_DIR = DATA_ROOT / "models_cache"
 TRAINING_DATASETS_DIR = DATA_ROOT / "training_datasets"
@@ -120,7 +118,6 @@ CHECKPOINT_DB_PATH = DATA_ROOT / "erudi-checkpoints.db"
 
 # ============ Directory Creation ============
 
-INDEXES_DIR.mkdir(parents=True, exist_ok=True)
 LLM_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 TRAINING_DATASETS_DIR.mkdir(parents=True, exist_ok=True)
