@@ -62,6 +62,7 @@ from contextlib import asynccontextmanager
 from src.database.core import init_database
 from src.database.seed import create_tables, startup_populate_database
 from src.launcher.postgres_runtime import start_postgres, stop_postgres
+from src.ingestion.vector_store import close_kb_store, init_kb_store
 
 from src.core.exceptions import AppBaseException, app_base_exception_handler
 from src.core import config
@@ -228,6 +229,9 @@ async def lifespan(app: FastAPI):
     await create_tables()
     # await delete_all_data()
     await startup_populate_database()
+    # Hybrid KB vector store (rag.kb_chunks) — AFTER create_tables: its
+    # cross-schema FKs reference the business tables.
+    app.state.kb_store = init_kb_store(app.state.postgres)
     # LangGraph conversation-state checkpointer (AsyncPostgresSaver on the
     # same `erudi` database as the business schema), held open for the whole
     # app lifetime and exposed on app.state.checkpointer.
@@ -239,5 +243,6 @@ async def lifespan(app: FastAPI):
     config.LLM_Engine.stop_cleanup_task()
     config.LLM_Engine.cleanup()
     await checkpointer_cm.__aexit__(None, None, None)
+    close_kb_store()
     # Cluster stops LAST: every DB consumer above must be closed first.
     stop_postgres(app.state.postgres)
