@@ -15,8 +15,7 @@ Directory Structure:
 
         backend/
         ├── data/
-        │   ├── erudi.db              # SQLite database
-        │   ├── indexes/              # FAISS vector indexes
+        │   ├── postgres/             # Embedded PostgreSQL cluster (pgserver)
         │   ├── models/               # Downloaded models
         │   ├── models_cache/         # HuggingFace download cache
         │   └── training_datasets/    # Fine-tuning datasets

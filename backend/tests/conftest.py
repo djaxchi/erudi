@@ -20,7 +20,7 @@ Architecture:
 #      `mlx_lm.server` as a child process. Spawn is the only start method
 #      that works inside PyInstaller frozen builds (`mp.freeze_support()`).
 #   2. On Linux (CI), the default is `fork`, which after importing torch /
-#      faiss / sentence_transformers has undefined behaviour.
+#      sentence_transformers has undefined behaviour.
 #   3. Setting `force=True` here makes the test environment match production.
 import multiprocessing as _mp
 

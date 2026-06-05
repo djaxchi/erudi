@@ -83,12 +83,15 @@ Backend → PyInstaller bundle → copied into `frontend/backend/` → packaged 
 backend/src/
 ├── main.py              FastAPI app = api.lifespan + register_routers
 ├── core/                api.py (lifespan, CORS, exception handler), config, logging, exceptions, health
-├── engines/             BaseEngine + MLX/CUDA/CPU/Embedder — single singleton model in memory
+├── engines/             BaseEngine + MLX/CUDA/CPU — single singleton model in memory
+├── agents/              LangChain layer: runner (create_agent/turn), prompts, checkpoint (AsyncPostgresSaver)
 ├── domains/<name>/      endpoints.py → services.py → repository.py → entities/ (Pydantic in schemas.py)
-├── entities/            SQLAlchemy ORM models (Conversation, Message, Llm, KnowledgeBase, VectorStore, …)
-├── database/            core.py (engine/session), seed.py (create_tables, startup_populate_database)
-├── launcher/            runtime_paths.py — packaged vs. dev path resolution
-└── utils/               file_processor, kb_utils (FAISS retrieval), prompt_utils (multi-tier memory)
+├── entities/            SQLAlchemy ORM models (Conversation, Message, Llm, KnowledgeBase, KnowledgeDocument, …)
+├── database/            core.py (init_database/session), seed.py (create_tables, startup_populate_database)
+├── ingestion/           KB pipeline: DocumentReader façade + *Extractor backends, cleaning,
+│                        3-pass chunking (e5 tokenizer), E5Embeddings, vector_store (rag.kb_chunks)
+├── launcher/            runtime_paths.py (packaged vs. dev paths), postgres_runtime.py (embedded cluster)
+└── utils/               file_processor (training), kb_utils (hybrid retrieval façade), prompt_utils
 ```
 
 Domains exposed under `/erudi`: `llms`, `training`, `hardware`, `arena`, `knowledge_base`, `conversations`, `health`, `startup`. The frontend hits `http://127.0.0.1:8765/erudi/...` (see `frontend/src/config/api.js`).
@@ -134,9 +137,10 @@ frontend/src/
 
 ## Data and storage
 
-- SQLite via SQLAlchemy. In dev the DB lives under `backend/data/`; in packaged builds `src/launcher/runtime_paths.py` redirects to a user-writable directory (Application Support / AppData / XDG_DATA_HOME) and `run.py`'s `ensure_working_directory` chdirs into the backend root.
-- Knowledge Base = FAISS `IndexFlatL2` on `paraphrase-multilingual-MiniLM-L12-v2` embeddings (384-dim, ~384-token chunks, 15% overlap). Retrieval lives in `src/utils/kb_utils.py`; storage mapping is `entities/VectorStore.py`.
-- Conversation memory is multi-tier (short-term turns + middle-term vector search + long-term summary + KB top-k) and sized by model in `src/utils/prompt_utils.py`.
+- **Embedded PostgreSQL + pgvector** via `pgserver` (pip wheels, no Docker, no system install). The FastAPI lifespan boots the cluster (`src/launcher/postgres_runtime.py`, data dir `backend/data/postgres/` in dev; user-writable dir via `runtime_paths.py` in packaged builds), creates the `erudi` database + `vector` extension, then binds SQLAlchemy through `init_database(url)` (psycopg3, `postgresql+psycopg://`). Never import `db_engine` by value — read it via `database.core` attributes after init.
+- One database, three tenants: business tables in `public` (SQLAlchemy), LangGraph checkpointer tables in `public` (`AsyncPostgresSaver`, conversation state), KB chunks in `rag.kb_chunks` (langchain-postgres `PGVectorStore`).
+- Knowledge Base = hybrid retrieval over `rag.kb_chunks`: dense HNSW (cosine) on `multilingual-e5-small` embeddings (384-dim, `query:`/`passage:` prefixes mandatory) + sparse tsvector (`pg_catalog.simple`) fused by RRF (k=60). Ingestion pipeline lives in `src/ingestion/` (DocumentReader → non-destructive cleaning → 3-pass token-accurate chunking ~180 tokens/15 % overlap → `add_kb_chunks`); per-file dedup via `KnowledgeDocument` SHA-256. Images/scanned PDFs are accepted as `pending_vision` (no OCR tier bundled yet). ⚠ langchain-postgres 0.0.17 freezes the first query's `fts_query` on the shared hybrid config — always search through `search_kb_chunks` (fresh config per call).
+- Tests run against a REAL throwaway pgserver cluster (session-scoped fixture in `tests/conftest.py`); per-test isolation via outer-transaction rollback. PG sequences are non-transactional — never assert absolute pk values.
 
 ## CI gates (must pass before merge)
 

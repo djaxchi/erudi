@@ -1,10 +1,10 @@
 """Runtime path management for launcher and backend modules.
 
 This module centralizes the logic that determines where the Erudi backend
-should read and write its runtime artifacts (SQLite database, indexes, log
-files, cached models). The launcher initializes this state before FastAPI
-imports occur, but a development fallback keeps local `uvicorn` workflows
-working without the launcher.
+should read and write its runtime artifacts (embedded PostgreSQL data dir,
+log files, cached models). The launcher initializes this state before
+FastAPI imports occur, but a development fallback keeps local `uvicorn`
+workflows working without the launcher.
 """
 
 from __future__ import annotations

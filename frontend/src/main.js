@@ -187,12 +187,9 @@ const startRealBackend = () => {
     const workingDir = path.dirname(backendPath);
     log(`Working directory: ${workingDir}`);
 
-    const backendEnv = {
-      ...process.env,
-      DATABASE_URL: "sqlite:///./data/erudi.db",
-      CACHE_DIR: "./data/models_cache",
-      INDEXES_DIR: "./data/indexes",
-    };
+    // Storage paths (embedded PostgreSQL data dir, model cache) are resolved
+    // by the backend itself (src/launcher/runtime_paths.py) — nothing to pass.
+    const backendEnv = { ...process.env };
 
     backendProcess = spawn(backendPath, ["--port", PORT.toString()], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -278,8 +275,12 @@ const startRealBackend = () => {
           return { code: "IMPORT_ERROR", message: "Failed to import required Python module" };
         }
 
-        // Database errors
-        if (line.includes("database") || line.includes("sqlite")) {
+        // Database errors (embedded PostgreSQL / psycopg / SQLAlchemy)
+        if (
+          line.includes("database") ||
+          line.includes("psycopg.errors") ||
+          line.includes("sqlalchemy.exc")
+        ) {
           return { code: "DATABASE_ERROR", message: "Database initialization failed" };
         }
 

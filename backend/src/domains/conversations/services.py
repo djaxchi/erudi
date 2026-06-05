@@ -122,9 +122,9 @@ class ConversationService:
     async def delete_conversation(self, conversation_id: int) -> None:
         """Delete a conversation and purge its checkpointer thread.
 
-        Both stores must be cleared: SQLite autoincrement reuses ids, so a stale
-        checkpointer thread would otherwise leak a deleted conversation's agent
-        context into a future conversation with the same id (review BLOCKER B3).
+        Both stores must be cleared: ids can be reused after a fresh start or a
+        sequence reset, so a stale checkpointer thread would otherwise leak a deleted
+        conversation's agent context into a future one with the same id (BLOCKER B3).
         """
         logger.info(f"Deleting conversation {conversation_id}")
         await run_in_threadpool(self._delete_conversation_db, conversation_id)
