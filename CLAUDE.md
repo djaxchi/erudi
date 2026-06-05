@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Desktop app that runs open-source LLMs locally. Two processes:
 
-- **Backend** — Python 3.11+ FastAPI server, launched by `backend/run.py`, listens on `127.0.0.1:8765` by default. Routes are mounted under the `/erudi` prefix.
+- **Backend** — Python **3.12** FastAPI server (3.12 is required: `pgserver` only ships wheels up to cp312), launched by `backend/run.py`, listens on `127.0.0.1:8765` by default. Routes are mounted under the `/erudi` prefix.
 - **Frontend** — Electron + React + Tailwind, packaged with electron-forge. In production the main process spawns the bundled PyInstaller backend executable; in dev it expects the backend to be running already.
 
 Hardware backend is selected at startup by `BaseEngine.get_engine()` (`backend/src/engines/base_engine.py:507`): `MLX_Engine` on macOS ARM, `CUDA_Engine` on Linux/Windows with NVIDIA, `CPU_Engine` otherwise. Set `ERUDI_FORCE_CPU=1` to bypass GPU detection.
