@@ -12,7 +12,6 @@ from __future__ import annotations
 import os
 import platform
 import shutil
-import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -104,7 +103,6 @@ def _compute_runtime_paths(mode: str, backend_root: Path, packaged_data_dir: Opt
     else:
         data_dir, log_dir = _setup_prod_paths(packaged_data_dir)
 
-    _ensure_sqlite_ready(data_dir / "erudi.db")
     return RuntimePaths(mode=normalized_mode, backend_root=backend_root, data_dir=data_dir, log_dir=log_dir)
 
 
@@ -200,14 +198,3 @@ def _ensure_macos_symlink(packaged_path: Path, target_path: Path) -> None:
     os.symlink(target_resolved, packaged_path)
 
 
-def _ensure_sqlite_ready(db_path: Path) -> None:
-    """Create the SQLite database (if missing) with WAL journaling enabled."""
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    if db_path.exists():
-        return
-
-    connection = sqlite3.connect(str(db_path))
-    try:
-        connection.execute("PRAGMA journal_mode=WAL;")
-    finally:
-        connection.close()

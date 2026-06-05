@@ -7,7 +7,7 @@ in both editable source checkouts and PyInstaller bundles.
 Configuration Categories:
     - **Authentication**: HuggingFace token for model downloads.
     - **Directories**: Data storage, model cache, logs, vector indexes.
-    - **Database**: SQLite connection string.
+    - **Database**: embedded PostgreSQL cluster data directory.
     - **Engine**: Runtime LLM engine instance (MLX/CUDA/CPU).
 
 Directory Structure:
@@ -107,8 +107,10 @@ TRAINING_DATASETS_DIR = DATA_ROOT / "training_datasets"
 # ============ Database Configuration ============
 
 DATA_ROOT.mkdir(parents=True, exist_ok=True)
-db_path = DATA_ROOT / "erudi.db"
-DATABASE_URL = f"sqlite:///{db_path}"
+# Embedded PostgreSQL cluster data directory (pgserver). The SQLAlchemy
+# engine is initialized explicitly once the cluster is up — see core/api.py
+# lifespan (step 0: start_postgres, step 1: database.core.init_database).
+POSTGRES_DATA_DIR = DATA_ROOT / "postgres"
 
 # LangGraph conversation-state checkpointer lives in a SEPARATE SQLite file in
 # the same DATA_ROOT (so it follows dev/prod redirection via runtime_paths).

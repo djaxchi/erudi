@@ -62,7 +62,8 @@ from sqlalchemy.orm import Session
 from src.core.logging import logger
 from src.core.config import get_hf_api
 from src.core import config
-from src.database.core import Base, db_engine, SessionLocal
+from src.database import core
+from src.database.core import Base, SessionLocal
 from src.core.exceptions import (
     DatabaseException,
     HuggingFaceAPIException,
@@ -1042,11 +1043,18 @@ class Database_Seeder:
     
     async def create_tables(self) -> None:
         """Create all database tables from SQLAlchemy models.
-        
-        Idempotent operation - safe to call multiple times.
+
+        Idempotent operation - safe to call multiple times. Requires
+        init_database() to have run first. Anti-B1: reads the LIVE engine via
+        attribute access — an imported-by-value `db_engine` would stay frozen
+        at None forever.
         """
+        if core.db_engine is None:
+            raise RuntimeError(
+                "Database not initialized: call init_database() before create_tables()"
+            )
         try:
-            Base.metadata.create_all(bind=db_engine)
+            Base.metadata.create_all(bind=core.db_engine)
             logger.info("Database tables created successfully")
         except Exception as e:
             logger.error(f"Failed to create tables: {e}", exc_info=True)
