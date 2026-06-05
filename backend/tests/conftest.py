@@ -4,8 +4,14 @@ Provides database session fixtures, test client, and mock data factories
 following the repository pattern used in the codebase.
 
 Architecture:
-    Tests use in-memory SQLite database for isolation and speed.
-    Each test gets a fresh database session with automatic rollback.
+    Tests run against a REAL embedded PostgreSQL cluster (pgserver) — the
+    exact mechanism production uses (vector extension included). The cluster
+    and the schema are session-scoped (boot + create_all once); per-test
+    isolation comes from the outer-transaction rollback in test_db_session,
+    so nothing a test commits ever reaches the shared tables.
+
+    Note: PostgreSQL sequences are non-transactional — ids keep growing
+    across tests. Never assert on absolute primary-key values.
 """
 # Force the multiprocessing start method to "spawn" BEFORE any heavy import
 # below loads modules that would interact with multiprocessing internals.
@@ -47,21 +53,38 @@ from tests._helpers import is_mlx_platform
 
 # ============ Database Fixtures ============
 
-@pytest.fixture(scope="function")
-def test_db_engine():
-    """Create in-memory SQLite engine for testing.
-    
-    Yields:
-        SQLAlchemy engine with all tables created.
+@pytest.fixture(scope="session")
+def pg_test_cluster(tmp_path_factory):
+    """One embedded PostgreSQL cluster for the whole test session.
+
+    Same mechanism as production (src.launcher.postgres_runtime): pgserver
+    boot on a throwaway data dir, `erudi` database, pgvector extension.
     """
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False}
-    )
+    from src.launcher.postgres_runtime import start_postgres, stop_postgres
+
+    handle = start_postgres(tmp_path_factory.mktemp("pg-test-cluster"))
+    yield handle
+    stop_postgres(handle)
+
+
+@pytest.fixture(scope="session")
+def _session_db_engine(pg_test_cluster):
+    """Session-scoped engine with the full schema created once."""
+    engine = create_engine(pg_test_cluster.sqlalchemy_url)
     Base.metadata.create_all(bind=engine)
     yield engine
     Base.metadata.drop_all(bind=engine)
     engine.dispose()
+
+
+@pytest.fixture(scope="function")
+def test_db_engine(_session_db_engine):
+    """Engine handle for tests (kept function-scoped for fixture compat).
+
+    Tables are session-scoped; per-test isolation is provided by
+    test_db_session's outer-transaction rollback, NOT by recreating tables.
+    """
+    yield _session_db_engine
 
 
 @pytest.fixture(scope="function")
