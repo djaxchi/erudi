@@ -62,7 +62,8 @@ from sqlalchemy.orm import Session
 from src.core.logging import logger
 from src.core.config import get_hf_api
 from src.core import config
-from src.database.core import Base, db_engine, SessionLocal
+from src.database import core
+from src.database.core import Base, SessionLocal
 from src.core.exceptions import (
     DatabaseException,
     HuggingFaceAPIException,
@@ -85,7 +86,7 @@ from src.entities.Message import Message
 from src.entities.TrainingJob import TrainingJob
 from src.entities.DownloadJob import DownloadJobModel
 from src.entities.HardwareProfile import HardwareProfile
-from src.entities.VectorStore import VectorStore
+from src.entities.KnowledgeDocument import KnowledgeDocument
 from src.entities.KnowledgeBase import KnowledgeBase
 from src.entities.KBJob import KBJobModel
 from src.entities.StartupVariables import StartupVariables
@@ -705,16 +706,15 @@ class Job_Cleanup_Service:
                 if job.temp_local_model_link and os.path.exists(job.temp_local_model_link):
                     shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
                 
-                # Mark as failed
+                # Mark as failed. The temp Llm delete above nulls
+                # local_model_id server-side (FK SET NULL); updated_at is
+                # stamped by onupdate=func.now().
                 job.status = "failed"
                 job.error_message = (
                     "Download interrupted due to application shutdown"
                 )
-                job.local_model_id = -1
-                job.local_model_link = ""
                 job.temp_local_model_link = ""
-                job.updated_at = datetime.now()
-                
+
                 count += 1
             except FileSystemException as e:
                 logger.error(f"Filesystem error cleaning download job {job.id}: {e}")
@@ -743,14 +743,14 @@ class Job_Cleanup_Service:
                     shutil.rmtree(llm.link, ignore_errors=True)
                     self.db.delete(llm)
                 
-                # Mark as failed
+                # Mark as failed. The incomplete Llm delete above nulls
+                # llm_id server-side (FK SET NULL); updated_at is stamped
+                # by onupdate=func.now().
                 job.status = "failed"
                 job.error_message = (
                     "Training interrupted due to application shutdown"
                 )
-                job.llm_id = -1
-                job.updated_at = datetime.now()
-                
+
                 count += 1
             except FileSystemException as e:
                 logger.error(f"Filesystem error cleaning training job {job.id}: {e}")
@@ -765,51 +765,49 @@ class Job_Cleanup_Service:
         return count
     
     def _cleanup_kb_jobs(self) -> int:
-        """Cleanup interrupted knowledge base jobs."""
+        """Cleanup interrupted knowledge base jobs.
+
+        Creation jobs are rolled back: the specialized LLM and the KB are
+        deleted (KnowledgeDocument rows follow through ON DELETE CASCADE, the
+        job's refs are nulled server-side by the FKs). Update jobs
+        (new_model_id == base_model_id) leave the existing KB and assistant
+        untouched — the corpus indexed before the interruption is still valid.
+        """
         unfinished = self.db.query(KBJobModel).filter(
             KBJobModel.status.in_(["running", "pending"])
         ).all()
-        
+
         count = 0
         for job in unfinished:
             try:
-                # Delete new specialized model
-                new_llm = self.db.query(Llm).filter(Llm.id == job.new_model_id).first()
-                if new_llm:
-                    self.db.delete(new_llm)
-                
-                # Delete vector store
-                vector_store = self.db.query(VectorStore).filter(
-                    VectorStore.kb_id == job.kb_id
-                ).first()
-                if vector_store:
-                    self.db.delete(vector_store)
-                
-                # Delete KB and index files
-                kb = self.db.query(KnowledgeBase).filter(
-                    KnowledgeBase.id == job.kb_id
-                ).first()
-                if kb:
-                    if kb.index_path and os.path.exists(kb.index_path):
-                        shutil.rmtree(kb.index_path, ignore_errors=True)
-                    self.db.delete(kb)
-                
-                # Mark as failed
+                is_update = job.new_model_id == job.base_model_id
+
+                if not is_update:
+                    new_llm = self.db.query(Llm).filter(Llm.id == job.new_model_id).first()
+                    if new_llm:
+                        self.db.delete(new_llm)
+
+                    kb = self.db.query(KnowledgeBase).filter(
+                        KnowledgeBase.id == job.kb_id
+                    ).first()
+                    if kb:
+                        self.db.delete(kb)
+
                 job.status = "failed"
                 job.error_message = (
-                    "KB creation interrupted due to application shutdown"
+                    "KB update interrupted due to application shutdown"
+                    if is_update
+                    else "KB creation interrupted due to application shutdown"
                 )
-                job.new_model_id = -1
-                job.updated_at = datetime.now()
-                
+
                 count += 1
             except Exception as e:
                 logger.error(f"Error cleaning KB job {job.id}: {e}")
                 continue
-        
+
         if count > 0:
             self.db.commit()
-        
+
         return count
     
     def _cleanup_orphaned_models(self) -> int:
@@ -1042,11 +1040,18 @@ class Database_Seeder:
     
     async def create_tables(self) -> None:
         """Create all database tables from SQLAlchemy models.
-        
-        Idempotent operation - safe to call multiple times.
+
+        Idempotent operation - safe to call multiple times. Requires
+        init_database() to have run first. Anti-B1: reads the LIVE engine via
+        attribute access — an imported-by-value `db_engine` would stay frozen
+        at None forever.
         """
+        if core.db_engine is None:
+            raise RuntimeError(
+                "Database not initialized: call init_database() before create_tables()"
+            )
         try:
-            Base.metadata.create_all(bind=db_engine)
+            Base.metadata.create_all(bind=core.db_engine)
             logger.info("Database tables created successfully")
         except Exception as e:
             logger.error(f"Failed to create tables: {e}", exc_info=True)
@@ -1104,7 +1109,9 @@ class Database_Seeder:
                 needs_seeding = True
                 logger.info("Seeding required (last_seeded_at is None)")
             else:
-                days_since_last_seed = (datetime.utcnow() - startup_vars.last_seeded_at).days
+                # Local-time referential, consistent with the server-stamped
+                # (func.now()) timestamps everywhere else in the schema.
+                days_since_last_seed = (datetime.now() - startup_vars.last_seeded_at).days
                 if days_since_last_seed >= 3:
                     needs_seeding = True
                     logger.info(f"Reseed required (last seeded {days_since_last_seed} days ago)")
@@ -1137,7 +1144,7 @@ class Database_Seeder:
                 
                 # Update startup variables after successful seeding
                 startup_vars.models_seeded = True
-                startup_vars.last_seeded_at = datetime.utcnow()
+                startup_vars.last_seeded_at = datetime.now()
                 startup_vars.offline_mode = results["offline_mode"]
                 db.commit()
                 results["models_seeded"] = True
@@ -1202,7 +1209,7 @@ class Database_Seeder:
             # Delete database records
             db.query(StartupVariables).delete()
             db.query(KBJobModel).delete()
-            db.query(VectorStore).delete()
+            db.query(KnowledgeDocument).delete()
             db.query(KnowledgeBase).delete()
             db.query(HardwareProfile).delete()
             db.query(DownloadJobModel).delete()
@@ -1223,8 +1230,8 @@ class Database_Seeder:
     
     def _delete_storage_directories(self) -> None:
         """Delete and recreate storage directories."""
-        directories = [str(config.LLM_DIR), str(config.INDEXES_DIR)]
-        
+        directories = [str(config.LLM_DIR)]
+
         for directory in directories:
             if os.path.exists(directory):
                 shutil.rmtree(directory)

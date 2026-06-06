@@ -18,13 +18,13 @@ def test_core_agent_imports():
 
 
 def test_checkpointer_imports():
-    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
     from langgraph.checkpoint.memory import InMemorySaver  # noqa: F401
 
     # B3: deleting a conversation must purge its checkpointer thread.
-    assert hasattr(AsyncSqliteSaver, "adelete_thread")
+    assert hasattr(AsyncPostgresSaver, "adelete_thread")
     # Held-open lifespan construction relies on from_conn_string.
-    assert hasattr(AsyncSqliteSaver, "from_conn_string")
+    assert hasattr(AsyncPostgresSaver, "from_conn_string")
 
 
 def test_middleware_imports():

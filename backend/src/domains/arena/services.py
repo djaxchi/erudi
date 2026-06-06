@@ -7,8 +7,7 @@ but runs it statelessly (``thread_id=None``, no checkpointer, no summarization).
 Pipeline:
 1. Validate the question and fetch the LLM.
 2. Pick a prompting strategy (param_size-based) and, if the model has a KB
-   attached, retrieve top-k chunks (raw FAISS via ``kb_utils`` — migrated to
-   LangChain FAISS in PR2).
+   attached, retrieve top-k chunks (hybrid pgvector search via ``kb_utils``).
 3. Build a real system prompt (size-adaptive + custom + KB context) and stream
    the answer as raw token text via the shared agent runner.
 
@@ -18,6 +17,8 @@ engine, so model swaps don't thrash the subprocess.
 """
 
 from typing import AsyncGenerator, Dict, Any
+
+from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
 from src.utils.prompt_utils import get_prompting_strategy
@@ -60,16 +61,15 @@ class ArenaService:
     ) -> str:
         """Build a KB context string if the LLM has a KB attached and strategy allows.
 
-        Queries the FAISS index for top-k relevant chunks (raw ``kb_utils`` path,
-        migrated to LangChain FAISS in PR2). Returns an empty string when KB is
-        unavailable/disabled.
+        Retrieves top-k chunks through the hybrid pgvector search (``kb_utils``
+        façade). Returns an empty string when KB is unavailable/disabled.
         """
         if not llm.is_attached_to_kb or not strategy.get("use_kb_context", False):
             return ""
 
         try:
             relevant_texts = get_relevant_texts_from_kb(
-                query, llm, self.db, kb_top_k=strategy.get("kb_top_k", 1)
+                query, llm, kb_top_k=strategy.get("kb_top_k", 1)
             )
             if relevant_texts:
                 return "Relevant context from Knowledge Base:\n" + "\n".join(relevant_texts)
@@ -110,7 +110,10 @@ class ArenaService:
         param_size = llm.param_size if getattr(llm, "param_size", None) else 2
         strategy = get_prompting_strategy(param_size)
 
-        kb_context = self._build_kb_context(llm, payload.question, strategy)
+        # Hybrid retrieval is sync (embed + SQL) — run it off the event loop.
+        kb_context = await run_in_threadpool(
+            self._build_kb_context, llm, payload.question, strategy
+        )
         system_prompt = build_agent_system_prompt(llm, custom_prompt=payload.custom_prompt)
         if kb_context:
             system_prompt = f"{system_prompt}\n\n{kb_context}"

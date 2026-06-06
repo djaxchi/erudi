@@ -4,7 +4,6 @@ Tests for Erudi backend launcher (run.py): argument parsing and JSON event emiss
 import sys
 import json
 import subprocess
-import tempfile
 import os
 import pytest
 from pathlib import Path
@@ -21,7 +20,6 @@ def test_argparse_port(monkeypatch, port):
 
 def test_json_event_emission():
     import time
-    import threading
 
     launcher = Path(__file__).parent.parent / "run.py"
     proc = subprocess.Popen(

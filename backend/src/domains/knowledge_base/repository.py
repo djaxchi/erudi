@@ -1,34 +1,26 @@
 """Data access layer for Knowledge Base domain.
 
-Implements repository pattern for database operations related to Knowledge Bases,
-VectorStores, LLMs, and KBJobs. All SQL queries isolated here for testability
-and separation of concerns.
+Implements repository pattern for database operations related to Knowledge
+Bases, LLMs, and KBJobs. All SQL queries isolated here for testability and
+separation of concerns.
 
 Classes:
     KB_Repository: Database operations for Knowledge Base entities.
 
 Architecture:
     Endpoints → Services → Repository → Database
-    
+
     This layer handles:
-    - CRUD operations on KnowledgeBase, VectorStore, Llm, KBJob
+    - CRUD operations on KnowledgeBase, Llm, KBJob
     - Complex queries (joins, filters)
     - Transaction management
     - Database session handling
-
-Examples:
-    >>> from src.domains.knowledge_base.repository import KB_Repository
-    >>> 
-    >>> repo = KB_Repository()
-    >>> kb = repo.get_knowledge_base_by_id(db, kb_id=42)
-    >>> if kb:
-    ...     print(f"KB {kb.id} has {len(kb.file_names_list['file_dropped_paths'])} files")
 """
-from typing import Optional, List
+from typing import Optional
 from sqlalchemy.orm import Session
 
 from src.entities.KnowledgeBase import KnowledgeBase
-from src.entities.VectorStore import VectorStore
+from src.entities.KnowledgeDocument import KnowledgeDocument
 from src.entities.Llm import Llm
 from src.entities.KBJob import KBJobModel
 from src.core.logging import logger
@@ -39,23 +31,19 @@ class KB_Repository:
 
     # ============ KnowledgeBase Operations ============
 
-    def create_knowledge_base(
-        self, 
-        db: Session, 
-        file_paths: List[str]
-    ) -> KnowledgeBase:
+    def create_knowledge_base(self, db: Session) -> KnowledgeBase:
         """Create new KnowledgeBase entity.
+
+        Source files become KnowledgeDocument rows during ingestion; the KB
+        itself is just the registry row.
 
         Args:
             db: Database session.
-            file_paths: List of file paths to store in file_names_list JSON.
 
         Returns:
             Created KnowledgeBase instance with ID assigned.
         """
-        kb = KnowledgeBase(
-            file_names_list={"file_dropped_paths": file_paths}
-        )
+        kb = KnowledgeBase()
         db.add(kb)
         db.flush()
         logger.info(f"Created KnowledgeBase with ID: {kb.id}")
@@ -77,29 +65,8 @@ class KB_Repository:
         """
         return db.query(KnowledgeBase).filter(KnowledgeBase.id == kb_id).first()
 
-    def update_kb_index_path(
-        self, 
-        db: Session, 
-        kb: KnowledgeBase, 
-        index_path: str
-    ) -> KnowledgeBase:
-        """Update KnowledgeBase index_path field.
-
-        Args:
-            db: Database session.
-            kb: KnowledgeBase instance to update.
-            index_path: Filesystem path to FAISS index file.
-
-        Returns:
-            Updated KnowledgeBase instance.
-        """
-        kb.index_path = index_path
-        db.commit()
-        db.refresh(kb)
-        return kb
-
     def delete_knowledge_base(self, db: Session, kb: KnowledgeBase) -> None:
-        """Delete KnowledgeBase (cascades to VectorStore and Llm).
+        """Delete KnowledgeBase (cascades to KnowledgeDocument rows and Llm).
 
         Args:
             db: Database session.
@@ -109,80 +76,60 @@ class KB_Repository:
         db.commit()
         logger.info(f"Deleted KnowledgeBase ID: {kb.id}")
 
-    # ============ VectorStore Operations ============
+    # ============ KnowledgeDocument Operations ============
 
-    def create_vector_store(
-        self, 
-        db: Session, 
+    def get_document_by_hash(
+        self,
+        db: Session,
         kb_id: int,
-        vectors_data: Optional[dict] = None
-    ) -> VectorStore:
-        """Create VectorStore for a KnowledgeBase.
-
-        Args:
-            db: Database session.
-            kb_id: Foreign key to KnowledgeBase.
-            vectors_data: Optional dict mapping FAISS IDs to text chunks.
-
-        Returns:
-            Created VectorStore instance with ID assigned.
-        """
-        vector_store = VectorStore(
-            kb_id=kb_id,
-            vectors_data=vectors_data or {}
+        content_hash_sha256: str,
+    ) -> Optional[KnowledgeDocument]:
+        """Fetch a document by its content hash inside one KB (dedup check)."""
+        return (
+            db.query(KnowledgeDocument)
+            .filter(
+                KnowledgeDocument.kb_id == kb_id,
+                KnowledgeDocument.content_hash_sha256 == content_hash_sha256,
+            )
+            .first()
         )
-        db.add(vector_store)
+
+    def create_document(
+        self,
+        db: Session,
+        *,
+        kb_id: int,
+        name: str,
+        content_hash_sha256: str,
+        size_bytes: int,
+    ) -> KnowledgeDocument:
+        """Create a KnowledgeDocument row (status defaults to "active").
+
+        Flushes so the id is assigned; the CALLER commits — the chunk store
+        writes through its own connection and must see the row (FK).
+        """
+        document = KnowledgeDocument(
+            kb_id=kb_id,
+            name=name,
+            content_hash_sha256=content_hash_sha256,
+            size_bytes=size_bytes,
+        )
+        db.add(document)
         db.flush()
-        logger.info(f"Created VectorStore with ID: {vector_store.id} for KB: {kb_id}")
-        return vector_store
+        logger.info(f"Created KnowledgeDocument {document.id} ({name}) for KB {kb_id}")
+        return document
 
-    def get_vector_store_by_kb_id(
-        self, 
-        db: Session, 
-        kb_id: int
-    ) -> Optional[VectorStore]:
-        """Fetch VectorStore by KB ID (unique relationship).
-
-        Args:
-            db: Database session.
-            kb_id: KnowledgeBase foreign key.
-
-        Returns:
-            VectorStore instance or None if not found.
-        """
-        return db.query(VectorStore).filter(VectorStore.kb_id == kb_id).first()
-
-    def update_vector_store_data(
-        self, 
-        db: Session, 
-        vector_store: VectorStore, 
-        vectors_data: dict
-    ) -> VectorStore:
-        """Update VectorStore vectors_data JSON.
-
-        Args:
-            db: Database session.
-            vector_store: VectorStore instance to update.
-            vectors_data: Dict mapping FAISS IDs (str) to text chunks.
-
-        Returns:
-            Updated VectorStore instance.
-        """
-        vector_store.vectors_data = vectors_data
+    def update_document_status(
+        self,
+        db: Session,
+        document: KnowledgeDocument,
+        status: str,
+    ) -> KnowledgeDocument:
+        """Update a document's ingestion status (active/failed/pending_vision)."""
+        document.status = status
         db.commit()
-        db.refresh(vector_store)
-        return vector_store
-
-    def delete_vector_store(self, db: Session, vector_store: VectorStore) -> None:
-        """Delete VectorStore.
-
-        Args:
-            db: Database session.
-            vector_store: VectorStore instance to delete.
-        """
-        db.delete(vector_store)
-        db.commit()
-        logger.info(f"Deleted VectorStore ID: {vector_store.id}")
+        db.refresh(document)
+        return document
 
     # ============ Llm Operations ============
 
@@ -285,9 +232,9 @@ class KB_Repository:
             Created KBJobModel instance with ID assigned.
         """
         kb_job = KBJobModel(
-            base_model_id=str(base_model_id),
-            new_model_id=str(new_model_id),
-            kb_id=str(kb_id),
+            base_model_id=base_model_id,
+            new_model_id=new_model_id,
+            kb_id=kb_id,
             status=status
         )
         db.add(kb_job)
@@ -322,7 +269,7 @@ class KB_Repository:
             KBJobModel instance or None if not found.
         """
         return db.query(KBJobModel).filter(
-            KBJobModel.new_model_id == str(model_id)
+            KBJobModel.new_model_id == model_id
         ).first()
 
     def update_kb_job_status(
@@ -343,10 +290,8 @@ class KB_Repository:
         Returns:
             Updated KBJobModel instance.
         """
-        from datetime import datetime
-        
+        # updated_at is stamped by onupdate=func.now().
         kb_job.status = status
-        kb_job.updated_at = datetime.utcnow()
         if error_message:
             kb_job.error_message = error_message
         db.commit()

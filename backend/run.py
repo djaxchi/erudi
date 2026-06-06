@@ -49,6 +49,7 @@ import json
 import logging
 import os
 import platform
+import signal
 import socket
 import sys
 import threading
@@ -57,7 +58,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - import for type checking only
-    from fastapi import FastAPI
+    import uvicorn
     from src.launcher import RuntimePaths
 
 
@@ -203,12 +204,16 @@ def kill_port_process(port: int) -> bool:
     return False
 
 
-def run_server(app: "FastAPI", host: str, port: int) -> None:
-    """Run uvicorn in the current thread and surface unexpected failures."""
-    import uvicorn
+def run_server(server: "uvicorn.Server") -> None:
+    """Run the uvicorn server in the current thread; surface unexpected failures.
 
+    uvicorn skips installing its own signal handlers when running outside the
+    main thread — main() relays SIGTERM/SIGINT (the Electron quit path) via
+    `server.should_exit` so the FastAPI lifespan shutdown actually runs
+    (checkpointer close, embedded PostgreSQL stop) before the process exits.
+    """
     try:
-        uvicorn.run(app, host=host, port=port, log_level="info", workers=1, reload=False)
+        server.run()
     except SystemExit:
         pass
     except KeyboardInterrupt:
@@ -308,7 +313,22 @@ def main() -> None:
         }
     )
 
-    server_thread = threading.Thread(target=run_server, args=(fastapi_app, host, port), daemon=True)
+    import uvicorn
+
+    server = uvicorn.Server(
+        uvicorn.Config(fastapi_app, host=host, port=port, log_level="info", workers=1)
+    )
+
+    def _request_graceful_shutdown(signum: int, frame: object) -> None:
+        # Relay to uvicorn's exit flag: the server thread notices it, drains
+        # requests, runs the lifespan shutdown (checkpointer → embedded
+        # PostgreSQL), then run_server returns and the join below unblocks.
+        server.should_exit = True
+
+    signal.signal(signal.SIGTERM, _request_graceful_shutdown)
+    signal.signal(signal.SIGINT, _request_graceful_shutdown)
+
+    server_thread = threading.Thread(target=run_server, args=(server,), daemon=True)
     server_thread.start()
 
     deadline = time.time() + STARTUP_TIMEOUT_SECONDS

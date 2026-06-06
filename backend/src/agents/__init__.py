@@ -8,5 +8,5 @@ A thin transverse layer (consumed by ``domains/conversations`` and
   - ``runner`` — ``AgentRunner``: one ``create_agent`` per turn, streamed as raw
     token text for the existing ``StreamingResponse(text/plain)`` contract.
   - ``prompts`` — size-adaptive system prompt construction.
-  - ``checkpoint`` — SQLite checkpointer wiring (separate ``erudi-checkpoints.db``).
+  - ``checkpoint`` — PostgreSQL checkpointer wiring (AsyncPostgresSaver on the `erudi` database).
 """

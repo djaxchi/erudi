@@ -7,7 +7,7 @@ in both editable source checkouts and PyInstaller bundles.
 Configuration Categories:
     - **Authentication**: HuggingFace token for model downloads.
     - **Directories**: Data storage, model cache, logs, vector indexes.
-    - **Database**: SQLite connection string.
+    - **Database**: embedded PostgreSQL cluster data directory.
     - **Engine**: Runtime LLM engine instance (MLX/CUDA/CPU).
 
 Directory Structure:
@@ -15,8 +15,7 @@ Directory Structure:
 
         backend/
         ├── data/
-        │   ├── erudi.db              # SQLite database
-        │   ├── indexes/              # FAISS vector indexes
+        │   ├── postgres/             # Embedded PostgreSQL cluster (pgserver)
         │   ├── models/               # Downloaded models
         │   ├── models_cache/         # HuggingFace download cache
         │   └── training_datasets/    # Fine-tuning datasets
@@ -52,7 +51,6 @@ Example:
 
         # Use paths
         model_path = config.LLM_DIR / "Llama-3-8B"
-        index_path = config.INDEXES_DIR / "kb_123.index"
 
         # Check HuggingFace authentication
         if config.HF_TOKEN:
@@ -99,7 +97,6 @@ LOG_DIR = _RUNTIME_PATHS.log_dir
 
 # ============ Directory Paths ============
 
-INDEXES_DIR = DATA_ROOT / "indexes"
 LLM_DIR = DATA_ROOT / "models"
 CACHE_DIR = DATA_ROOT / "models_cache"
 TRAINING_DATASETS_DIR = DATA_ROOT / "training_datasets"
@@ -107,18 +104,13 @@ TRAINING_DATASETS_DIR = DATA_ROOT / "training_datasets"
 # ============ Database Configuration ============
 
 DATA_ROOT.mkdir(parents=True, exist_ok=True)
-db_path = DATA_ROOT / "erudi.db"
-DATABASE_URL = f"sqlite:///{db_path}"
-
-# LangGraph conversation-state checkpointer lives in a SEPARATE SQLite file in
-# the same DATA_ROOT (so it follows dev/prod redirection via runtime_paths).
-# Kept apart from erudi.db so the LangGraph-managed schema never mixes with the
-# SQLAlchemy/alembic business schema. Passed to AsyncSqliteSaver as a raw path.
-CHECKPOINT_DB_PATH = DATA_ROOT / "erudi-checkpoints.db"
+# Embedded PostgreSQL cluster data directory (pgserver). The SQLAlchemy
+# engine is initialized explicitly once the cluster is up — see core/api.py
+# lifespan (step 0: start_postgres, step 1: database.core.init_database).
+POSTGRES_DATA_DIR = DATA_ROOT / "postgres"
 
 # ============ Directory Creation ============
 
-INDEXES_DIR.mkdir(parents=True, exist_ok=True)
 LLM_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 TRAINING_DATASETS_DIR.mkdir(parents=True, exist_ok=True)

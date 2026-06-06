@@ -4,8 +4,14 @@ Provides database session fixtures, test client, and mock data factories
 following the repository pattern used in the codebase.
 
 Architecture:
-    Tests use in-memory SQLite database for isolation and speed.
-    Each test gets a fresh database session with automatic rollback.
+    Tests run against a REAL embedded PostgreSQL cluster (pgserver) — the
+    exact mechanism production uses (vector extension included). The cluster
+    and the schema are session-scoped (boot + create_all once); per-test
+    isolation comes from the outer-transaction rollback in test_db_session,
+    so nothing a test commits ever reaches the shared tables.
+
+    Note: PostgreSQL sequences are non-transactional — ids keep growing
+    across tests. Never assert on absolute primary-key values.
 """
 # Force the multiprocessing start method to "spawn" BEFORE any heavy import
 # below loads modules that would interact with multiprocessing internals.
@@ -14,7 +20,7 @@ Architecture:
 #      `mlx_lm.server` as a child process. Spawn is the only start method
 #      that works inside PyInstaller frozen builds (`mp.freeze_support()`).
 #   2. On Linux (CI), the default is `fork`, which after importing torch /
-#      faiss / sentence_transformers has undefined behaviour.
+#      sentence_transformers has undefined behaviour.
 #   3. Setting `force=True` here makes the test environment match production.
 import multiprocessing as _mp
 
@@ -27,7 +33,6 @@ except RuntimeError:
 import os
 import sys
 import pytest
-import tempfile
 from typing import Generator
 from pathlib import Path
 
@@ -39,7 +44,9 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from src.database.core import Base
-from src.main import app
+# Side-effect import: pulls the whole application tree so every entity is
+# registered on Base.metadata BEFORE the session-scoped create_all runs.
+from src.main import app  # noqa: F401
 from src.database.core import get_db
 
 from tests._helpers import is_mlx_platform
@@ -47,21 +54,38 @@ from tests._helpers import is_mlx_platform
 
 # ============ Database Fixtures ============
 
-@pytest.fixture(scope="function")
-def test_db_engine():
-    """Create in-memory SQLite engine for testing.
-    
-    Yields:
-        SQLAlchemy engine with all tables created.
+@pytest.fixture(scope="session")
+def pg_test_cluster(tmp_path_factory):
+    """One embedded PostgreSQL cluster for the whole test session.
+
+    Same mechanism as production (src.launcher.postgres_runtime): pgserver
+    boot on a throwaway data dir, `erudi` database, pgvector extension.
     """
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False}
-    )
+    from src.launcher.postgres_runtime import start_postgres, stop_postgres
+
+    handle = start_postgres(tmp_path_factory.mktemp("pg-test-cluster"))
+    yield handle
+    stop_postgres(handle)
+
+
+@pytest.fixture(scope="session")
+def _session_db_engine(pg_test_cluster):
+    """Session-scoped engine with the full schema created once."""
+    engine = create_engine(pg_test_cluster.sqlalchemy_url)
     Base.metadata.create_all(bind=engine)
     yield engine
     Base.metadata.drop_all(bind=engine)
     engine.dispose()
+
+
+@pytest.fixture(scope="function")
+def test_db_engine(_session_db_engine):
+    """Engine handle for tests (kept function-scoped for fixture compat).
+
+    Tables are session-scoped; per-test isolation is provided by
+    test_db_session's outer-transaction rollback, NOT by recreating tables.
+    """
+    yield _session_db_engine
 
 
 @pytest.fixture(scope="function")
@@ -183,26 +207,31 @@ def mock_llm(test_db_session):
 
 @pytest.fixture
 def mock_llm_with_kb(test_db_session):
-    """Create mock LLM with existing KB attachment.
-    
+    """Create mock specialized LLM with an attached KnowledgeBase.
+
     Args:
         test_db_session: Test database session.
-        
+
     Returns:
-        Tuple of (Llm, KnowledgeBase, VectorStore).
+        Tuple of (Llm, KnowledgeBase).
     """
     from src.entities.Llm import Llm
     from src.entities.KnowledgeBase import KnowledgeBase
-    from src.entities.VectorStore import VectorStore
-    
-    # Create KB first
-    kb = KnowledgeBase(
-        file_names_list={"file_dropped_paths": ["/test/doc1.pdf"]},
-        index_path="/test/index/1.index"
-    )
+    from src.entities.KnowledgeDocument import KnowledgeDocument
+
+    kb = KnowledgeBase()
     test_db_session.add(kb)
     test_db_session.flush()
-    
+
+    test_db_session.add(
+        KnowledgeDocument(
+            kb_id=kb.id,
+            name="doc1.pdf",
+            content_hash_sha256="0" * 64,
+            size_bytes=1024,
+        )
+    )
+
     # Create LLM with KB attachment
     llm = Llm(
         name="Test Model with KB",
@@ -216,63 +245,12 @@ def mock_llm_with_kb(test_db_session):
         quantized=True  # Boolean
     )
     test_db_session.add(llm)
-    test_db_session.flush()
-    
-    # Create VectorStore
-    vector_store = VectorStore(
-        kb_id=kb.id,
-        vectors_data={"0": "test chunk"}
-    )
-    test_db_session.add(vector_store)
     test_db_session.commit()
-    
+
     test_db_session.refresh(llm)
     test_db_session.refresh(kb)
-    test_db_session.refresh(vector_store)
-    
-    return llm, kb, vector_store
 
-
-@pytest.fixture
-def temp_test_files():
-    """Create temporary test files (PDF/TXT) for document ingestion.
-    
-    Yields:
-        List of temporary file paths.
-    """
-    temp_files = []
-    temp_dir = tempfile.mkdtemp()
-    
-    # Create test TXT file
-    txt_path = os.path.join(temp_dir, "test_doc.txt")
-    with open(txt_path, "w") as f:
-        f.write("This is a test document for knowledge base testing. " * 50)
-    temp_files.append(txt_path)
-    
-    yield temp_files
-    
-    # Cleanup
-    for file_path in temp_files:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-    if os.path.exists(temp_dir):
-        os.rmdir(temp_dir)
-
-
-@pytest.fixture
-def temp_index_dir():
-    """Create temporary directory for FAISS indexes.
-
-    Yields:
-        Path to temporary index directory.
-    """
-    temp_dir = tempfile.mkdtemp()
-    yield temp_dir
-
-    # Cleanup
-    for file in os.listdir(temp_dir):
-        os.remove(os.path.join(temp_dir, file))
-    os.rmdir(temp_dir)
+    return llm, kb
 
 
 # ============ MLX-specific fixtures (Phase 0 — refactor/mlx-server-subprocess) ============

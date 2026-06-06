@@ -3,7 +3,6 @@ psutil==7.0.0
 py-cpuinfo==9.0.0
 huggingface_hub==1.10.1
 pydantic==2.11.5
-faiss-cpu==1.11.0
 sentence-transformers==5.4.0
 python-dotenv==1.1.0
 pypdf==5.6.0
@@ -15,9 +14,20 @@ requests==2.32.3
 
 # ===== LangChain agent stack (conversation/arena refactor — PR1) =====
 # Pinned to the versions resolved on first install. Transitive deps
-# (langchain-core, langgraph-checkpoint, openai, tiktoken, aiosqlite,
-# sqlite-vec, ormsgpack) resolve automatically. See requirements/README.md.
+# (langchain-core, langgraph-checkpoint, openai, tiktoken, ormsgpack)
+# resolve automatically. See requirements/README.md.
 langchain==1.3.2
 langchain-openai==1.2.2
 langgraph==1.2.2
-langgraph-checkpoint-sqlite==3.1.0
+
+# ===== PostgreSQL / pgvector stack (Postgres migration + KB refactor) =====
+# Python 3.12 REQUIRED: pgserver ships binary wheels for cp39-cp312 only
+# (no cp313 wheel, no sdist). CI already runs 3.12.
+# Pinned to the versions resolved + probed on first install (P0).
+pgserver==0.1.4
+psycopg[binary]==3.3.4
+langchain-postgres==0.0.17
+langgraph-checkpoint-postgres==3.1.0
+langchain-text-splitters==1.1.2
+python-docx==1.2.0
+openpyxl==3.1.5
