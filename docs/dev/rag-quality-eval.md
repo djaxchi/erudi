@@ -52,26 +52,39 @@ embedder, model) can be re-evaluated against the same baseline.
 
    Verdict per case = PASS / PARTIAL / FAIL (worst relevant dimension wins).
 
-## Question set + expected answers + baseline (Gemma-4B, 2026-06-06)
+## Question set + expected answers + verdicts (Gemma-4B)
 
-> Baseline config: `kb_top_k=1` (~180-token single chunk injected per turn),
-> no grounding instruction in the system prompt, temperature 0.2.
+> Baseline config (2026-06-06): `kb_top_k=1` (~180-token single chunk injected
+> per turn), no grounding instruction in the system prompt, temperature 0.2.
+>
+> **Run 2 (2026-06-06, commit `df4b161`)** — adaptive context selection: wide
+> hybrid pool (20) → similarity-gap cut → per-tier token budget (700 tokens
+> for the 4B tier, ≈4-7 chunks). Same corpus/KB, same judge policy as the
+> baseline (language tracked as its own dimension, problem #3 untreated).
 
-| # | Question (verbatim) | Expected | Baseline verdict |
-|---|---|---|---|
-| T1 | « Bonjour ! Peux-tu me rappeler les tarifs des différents plans de Nimbus Analytics ? » | Les 3 plans : Starter 89 €, Business 290 €, Enterprise sur devis ≥ 1 100 € HT/mois | **FAIL** — Business seul exact ; invente un plan « Basic » ; répond en anglais |
-| T2 | « Quel est le niveau de disponibilité garanti dans le contrat avec Meridia Distribution, et que se passe-t-il si nous ne le respectons pas ? » | SLA 99,7 % ; avoir 5 % de la redevance par heure au-delà, plafonné à 30 %, réclamé sous 30 j | **FAIL** — « availability not specified » (faux) ; pénalité déformée en « up to 30 % per hour » ; anglais |
-| T3 | « Et quel est le préavis à respecter pour résilier ce contrat ? » (follow-up implicite) | 90 jours avant l'échéance | **PASS** (accuracy) — « 90 days » ; langue FAIL |
-| T4 | « Quel chiffre d'affaires total avons-nous réalisé au quatrième trimestre 2025, et combien de nouveaux clients avons-nous signés sur ce trimestre ? » | 1 689 k€ et 33 nouveaux clients | **PASS** (accuracy) — exact ; langue FAIL |
-| T5 | « Peux-tu calculer le chiffre d'affaires annuel 2025 en additionnant les quatre trimestres ? Réponds en français s'il te plaît. » | 1240+1378+1456+1689 = **5 763 k€** | **FAIL** — annonce 6 108 k€ (faux) avec la décomposition correcte affichée à côté ; français OK (sur demande) |
-| T6 | « Quels sont nos objectifs de RPO et de RTO en cas de sinistre, et à quelle fréquence testons-nous le plan de reprise d'activité ? » | RPO 15 min, RTO 4 h, tests 2×/an (mars, octobre) | **PASS** — exact et en français |
-| T7 | « Nos engagements de disponibilité envers Meridia sont-ils cohérents avec notre politique de sécurité interne, notamment sur les fenêtres de maintenance et les objectifs de reprise ? » | Comparaison SLA 99,7 %/maintenance 6 h vs RPO/RTO — exige ≥ 2 chunks de 2 docs | **FAIL** (completeness) — élusion « Not sure », propose de faire ce qui est demandé ; n'invente pas (grounding ok) |
-| T8 | « Combien de clients avons-nous au Japon ? » (hors corpus) | « Cette information ne figure pas dans les documents » | **FAIL** (grounding) — « We have 5 clients in Japan » : chiffre précis inventé |
-| T9 | « Fais-moi un tableau récapitulatif en français des délais de réponse du support selon les plans. » | Tableau : Starter 48 h ouvrées / Business 8 h ouvrées / Enterprise 1 h 24/7 | **FAIL** — format tableau OK mais contenu inventé (« Priorité 1/2 », plan « Basic », 4 h/24 h/1 h) |
-| T10 | « Pour finir, rappelle-moi en une phrase les deux chiffres du quatrième trimestre dont nous avons parlé tout à l'heure. » | 1 689 k€ et 33 nouveaux clients (mémoire conversationnelle, 6 tours plus tôt) | **PASS** — exact, en français, une phrase |
+| # | Question (verbatim) | Expected | Baseline verdict | Run 2 (adaptive selection) |
+|---|---|---|---|---|
+| T1 | « Bonjour ! Peux-tu me rappeler les tarifs des différents plans de Nimbus Analytics ? » | Les 3 plans : Starter 89 €, Business 290 €, Enterprise sur devis ≥ 1 100 € HT/mois | **FAIL** — Business seul exact ; invente un plan « Basic » ; répond en anglais | **PASS** — les 3 plans exacts + limites/délais support corrects ; langue FAIL (anglais) |
+| T2 | « Quel est le niveau de disponibilité garanti dans le contrat avec Meridia Distribution, et que se passe-t-il si nous ne le respectons pas ? » | SLA 99,7 % ; avoir 5 % de la redevance par heure au-delà, plafonné à 30 %, réclamé sous 30 j | **FAIL** — « availability not specified » (faux) ; pénalité déformée en « up to 30 % per hour » ; anglais | **PASS** — 99,7 % + avoir 5 %/h plafonné 30 % EXACTS (distorsion disparue) ; langue FAIL |
+| T3 | « Et quel est le préavis à respecter pour résilier ce contrat ? » (follow-up implicite) | 90 jours avant l'échéance | **PASS** (accuracy) — « 90 days » ; langue FAIL | **PASS** — « 90 days » ; langue FAIL |
+| T4 | « Quel chiffre d'affaires total avons-nous réalisé au quatrième trimestre 2025, et combien de nouveaux clients avons-nous signés sur ce trimestre ? » | 1 689 k€ et 33 nouveaux clients | **PASS** (accuracy) — exact ; langue FAIL | **PASS** — exact ; langue FAIL |
+| T5 | « Peux-tu calculer le chiffre d'affaires annuel 2025 en additionnant les quatre trimestres ? Réponds en français s'il te plaît. » | 1240+1378+1456+1689 = **5 763 k€** | **FAIL** — annonce 6 108 k€ (faux) avec la décomposition correcte affichée à côté ; français OK (sur demande) | **FAIL** — 6 283 k€ (faux, sans décomposition) ; français OK. Problème #4 non traité |
+| T6 | « Quels sont nos objectifs de RPO et de RTO en cas de sinistre, et à quelle fréquence testons-nous le plan de reprise d'activité ? » | RPO 15 min, RTO 4 h, tests 2×/an (mars, octobre) | **PASS** — exact et en français | **PASS** — exact et en français |
+| T7 | « Nos engagements de disponibilité envers Meridia sont-ils cohérents avec notre politique de sécurité interne, notamment sur les fenêtres de maintenance et les objectifs de reprise ? » | Comparaison SLA 99,7 %/maintenance 6 h vs RPO/RTO — exige ≥ 2 chunks de 2 docs | **FAIL** (completeness) — élusion « Not sure », propose de faire ce qui est demandé ; n'invente pas (grounding ok) | **FAIL** (completeness) — élusion « Not sure ». Diagnostic instrumenté : le pool couvre LES DEUX docs (7 chunks injectés) mais la distribution est plate (pas de coupe) et le chunk RPO/RTO précis passe sous le budget ; ET le tier small ordonne « If unsure, say "Not sure" » — échec mixte retrieval dilué + prompt qui décourage le raisonnement |
+| T8 | « Combien de clients avons-nous au Japon ? » (hors corpus) | « Cette information ne figure pas dans les documents » | **FAIL** (grounding) — « We have 5 clients in Japan » : chiffre précis inventé | **FAIL** (grounding) — « We have 2 clients in Japan » : même mode d'échec. Problème #1 non traité |
+| T9 | « Fais-moi un tableau récapitulatif en français des délais de réponse du support selon les plans. » | Tableau : Starter 48 h ouvrées / Business 8 h ouvrées / Enterprise 1 h 24/7 | **FAIL** — format tableau OK mais contenu inventé (« Priorité 1/2 », plan « Basic », 4 h/24 h/1 h) | **PASS** — tableau MD exact (48 h/8 h/1 h, vrais plans) et en français |
+| T10 | « Pour finir, rappelle-moi en une phrase les deux chiffres du quatrième trimestre dont nous avons parlé tout à l'heure. » | 1 689 k€ et 33 nouveaux clients (mémoire conversationnelle, 6 tours plus tôt) | **PASS** — exact, en français, une phrase | **PASS** — exact, en français, une phrase |
 
 **Baseline score : 4 PASS / 6 FAIL.** Latency: 2.4–5.6 s/turn (12 s with
 model warm-up) — not a concern.
+
+**Run 2 score : 7 PASS / 3 FAIL** (T1, T2, T9 récupérés — les trois échecs
+« par construction » du `kb_top_k=1`). Latency: 2.0–4.9 s/turn (21 s with
+warm-up) — the wider context did not slow generation meaningfully. Les 3
+FAIL restants mappent exactement sur les problèmes non encore traités :
+T8 = grounding (#1), T5 = arithmétique (#4), T7 = mixte (retrieval dilué
+sur question bi-sujet + prompt tier small anti-raisonnement, → #1/#3).
+Language drift persists (T1-T4, T8 in English): problem #3 untreated.
 
 ## Baseline failure analysis (what, not how-to-fix)
 
