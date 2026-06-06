@@ -96,6 +96,8 @@ class TestArenaService:
 
         assert "".join(result) == "Answer from KB."
         mock_kb.assert_called_once()
+        # param_size=7 → medium tier → its KB token budget reaches retrieval.
+        assert mock_kb.call_args.kwargs["token_budget"] == 1000
 
     async def test_query_llm_stream_custom_params(self, test_db_session, mock_llm, monkeypatch):
         # Per-request generation params must reach the model factory.

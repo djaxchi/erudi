@@ -127,59 +127,67 @@ class TestPromptUtils:
         assert any(msg in prompt for msg in starred) or "Important" in prompt
 
     def test_get_prompting_strategy_tiny(self):
-        """Test strategy selection for tiny models (1B).
-        
-        Should return minimal strategy config.
-        """
+        """Tiny models (≤2B) get a minimal prompt and the smallest KB budget
+        (literature: below ~3B, oversized context degrades net accuracy)."""
         strategy = get_prompting_strategy(param_size=1)
-        
+
         assert isinstance(strategy, dict)
-        assert "system_prompt_size_category" in strategy
         assert strategy["system_prompt_size_category"] == "tiny"
         assert strategy["use_kb_context"] is True
-        assert strategy["kb_top_k"] == 1
+        assert strategy["kb_token_budget"] == 400
+        assert "kb_top_k" not in strategy  # flat top-k retired (issue #81)
 
     def test_get_prompting_strategy_small(self):
         """Test strategy selection for small models (2-4B).
-        
+
         Should return small strategy config.
         """
         strategy = get_prompting_strategy(param_size=3)
-        
+
         assert isinstance(strategy, dict)
         assert strategy["system_prompt_size_category"] == "small"
+        assert strategy["kb_token_budget"] == 700
 
     def test_get_prompting_strategy_medium(self):
         """Test strategy selection for medium models (7B).
-        
+
         Should return medium strategy config with balanced settings.
         """
         strategy = get_prompting_strategy(param_size=7)
-        
+
         assert isinstance(strategy, dict)
         assert strategy["system_prompt_size_category"] == "medium"
-        assert "kb_top_k" in strategy
+        assert strategy["kb_token_budget"] == 1000
 
     def test_get_prompting_strategy_large(self):
         """Test strategy selection for large models (12B).
-        
+
         Should return large strategy config with enhanced settings.
         """
         strategy = get_prompting_strategy(param_size=12)
-        
+
         assert isinstance(strategy, dict)
         assert strategy["system_prompt_size_category"] == "large"
+        assert strategy["kb_token_budget"] == 1400
 
     def test_get_prompting_strategy_xlarge(self):
-        """Test strategy selection for xlarge models (20B+).
-        
-        Should return xlarge strategy with maximum capabilities.
+        """Test strategy selection for xlarge models (16B+).
+
+        Should return xlarge strategy with the largest KB budget.
         """
         strategy = get_prompting_strategy(param_size=20)
-        
+
         assert isinstance(strategy, dict)
         assert strategy["system_prompt_size_category"] == "xlarge"
-        assert strategy["kb_top_k"] == 3  # xlarge gets more KB chunks
+        assert strategy["kb_token_budget"] == 2000
+
+    def test_kb_token_budget_scales_monotonically(self):
+        """The KB context budget must never shrink as models grow."""
+        budgets = [
+            get_prompting_strategy(param_size=size)["kb_token_budget"]
+            for size in (1, 3, 7, 12, 20)
+        ]
+        assert budgets == sorted(budgets)
 
     def test_get_prompting_strategy_edge_cases(self):
         """Test strategy selection with edge case sizes.

@@ -150,7 +150,7 @@ class TestIngestionPipeline:
     def test_full_pipeline_indexes_searches_and_flags_statuses(
         self, kb_store, real_db_session, tmp_path
     ):
-        from src.ingestion.vector_store import search_kb_chunks
+        from src.ingestion.vector_store import search_kb_chunks_scored
 
         session, created = real_db_session
         service, kb, job = _make_kb_and_job(session, created)
@@ -179,9 +179,9 @@ class TestIngestionPipeline:
         assert documents["procédure.md"].size_bytes > 0
         assert len(documents["procédure.md"].content_hash_sha256) == 64
 
-        results = search_kb_chunks("délai de remboursement", kb_id=kb.id, k=1)
-        assert results and "dix jours" in results[0].page_content
-        assert results[0].metadata["document_id"] == documents["procédure.md"].id
+        results = search_kb_chunks_scored("délai de remboursement", kb_id=kb.id)
+        assert results and "dix jours" in results[0][0].page_content
+        assert results[0][0].metadata["document_id"] == documents["procédure.md"].id
 
     def test_duplicate_file_is_skipped_not_reindexed(
         self, kb_store, real_db_session, tmp_path, pg_test_cluster

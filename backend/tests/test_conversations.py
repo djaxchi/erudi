@@ -412,6 +412,8 @@ class TestConversationService:
 
         assert "".join(result) == "27 jours."
         mock_kb.assert_called_once()
+        # param_size=7 → medium tier → its KB token budget reaches retrieval.
+        assert mock_kb.call_args.kwargs["token_budget"] == 1000
         assert "27 jours de congés payés" in captured["system_prompt"]
 
     async def test_query_stream_kb_retrieval_failure_degrades_gracefully(

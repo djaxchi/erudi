@@ -61,7 +61,7 @@ class ArenaService:
     ) -> str:
         """Build a KB context string if the LLM has a KB attached and strategy allows.
 
-        Retrieves top-k chunks through the hybrid pgvector search (``kb_utils``
+        Adaptive selection through the hybrid pgvector search (``kb_utils``
         façade). Returns an empty string when KB is unavailable/disabled.
         """
         if not llm.is_attached_to_kb or not strategy.get("use_kb_context", False):
@@ -69,7 +69,7 @@ class ArenaService:
 
         try:
             relevant_texts = get_relevant_texts_from_kb(
-                query, llm, kb_top_k=strategy.get("kb_top_k", 1)
+                query, llm, token_budget=strategy["kb_token_budget"]
             )
             if relevant_texts:
                 return "Relevant context from Knowledge Base:\n" + "\n".join(relevant_texts)

@@ -161,7 +161,7 @@ class ConversationService:
 
     # ===================== Streaming generation =====================
     def _build_kb_context(self, llm: Llm, query: str) -> str:
-        """Top-k KB chunks for this question, or "" (no KB / disabled / error).
+        """Adaptive KB context for this question, or "" (no KB / disabled / error).
 
         Same contract as the arena's KB context, with one difference: a
         retrieval failure degrades to no-context instead of erroring — a
@@ -177,7 +177,7 @@ class ConversationService:
 
         try:
             relevant_texts = get_relevant_texts_from_kb(
-                query, llm, kb_top_k=strategy.get("kb_top_k", 1)
+                query, llm, token_budget=strategy["kb_token_budget"]
             )
         except Exception:
             logger.exception("KB retrieval failed; continuing without context")
