@@ -656,9 +656,63 @@ class TestLLM_Endpoints:
         llm_id = llm.id
     
         response = client.delete(f"/erudi/llms/{llm_id}")
-    
+
         assert response.status_code == status.HTTP_200_OK
         assert mock_rmtree.call_count >= 1
+
+    def test_delete_kb_assistant_preserves_base_model_files_and_deletes_kb(
+        self, client, test_db_session, tmp_path
+    ):
+        """A specialized KB assistant COPIES the base model's link at creation:
+        deleting the assistant must NOT remove those files (they belong to the
+        base model) and must delete its KnowledgeBase instead — server-side
+        cascades sweep the documents (and rag.kb_chunks in production)."""
+        from src.entities.KnowledgeBase import KnowledgeBase
+        from src.entities.KnowledgeDocument import KnowledgeDocument
+
+        # Real on-disk base model files the assistant's link points at.
+        model_dir = tmp_path / "models" / "42"
+        model_dir.mkdir(parents=True)
+        (model_dir / "weights.safetensors").write_bytes(b"fake weights")
+
+        base = Llm(
+            name="Base Model", local=1, type="gemma",
+            link=str(model_dir), param_size=0.27,
+        )
+        test_db_session.add(base)
+        test_db_session.flush()
+
+        kb = KnowledgeBase()
+        test_db_session.add(kb)
+        test_db_session.flush()
+        test_db_session.add(
+            KnowledgeDocument(
+                kb_id=kb.id, name="doc.md",
+                content_hash_sha256="f" * 64, size_bytes=10,
+            )
+        )
+        assistant = Llm(
+            name="Assistant RH", local=1, type="gemma",
+            link=str(model_dir),  # copied from the base model
+            is_attached_to_kb=True, kb_id=kb.id, param_size=0.27,
+        )
+        test_db_session.add(assistant)
+        test_db_session.commit()
+        assistant_id, kb_id, base_id = assistant.id, kb.id, base.id
+
+        response = client.delete(f"/erudi/llms/{assistant_id}")
+
+        assert response.status_code == status.HTTP_200_OK
+        # Base model files untouched, base model row intact.
+        assert (model_dir / "weights.safetensors").exists()
+        assert test_db_session.query(Llm).filter_by(id=base_id).first() is not None
+        # Assistant, its KB, and the KB's documents are gone.
+        assert test_db_session.query(Llm).filter_by(id=assistant_id).first() is None
+        assert test_db_session.query(KnowledgeBase).filter_by(id=kb_id).first() is None
+        assert (
+            test_db_session.query(KnowledgeDocument).filter_by(kb_id=kb_id).first()
+            is None
+        )
 
     def test_delete_llm_downloading(self, client, test_db_session):
         """Test DELETE /erudi/llms/{id} fails when model is downloading.

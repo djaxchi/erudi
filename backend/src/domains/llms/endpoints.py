@@ -281,7 +281,13 @@ async def delete_llm(
     llm_repo: Llm_Repository = Depends(get_llm_repository),
     db: Session = Depends(get_db),
 ):
-    """Delete local LLM and its files (permanent deletion).
+    """Delete local LLM (permanent deletion).
+
+    Regular local model: model files are removed from disk along with the
+    database record. Specialized KB assistant: its ``link`` is a COPY of the
+    base model's (set at creation) — the files belong to the base model and
+    are left untouched; the assistant's KnowledgeBase is deleted instead,
+    and server-side cascades sweep its documents and ``rag.kb_chunks``.
 
     Args:
         llm_id: ID of the LLM to delete.
@@ -297,33 +303,49 @@ async def delete_llm(
         DatabaseException: If deletion fails.
 
     Warning:
-        Deletes model files from disk. Cannot be undone.
+        Deletes model files from disk (regular models). Cannot be undone.
     """
     try:
         llm = llm_repo.get_by_id(llm_id)
         if not llm:
             raise ModelNotFoundException(f"LLM {llm_id}")
-        
+
         if llm.local == 2:
             raise StateConflictException("Cannot delete LLM while downloading")
-        
+
+        if llm.is_attached_to_kb:
+            # KB assistant: never touch the (shared) model files. Deleting
+            # the KB cascades to its documents/chunks, and the ORM cascade
+            # (KnowledgeBase.llm, delete-orphan) removes the assistant row.
+            from src.entities.KnowledgeBase import KnowledgeBase
+
+            kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == llm.kb_id).first()
+            if kb:
+                db.delete(kb)
+            else:
+                # Inconsistent state (flag set, KB gone): drop the row alone.
+                llm_repo.delete(llm)
+            db.commit()
+            logger.info(f"Deleted KB assistant {llm_id} (KB {llm.kb_id}, files kept)")
+            return {"message": "LLM deleted successfully"}
+
         # Delete files from disk if they exist
         if llm.link and os.path.exists(llm.link):
             shutil.rmtree(llm.link, ignore_errors=True)
             logger.info(f"Deleted model files: {llm.link}")
-            
+
             # Check and delete residual temp files (e.g., temp_36 for llm.link = data/models/36)
             temp_path = config.LLM_DIR / f"temp_{llm.id}"
             if os.path.exists(str(temp_path)):
                 shutil.rmtree(str(temp_path), ignore_errors=True)
                 logger.warning(f"Deleting residual temp files associated to llm: {temp_path}")
-        
+
         # Delete database record
         llm_repo.delete(llm)
         db.commit()
-        
+
         return {"message": "LLM deleted successfully"}
-        
+
     except (ModelNotFoundException, StateConflictException):
         raise
     except Exception as e:
