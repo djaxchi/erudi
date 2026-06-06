@@ -385,6 +385,53 @@ class TestConversationService:
         messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 4
 
+    async def test_query_and_respond_stream_with_kb(self, test_db_session, mock_llm_with_kb, monkeypatch):
+        """A KB-attached assistant retrieves chunks per question and injects
+        them into the system prompt (same contract as the arena)."""
+        llm, _kb = mock_llm_with_kb
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("27 jours."))
+        service = ConversationService(test_db_session, InMemorySaver())
+        conversation = service.create_conversation(llm_id=llm.id, temperature=0.7, top_p=0.9, max_tokens=1024)
+
+        captured = {}
+        original = service.runner.astream_text
+
+        def spy(**kwargs):
+            captured.update(kwargs)
+            return original(**kwargs)
+
+        monkeypatch.setattr(service.runner, "astream_text", spy)
+
+        payload = ConversationQuery(question="Combien de jours de congés payés ?")
+        with patch("src.domains.conversations.services.get_relevant_texts_from_kb") as mock_kb:
+            mock_kb.return_value = [
+                "Chaque employé dispose de 27 jours de congés payés par an."
+            ]
+            result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
+
+        assert "".join(result) == "27 jours."
+        mock_kb.assert_called_once()
+        assert "27 jours de congés payés" in captured["system_prompt"]
+
+    async def test_query_stream_kb_retrieval_failure_degrades_gracefully(
+        self, test_db_session, mock_llm_with_kb, monkeypatch
+    ):
+        """A broken vector store must not sink the conversation: the stream
+        continues without KB context instead of erroring out."""
+        llm, _kb = mock_llm_with_kb
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("Réponse sans contexte."))
+        service = ConversationService(test_db_session, InMemorySaver())
+        conversation = service.create_conversation(llm_id=llm.id, temperature=0.7, top_p=0.9, max_tokens=1024)
+
+        payload = ConversationQuery(question="Une question quelconque ?")
+        with patch("src.domains.conversations.services.get_relevant_texts_from_kb") as mock_kb:
+            mock_kb.side_effect = RuntimeError("vector store unreachable")
+            result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
+
+        assert "".join(result) == "Réponse sans contexte."
+
     async def test_delete_conversation_purges_checkpointer_thread(self, test_db_session, mock_llm, monkeypatch):
         """IT4 (BLOCKER B3): deleting a conversation purges its checkpointer thread,
         not just the DB rows. SQLite reuses autoincrement ids, so a stale thread

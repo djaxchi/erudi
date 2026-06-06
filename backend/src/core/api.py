@@ -59,7 +59,10 @@ Note:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from src.database.core import init_database
 from src.database.seed import create_tables, startup_populate_database
+from src.launcher.postgres_runtime import start_postgres, stop_postgres
+from src.ingestion.vector_store import close_kb_store, init_kb_store
 
 from src.core.exceptions import AppBaseException, app_base_exception_handler
 from src.core import config
@@ -205,25 +208,34 @@ async def lifespan(app: FastAPI):
         See BaseEngine.start_cleanup_task() for details.
 
     Lifecycle Flow:
-        1. Log startup message
-        2. Select engine via platform detection (BaseEngine.get_engine)
-        3. Create database tables if not exist (createTables)
-        4. Seed database with default models (startup_populate_database)
-        5. Start cleanup background task (300s interval)
-        6. **[YIELD]** → Application handles requests
-        7. Log shutdown message
-        8. Stop cleanup task
-        9. Release engine resources (models, tokenizers, tensors)
+        1. Start the embedded PostgreSQL cluster (postgres_runtime)
+        2. Bind the SQLAlchemy engine/session factory (init_database)
+        3. Select engine via platform detection (BaseEngine.get_engine)
+        4. Create database tables if not exist (create_tables)
+        5. Seed database with default models (startup_populate_database)
+        6. Open the LangGraph checkpointer (app.state.checkpointer)
+        7. Start cleanup background task (300s interval)
+        8. **[YIELD]** → Application handles requests
+        9. Shutdown (reverse order): cleanup task → engine → checkpointer
+           → embedded PostgreSQL cluster last
     """
     # Before yield comes the startup code
     logger.info("==== Starting up... ====")
+    # Step 0: embedded PostgreSQL cluster — must precede any DB usage.
+    app.state.postgres = start_postgres(config.POSTGRES_DATA_DIR)
+    # Step 1: bind the SQLAlchemy engine/session factory to the live cluster.
+    init_database(app.state.postgres.sqlalchemy_url)
     config.LLM_Engine = BaseEngine.get_engine()
     await create_tables()
     # await delete_all_data()
     await startup_populate_database()
-    # LangGraph conversation-state checkpointer (separate erudi-checkpoints.db),
-    # held open for the whole app lifetime and exposed on app.state.checkpointer.
-    checkpointer_cm = open_checkpointer(config.CHECKPOINT_DB_PATH)
+    # Hybrid KB vector store (rag.kb_chunks) — AFTER create_tables: its
+    # cross-schema FKs reference the business tables.
+    app.state.kb_store = init_kb_store(app.state.postgres)
+    # LangGraph conversation-state checkpointer (AsyncPostgresSaver on the
+    # same `erudi` database as the business schema), held open for the whole
+    # app lifetime and exposed on app.state.checkpointer.
+    checkpointer_cm = open_checkpointer(app.state.postgres.psycopg_url)
     app.state.checkpointer = await checkpointer_cm.__aenter__()
     config.LLM_Engine.start_cleanup_task()
     yield
@@ -231,3 +243,6 @@ async def lifespan(app: FastAPI):
     config.LLM_Engine.stop_cleanup_task()
     config.LLM_Engine.cleanup()
     await checkpointer_cm.__aexit__(None, None, None)
+    close_kb_store()
+    # Cluster stops LAST: every DB consumer above must be closed first.
+    stop_postgres(app.state.postgres)

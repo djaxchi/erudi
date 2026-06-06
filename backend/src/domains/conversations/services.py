@@ -25,6 +25,8 @@ from src.domains.conversations.schemas import ConversationQuery
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
 from src.core.exceptions import ModelNotFoundException
+from src.utils.kb_utils import get_relevant_texts_from_kb
+from src.utils.prompt_utils import get_prompting_strategy
 
 
 def _sanitize_title(raw: str, *, max_words: int = 6, max_chars: int = 48) -> str:
@@ -65,7 +67,7 @@ class ConversationService:
 
         Args:
             db: SQLAlchemy session for repository operations.
-            checkpointer: LangGraph checkpointer (app-wide ``AsyncSqliteSaver``)
+            checkpointer: LangGraph checkpointer (app-wide ``AsyncPostgresSaver``)
                 for stateful conversations. ``None`` runs the agent statelessly
                 (used by tests that don't exercise persistence).
         """
@@ -122,9 +124,9 @@ class ConversationService:
     async def delete_conversation(self, conversation_id: int) -> None:
         """Delete a conversation and purge its checkpointer thread.
 
-        Both stores must be cleared: SQLite autoincrement reuses ids, so a stale
-        checkpointer thread would otherwise leak a deleted conversation's agent
-        context into a future conversation with the same id (review BLOCKER B3).
+        Both stores must be cleared: ids can be reused after a fresh start or a
+        sequence reset, so a stale checkpointer thread would otherwise leak a deleted
+        conversation's agent context into a future one with the same id (BLOCKER B3).
         """
         logger.info(f"Deleting conversation {conversation_id}")
         await run_in_threadpool(self._delete_conversation_db, conversation_id)
@@ -158,6 +160,33 @@ class ConversationService:
         return message.id
 
     # ===================== Streaming generation =====================
+    def _build_kb_context(self, llm: Llm, query: str) -> str:
+        """Top-k KB chunks for this question, or "" (no KB / disabled / error).
+
+        Same contract as the arena's KB context, with one difference: a
+        retrieval failure degrades to no-context instead of erroring — a
+        broken vector store must not sink an ongoing conversation.
+        """
+        if not llm.is_attached_to_kb:
+            return ""
+
+        param_size = llm.param_size if llm.param_size is not None else 2
+        strategy = get_prompting_strategy(param_size)
+        if not strategy.get("use_kb_context", False):
+            return ""
+
+        try:
+            relevant_texts = get_relevant_texts_from_kb(
+                query, llm, kb_top_k=strategy.get("kb_top_k", 1)
+            )
+        except Exception:
+            logger.exception("KB retrieval failed; continuing without context")
+            return ""
+
+        if relevant_texts:
+            return "Relevant context from Knowledge Base:\n" + "\n".join(relevant_texts)
+        return ""
+
     async def query_and_respond_stream(
         self,
         conversation_id: int,
@@ -190,6 +219,13 @@ class ConversationService:
             system_prompt = build_agent_system_prompt(
                 llm, starred_messages=starred, custom_prompt=payload.custom_prompt
             )
+            # KB-attached assistant: retrieve per-question context (hybrid
+            # search is sync — embed + SQL — so it runs in the threadpool).
+            kb_context = await run_in_threadpool(
+                self._build_kb_context, llm, payload.question
+            )
+            if kb_context:
+                system_prompt = f"{system_prompt}\n\n{kb_context}"
             params = GenParams(
                 temperature=payload.temperature if payload.temperature is not None else conversation.temperature,
                 top_p=payload.top_p if payload.top_p is not None else conversation.top_p,

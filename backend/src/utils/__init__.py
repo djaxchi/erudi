@@ -4,10 +4,10 @@ This package provides utility functions organized by domain:
 
 Modules:
     - prompt_utils: System prompt building and prompting strategy selection
-    - kb_utils: Knowledge base RAG utilities for semantic search
-    - file_processor: Text processing for KB and training datasets
+    - kb_utils: Knowledge base retrieval (rebuilt on PGVectorStore)
+    - file_processor: Text processing for TRAINING datasets (KB ingestion
+      lives in src.ingestion: DocumentReader → cleaning → chunking)
     - hf_model_metadata: HuggingFace model metadata fetching and formatting
-    - inference_utils: Backward compatibility layer (deprecated, use engines)
 
 Clean API Surface:
     Export commonly used functions for convenient imports while maintaining
@@ -17,19 +17,14 @@ Examples:
     >>> # Direct module imports (preferred for clarity)
     >>> from src.utils.prompt_utils import build_system_prompt
     >>> from src.utils.kb_utils import get_relevant_texts_from_kb
-    >>> from src.utils.file_processor import prepare_for_knowledge_base
-    >>> 
+    >>>
     >>> # Package-level imports (convenient)
     >>> from src.utils import build_system_prompt
     >>> from src.utils import get_relevant_texts_from_kb
-    >>> from src.utils import prepare_for_knowledge_base
-
-Migration Notes:
-    - EmbedderService removed - use src.engines.embedder_engine.Embedder_Engine
-    - All embedder operations now via Embedder_Engine
 
 See Also:
-    - src.engines: Inference engines (LLM, embedder)
+    - src.ingestion: KB document ingestion (extraction, chunking, embeddings)
+    - src.engines: Inference engines
     - src.domains: Business logic using utils
     - src.core: Configuration, logging, exceptions
 """
@@ -45,11 +40,9 @@ from src.utils.kb_utils import (
     get_relevant_texts_from_kb,
 )
 
-# File processing utilities
+# File processing utilities (training pipeline)
 from src.utils.file_processor import (
     split_sentences,
-    chunk_by_tokens,
-    prepare_for_knowledge_base,
     extract_text_from_pdf,
     clean_text,
     chunk_text,
@@ -70,10 +63,8 @@ __all__ = [
     'get_prompting_strategy',
     # KB utilities
     'get_relevant_texts_from_kb',
-    # File processing
+    # File processing (training)
     'split_sentences',
-    'chunk_by_tokens',
-    'prepare_for_knowledge_base',
     'extract_text_from_pdf',
     'clean_text',
     'chunk_text',

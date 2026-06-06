@@ -93,7 +93,8 @@ class DownloadJobResponse(BaseModel):
     Attributes:
         job_id: Database primary key (aliased from 'id').
         remote_model_id: HuggingFace model ID (e.g., "meta-llama/Llama-3-8B").
-        local_model_id: ID of temp LLM entry created during download, -1 on failure.
+        local_model_id: ID of temp LLM entry created during download, None once
+            that entry is deleted (cleanup nulls the FK server-side).
         remote_model_link: HuggingFace URL or API endpoint.
         local_model_link: Filesystem path to final model after quantization.
         status: Job state - "pending", "running", "completed", "failed", "cancelled".

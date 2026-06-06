@@ -1,29 +1,25 @@
-"""P1 — checkpointer wiring.
+"""P3 — checkpointer wiring (PostgreSQL).
 
-Covers the three wiring guarantees:
-  - the checkpointer lives in a SEPARATE SQLite file inside DATA_ROOT,
-  - ``open_checkpointer`` yields a ready saver (tables created, thread isolation,
+Covers the wiring guarantees on the embedded cluster:
+  - ``open_checkpointer`` yields a ready ``AsyncPostgresSaver`` (tables created
+    in the same database as the business schema, thread isolation,
     ``adelete_thread`` purges a single thread — the B3 mechanism),
+  - checkpoint state survives closing and reopening the saver (app restart),
   - ``get_checkpointer`` exposes ``app.state.checkpointer`` to endpoints.
 """
 
 import os
-import tempfile
-from pathlib import Path
+import uuid
 from types import SimpleNamespace
 
 import pytest
 from langgraph.checkpoint.base import empty_checkpoint
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 
-def test_checkpoint_db_is_separate_sibling_of_business_db():
-    from src.core import config
-
-    assert config.CHECKPOINT_DB_PATH.parent == config.DATA_ROOT
-    assert config.CHECKPOINT_DB_PATH.name == "erudi-checkpoints.db"
-    assert config.CHECKPOINT_DB_PATH != (config.DATA_ROOT / "erudi.db")
+def _cfg(thread_id: str) -> dict:
+    return {"configurable": {"thread_id": thread_id, "checkpoint_ns": ""}}
 
 
 def test_strict_msgpack_env_default_is_set():
@@ -32,53 +28,62 @@ def test_strict_msgpack_env_default_is_set():
     assert os.environ.get("LANGGRAPH_STRICT_MSGPACK") == "true"
 
 
-async def test_open_checkpointer_creates_tables_and_isolates_threads():
+async def test_open_checkpointer_creates_tables_and_isolates_threads(pg_test_cluster):
     from src.agents.checkpoint import open_checkpointer
 
-    with tempfile.TemporaryDirectory() as d:
-        db = Path(d) / "cp.db"
-        async with open_checkpointer(db) as saver:
-            cur = await saver.conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+    thread_a, thread_b = f"A-{uuid.uuid4()}", f"B-{uuid.uuid4()}"
+    async with open_checkpointer(pg_test_cluster.psycopg_url) as saver:
+        await saver.aput(_cfg(thread_a), empty_checkpoint(), {"source": "input", "step": 0}, {})
+        await saver.aput(_cfg(thread_b), empty_checkpoint(), {"source": "input", "step": 0}, {})
+        assert await saver.aget_tuple(_cfg(thread_a)) is not None
+        assert await saver.aget_tuple(_cfg(thread_b)) is not None
+
+        # B3: deleting one conversation's thread leaves the other intact.
+        await saver.adelete_thread(thread_a)
+        assert await saver.aget_tuple(_cfg(thread_a)) is None
+        assert await saver.aget_tuple(_cfg(thread_b)) is not None
+
+        await saver.adelete_thread(thread_b)
+
+
+async def test_checkpoint_state_survives_reopen(pg_test_cluster):
+    # State written through one saver is visible after closing it and opening
+    # a new one on the same cluster — proving conversations persist across an
+    # app restart (production holds the saver open for the whole lifespan,
+    # but a relaunch must restore prior threads).
+    from src.agents.checkpoint import open_checkpointer
+
+    thread = f"persist-{uuid.uuid4()}"
+    async with open_checkpointer(pg_test_cluster.psycopg_url) as saver:
+        await saver.aput(_cfg(thread), empty_checkpoint(), {"source": "input", "step": 0}, {})
+        assert await saver.aget_tuple(_cfg(thread)) is not None
+
+    # Reopen (simulates a process restart).
+    async with open_checkpointer(pg_test_cluster.psycopg_url) as saver2:
+        assert await saver2.aget_tuple(_cfg(thread)) is not None
+        await saver2.adelete_thread(thread)
+
+
+async def test_checkpointer_tables_live_in_business_database(pg_test_cluster):
+    # One database (`erudi`), business + checkpointer schemas side by side:
+    # the LangGraph-managed tables must land in the SAME database the
+    # SQLAlchemy engine uses, so a single cluster backup captures everything.
+    import psycopg
+
+    from src.agents.checkpoint import open_checkpointer
+
+    async with open_checkpointer(pg_test_cluster.psycopg_url):
+        pass
+
+    with psycopg.connect(pg_test_cluster.psycopg_url) as conn:
+        tables = {
+            r[0]
+            for r in conn.execute(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
             )
-            tables = [r[0] for r in await cur.fetchall()]
-            assert "checkpoints" in tables and "writes" in tables
-
-            # WAL + busy_timeout configured on the held-open connection.
-            cur = await saver.conn.execute("PRAGMA busy_timeout")
-            assert (await cur.fetchone())[0] == 30000
-
-            cfg_a = {"configurable": {"thread_id": "A", "checkpoint_ns": ""}}
-            cfg_b = {"configurable": {"thread_id": "B", "checkpoint_ns": ""}}
-            await saver.aput(cfg_a, empty_checkpoint(), {"source": "input", "step": 0}, {})
-            await saver.aput(cfg_b, empty_checkpoint(), {"source": "input", "step": 0}, {})
-            assert await saver.aget_tuple(cfg_a) is not None
-            assert await saver.aget_tuple(cfg_b) is not None
-
-            # B3: deleting one conversation's thread leaves the other intact.
-            await saver.adelete_thread("A")
-            assert await saver.aget_tuple(cfg_a) is None
-            assert await saver.aget_tuple(cfg_b) is not None
-
-
-async def test_checkpoint_state_survives_reopen_on_disk():
-    # IT6: state written to the on-disk checkpoint DB survives closing and
-    # reopening the SAME file — proving conversations persist across an app
-    # restart (production holds the saver open for the whole lifespan, but a
-    # relaunch must restore prior threads from disk).
-    from src.agents.checkpoint import open_checkpointer
-
-    with tempfile.TemporaryDirectory() as d:
-        db = Path(d) / "cp.db"
-        cfg = {"configurable": {"thread_id": "persist", "checkpoint_ns": ""}}
-
-        async with open_checkpointer(db) as saver:
-            await saver.aput(cfg, empty_checkpoint(), {"source": "input", "step": 0}, {})
-            assert await saver.aget_tuple(cfg) is not None
-
-        # Reopen the same file (simulates a process restart).
-        async with open_checkpointer(db) as saver2:
-            assert await saver2.aget_tuple(cfg) is not None
+        }
+    assert "checkpoints" in tables
+    assert "checkpoint_writes" in tables
 
 
 def test_get_checkpointer_reads_app_state():
@@ -89,3 +94,10 @@ def test_get_checkpointer_reads_app_state():
         app=SimpleNamespace(state=SimpleNamespace(checkpointer=sentinel))
     )
     assert get_checkpointer(fake_request) is sentinel
+
+
+def test_checkpoint_db_path_is_gone():
+    # The SQLite-era CHECKPOINT_DB_PATH must not survive the migration.
+    from src.core import config
+
+    assert not hasattr(config, "CHECKPOINT_DB_PATH")

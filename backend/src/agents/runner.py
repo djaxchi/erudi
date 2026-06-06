@@ -60,7 +60,7 @@ class GenParams:
 class AgentRunner:
     """Streams an agent turn as raw token text. Shared by conversation and arena.
 
-    Pass a ``checkpointer`` (the app-wide ``AsyncSqliteSaver``) for stateful
+    Pass a ``checkpointer`` (the app-wide ``AsyncPostgresSaver``) for stateful
     conversations; arena constructs it with ``checkpointer=None``.
     """
 

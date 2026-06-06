@@ -9,21 +9,17 @@ All HuggingFace API calls and file operations are mocked for fast, isolated test
 No real model downloads or network calls occur during tests.
 """
 import pytest
-import os
 import asyncio
-from unittest.mock import Mock, patch, AsyncMock, MagicMock, call
+from unittest.mock import patch, AsyncMock
 from fastapi import status
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
 
 from src.domains.llms.repository import Llm_Repository, Download_Job_Repository
 from src.domains.llms.services import (
     DownloadTracker,
     make_callback,
-    download_llm,
     get_quantized_model_link
 )
-from src.domains.llms.schemas import LLMCreate, LLMResponse, DownloadJobResponse
 from src.entities.Llm import Llm
 from src.entities.DownloadJob import DownloadJobModel
 
@@ -198,7 +194,7 @@ class TestLlm_Repository:
 class TestDownload_Job_Repository:
     """Test suite for Download_Job_Repository database operations."""
 
-    def test_create_download_job(self, test_db_session):
+    def test_create_download_job(self, test_db_session, mock_llm):
         """Test creating a download job record.
         
         Args:
@@ -208,7 +204,7 @@ class TestDownload_Job_Repository:
         
         job_data = {
             "remote_model_id": "meta/llama-3-8b",
-            "local_model_id": 42,
+            "local_model_id": mock_llm.id,
             "remote_model_link": "https://huggingface.co/meta/llama-3-8b",
             "temp_local_model_link": "/data/temp_42",
             "final_local_model_link": "/data/models/42"
@@ -219,7 +215,7 @@ class TestDownload_Job_Repository:
         
         assert job.id is not None
         assert job.remote_model_id == "meta/llama-3-8b"
-        assert job.local_model_id == "42"  # SQLite returns strings for integer columns in some cases
+        assert job.local_model_id == mock_llm.id
         assert job.status == "pending"
         assert job.progress == 0.0
 
@@ -233,7 +229,7 @@ class TestDownload_Job_Repository:
         
         created = repo.create(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1"
@@ -255,7 +251,7 @@ class TestDownload_Job_Repository:
         
         job = repo.create(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1"
@@ -277,7 +273,7 @@ class TestDownload_Job_Repository:
         
         job = repo.create(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1"
@@ -308,7 +304,7 @@ class TestDownload_Job_Repository:
         
         job = repo.create(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1"
@@ -331,7 +327,7 @@ class TestDownload_Job_Repository:
         
         job = repo.create(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1"
@@ -356,7 +352,7 @@ class TestDownload_Job_Repository:
         # Create old job
         old_job = DownloadJobModel(
             remote_model_id="old/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/old",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1",
@@ -368,7 +364,7 @@ class TestDownload_Job_Repository:
         # Create recent job
         recent_job = DownloadJobModel(
             remote_model_id="recent/model",
-            local_model_id=2,
+            local_model_id=None,
             remote_model_link="https://hf.co/recent",
             temp_local_model_link="/temp/2",
             final_local_model_link="/models/2",
@@ -660,9 +656,63 @@ class TestLLM_Endpoints:
         llm_id = llm.id
     
         response = client.delete(f"/erudi/llms/{llm_id}")
-    
+
         assert response.status_code == status.HTTP_200_OK
         assert mock_rmtree.call_count >= 1
+
+    def test_delete_kb_assistant_preserves_base_model_files_and_deletes_kb(
+        self, client, test_db_session, tmp_path
+    ):
+        """A specialized KB assistant COPIES the base model's link at creation:
+        deleting the assistant must NOT remove those files (they belong to the
+        base model) and must delete its KnowledgeBase instead — server-side
+        cascades sweep the documents (and rag.kb_chunks in production)."""
+        from src.entities.KnowledgeBase import KnowledgeBase
+        from src.entities.KnowledgeDocument import KnowledgeDocument
+
+        # Real on-disk base model files the assistant's link points at.
+        model_dir = tmp_path / "models" / "42"
+        model_dir.mkdir(parents=True)
+        (model_dir / "weights.safetensors").write_bytes(b"fake weights")
+
+        base = Llm(
+            name="Base Model", local=1, type="gemma",
+            link=str(model_dir), param_size=0.27,
+        )
+        test_db_session.add(base)
+        test_db_session.flush()
+
+        kb = KnowledgeBase()
+        test_db_session.add(kb)
+        test_db_session.flush()
+        test_db_session.add(
+            KnowledgeDocument(
+                kb_id=kb.id, name="doc.md",
+                content_hash_sha256="f" * 64, size_bytes=10,
+            )
+        )
+        assistant = Llm(
+            name="Assistant RH", local=1, type="gemma",
+            link=str(model_dir),  # copied from the base model
+            is_attached_to_kb=True, kb_id=kb.id, param_size=0.27,
+        )
+        test_db_session.add(assistant)
+        test_db_session.commit()
+        assistant_id, kb_id, base_id = assistant.id, kb.id, base.id
+
+        response = client.delete(f"/erudi/llms/{assistant_id}")
+
+        assert response.status_code == status.HTTP_200_OK
+        # Base model files untouched, base model row intact.
+        assert (model_dir / "weights.safetensors").exists()
+        assert test_db_session.query(Llm).filter_by(id=base_id).first() is not None
+        # Assistant, its KB, and the KB's documents are gone.
+        assert test_db_session.query(Llm).filter_by(id=assistant_id).first() is None
+        assert test_db_session.query(KnowledgeBase).filter_by(id=kb_id).first() is None
+        assert (
+            test_db_session.query(KnowledgeDocument).filter_by(kb_id=kb_id).first()
+            is None
+        )
 
     def test_delete_llm_downloading(self, client, test_db_session):
         """Test DELETE /erudi/llms/{id} fails when model is downloading.
@@ -746,7 +796,7 @@ class TestDownloadJob_Endpoints:
         """
         job = DownloadJobModel(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1",
@@ -814,7 +864,7 @@ class TestDownloadJob_Endpoints:
         """
         job = DownloadJobModel(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1",
@@ -906,7 +956,7 @@ class TestDownloadJob_Entity_Validations:
         """Test creating job with valid data."""
         job = DownloadJobModel(
             remote_model_id="test/model",
-            local_model_id=1,
+            local_model_id=None,
             remote_model_link="https://hf.co/test",
             temp_local_model_link="/temp/1",
             final_local_model_link="/models/1",
@@ -922,7 +972,7 @@ class TestDownloadJob_Entity_Validations:
         with pytest.raises(ValueError, match="Invalid status"):
             job = DownloadJobModel(
                 remote_model_id="test/model",
-                local_model_id=1,
+                local_model_id=None,
                 remote_model_link="https://hf.co/test",
                 status="invalid_status"
             )
@@ -934,7 +984,7 @@ class TestDownloadJob_Entity_Validations:
         with pytest.raises(ValueError, match="Progress must be between"):
             job = DownloadJobModel(
                 remote_model_id="test/model",
-                local_model_id=1,
+                local_model_id=None,
                 remote_model_link="https://hf.co/test",
                 status="running",
                 progress=150.0  # Invalid
@@ -947,7 +997,7 @@ class TestDownloadJob_Entity_Validations:
         with pytest.raises(ValueError, match="must be non-negative"):
             job = DownloadJobModel(
                 remote_model_id="test/model",
-                local_model_id=1,
+                local_model_id=None,
                 remote_model_link="https://hf.co/test",
                 status="running",
                 total_bytes=-1000.0
@@ -960,7 +1010,7 @@ class TestDownloadJob_Entity_Validations:
         with pytest.raises(ValueError, match="cannot be empty"):
             job = DownloadJobModel(
                 remote_model_id="",
-                local_model_id=1,
+                local_model_id=None,
                 remote_model_link="https://hf.co/test",
                 status="pending"
             )

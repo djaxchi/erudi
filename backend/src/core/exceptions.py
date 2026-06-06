@@ -11,7 +11,6 @@ Exception Hierarchy:
     ├── StateConflictException (400, STATE_CONFLICT)
     ├── DatabaseException (500, DATABASE_ERROR)
     ├── FileSystemException (500, FILESYSTEM_ERROR)
-    ├── FAISSException (500, FAISS_ERROR)
     ├── HuggingFaceAPIException (503, HUGGINGFACE_API_ERROR)
     ├── ModelLoadingException (500, MODEL_LOADING_ERROR)
     ├── QuantizationException (500, QUANTIZATION_ERROR)
@@ -25,8 +24,7 @@ Exception Hierarchy:
     ├── DownloadJobNotFoundException (404, DOWNLOAD_JOB_NOT_FOUND)
     ├── TokenizationException (500, TOKENIZATION_ERROR)
     ├── ConfigurationException (500, CONFIGURATION_ERROR)
-    ├── EngineException (500, LLM_ENGINE_FAILURE)
-    └── EmbeddingError (500, EMBEDDING_FAILURE)
+    └── EngineException (500, LLM_ENGINE_FAILURE)
 
 Fonctionnalités:
 - Structured exception hierarchy with status codes
@@ -51,12 +49,12 @@ Usage Patterns:
             raise ModelNotFoundException(f"LLM {llm_id}")
 
     **Catching Specific Exceptions:**
-        from src.core.exceptions import FAISSException
-        
+        from src.core.exceptions import DatabaseException
+
         try:
-            index = faiss.read_index(index_path)
+            db.commit()
         except Exception as e:
-            raise FAISSException(f"Failed to load index: {e}", trace=str(e))
+            raise DatabaseException(f"Failed to persist changes: {e}", trace=str(e))
 
     **FastAPI Integration:**
         from fastapi import FastAPI
@@ -88,7 +86,6 @@ Exception Categories:
     **Server Errors (500):**
     - DatabaseException
     - FileSystemException
-    - FAISSException
     - ModelLoadingException
     - QuantizationException
     - GenerationException
@@ -96,7 +93,6 @@ Exception Categories:
     - TokenizationException
     - ConfigurationException
     - EngineException
-    - EmbeddingError
 
     **Service Unavailable (503):**
     - HuggingFaceAPIException
@@ -299,36 +295,6 @@ class FileSystemException(AppBaseException):
         )
 
 
-class FAISSException(AppBaseException):
-    """Exception raised for FAISS vector index operations failures.
-    
-    Raised when FAISS index operations fail, including index creation,
-    loading, saving, searching, or corruption detection. Covers both
-    low-level FAISS errors and index integrity issues.
-    
-    Examples:
-        from src.core.exceptions import FAISSException
-        try:
-            index = faiss.read_index(index_path)
-        except Exception as e:
-            raise FAISSException(f"Failed to load FAISS index: {e}", trace=str(e))
-
-    """
-    
-    def __init__(self, message: str, trace: Optional[str] = None):
-        """Initialize FAISS exception with error details.
-        
-        Args:
-            message: Description of the FAISS operation failure.
-            trace: Optional stack trace or additional context.
-
-        """
-        super().__init__(
-            message=message,
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            erudi_code="FAISS_ERROR",
-            trace=trace
-        )
 
 
 class HuggingFaceAPIException(AppBaseException):
@@ -489,15 +455,14 @@ class KnowledgeBaseNotFoundException(AppBaseException):
 
 
 class KnowledgeBaseCorruptedException(AppBaseException):
-    """Exception raised when Knowledge Base resources are corrupted.
-    
-    Raised when KB index files are corrupted, vector store data is invalid,
-    or KB is in an inconsistent state (missing index, empty vectors_data).
-    
+    """Exception raised when Knowledge Base retrieval is in a broken state.
+
+    Raised when hybrid retrieval over the KB's chunks fails unexpectedly
+    (vector store unreachable, inconsistent chunk data, …).
+
     Examples:
         from src.core.exceptions import KnowledgeBaseCorruptedException
-        if not os.path.exists(kb.index_path):
-            raise KnowledgeBaseCorruptedException(kb.id, "Index file missing")
+        raise KnowledgeBaseCorruptedException(kb_id, "retrieval error", trace=str(e))
 
     """
     
@@ -796,35 +761,6 @@ class HardwareException(AppBaseException):
         )
 
 
-class EmbeddingError(AppBaseException):
-    """Exception raised for embedding generation failures.
-    
-    Raised when sentence-transformers embedding model fails to encode text,
-    including model loading errors, out-of-memory conditions, or invalid input.
-    
-    Examples:
-        from src.core.exceptions import EmbeddingError
-        try:
-            embeddings = embedder.encode(text)
-        except Exception as e:
-            raise EmbeddingError(f"Failed to embed text: {e}")
-
-    """
-    
-    def __init__(self, message: str, trace: Optional[str] = None):
-        """Initialize embedding exception with error details.
-        
-        Args:
-            message: Description of the embedding failure.
-            trace: Optional stack trace or additional context.
-
-        """
-        super().__init__(
-            message=message,
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            erudi_code="EMBEDDING_FAILURE",
-            trace=trace
-        )
 
 
 async def app_base_exception_handler(request: Request, exc: AppBaseException):

@@ -39,7 +39,8 @@ fi
 # Check Python version (3.9+)
 write_status "Checking Python version..."
 
-python_candidates=("python3" "python" "py3" "py")
+# python3.12 first: pgserver ships binary wheels for cp39-cp312 only (no 3.13+)
+python_candidates=("python3.12" "python3" "python" "py3" "py")
 python_cmd=""
 version=""
 
@@ -59,6 +60,8 @@ if [[ $version =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
     minor=${BASH_REMATCH[2]}
     if (( major < 3 || (major == 3 && minor < 9) )); then
         write_error "Python 3.9+ required, found: $version"
+    elif (( major == 3 && minor > 12 )); then
+        write_error "Python 3.13+ unsupported (pgserver wheels stop at cp312), found: $version — install python3.12"
     else
         write_status "Using Python: $python_cmd ($version)"
     fi
