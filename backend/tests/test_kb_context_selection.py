@@ -7,7 +7,7 @@ Unit tests for the two-stage selection that replaces the flat ``kb_top_k=1``:
 2. token budget — keep whole chunks best-first (RRF order) within the
    model-size budget from ``get_prompting_strategy``.
 
-The selection math is pure (no cluster); ``get_relevant_texts_from_kb`` is
+The selection math is pure (no cluster); ``retrieve_kb_excerpts`` is
 exercised with a mocked pool. The real-embeddings behaviour (factoid vs
 panorama questions) lives in test_kb_vector_store.py.
 """
@@ -21,9 +21,10 @@ from langchain_core.documents import Document
 from src.core.exceptions import KnowledgeBaseNotFoundException
 from src.ingestion.chunking import count_tokens
 from src.utils.kb_utils import (
+    KbExcerpt,
     _adaptive_threshold,
     _truncate_to_token_budget,
-    get_relevant_texts_from_kb,
+    retrieve_kb_excerpts,
 )
 
 pytestmark = pytest.mark.unit
@@ -82,12 +83,19 @@ class TestTokenBudgetTruncation:
 
 def _pool(entries):
     return [
-        (Document(page_content=text, id=str(i)), sim)
+        (
+            Document(
+                page_content=text,
+                id=str(i),
+                metadata={"source_file": f"doc-{i}.md"},
+            ),
+            sim,
+        )
         for i, (text, sim) in enumerate(entries)
     ]
 
 
-class TestGetRelevantTexts:
+class TestRetrieveKbExcerpts:
     def test_cut_then_budget_in_rrf_order(self):
         # RRF order ≠ similarity order: the cut filters by similarity but the
         # surviving chunks keep their RRF (best-first) injection order.
@@ -101,30 +109,39 @@ class TestGetRelevantTexts:
         )
         llm = SimpleNamespace(kb_id=7)
         with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=pool):
-            texts = get_relevant_texts_from_kb("question", llm, token_budget=2000)
-        assert texts == ["chunk pertinent A", "chunk pertinent B", "chunk pertinent C"]
+            excerpts = retrieve_kb_excerpts("question", llm, token_budget=2000)
+        assert [e.text for e in excerpts] == [
+            "chunk pertinent A", "chunk pertinent B", "chunk pertinent C",
+        ]
+
+    def test_excerpts_carry_their_source_file(self):
+        pool = _pool([("contenu", 0.9)])
+        llm = SimpleNamespace(kb_id=7)
+        with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=pool):
+            excerpts = retrieve_kb_excerpts("question", llm, token_budget=2000)
+        assert excerpts == [KbExcerpt(source_file="doc-0.md", text="contenu")]
 
     def test_flat_pool_falls_back_to_budget_only(self):
         pool = _pool([("a", 0.701), ("b", 0.700), ("c", 0.699)])
         llm = SimpleNamespace(kb_id=7)
         with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=pool):
-            texts = get_relevant_texts_from_kb("question", llm, token_budget=2000)
-        assert texts == ["a", "b", "c"]
+            excerpts = retrieve_kb_excerpts("question", llm, token_budget=2000)
+        assert [e.text for e in excerpts] == ["a", "b", "c"]
 
     def test_budget_caps_the_survivors(self):
         long_a = "mot " * 120  # well above a 100-token budget on its own
         pool = _pool([(long_a, 0.88), ("suite du contexte", 0.86)])
         llm = SimpleNamespace(kb_id=7)
         with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=pool):
-            texts = get_relevant_texts_from_kb("question", llm, token_budget=100)
-        assert texts == [long_a]
+            excerpts = retrieve_kb_excerpts("question", llm, token_budget=100)
+        assert [e.text for e in excerpts] == [long_a]
 
     def test_empty_pool_returns_empty(self):
         llm = SimpleNamespace(kb_id=7)
         with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=[]):
-            assert get_relevant_texts_from_kb("question", llm, token_budget=500) == []
+            assert retrieve_kb_excerpts("question", llm, token_budget=500) == []
 
     def test_llm_without_kb_raises(self):
         llm = SimpleNamespace(kb_id=None)
         with pytest.raises(KnowledgeBaseNotFoundException):
-            get_relevant_texts_from_kb("question", llm, token_budget=500)
+            retrieve_kb_excerpts("question", llm, token_budget=500)

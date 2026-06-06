@@ -23,6 +23,7 @@ from src.agents.runner import ERROR_SENTINEL
 from src.domains.arena.repository import ArenaRepository
 from src.domains.arena.services import ArenaService
 from src.domains.arena.schemas import ArenaQueryPayload
+from src.utils.kb_utils import KbExcerpt
 
 
 class _FakeEngine(BaseEngine):
@@ -90,8 +91,10 @@ class TestArenaService:
         service = ArenaService(test_db_session)
         payload = ArenaQueryPayload(question="What is in the KB?", temperature=0.5)
 
-        with patch("src.domains.arena.services.get_relevant_texts_from_kb") as mock_kb:
-            mock_kb.return_value = ["Relevant KB context"]
+        with patch("src.domains.arena.services.retrieve_kb_excerpts") as mock_kb:
+            mock_kb.return_value = [
+                KbExcerpt(source_file="notes.md", text="Relevant KB context")
+            ]
             result = [t async for t in service.query_llm_stream(llm.id, payload)]
 
         assert "".join(result) == "Answer from KB."

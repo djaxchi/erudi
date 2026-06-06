@@ -283,17 +283,19 @@ class TestKbUtilsAdaptiveSelection:
     def test_factoid_question_keeps_a_narrow_context(self, kb_store, kb_rows):
         from types import SimpleNamespace
 
-        from src.utils.kb_utils import get_relevant_texts_from_kb
+        from src.utils.kb_utils import retrieve_kb_excerpts
 
         kb_id, doc_id = kb_rows["a"]
         _add(kb_id, doc_id, NIMBUS_LIKE_CORPUS)
 
         llm = SimpleNamespace(kb_id=kb_id)
-        texts = get_relevant_texts_from_kb(
+        excerpts = retrieve_kb_excerpts(
             "Quel est le préavis de résiliation du contrat ?", llm, token_budget=2000
         )
+        texts = [e.text for e in excerpts]
         assert texts
         assert "préavis" in texts[0]
+        assert excerpts[0].source_file == "doc.pdf"  # attribution carried through
         # The cut must at least shed the noise chunks (coffee machine, cat).
         assert len(texts) < len(NIMBUS_LIKE_CORPUS)
         assert not any("café" in t or "Pixel" in t for t in texts)
@@ -301,17 +303,20 @@ class TestKbUtilsAdaptiveSelection:
     def test_panorama_question_keeps_the_cluster(self, kb_store, kb_rows):
         from types import SimpleNamespace
 
-        from src.utils.kb_utils import get_relevant_texts_from_kb
+        from src.utils.kb_utils import retrieve_kb_excerpts
 
         kb_id, doc_id = kb_rows["a"]
         _add(kb_id, doc_id, NIMBUS_LIKE_CORPUS)
 
         llm = SimpleNamespace(kb_id=kb_id)
-        texts = get_relevant_texts_from_kb(
-            "Quels sont les plans tarifaires disponibles et leurs prix ?",
-            llm,
-            token_budget=2000,
-        )
+        texts = [
+            e.text
+            for e in retrieve_kb_excerpts(
+                "Quels sont les plans tarifaires disponibles et leurs prix ?",
+                llm,
+                token_budget=2000,
+            )
+        ]
         # The three pricing chunks ride together: with kb_top_k=1 this
         # question answered 1 plan out of 3 (baseline T1 failure).
         plans_found = sum(
@@ -324,18 +329,18 @@ class TestKbUtilsAdaptiveSelection:
         from types import SimpleNamespace
 
         from src.ingestion.chunking import count_tokens
-        from src.utils.kb_utils import get_relevant_texts_from_kb
+        from src.utils.kb_utils import retrieve_kb_excerpts
 
         kb_id, doc_id = kb_rows["a"]
         _add(kb_id, doc_id, NIMBUS_LIKE_CORPUS)
 
         llm = SimpleNamespace(kb_id=kb_id)
         question = "Quels sont les plans tarifaires disponibles et leurs prix ?"
-        unbounded = get_relevant_texts_from_kb(question, llm, token_budget=2000)
+        unbounded = retrieve_kb_excerpts(question, llm, token_budget=2000)
         assert len(unbounded) >= 2  # the cut alone keeps several candidates
 
-        tight = get_relevant_texts_from_kb(
-            question, llm, token_budget=count_tokens(unbounded[0])
+        tight = retrieve_kb_excerpts(
+            question, llm, token_budget=count_tokens(unbounded[0].text)
         )
         assert tight == unbounded[:1]  # budget bites, best chunk survives
 

@@ -18,14 +18,14 @@ from typing import AsyncGenerator, Optional
 from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
-from src.agents.prompts import build_agent_system_prompt
+from src.agents.prompts import build_agent_system_prompt, build_kb_system_prompt
 from src.agents.runner import AgentRunner, GenParams, ERROR_MESSAGE
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.conversations.schemas import ConversationQuery
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
 from src.core.exceptions import ModelNotFoundException
-from src.utils.kb_utils import get_relevant_texts_from_kb
+from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
 from src.utils.prompt_utils import get_prompting_strategy
 
 
@@ -160,32 +160,28 @@ class ConversationService:
         return message.id
 
     # ===================== Streaming generation =====================
-    def _build_kb_context(self, llm: Llm, query: str) -> str:
-        """Adaptive KB context for this question, or "" (no KB / disabled / error).
+    def _retrieve_kb_excerpts(self, llm: Llm, query: str) -> list[KbExcerpt]:
+        """Adaptive KB excerpts for this question, or [] (no KB / disabled / error).
 
-        Same contract as the arena's KB context, with one difference: a
+        Same contract as the arena's retrieval, with one difference: a
         retrieval failure degrades to no-context instead of erroring — a
         broken vector store must not sink an ongoing conversation.
         """
         if not llm.is_attached_to_kb:
-            return ""
+            return []
 
         param_size = llm.param_size if llm.param_size is not None else 2
         strategy = get_prompting_strategy(param_size)
         if not strategy.get("use_kb_context", False):
-            return ""
+            return []
 
         try:
-            relevant_texts = get_relevant_texts_from_kb(
+            return retrieve_kb_excerpts(
                 query, llm, token_budget=strategy["kb_token_budget"]
             )
         except Exception:
             logger.exception("KB retrieval failed; continuing without context")
-            return ""
-
-        if relevant_texts:
-            return "Relevant context from Knowledge Base:\n" + "\n".join(relevant_texts)
-        return ""
+            return []
 
     async def query_and_respond_stream(
         self,
@@ -216,16 +212,25 @@ class ConversationService:
             starred = await run_in_threadpool(
                 self.message_repo.get_starred_messages, conversation_id
             )
-            system_prompt = build_agent_system_prompt(
-                llm, starred_messages=starred, custom_prompt=payload.custom_prompt
-            )
-            # KB-attached assistant: retrieve per-question context (hybrid
+            # KB-attached assistant: retrieve per-question excerpts (hybrid
             # search is sync — embed + SQL — so it runs in the threadpool).
-            kb_context = await run_in_threadpool(
-                self._build_kb_context, llm, payload.question
+            # With excerpts, the dedicated KB prompt REPLACES the tier prompt
+            # (strict grounding; the tier prompts fight RAG — issue #81).
+            excerpts = await run_in_threadpool(
+                self._retrieve_kb_excerpts, llm, payload.question
             )
-            if kb_context:
-                system_prompt = f"{system_prompt}\n\n{kb_context}"
+            if excerpts:
+                system_prompt = build_kb_system_prompt(
+                    llm,
+                    excerpts=excerpts,
+                    question=payload.question,
+                    custom_prompt=payload.custom_prompt,
+                    starred_messages=starred,
+                )
+            else:
+                system_prompt = build_agent_system_prompt(
+                    llm, starred_messages=starred, custom_prompt=payload.custom_prompt
+                )
             params = GenParams(
                 temperature=payload.temperature if payload.temperature is not None else conversation.temperature,
                 top_p=payload.top_p if payload.top_p is not None else conversation.top_p,

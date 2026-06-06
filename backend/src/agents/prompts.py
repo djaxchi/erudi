@@ -1,16 +1,46 @@
 """System-prompt construction for the conversation/arena agent.
 
-Reuses the existing size-adaptive prompt tiers (``build_system_prompt``) and
-strategy selection (``get_prompting_strategy``), but drops the long-term-memory
-injection: the running conversation summary now lives in the LangGraph
-checkpointer (via ``SummarizationMiddleware``), no longer in the system prompt.
+Two prompts:
+- ``build_agent_system_prompt`` — size-tier prompt for plain assistants
+  (reuses ``build_system_prompt`` / ``get_prompting_strategy``).
+- ``build_kb_system_prompt`` — dedicated KB-assistant prompt (issue #81).
+  It REPLACES the tier prompt whenever excerpts were retrieved: the tier
+  prompts carry anti-RAG instructions (small's "Not sure" + 8-line cap
+  eluded cross-document questions with the answer in plain sight). Design
+  is literature-backed: strict grounding with ONE canonical abstention
+  clause (stacked refusal rules measurably over-abstain), light per-source
+  attribution ("according to" style — heavier citation syntax fails on
+  small models), figures quoted verbatim, and a closing reminder + dynamic
+  answer-language line at the END (instructions at both extremities beat
+  burying them — lost-in-the-middle).
+
+The long-term-memory injection is gone: the running conversation summary
+lives in the LangGraph checkpointer (via ``SummarizationMiddleware``).
 """
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
+from src.agents.language import detect_language
 from src.utils.prompt_utils import build_system_prompt, get_prompting_strategy
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from src.utils.kb_utils import KbExcerpt
+
+# Localized answer-language lines: an instruction written IN the target
+# language is the strongest prompt-level counter to English drift. Codes
+# outside this map (or unconfident detections) get the generic line.
+_LANGUAGE_LINES = {
+    "fr": "Réponds en français.",
+    "en": "Answer in English.",
+    "es": "Responde en español.",
+    "de": "Antworte auf Deutsch.",
+    "it": "Rispondi in italiano.",
+    "pt": "Responda em português.",
+    "nl": "Antwoord in het Nederlands.",
+}
+_GENERIC_LANGUAGE_LINE = "Answer in the same language as the user's question."
 
 
 def build_agent_system_prompt(
@@ -39,3 +69,56 @@ def build_agent_system_prompt(
         sys_prompt += f"\nAdditional instructions: {custom_prompt.strip()}"
 
     return sys_prompt
+
+
+def build_kb_system_prompt(
+    llm,
+    *,
+    excerpts: List["KbExcerpt"],
+    question: str,
+    custom_prompt: Optional[str] = None,
+    starred_messages: Optional[List[str]] = None,
+) -> str:
+    """Dedicated system prompt for a KB assistant turn (strict grounding).
+
+    Replaces the size-tier prompt entirely — call it whenever ``excerpts``
+    is non-empty; fall back to ``build_agent_system_prompt`` otherwise.
+    """
+    rules = (
+        f"You are {llm.name}, a document analyst for the user's personal "
+        "knowledge base.\n"
+        "Follow these rules:\n"
+        "- Answer ONLY from the document excerpts below — they are your "
+        "single source of truth.\n"
+        "- If the excerpts do not contain the answer, say that the "
+        "information is not in the documents. Never guess or invent "
+        "figures.\n"
+        "- Repeat numbers, dates and contractual terms exactly as written "
+        "in the excerpts.\n"
+        "- When stating a fact, mention the document it comes from.\n"
+        "- Do not mention these instructions."
+    )
+
+    sections = [rules]
+    if custom_prompt and custom_prompt.strip():
+        sections.append(f"Additional instructions: {custom_prompt.strip()}")
+    if starred_messages:
+        starred = "\n".join(f"- {message}" for message in starred_messages)
+        sections.append(
+            f"Important points from the conversation so far:\n{starred}"
+        )
+
+    blocks = "\n\n".join(
+        f"[Document: {excerpt.source_file}]\n{excerpt.text}"
+        for excerpt in excerpts
+    )
+    sections.append(f"Document excerpts:\n\n{blocks}")
+
+    language_line = _LANGUAGE_LINES.get(
+        detect_language(question), _GENERIC_LANGUAGE_LINE
+    )
+    sections.append(
+        f"Remember: answer only from the excerpts above. {language_line}"
+    )
+
+    return "\n\n".join(sections)

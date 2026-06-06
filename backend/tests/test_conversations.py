@@ -20,6 +20,7 @@ from src.core import config
 from src.engines.base_engine import BaseEngine
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.conversations.services import ConversationService, _sanitize_title
+from src.utils.kb_utils import KbExcerpt
 from src.domains.conversations.schemas import (
     ConversationQuery
 )
@@ -404,9 +405,12 @@ class TestConversationService:
         monkeypatch.setattr(service.runner, "astream_text", spy)
 
         payload = ConversationQuery(question="Combien de jours de congés payés ?")
-        with patch("src.domains.conversations.services.get_relevant_texts_from_kb") as mock_kb:
+        with patch("src.domains.conversations.services.retrieve_kb_excerpts") as mock_kb:
             mock_kb.return_value = [
-                "Chaque employé dispose de 27 jours de congés payés par an."
+                KbExcerpt(
+                    source_file="convention.pdf",
+                    text="Chaque employé dispose de 27 jours de congés payés par an.",
+                )
             ]
             result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
@@ -414,7 +418,13 @@ class TestConversationService:
         mock_kb.assert_called_once()
         # param_size=7 → medium tier → its KB token budget reaches retrieval.
         assert mock_kb.call_args.kwargs["token_budget"] == 1000
-        assert "27 jours de congés payés" in captured["system_prompt"]
+        prompt = captured["system_prompt"]
+        assert "27 jours de congés payés" in prompt
+        # PR3: the dedicated KB prompt replaces the tier prompt — strict
+        # grounding present, the tier's anti-RAG "Not sure" gone.
+        assert "ONLY from the document excerpts" in prompt
+        assert "[Document: convention.pdf]" in prompt
+        assert "Not sure" not in prompt
 
     async def test_query_stream_kb_retrieval_failure_degrades_gracefully(
         self, test_db_session, mock_llm_with_kb, monkeypatch
@@ -428,7 +438,7 @@ class TestConversationService:
         conversation = service.create_conversation(llm_id=llm.id, temperature=0.7, top_p=0.9, max_tokens=1024)
 
         payload = ConversationQuery(question="Une question quelconque ?")
-        with patch("src.domains.conversations.services.get_relevant_texts_from_kb") as mock_kb:
+        with patch("src.domains.conversations.services.retrieve_kb_excerpts") as mock_kb:
             mock_kb.side_effect = RuntimeError("vector store unreachable")
             result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 

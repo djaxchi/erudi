@@ -14,13 +14,25 @@ starved panorama and cross-document questions by construction:
 3. Token budget: keep whole chunks best-first (RRF order — primacy beats
    burying, per the lost-in-the-middle literature) within the model-size
    budget from ``get_prompting_strategy``.
+
+Excerpts carry their ``source_file`` so the KB prompt can attribute each
+one ("according to <document>" grounding) — see ``build_kb_system_prompt``.
 """
+from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
 from src.core.exceptions import KnowledgeBaseNotFoundException
 from src.entities.Llm import Llm
 from src.ingestion.chunking import count_tokens
 from src.ingestion.vector_store import search_kb_chunks_scored
+
+
+@dataclass(frozen=True)
+class KbExcerpt:
+    """One selected KB chunk, ready for prompt injection."""
+
+    source_file: str
+    text: str
 
 # Below this, a similarity drop-off is noise, not a cut signal: e5 cosines
 # live in a compressed range, so a flat pool falls through to budget-only.
@@ -61,11 +73,11 @@ def _truncate_to_token_budget(texts: List[str], token_budget: int) -> List[str]:
     return kept
 
 
-def get_relevant_texts_from_kb(
+def retrieve_kb_excerpts(
     query: str,
     llm: Llm,
     token_budget: int,
-) -> List[str]:
+) -> List[KbExcerpt]:
     """Select the KB context for a query: pool → adaptive cut → token budget.
 
     Args:
@@ -75,8 +87,8 @@ def get_relevant_texts_from_kb(
             strategy, ``get_prompting_strategy``).
 
     Returns:
-        Chunk texts in RRF order (best match first); empty when the KB
-        holds no indexed chunks yet.
+        Source-attributed excerpts in RRF order (best match first); empty
+        when the KB holds no indexed chunks yet.
 
     Raises:
         KnowledgeBaseNotFoundException: If the LLM has no KB attached.
@@ -92,6 +104,13 @@ def get_relevant_texts_from_kb(
     if threshold is not None:
         pool = [(doc, sim) for doc, sim in pool if sim >= threshold]
 
-    return _truncate_to_token_budget(
-        [doc.page_content for doc, _ in pool], token_budget
-    )
+    excerpts = [
+        KbExcerpt(
+            source_file=doc.metadata.get("source_file", ""),
+            text=doc.page_content,
+        )
+        for doc, _ in pool
+    ]
+    # The budget keeps a prefix (best-first order), so indices line up.
+    kept = _truncate_to_token_budget([e.text for e in excerpts], token_budget)
+    return excerpts[: len(kept)]
