@@ -177,16 +177,41 @@ class TestSearch:
         third = search_kb_chunks("Qui dort sur le canapé ?", kb_id=kb_id, k=1)
         assert "chat" in third[0].page_content
 
-    def test_embedded_text_carries_document_name_prefix(
+    def test_stored_content_is_clean_for_generation(
         self, kb_store, kb_rows, pg_test_cluster
     ):
+        """The [document_name:…] prefix is EMBEDDING-time text only: stored
+        content must be the clean chunk (it goes verbatim into the LLM's
+        prompt — tiny models loop on the bracketed prefix), and the sparse
+        tsv must still be populated by the embeddings-provided insert path."""
         kb_id, doc_id = kb_rows["a"]
         _add(kb_id, doc_id, ["Contenu du chunk."], "rapport.pdf")
         with psycopg.connect(pg_test_cluster.psycopg_url) as conn:
-            content = conn.execute(
-                "SELECT content FROM rag.kb_chunks WHERE kb_id = %s", (kb_id,)
+            content, tsv_filled = conn.execute(
+                "SELECT content, content_tsv IS NOT NULL FROM rag.kb_chunks"
+                " WHERE kb_id = %s",
+                (kb_id,),
+            ).fetchone()
+        assert content == "Contenu du chunk."
+        assert "[document_name:" not in content
+        assert tsv_filled
+
+    def test_document_name_contributes_to_the_embedding(
+        self, kb_store, kb_rows, pg_test_cluster
+    ):
+        """Same chunk text under two different file names → different vectors:
+        proof the document name is part of the embedded text (retrieval
+        benefit kept) even though the stored content is clean."""
+        kb_id, doc_id = kb_rows["a"]
+        _add(kb_id, doc_id, ["Texte identique."], "alpha.pdf")
+        _add(kb_id, doc_id, ["Texte identique."], "beta.pdf")
+        with psycopg.connect(pg_test_cluster.psycopg_url) as conn:
+            distinct = conn.execute(
+                "SELECT COUNT(DISTINCT embedding::text) FROM rag.kb_chunks"
+                " WHERE kb_id = %s",
+                (kb_id,),
             ).fetchone()[0]
-        assert content.startswith("[document_name:rapport.pdf]\n")
+        assert distinct == 2
 
 
 class TestCascade:

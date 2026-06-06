@@ -187,13 +187,21 @@ def add_kb_chunks(
     chunks: list["Chunk"],
 ) -> list[str]:
     """Embed and store one document's chunks (sync — delegates to the
-    PGEngine's internal loop; the P0bis-validated ingestion bridge)."""
+    PGEngine's internal loop; the P0bis-validated ingestion bridge).
+
+    The ``[document_name:…]`` prefix is EMBEDDING-time text only (it boosts
+    retrieval, POC pattern): vectors are computed over the prefixed text,
+    but the STORED content is the clean chunk — it goes verbatim into the
+    LLM prompt at generation time, and small models loop on the bracketed
+    prefix (live-E2E finding)."""
     if not chunks:
         return []
-    texts = [
+    embedding_texts = [
         build_embedding_text(file_name=source_file, chunk_text=chunk.text)
         for chunk in chunks
     ]
+    vectors = E5Embeddings().embed_documents(embedding_texts)
+    texts = [chunk.text for chunk in chunks]
     metadatas = [
         {
             "kb_id": kb_id,
@@ -204,7 +212,9 @@ def add_kb_chunks(
         }
         for chunk in chunks
     ]
-    return get_kb_store().add_texts(texts, metadatas=metadatas)
+    return get_kb_store().add_embeddings(
+        texts=texts, embeddings=vectors, metadatas=metadatas
+    )
 
 
 def search_kb_chunks(query: str, *, kb_id: int, k: int) -> list["Document"]:
