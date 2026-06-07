@@ -42,6 +42,34 @@ _LANGUAGE_LINES = {
 }
 _GENERIC_LANGUAGE_LINE = "Answer in the same language as the user's question."
 
+# The per-turn block's scaffolding is LOCALIZED too: runs 3-5 of the eval
+# showed Gemma answers in the language of the scaffolding around the
+# question, not of the question itself (English is a measured "semantic
+# attractor") — French excerpts + French question still yielded English
+# answers while every structural string was English. Languages without a
+# scaffold fall back to English scaffolding + their localized line.
+_SCAFFOLDS = {
+    "en": {
+        "header": "Document excerpts:",
+        "reminder": (
+            "Answer ONLY from the excerpts above — if they do not contain "
+            "the answer, say that the information is not in the documents. "
+            "Repeat numbers, dates and terms exactly as written, and "
+            "mention the source document."
+        ),
+    },
+    "fr": {
+        "header": "Extraits de documents :",
+        "reminder": (
+            "Réponds UNIQUEMENT à partir des extraits ci-dessus — s'ils ne "
+            "contiennent pas la réponse, dis que l'information ne figure "
+            "pas dans les documents. Reprends les chiffres, les dates et "
+            "les termes exactement tels qu'ils sont écrits, et mentionne "
+            "le document source."
+        ),
+    },
+}
+
 
 def build_agent_system_prompt(
     llm,
@@ -102,8 +130,9 @@ def build_kb_system_prompt(
     return "\n\n".join(sections)
 
 
-def build_kb_context_block(*, excerpts: List["KbExcerpt"]) -> str:
-    """Per-turn KB block: attributed excerpts + grounding reminder.
+def build_kb_context_block(*, excerpts: List["KbExcerpt"], question: str) -> str:
+    """Per-turn KB block: attributed excerpts + grounding reminder, with
+    the scaffolding LOCALIZED to the question's language.
 
     The runner's middleware merges it into the model request's LAST user
     message (request-time only — never persisted): on small local models,
@@ -114,17 +143,12 @@ def build_kb_context_block(*, excerpts: List["KbExcerpt"]) -> str:
     treats pre-question lines as document-block metadata and ignores
     them, while user-voiced post-question requests are followed.
     """
+    scaffold = _SCAFFOLDS.get(detect_language(question), _SCAFFOLDS["en"])
     blocks = "\n\n".join(
         f"[Document: {excerpt.source_file}]\n{excerpt.text}"
         for excerpt in excerpts
     )
-    reminder = (
-        "Answer ONLY from the excerpts above — if they do not contain the "
-        "answer, say that the information is not in the documents. Repeat "
-        "numbers, dates and terms exactly as written, and mention the "
-        "source document."
-    )
-    return f"Document excerpts:\n\n{blocks}\n\n{reminder}"
+    return f"{scaffold['header']}\n\n{blocks}\n\n{scaffold['reminder']}"
 
 
 def answer_language_line(question: str) -> str:

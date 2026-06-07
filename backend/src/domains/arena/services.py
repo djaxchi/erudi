@@ -121,7 +121,9 @@ class ArenaService:
             system_prompt = build_kb_system_prompt(
                 llm, custom_prompt=payload.custom_prompt
             )
-            kb_context_block = build_kb_context_block(excerpts=excerpts)
+            kb_context_block = build_kb_context_block(
+                excerpts=excerpts, question=payload.question
+            )
             kb_language_line = answer_language_line(payload.question)
         else:
             system_prompt = build_agent_system_prompt(

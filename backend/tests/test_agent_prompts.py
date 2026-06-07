@@ -90,8 +90,8 @@ class TestBuildKbSystemPrompt:
 
 
 class TestBuildKbContextBlock:
-    def _block(self):
-        return build_kb_context_block(excerpts=EXCERPTS)
+    def _block(self, question="What is the notice period?"):
+        return build_kb_context_block(excerpts=EXCERPTS, question=question)
 
     def test_excerpts_are_attributed_and_ordered(self):
         b = self._block()
@@ -109,6 +109,21 @@ class TestBuildKbContextBlock:
         assert "source document" in b  # according-to attribution
         # The reminder sits AFTER the excerpts (close to generation).
         assert b.find("ONLY from the excerpts above") > b.find("[Document: faq-support.md]")
+
+    def test_scaffolding_is_localized_to_the_question_language(self):
+        # Runs 3-5: the model answers in the language of the SCAFFOLDING
+        # around the question (English attractor), so the scaffolding
+        # itself must speak the question's language.
+        fr = self._block(question="Quel est le préavis de résiliation du contrat ?")
+        assert "Extraits de documents :" in fr
+        assert "UNIQUEMENT à partir des extraits" in fr
+        assert "ne figure pas dans les documents" in fr
+        assert "Answer ONLY" not in fr
+
+    def test_unmapped_language_falls_back_to_english_scaffolding(self):
+        b = self._block(question="ok")  # unconfident detection
+        assert "Document excerpts:" in b
+        assert "ONLY from the excerpts above" in b
 
 
 class TestAnswerLanguageLine:

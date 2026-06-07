@@ -82,11 +82,10 @@ class _KbContextMiddleware(AgentMiddleware):
     def _merge(self, request):
         messages = list(request.messages)
         last = messages[-1]
+        # No "Question:" label: any English structural string near the
+        # question feeds the English attractor (run-5 eval finding).
         merged = HumanMessage(
-            content=(
-                f"{self.context_block}\n\n"
-                f"Question: {last.text}\n\n{self.language_line}"
-            )
+            content=f"{self.context_block}\n\n{last.text}\n\n{self.language_line}"
         )
         return request.override(messages=[*messages[:-1], merged])
 
