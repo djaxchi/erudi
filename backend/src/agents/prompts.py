@@ -102,32 +102,35 @@ def build_kb_system_prompt(
     return "\n\n".join(sections)
 
 
-def build_kb_context_block(
-    *,
-    excerpts: List["KbExcerpt"],
-    question: str,
-) -> str:
-    """Per-turn KB block: excerpts + grounding reminder + answer language.
+def build_kb_context_block(*, excerpts: List["KbExcerpt"]) -> str:
+    """Per-turn KB block: attributed excerpts + grounding reminder.
 
     The runner's middleware merges it into the model request's LAST user
     message (request-time only — never persisted): on small local models,
     instructions dissolve with turn depth when they live in the system
     prompt, while the tail of the last user message stays in the effective
-    window. Order follows the measured literature: excerpts first, rules
-    after them, the dynamic language line last, and the caller appends the
-    question as the final element.
+    window. The answer-language line is NOT here: it goes AFTER the
+    question (``answer_language_line``) — run-4 eval showed the model
+    treats pre-question lines as document-block metadata and ignores
+    them, while user-voiced post-question requests are followed.
     """
     blocks = "\n\n".join(
         f"[Document: {excerpt.source_file}]\n{excerpt.text}"
         for excerpt in excerpts
     )
-    language_line = _LANGUAGE_LINES.get(
-        detect_language(question), _GENERIC_LANGUAGE_LINE
-    )
     reminder = (
         "Answer ONLY from the excerpts above — if they do not contain the "
         "answer, say that the information is not in the documents. Repeat "
         "numbers, dates and terms exactly as written, and mention the "
-        f"source document. {language_line}"
+        "source document."
     )
     return f"Document excerpts:\n\n{blocks}\n\n{reminder}"
+
+
+def answer_language_line(question: str) -> str:
+    """The dynamic answer-language request, localized to the question's
+    language (generic fallback when detection is unconfident). Appended
+    by the runner's middleware AFTER the question — the one spot this
+    model demonstrably honors (eval T5: in-question language requests
+    are followed and even persist to the next turn)."""
+    return _LANGUAGE_LINES.get(detect_language(question), _GENERIC_LANGUAGE_LINE)

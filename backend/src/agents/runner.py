@@ -67,17 +67,26 @@ class _KbContextMiddleware(AgentMiddleware):
     they live in the system prompt (chat templates prepend it before the
     whole history) — the tail of the last user message is the one spot
     that always stays inside the effective window.
+
+    Layout: excerpts+rules block, then the question, then the answer-
+    language request LAST in the user's voice — pre-question language
+    lines are ignored as block metadata (run-4 eval), in-question
+    requests are honored (T5).
     """
 
-    def __init__(self, context_block: str):
+    def __init__(self, context_block: str, language_line: str):
         super().__init__()
         self.context_block = context_block
+        self.language_line = language_line
 
     def _merge(self, request):
         messages = list(request.messages)
         last = messages[-1]
         merged = HumanMessage(
-            content=f"{self.context_block}\n\nQuestion: {last.text}"
+            content=(
+                f"{self.context_block}\n\n"
+                f"Question: {last.text}\n\n{self.language_line}"
+            )
         )
         return request.override(messages=[*messages[:-1], merged])
 
@@ -108,6 +117,7 @@ class AgentRunner:
         thread_id: Optional[str] = None,
         summarize: bool = False,
         kb_context_block: Optional[str] = None,
+        kb_language_line: str = "",
     ) -> AsyncIterator[str]:
         engine = config.LLM_Engine
         stateful = thread_id is not None and self.checkpointer is not None
@@ -126,7 +136,10 @@ class AgentRunner:
                 if kb_context_block:
                     # After summarization: the merge must see the final
                     # message list that actually reaches the model.
-                    middleware = [*middleware, _KbContextMiddleware(kb_context_block)]
+                    middleware = [
+                        *middleware,
+                        _KbContextMiddleware(kb_context_block, kb_language_line),
+                    ]
                 agent = create_agent(
                     model,
                     tools=[],

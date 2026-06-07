@@ -19,6 +19,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
 from src.agents.prompts import (
+    answer_language_line,
     build_agent_system_prompt,
     build_kb_context_block,
     build_kb_system_prompt,
@@ -229,14 +230,14 @@ class ConversationService:
                     custom_prompt=payload.custom_prompt,
                     starred_messages=starred,
                 )
-                kb_context_block = build_kb_context_block(
-                    excerpts=excerpts, question=payload.question
-                )
+                kb_context_block = build_kb_context_block(excerpts=excerpts)
+                kb_language_line = answer_language_line(payload.question)
             else:
                 system_prompt = build_agent_system_prompt(
                     llm, starred_messages=starred, custom_prompt=payload.custom_prompt
                 )
                 kb_context_block = None
+                kb_language_line = ""
             params = GenParams(
                 temperature=payload.temperature if payload.temperature is not None else conversation.temperature,
                 top_p=payload.top_p if payload.top_p is not None else conversation.top_p,
@@ -251,6 +252,7 @@ class ConversationService:
                 thread_id=str(conversation_id),
                 summarize=True,
                 kb_context_block=kb_context_block,
+                kb_language_line=kb_language_line,
             ):
                 assistant_response += token
                 yield token

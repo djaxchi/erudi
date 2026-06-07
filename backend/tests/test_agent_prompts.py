@@ -15,6 +15,7 @@
 import pytest
 
 from src.agents.prompts import (
+    answer_language_line,
     build_agent_system_prompt,
     build_kb_context_block,
     build_kb_system_prompt,
@@ -89,8 +90,8 @@ class TestBuildKbSystemPrompt:
 
 
 class TestBuildKbContextBlock:
-    def _block(self, question="Quel est le préavis ?"):
-        return build_kb_context_block(excerpts=EXCERPTS, question=question)
+    def _block(self):
+        return build_kb_context_block(excerpts=EXCERPTS)
 
     def test_excerpts_are_attributed_and_ordered(self):
         b = self._block()
@@ -109,12 +110,20 @@ class TestBuildKbContextBlock:
         # The reminder sits AFTER the excerpts (close to generation).
         assert b.find("ONLY from the excerpts above") > b.find("[Document: faq-support.md]")
 
-    def test_language_line_is_dynamic_and_last(self):
-        fr = self._block(question="Quel est le préavis de résiliation du contrat ?")
-        assert fr.strip().endswith("Réponds en français.")
-        en = self._block(question="What is the notice period for termination?")
-        assert en.strip().endswith("Answer in English.")
 
-    def test_ambiguous_question_falls_back_to_generic_language_line(self):
-        b = self._block(question="ok")
-        assert b.strip().endswith("Answer in the same language as the user's question.")
+class TestAnswerLanguageLine:
+    # The line is appended AFTER the question by the runner middleware:
+    # pre-question language lines are read as block metadata and ignored
+    # (run-4 eval), in-question user-voiced requests are honored (T5).
+    def test_localized_to_the_question_language(self):
+        assert answer_language_line(
+            "Quel est le préavis de résiliation du contrat ?"
+        ) == "Réponds en français."
+        assert answer_language_line(
+            "What is the notice period for termination?"
+        ) == "Answer in English."
+
+    def test_ambiguous_question_falls_back_to_generic_line(self):
+        assert answer_language_line("ok") == (
+            "Answer in the same language as the user's question."
+        )

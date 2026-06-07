@@ -347,6 +347,7 @@ async def test_kb_block_is_merged_into_the_model_request(monkeypatch):
     async for _ in runner.astream_text(
         llm=_Llm(), user_message="Quel est le préavis ?", system_prompt="sys",
         params=_PARAMS, thread_id="c-kb", kb_context_block=_BLOCK_1,
+        kb_language_line="Réponds en français.",
     ):
         pass
 
@@ -354,7 +355,10 @@ async def test_kb_block_is_merged_into_the_model_request(monkeypatch):
     merged = last_call[-1]
     assert merged.type == "human"
     assert _BLOCK_1 in merged.text
-    assert merged.text.strip().endswith("Question: Quel est le préavis ?")
+    assert "Question: Quel est le préavis ?" in merged.text
+    # The user-voiced language request is the LAST thing before generation.
+    assert merged.text.strip().endswith("Réponds en français.")
+    assert merged.text.find("Question:") < merged.text.find("Réponds en français.")
 
 
 async def test_kb_block_is_ephemeral_history_stays_clean(monkeypatch):
@@ -385,7 +389,7 @@ async def test_kb_block_is_ephemeral_history_stays_clean(monkeypatch):
     assert _BLOCK_1 not in "".join(m.text for m in second_call)
     # …and only the current turn carries its own fresh block.
     assert _BLOCK_2 in history_humans[-1].text
-    assert history_humans[-1].text.strip().endswith("Question: q2")
+    assert "Question: q2" in history_humans[-1].text
 
 
 async def test_no_kb_block_leaves_messages_untouched(monkeypatch):

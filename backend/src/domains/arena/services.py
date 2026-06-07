@@ -24,6 +24,7 @@ from src.core.logging import logger
 from src.utils.prompt_utils import get_prompting_strategy
 from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
 from src.agents.prompts import (
+    answer_language_line,
     build_agent_system_prompt,
     build_kb_context_block,
     build_kb_system_prompt,
@@ -120,14 +121,14 @@ class ArenaService:
             system_prompt = build_kb_system_prompt(
                 llm, custom_prompt=payload.custom_prompt
             )
-            kb_context_block = build_kb_context_block(
-                excerpts=excerpts, question=payload.question
-            )
+            kb_context_block = build_kb_context_block(excerpts=excerpts)
+            kb_language_line = answer_language_line(payload.question)
         else:
             system_prompt = build_agent_system_prompt(
                 llm, custom_prompt=payload.custom_prompt
             )
             kb_context_block = None
+            kb_language_line = ""
 
         params = GenParams(
             temperature=payload.temperature,
@@ -143,5 +144,6 @@ class ArenaService:
             thread_id=None,
             summarize=False,
             kb_context_block=kb_context_block,
+            kb_language_line=kb_language_line,
         ):
             yield token
