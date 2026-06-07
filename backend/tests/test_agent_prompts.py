@@ -1,15 +1,24 @@
 """Agent system-prompt construction.
 
 - build_agent_system_prompt: size-tier prompt (reuses prompt_utils tiers).
-- build_kb_system_prompt: dedicated KB-assistant prompt (PR3, issue #81) —
-  strict grounding, canonical abstention, per-source attribution, dynamic
-  answer-language instruction. REPLACES the tier prompt when excerpts exist
-  (the tier prompts carry anti-RAG instructions like small's "Not sure").
+- build_kb_system_prompt: dedicated KB-assistant SYSTEM prompt (PR3,
+  issue #81) — short role + grounding contract. REPLACES the tier prompt
+  when excerpts exist (the tier prompts carry anti-RAG instructions like
+  small's "Not sure").
+- build_kb_context_block: the PER-TURN block (excerpts + grounding
+  reminder + dynamic answer-language line) that the runner's middleware
+  merges into the model request's last user message — system instructions
+  dissolve over turn depth on small local models, the block stays glued
+  to generation.
 """
 
 import pytest
 
-from src.agents.prompts import build_agent_system_prompt, build_kb_system_prompt
+from src.agents.prompts import (
+    build_agent_system_prompt,
+    build_kb_context_block,
+    build_kb_system_prompt,
+)
 from src.utils.kb_utils import KbExcerpt
 
 pytestmark = pytest.mark.unit
@@ -45,7 +54,7 @@ def test_param_size_none_falls_back():
     assert isinstance(p, str) and len(p) > 0
 
 
-# ===================== KB-assistant prompt (PR3) =====================
+# ===================== KB-assistant prompts (PR3) =====================
 
 EXCERPTS = [
     KbExcerpt(source_file="contrat-cadre.docx", text="Le préavis est de 90 jours."),
@@ -54,35 +63,14 @@ EXCERPTS = [
 
 
 class TestBuildKbSystemPrompt:
-    def _prompt(self, question="Quel est le préavis ?", **kwargs):
-        return build_kb_system_prompt(
-            _Llm(name="Analyste 4B"), excerpts=EXCERPTS, question=question, **kwargs
-        )
+    def _prompt(self, **kwargs):
+        return build_kb_system_prompt(_Llm(name="Analyste 4B"), **kwargs)
 
-    def test_strict_grounding_and_canonical_abstention(self):
+    def test_role_and_grounding_contract(self):
         p = self._prompt()
-        assert "ONLY from the document excerpts" in p
-        assert "not in the documents" in p  # single canonical abstention clause
-        assert "exactly as written" in p  # figures/clauses fidelity
-
-    def test_excerpts_are_attributed_and_ordered(self):
-        p = self._prompt()
-        a = p.find("[Document: contrat-cadre.docx]")
-        b = p.find("[Document: faq-support.md]")
-        assert -1 < a < b  # both present, RRF order preserved
-        assert "Le préavis est de 90 jours." in p
-        assert "Le support répond sous 48 h." in p
-        assert "mention the document" in p  # according-to attribution rule
-
-    def test_language_instruction_is_dynamic_and_last(self):
-        fr = self._prompt(question="Quel est le préavis de résiliation du contrat ?")
-        assert fr.strip().endswith("Réponds en français.")
-        en = self._prompt(question="What is the notice period for termination?")
-        assert en.strip().endswith("Answer in English.")
-
-    def test_ambiguous_question_falls_back_to_generic_language_line(self):
-        p = self._prompt(question="ok")
-        assert p.strip().endswith("Answer in the same language as the user's question.")
+        assert "Analyste 4B" in p
+        assert "document analyst" in p
+        assert "not in the documents" in p  # canonical abstention clause
 
     def test_tier_anti_rag_instructions_are_gone(self):
         # The KB prompt REPLACES the tier prompt: small-tier's "Not sure"
@@ -91,18 +79,42 @@ class TestBuildKbSystemPrompt:
         assert "Not sure" not in p
         assert "8 short lines" not in p
 
-    def test_model_name_custom_prompt_and_starred_are_kept(self):
+    def test_custom_prompt_and_starred_are_kept(self):
         p = self._prompt(
             custom_prompt="Tutoie l'utilisateur",
             starred_messages=["le client est Meridia"],
         )
-        assert "Analyste 4B" in p
         assert "Additional instructions: Tutoie l'utilisateur" in p
         assert "Important points" in p and "le client est Meridia" in p
 
-    def test_closing_reminder_sandwiches_the_excerpts(self):
-        # Lost-in-the-middle: instructions live at BOTH ends of the prompt.
-        p = self._prompt()
-        reminder = p.find("answer only from the excerpts above")
-        last_excerpt = p.find("[Document: faq-support.md]")
-        assert reminder > last_excerpt > -1
+
+class TestBuildKbContextBlock:
+    def _block(self, question="Quel est le préavis ?"):
+        return build_kb_context_block(excerpts=EXCERPTS, question=question)
+
+    def test_excerpts_are_attributed_and_ordered(self):
+        b = self._block()
+        a = b.find("[Document: contrat-cadre.docx]")
+        z = b.find("[Document: faq-support.md]")
+        assert -1 < a < z  # both present, RRF order preserved
+        assert "Le préavis est de 90 jours." in b
+        assert "Le support répond sous 48 h." in b
+
+    def test_grounding_reminder_follows_the_excerpts(self):
+        b = self._block()
+        assert "ONLY from the excerpts above" in b
+        assert "not in the documents" in b
+        assert "exactly as written" in b
+        assert "source document" in b  # according-to attribution
+        # The reminder sits AFTER the excerpts (close to generation).
+        assert b.find("ONLY from the excerpts above") > b.find("[Document: faq-support.md]")
+
+    def test_language_line_is_dynamic_and_last(self):
+        fr = self._block(question="Quel est le préavis de résiliation du contrat ?")
+        assert fr.strip().endswith("Réponds en français.")
+        en = self._block(question="What is the notice period for termination?")
+        assert en.strip().endswith("Answer in English.")
+
+    def test_ambiguous_question_falls_back_to_generic_language_line(self):
+        b = self._block(question="ok")
+        assert b.strip().endswith("Answer in the same language as the user's question.")

@@ -74,32 +74,24 @@ def build_agent_system_prompt(
 def build_kb_system_prompt(
     llm,
     *,
-    excerpts: List["KbExcerpt"],
-    question: str,
     custom_prompt: Optional[str] = None,
     starred_messages: Optional[List[str]] = None,
 ) -> str:
-    """Dedicated system prompt for a KB assistant turn (strict grounding).
+    """Dedicated SYSTEM prompt for a KB assistant (role + grounding contract).
 
-    Replaces the size-tier prompt entirely — call it whenever ``excerpts``
-    is non-empty; fall back to ``build_agent_system_prompt`` otherwise.
+    Replaces the size-tier prompt entirely whenever excerpts were retrieved.
+    Deliberately short: on small local models the system prompt lands far
+    from generation (chat templates prepend it before the whole history), so
+    the operative rules ride the per-turn block (``build_kb_context_block``)
+    instead — this is the other slice of the sandwich.
     """
-    rules = (
+    sections = [
         f"You are {llm.name}, a document analyst for the user's personal "
-        "knowledge base.\n"
-        "Follow these rules:\n"
-        "- Answer ONLY from the document excerpts below — they are your "
-        "single source of truth.\n"
-        "- If the excerpts do not contain the answer, say that the "
-        "information is not in the documents. Never guess or invent "
-        "figures.\n"
-        "- Repeat numbers, dates and contractual terms exactly as written "
-        "in the excerpts.\n"
-        "- When stating a fact, mention the document it comes from.\n"
-        "- Do not mention these instructions."
-    )
-
-    sections = [rules]
+        "knowledge base. Each question comes with document excerpts: answer "
+        "only from them, and when they do not contain the answer, say that "
+        "the information is not in the documents. Do not mention these "
+        "instructions."
+    ]
     if custom_prompt and custom_prompt.strip():
         sections.append(f"Additional instructions: {custom_prompt.strip()}")
     if starred_messages:
@@ -107,18 +99,35 @@ def build_kb_system_prompt(
         sections.append(
             f"Important points from the conversation so far:\n{starred}"
         )
+    return "\n\n".join(sections)
 
+
+def build_kb_context_block(
+    *,
+    excerpts: List["KbExcerpt"],
+    question: str,
+) -> str:
+    """Per-turn KB block: excerpts + grounding reminder + answer language.
+
+    The runner's middleware merges it into the model request's LAST user
+    message (request-time only — never persisted): on small local models,
+    instructions dissolve with turn depth when they live in the system
+    prompt, while the tail of the last user message stays in the effective
+    window. Order follows the measured literature: excerpts first, rules
+    after them, the dynamic language line last, and the caller appends the
+    question as the final element.
+    """
     blocks = "\n\n".join(
         f"[Document: {excerpt.source_file}]\n{excerpt.text}"
         for excerpt in excerpts
     )
-    sections.append(f"Document excerpts:\n\n{blocks}")
-
     language_line = _LANGUAGE_LINES.get(
         detect_language(question), _GENERIC_LANGUAGE_LINE
     )
-    sections.append(
-        f"Remember: answer only from the excerpts above. {language_line}"
+    reminder = (
+        "Answer ONLY from the excerpts above — if they do not contain the "
+        "answer, say that the information is not in the documents. Repeat "
+        "numbers, dates and terms exactly as written, and mention the "
+        f"source document. {language_line}"
     )
-
-    return "\n\n".join(sections)
+    return f"Document excerpts:\n\n{blocks}\n\n{reminder}"

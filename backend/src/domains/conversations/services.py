@@ -18,7 +18,11 @@ from typing import AsyncGenerator, Optional
 from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
-from src.agents.prompts import build_agent_system_prompt, build_kb_system_prompt
+from src.agents.prompts import (
+    build_agent_system_prompt,
+    build_kb_context_block,
+    build_kb_system_prompt,
+)
 from src.agents.runner import AgentRunner, GenParams, ERROR_MESSAGE
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.conversations.schemas import ConversationQuery
@@ -222,15 +226,17 @@ class ConversationService:
             if excerpts:
                 system_prompt = build_kb_system_prompt(
                     llm,
-                    excerpts=excerpts,
-                    question=payload.question,
                     custom_prompt=payload.custom_prompt,
                     starred_messages=starred,
+                )
+                kb_context_block = build_kb_context_block(
+                    excerpts=excerpts, question=payload.question
                 )
             else:
                 system_prompt = build_agent_system_prompt(
                     llm, starred_messages=starred, custom_prompt=payload.custom_prompt
                 )
+                kb_context_block = None
             params = GenParams(
                 temperature=payload.temperature if payload.temperature is not None else conversation.temperature,
                 top_p=payload.top_p if payload.top_p is not None else conversation.top_p,
@@ -244,6 +250,7 @@ class ConversationService:
                 params=params,
                 thread_id=str(conversation_id),
                 summarize=True,
+                kb_context_block=kb_context_block,
             ):
                 assistant_response += token
                 yield token

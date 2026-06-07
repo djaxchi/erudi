@@ -23,7 +23,11 @@ from fastapi.concurrency import run_in_threadpool
 from src.core.logging import logger
 from src.utils.prompt_utils import get_prompting_strategy
 from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
-from src.agents.prompts import build_agent_system_prompt, build_kb_system_prompt
+from src.agents.prompts import (
+    build_agent_system_prompt,
+    build_kb_context_block,
+    build_kb_system_prompt,
+)
 from src.agents.runner import AgentRunner, GenParams
 from src.domains.arena.repository import ArenaRepository
 from src.domains.arena.schemas import ArenaQueryPayload
@@ -114,15 +118,16 @@ class ArenaService:
         )
         if excerpts:
             system_prompt = build_kb_system_prompt(
-                llm,
-                excerpts=excerpts,
-                question=payload.question,
-                custom_prompt=payload.custom_prompt,
+                llm, custom_prompt=payload.custom_prompt
+            )
+            kb_context_block = build_kb_context_block(
+                excerpts=excerpts, question=payload.question
             )
         else:
             system_prompt = build_agent_system_prompt(
                 llm, custom_prompt=payload.custom_prompt
             )
+            kb_context_block = None
 
         params = GenParams(
             temperature=payload.temperature,
@@ -137,5 +142,6 @@ class ArenaService:
             params=params,
             thread_id=None,
             summarize=False,
+            kb_context_block=kb_context_block,
         ):
             yield token

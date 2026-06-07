@@ -22,7 +22,7 @@ from typing import AsyncIterator, Optional
 
 from fastapi.concurrency import run_in_threadpool
 from langchain.agents import create_agent
-from langchain.agents.middleware import SummarizationMiddleware
+from langchain.agents.middleware import AgentMiddleware, SummarizationMiddleware
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -57,6 +57,37 @@ class GenParams:
     max_tokens: int
 
 
+class _KbContextMiddleware(AgentMiddleware):
+    """Merge the per-turn KB block into the model request's LAST user message.
+
+    Request-time only (``request.override``): the checkpointer keeps the
+    clean question, so past turns never re-expose stale excerpts (no
+    context pollution, no parroting fuel). Rationale: on small local
+    models, grounding/language instructions dissolve with turn depth when
+    they live in the system prompt (chat templates prepend it before the
+    whole history) — the tail of the last user message is the one spot
+    that always stays inside the effective window.
+    """
+
+    def __init__(self, context_block: str):
+        super().__init__()
+        self.context_block = context_block
+
+    def _merge(self, request):
+        messages = list(request.messages)
+        last = messages[-1]
+        merged = HumanMessage(
+            content=f"{self.context_block}\n\nQuestion: {last.text}"
+        )
+        return request.override(messages=[*messages[:-1], merged])
+
+    def wrap_model_call(self, request, handler):
+        return handler(self._merge(request))
+
+    async def awrap_model_call(self, request, handler):
+        return await handler(self._merge(request))
+
+
 class AgentRunner:
     """Streams an agent turn as raw token text. Shared by conversation and arena.
 
@@ -76,6 +107,7 @@ class AgentRunner:
         params: GenParams,
         thread_id: Optional[str] = None,
         summarize: bool = False,
+        kb_context_block: Optional[str] = None,
     ) -> AsyncIterator[str]:
         engine = config.LLM_Engine
         stateful = thread_id is not None and self.checkpointer is not None
@@ -90,12 +122,17 @@ class AgentRunner:
                     top_p=params.top_p,
                     max_tokens=params.max_tokens,
                 )
+                middleware = self._build_middleware(model) if summarize else []
+                if kb_context_block:
+                    # After summarization: the merge must see the final
+                    # message list that actually reaches the model.
+                    middleware = [*middleware, _KbContextMiddleware(kb_context_block)]
                 agent = create_agent(
                     model,
                     tools=[],
                     system_prompt=system_prompt,
                     checkpointer=self.checkpointer if stateful else None,
-                    middleware=self._build_middleware(model) if summarize else [],
+                    middleware=middleware,
                 )
             except Exception:
                 logger.exception("Agent construction failed")

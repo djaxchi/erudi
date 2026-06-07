@@ -311,3 +311,92 @@ async def test_astream_holds_generation_lock_across_whole_stream(monkeypatch):
     assert observed_locked and all(observed_locked)  # lock held for every token
     # Released once the stream completes (model reapable again).
     assert _FakeEngine._generation_lock is None or not _FakeEngine._generation_lock.locked()
+
+
+# ===================== KB context middleware (PR3, issue #81) =====================
+
+from pydantic import Field  # noqa: E402
+
+
+class _RecordingModel(GenericFakeChatModel):
+    """Fake model that records the exact message lists it receives."""
+
+    received: list = Field(default_factory=list)
+
+    def _stream(self, messages, stop=None, run_manager=None, **kwargs):
+        self.received.append(list(messages))
+        yield from super()._stream(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        self.received.append(list(messages))
+        return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+
+_BLOCK_1 = "[Document: a.md]\nLe préavis est de 90 jours.\n\nAnswer ONLY from the excerpts above."
+_BLOCK_2 = "[Document: b.md]\nLe SLA est de 99,7 %.\n\nAnswer ONLY from the excerpts above."
+
+
+async def test_kb_block_is_merged_into_the_model_request(monkeypatch):
+    """The per-turn KB block rides the LAST user message of the model call
+    (close to generation — system instructions dissolve over turn depth on
+    small local models), with the real question kept last."""
+    fake = _RecordingModel(messages=iter([AIMessage(content="90 jours.")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="Quel est le préavis ?", system_prompt="sys",
+        params=_PARAMS, thread_id="c-kb", kb_context_block=_BLOCK_1,
+    ):
+        pass
+
+    last_call = fake.received[-1]
+    merged = last_call[-1]
+    assert merged.type == "human"
+    assert _BLOCK_1 in merged.text
+    assert merged.text.strip().endswith("Question: Quel est le préavis ?")
+
+
+async def test_kb_block_is_ephemeral_history_stays_clean(monkeypatch):
+    """The merge happens in the model REQUEST only: the checkpointer keeps
+    the clean question, so turn 2's history must show turn 1's question
+    WITHOUT its excerpts (no context pollution, no parroting fuel)."""
+    fake = _RecordingModel(
+        messages=iter([AIMessage(content="r1"), AIMessage(content="r2")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="q1", system_prompt="s",
+        params=_PARAMS, thread_id="c-kb2", kb_context_block=_BLOCK_1,
+    ):
+        pass
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="q2", system_prompt="s",
+        params=_PARAMS, thread_id="c-kb2", kb_context_block=_BLOCK_2,
+    ):
+        pass
+
+    second_call = fake.received[-1]
+    history_humans = [m for m in second_call if m.type == "human"]
+    # Turn 1's question is back to its clean form in the history…
+    assert history_humans[0].text == "q1"
+    assert _BLOCK_1 not in "".join(m.text for m in second_call)
+    # …and only the current turn carries its own fresh block.
+    assert _BLOCK_2 in history_humans[-1].text
+    assert history_humans[-1].text.strip().endswith("Question: q2")
+
+
+async def test_no_kb_block_leaves_messages_untouched(monkeypatch):
+    fake = _RecordingModel(messages=iter([AIMessage(content="hello")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="hi", system_prompt="sys",
+        params=_PARAMS, thread_id="c-plain",
+    ):
+        pass
+
+    assert fake.received[-1][-1].text == "hi"

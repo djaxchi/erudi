@@ -418,13 +418,16 @@ class TestConversationService:
         mock_kb.assert_called_once()
         # param_size=7 → medium tier → its KB token budget reaches retrieval.
         assert mock_kb.call_args.kwargs["token_budget"] == 1000
+        # PR3: the dedicated KB system prompt replaces the tier prompt (no
+        # anti-RAG "Not sure"), and the per-turn block carries the excerpts
+        # + grounding reminder to the runner's request-time middleware.
         prompt = captured["system_prompt"]
-        assert "27 jours de congés payés" in prompt
-        # PR3: the dedicated KB prompt replaces the tier prompt — strict
-        # grounding present, the tier's anti-RAG "Not sure" gone.
-        assert "ONLY from the document excerpts" in prompt
-        assert "[Document: convention.pdf]" in prompt
+        assert "document analyst" in prompt
         assert "Not sure" not in prompt
+        block = captured["kb_context_block"]
+        assert "[Document: convention.pdf]" in block
+        assert "27 jours de congés payés" in block
+        assert "ONLY from the excerpts above" in block
 
     async def test_query_stream_kb_retrieval_failure_degrades_gracefully(
         self, test_db_session, mock_llm_with_kb, monkeypatch
