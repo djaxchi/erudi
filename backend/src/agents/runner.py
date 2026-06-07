@@ -28,8 +28,15 @@ from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from src.agents.model_factory import build_chat_model
+from src.agents.tools import calculator
 from src.core import config
 from src.core.logging import logger
+
+# Deterministic tools carried by every chat/arena agent turn. Models with
+# native function calling invoke them through the standard loop; models
+# without (e.g. Gemma 3) never emit tool_calls — the server logs a warning
+# and generation proceeds normally (probed, harmless).
+AGENT_TOOLS = [calculator]
 
 # Auto-summarization thresholds (message-count based — token triggers need a
 # model profile the local server doesn't expose). Once a conversation's agent
@@ -141,7 +148,7 @@ class AgentRunner:
                     ]
                 agent = create_agent(
                     model,
-                    tools=[],
+                    tools=AGENT_TOOLS,
                     system_prompt=system_prompt,
                     checkpointer=self.checkpointer if stateful else None,
                     middleware=middleware,

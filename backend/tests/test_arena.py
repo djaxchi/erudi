@@ -13,7 +13,7 @@ import pytest
 from unittest.mock import patch
 from fastapi import status
 
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from tests._helpers import ToolableFakeChatModel
 from langchain_core.messages import AIMessage
 
 import src.agents.runner as agent_runner
@@ -33,7 +33,7 @@ class _FakeEngine(BaseEngine):
 def _fake_chat_model(*texts):
     """Return a build_chat_model replacement yielding a scripted fake model."""
     msgs = [AIMessage(content=t) for t in texts]
-    return lambda llm, **kw: GenericFakeChatModel(messages=iter(msgs))
+    return lambda llm, **kw: ToolableFakeChatModel(messages=iter(msgs))
 
 
 # ============ Repository Tests ============
@@ -108,7 +108,7 @@ class TestArenaService:
 
         def _capture(llm, **kw):
             captured.update(kw)
-            return GenericFakeChatModel(messages=iter([AIMessage(content="Custom response.")]))
+            return ToolableFakeChatModel(messages=iter([AIMessage(content="Custom response.")]))
 
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
         monkeypatch.setattr(agent_runner, "build_chat_model", _capture)

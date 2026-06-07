@@ -8,7 +8,7 @@ patching ``build_chat_model``. The engine is a bare ``BaseEngine`` subclass so
 
 import pytest
 from langchain.agents import create_agent
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from tests._helpers import ToolableFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -47,7 +47,7 @@ def _patch_model(monkeypatch, fake_model):
 
 
 async def test_astream_yields_raw_token_text(monkeypatch):
-    fake = GenericFakeChatModel(messages=iter([AIMessage(content="Python is awesome")]))
+    fake = ToolableFakeChatModel(messages=iter([AIMessage(content="Python is awesome")]))
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=InMemorySaver())
     out = [
@@ -62,7 +62,7 @@ async def test_astream_yields_raw_token_text(monkeypatch):
 
 
 async def test_multi_turn_restores_context_from_checkpointer(monkeypatch):
-    fake = GenericFakeChatModel(
+    fake = ToolableFakeChatModel(
         messages=iter([AIMessage(content="first"), AIMessage(content="second")])
     )
     _patch_model(monkeypatch, fake)
@@ -80,13 +80,13 @@ async def test_multi_turn_restores_context_from_checkpointer(monkeypatch):
         pass
 
     # Only the new message is sent each turn; the checkpointer restores + appends.
-    probe = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    probe = create_agent(ToolableFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
     snap = await probe.aget_state(cfg)
     assert [m.type for m in snap.values["messages"]] == ["human", "ai", "human", "ai"]
 
 
 async def test_arena_mode_runs_without_checkpointer(monkeypatch):
-    fake = GenericFakeChatModel(messages=iter([AIMessage(content="duel answer")]))
+    fake = ToolableFakeChatModel(messages=iter([AIMessage(content="duel answer")]))
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=None)
     out = [
@@ -120,7 +120,7 @@ async def test_repair_alternation_appends_ai_after_dangling_human(monkeypatch):
     # M2: a failed turn that left a dangling HumanMessage must be repaired so the
     # next turn doesn't send two consecutive user messages (local templates 400).
     cp = InMemorySaver()
-    agent = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    agent = create_agent(ToolableFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
     cfg = {"configurable": {"thread_id": "c1"}}
     await agent.aupdate_state(cfg, {"messages": [HumanMessage("orphan question")]})
     assert (await agent.aget_state(cfg)).values["messages"][-1].type == "human"
@@ -136,7 +136,7 @@ async def test_repair_alternation_appends_ai_after_dangling_human(monkeypatch):
 def test_build_middleware_returns_summarization_middleware():
     from langchain.agents.middleware import SummarizationMiddleware
 
-    built = AgentRunner()._build_middleware(GenericFakeChatModel(messages=iter([])))
+    built = AgentRunner()._build_middleware(ToolableFakeChatModel(messages=iter([])))
     assert len(built) == 1 and isinstance(built[0], SummarizationMiddleware)
 
 
@@ -151,7 +151,7 @@ async def test_summarization_compacts_checkpointer_state(monkeypatch):
         for i in itertools.count():
             yield AIMessage(content=f"answer {i} with several words here")
 
-    fake = GenericFakeChatModel(messages=infinite())
+    fake = ToolableFakeChatModel(messages=infinite())
     monkeypatch.setattr(runner_module, "build_chat_model", lambda llm, **kw: fake)
 
     cp = InMemorySaver()
@@ -163,7 +163,7 @@ async def test_summarization_compacts_checkpointer_state(monkeypatch):
         ):
             pass
 
-    probe = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    probe = create_agent(ToolableFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
     msgs = (await probe.aget_state({"configurable": {"thread_id": "c1"}})).values["messages"]
     # 5 turns = 10 messages un-summarized; compaction keeps the agent context bounded.
     assert len(msgs) < 10
@@ -234,7 +234,7 @@ async def test_thread_id_isolation_no_cross_bleed(monkeypatch):
     monkeypatch.setattr(
         runner_module,
         "build_chat_model",
-        lambda llm, **kw: GenericFakeChatModel(messages=infinite()),
+        lambda llm, **kw: ToolableFakeChatModel(messages=infinite()),
     )
     cp = InMemorySaver()
     runner = AgentRunner(checkpointer=cp)
@@ -248,7 +248,7 @@ async def test_thread_id_isolation_no_cross_bleed(monkeypatch):
     ):
         pass
 
-    probe = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    probe = create_agent(ToolableFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
     msgs_1 = (await probe.aget_state({"configurable": {"thread_id": "conv-1"}})).values["messages"]
     msgs_2 = (await probe.aget_state({"configurable": {"thread_id": "conv-2"}})).values["messages"]
     assert [m.content for m in msgs_1 if m.type == "human"] == ["alpha"]
@@ -262,7 +262,7 @@ async def test_purged_thread_starts_fresh_no_resurrection(monkeypatch):
     monkeypatch.setattr(
         runner_module,
         "build_chat_model",
-        lambda llm, **kw: GenericFakeChatModel(
+        lambda llm, **kw: ToolableFakeChatModel(
             messages=iter([AIMessage(content="a"), AIMessage(content="b")])
         ),
     )
@@ -282,7 +282,7 @@ async def test_purged_thread_starts_fresh_no_resurrection(monkeypatch):
     ):
         pass
 
-    probe = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    probe = create_agent(ToolableFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
     msgs = (await probe.aget_state(cfg)).values["messages"]
     # Only the new turn — the deleted "old-secret" turn must NOT reappear.
     assert [m.type for m in msgs] == ["human", "ai"]
@@ -297,7 +297,7 @@ async def test_astream_holds_generation_lock_across_whole_stream(monkeypatch):
     monkeypatch.setattr(
         runner_module,
         "build_chat_model",
-        lambda llm, **kw: GenericFakeChatModel(messages=iter([AIMessage(content="one two three")])),
+        lambda llm, **kw: ToolableFakeChatModel(messages=iter([AIMessage(content="one two three")])),
     )
     runner = AgentRunner(checkpointer=InMemorySaver())
 
@@ -318,7 +318,7 @@ async def test_astream_holds_generation_lock_across_whole_stream(monkeypatch):
 from pydantic import Field  # noqa: E402
 
 
-class _RecordingModel(GenericFakeChatModel):
+class _RecordingModel(ToolableFakeChatModel):
     """Fake model that records the exact message lists it receives."""
 
     received: list = Field(default_factory=list)
@@ -406,3 +406,41 @@ async def test_no_kb_block_leaves_messages_untouched(monkeypatch):
         pass
 
     assert fake.received[-1][-1].text == "hi"
+
+
+# ===================== Calculator tool in the agent loop (PR3) =====================
+
+
+async def test_tool_call_round_trip_streams_only_final_text(monkeypatch):
+    """Full agentic loop with the REAL calculator tool: the scripted model
+    requests calculator(expression), the tool node executes it, and the
+    model answers from the ToolMessage. The text/plain wire contract must
+    only carry the FINAL answer (tool steps emit no text tokens)."""
+    tool_call_msg = AIMessage(
+        content="",
+        tool_calls=[{
+            "name": "calculator",
+            "args": {"expression": "1240 + 1378 + 1456 + 1689"},
+            "id": "call-1",
+        }],
+    )
+    fake = _RecordingModel(
+        messages=iter([tool_call_msg, AIMessage(content="Le total est 5763 k€.")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    out = [
+        t
+        async for t in runner.astream_text(
+            llm=_Llm(), user_message="Additionne les quatre trimestres.",
+            system_prompt="sys", params=_PARAMS, thread_id="c-calc",
+        )
+    ]
+
+    assert "".join(out) == "Le total est 5763 k€."
+    # The second model call must carry the REAL tool result (5763), proof
+    # the calculator executed inside the loop.
+    second_call = fake.received[-1]
+    tool_messages = [m for m in second_call if m.type == "tool"]
+    assert tool_messages and tool_messages[-1].text == "5763"

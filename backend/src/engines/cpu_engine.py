@@ -135,7 +135,12 @@ class CPU_Engine(BaseLlamaCppEngine):
         gpu_layers: int = 0,
         **_ignored: Any,
     ) -> List[Any]:
-        """CPU CLI for llama-server: forces `-ngl 0`, sized context, native threads."""
+        """CPU CLI for llama-server: forces `-ngl 0`, sized context, native threads.
+
+        ``--jinja`` enables the model's own chat template and with it
+        OpenAI-style function calling (the agent's calculator tool) —
+        without it llama-server never emits ``tool_calls``.
+        """
         return [
             str(llama_server),
             "-m", str(model_gguf),
@@ -145,6 +150,7 @@ class CPU_Engine(BaseLlamaCppEngine):
             "-c", str(ctx_size),
             "--threads", str(threads),
             "-ngl", str(gpu_layers),
+            "--jinja",
         ]
 
     @classmethod

@@ -11,7 +11,7 @@ import pytest
 from unittest.mock import patch
 from fastapi import status
 
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from tests._helpers import ToolableFakeChatModel
 from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -38,7 +38,7 @@ def _fake_chat_model(*texts):
     original token list.
     """
     msgs = [AIMessage(content=t) for t in texts]
-    return lambda llm, **kw: GenericFakeChatModel(messages=iter(msgs))
+    return lambda llm, **kw: ToolableFakeChatModel(messages=iter(msgs))
 
 
 # ============ Repository Tests ============

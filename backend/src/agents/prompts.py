@@ -55,7 +55,9 @@ _SCAFFOLDS = {
             "Answer ONLY from the excerpts above — if they do not contain "
             "the answer, say that the information is not in the documents. "
             "Repeat numbers, dates and terms exactly as written, and "
-            "mention the source document."
+            "mention the source document. Never do mental arithmetic: use "
+            "the calculator tool, or if no tool is available, write out "
+            "the operation and state that the total must be verified."
         ),
     },
     "fr": {
@@ -65,7 +67,9 @@ _SCAFFOLDS = {
             "contiennent pas la réponse, dis que l'information ne figure "
             "pas dans les documents. Reprends les chiffres, les dates et "
             "les termes exactement tels qu'ils sont écrits, et mentionne "
-            "le document source."
+            "le document source. Ne fais jamais de calcul mental : utilise "
+            "l'outil calculator, ou si aucun outil n'est disponible, écris "
+            "l'opération et précise que le total est à vérifier."
         ),
     },
 }
