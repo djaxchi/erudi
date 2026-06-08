@@ -118,7 +118,7 @@ export default function ChatPage() {
   };
 
   const handleAsk = useCallback(
-    async (question) => {
+    async (question, images = []) => {
       const llm = models.find((m) => m.name === selectedModel);
       if (!llm) {
         log.error("Selected model not found");
@@ -146,6 +146,7 @@ export default function ChatPage() {
         navigate(`/erudi/conversations/${conversation.id}`, {
           state: {
             initialQuestion: question,
+            initialImages: images,
             initialSettings: settings,
             initialCustomPrompt: customPrompt,
           },

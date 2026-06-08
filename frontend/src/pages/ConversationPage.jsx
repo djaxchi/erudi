@@ -135,7 +135,7 @@ export default function ConversationPage() {
   }, [id]);
 
   const handleAskWithParams = useCallback(
-    async (question, explicitSettings = null, explicitCustomPrompt = null) => {
+    async (question, images = [], explicitSettings = null, explicitCustomPrompt = null) => {
       const settingsToUse = explicitSettings || settings;
       const customPromptToUse = explicitCustomPrompt !== null ? explicitCustomPrompt : customPrompt;
 
@@ -153,6 +153,7 @@ export default function ConversationPage() {
         id: Date.now(),
         sender: "user",
         content: question,
+        images,
       };
 
       const assistantMessage = {
@@ -214,6 +215,7 @@ export default function ConversationPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             question,
+            images,
             temperature: settingsToUse.temperature,
             top_p: settingsToUse.topP,
             max_new_tokens: settingsToUse.maxTokens,
@@ -307,8 +309,8 @@ export default function ConversationPage() {
   );
 
   const handleAsk = useCallback(
-    async (question) => {
-      return handleAskWithParams(question, settings, customPrompt);
+    async (question, images = []) => {
+      return handleAskWithParams(question, images, settings, customPrompt);
     },
     [handleAskWithParams, settings, customPrompt]
   );
@@ -389,7 +391,12 @@ export default function ConversationPage() {
           setCustomPrompt(location.state.initialCustomPrompt);
         }
 
-        await handleAskWithParams(location.state.initialQuestion, settingsToUse, customPromptToUse);
+        await handleAskWithParams(
+          location.state.initialQuestion,
+          location.state.initialImages || [],
+          settingsToUse,
+          customPromptToUse
+        );
         navigate(location.pathname, { replace: true, state: {} });
       } else if (!location.state || !location.state.initialQuestion) {
         try {
@@ -591,10 +598,27 @@ export default function ConversationPage() {
                         )}
                       </div>
                     ) : isUser || msg.content.includes("[ERROR_MESSAGE_SYSTEM]") ? (
-                      // Keep user messages and error messages as plain text
-                      <pre className="whitespace-pre-wrap font-sans">
-                        {getDisplayContent(msg.content)}
-                      </pre>
+                      // Keep user messages and error messages as plain text;
+                      // attached images (this session only) render as thumbnails.
+                      <div className="flex flex-col gap-2">
+                        {msg.images?.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {msg.images.map((src, i) => (
+                              <img
+                                key={i}
+                                src={src}
+                                alt={`attachment ${i + 1}`}
+                                className="max-h-48 rounded-lg border border-emerald-200/20"
+                              />
+                            ))}
+                          </div>
+                        )}
+                        {getDisplayContent(msg.content) && (
+                          <pre className="whitespace-pre-wrap font-sans">
+                            {getDisplayContent(msg.content)}
+                          </pre>
+                        )}
+                      </div>
                     ) : (
                       // Assistant normal messages: render markdown
                       <MarkdownRenderer content={msg.content} />
