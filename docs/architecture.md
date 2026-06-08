@@ -109,7 +109,7 @@ terme de wrapper les trois engines derrière un unique `ChatOpenAI(base_url=...)
 
 Différence d'invocation child :
 - **CPU/CUDA** : `subprocess.Popen([llama-server, ...])` — binary natif (`backend/artifacts/llama-cpp/<cpu|cuda>/bin/llama-server`).
-- **MLX** : `multiprocessing.Process(target=run_mlx_server, args=(argv,))` — pas de binary natif côté MLX, donc on utilise `mp.spawn` (déjà configuré dans `backend/run.py` via `mp.freeze_support()` + `set_start_method("spawn", force=True)`). Cette approche fonctionne identiquement en dev (vrai Python) et en PyInstaller frozen où `sys.executable` est le binary launcher (impossible d'utiliser `Popen([sys.executable, "-m", "mlx_lm.server"])`).
+- **MLX** : `multiprocessing.Process(target=run_mlx_vlm_server, args=(argv,))` — pas de binary natif côté MLX, donc on utilise `mp.spawn` (déjà configuré dans `backend/run.py` via `mp.freeze_support()` + `set_start_method("spawn", force=True)`). Cette approche fonctionne identiquement en dev (vrai Python) et en PyInstaller frozen où `sys.executable` est le binary launcher (impossible d'utiliser `Popen([sys.executable, "-m", "mlx_vlm.server"])`).
 
 ```python
 # backend/src/engines/base_engine.py  (simplifié)
@@ -134,7 +134,7 @@ class BaseEngine(ABC):
 
 | Engine | Platform | Backend | Lancement child | Port range | Status |
 |--------|----------|---------|------------------|------------|--------|
-| **MLX_Engine** | Mac Silicon (M1/M2/M3/M4) | `mlx_lm.server` | `mp.Process` | 9080+ | 🚧 macOS build en cours |
+| **MLX_Engine** | Mac Silicon (M1/M2/M3/M4) | `mlx_vlm.server` | `mp.Process` | 9080+ | 🚧 macOS build en cours |
 | **CUDA_Engine** | Windows + NVIDIA | `llama-server` (CUDA build) | `subprocess.Popen` | 8080+ | ✅ Shippé Windows |
 | **CUDA_Engine** | Linux + NVIDIA | `llama-server` (CUDA build) | `subprocess.Popen` | 8080+ | 🚧 Planifié |
 | **CPU_Engine** | Windows / Linux / macOS Intel | `llama-server` (CPU build) | `subprocess.Popen` | 8080+ | ✅ Shippé Windows ; 🚧 ailleurs |

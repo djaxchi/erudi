@@ -107,6 +107,24 @@ T10 = previous-turn parroting + format instruction ignored (new quirk:
 likely the meta-question still gets KB excerpts injected, displacing the
 one-sentence instruction).
 
+**Run 4 score : 7 PASS / 1 PARTIAL / 2 FAIL, 10/10 français** (2026-06-08,
+conv 22, same Nimbus/Gemma-4B/kb 4). **Inference path switched
+mlx_lm.server -> mlx_vlm.server (issue #83) — this run is the
+non-regression check for that swap.** Per-case: T1-T4 PASS, T5 FAIL,
+T6 PASS, T7 PARTIAL, T8-T9 PASS, T10 FAIL. Latency 3.7-24.3 s/turn (T1
+warm-up). **Conclusion: the swap does NOT degrade RAG quality** — the 7
+solid PASS, French, canonical out-of-corpus abstention (T8) and per-source
+attribution are all preserved on the new path. The three non-PASS are the
+known untreated problems: T5 (Gemma emits no tool_call, so the deterministic
+calculator never fires — a model limitation, not a chain bug; tool calling
+itself is proven working on mlx-vlm with a tool-capable model, issue #83
+E2E); T7 (bi-topic retrieval starvation, unchanged); T10 slipped
+PARTIAL->FAIL within small-model memory variance — the meta follow-up
+received KB excerpts (the headcount breakdown) that displaced the
+conversational recall of "33 nouveaux clients" (only the CA 1 689 k€
+survived), confirming the inject-excerpts-on-meta-question hypothesis. T7
+and T10 are the two cases addressed next in this PR.
+
 ## Baseline failure analysis (what, not how-to-fix)
 
 1. **Out-of-corpus hallucination** (T8, T9, T1): the model invents precise
