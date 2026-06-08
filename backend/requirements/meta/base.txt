@@ -1,4 +1,6 @@
-numpy==1.26.4
+# numpy 2.x: pulled in by the mlx-vlm swap (opencv/datasets/py3langid 0.3.x).
+# The whole pinned stack supports numpy 2; src only touches numpy via .tolist().
+numpy==2.4.6
 psutil==7.0.0
 py-cpuinfo==9.0.0
 huggingface_hub==1.10.1
@@ -7,7 +9,11 @@ sentence-transformers==5.4.0
 python-dotenv==1.1.0
 pypdf==5.6.0
 tqdm==4.67.1
-fastapi==0.115.12
+# fastapi/starlette bumped by the mlx-vlm swap: mlx-vlm requires starlette>=1
+# (a 0.x->1.x major), which pulls a compatible fastapi. Validated against the
+# full backend suite (423 passed). uvicorn unchanged.
+fastapi==0.136.3
+starlette==1.2.1
 uvicorn==0.34.0
 sqlalchemy==2.0.40
 requests==2.32.3
@@ -33,6 +39,6 @@ python-docx==1.2.0
 openpyxl==3.1.5
 # ===== RAG answer quality (PR3, issue #81) =====
 # Language detection for the dynamic answer-language instruction in the KB
-# prompt. 0.2.2 (not 0.3.x) on purpose: 0.3.0 declares numpy>=2.0.0 which
-# conflicts with the numpy==1.26.4 pin; 0.2.2 has no bound and is probed OK.
-py3langid==0.2.2
+# prompt. 0.3.0 declares numpy>=2.0.0, aligned with the numpy 2.x bump the
+# mlx-vlm swap brings in; same langid.MODEL_FILE/LanguageIdentifier API as 0.2.2.
+py3langid==0.3.0
