@@ -213,17 +213,10 @@ class TestProbeReady:
             with pytest.raises(EngineException, match="400"):
                 _TestEngine._probe_ready("http://127.0.0.1:19000")
 
-    def test_chat_ping_uses_payload_model_value_with_alias(self):
-        """When `alias` is provided, the stage-2 payload's `model` field is
-        built via `_payload_model_value({"alias": alias})` so each subclass
-        picks the field it'd use for real inference (llama-cpp returns the
-        alias; MLX returns the sentinel)."""
-
-        class _AliasEngine(_TestEngine):
-            @staticmethod
-            def _payload_model_value(handle):
-                return handle["alias"]  # llama-cpp behaviour
-
+    def test_chat_ping_sends_provided_model_field(self):
+        """The stage-2 payload's `model` is exactly the `model_field` passed in
+        (computed by `_start_server` via `_payload_model_value(handle)`: the
+        alias for llama-cpp, the preloaded model path for MLX/mlx-vlm)."""
         health_ok = MagicMock(status_code=200)
         chat_ok = MagicMock(status_code=200, text='{"choices":[]}')
         captured_payload: dict = {}
@@ -239,15 +232,14 @@ class TestProbeReady:
             "src.engines.base_chat_server_engine.requests.post",
             side_effect=_capture_post,
         ):
-            _AliasEngine._probe_ready(
-                "http://127.0.0.1:19000", alias="erudi-7",
+            _TestEngine._probe_ready(
+                "http://127.0.0.1:19000", model_field="/models/erudi-7",
             )
-        assert captured_payload["model"] == "erudi-7"
+        assert captured_payload["model"] == "/models/erudi-7"
 
-    def test_chat_ping_falls_back_to_default_model_without_alias(self):
-        """When `alias` is None (backward compatibility), the probe uses the
-        `default_model` sentinel that mlx_lm.server accepts and llama-server
-        tolerates."""
+    def test_chat_ping_defaults_to_placeholder_model(self):
+        """With no `model_field`, the probe sends a neutral placeholder. Real
+        spawns always pass one; this only covers direct/defensive calls."""
         health_ok = MagicMock(status_code=200)
         chat_ok = MagicMock(status_code=200, text='{"choices":[]}')
         captured_payload: dict = {}
@@ -263,7 +255,7 @@ class TestProbeReady:
             "src.engines.base_chat_server_engine.requests.post",
             side_effect=_capture_post,
         ):
-            _TestEngine._probe_ready("http://127.0.0.1:19000")  # no alias
+            _TestEngine._probe_ready("http://127.0.0.1:19000")  # no model_field
         assert captured_payload["model"] == "default_model"
 
     def test_timeout_message_mentions_port_for_toctou_hint(self):
@@ -403,14 +395,18 @@ class TestPayloadModelValue:
         handle = {"alias": "test-erudi-7"}
         assert _TestEngine._payload_model_value(handle) == "test-erudi-7"
 
-    def test_subclass_can_return_literal_sentinel(self):
+    def test_subclass_can_override_to_model_path(self):
+        """MLX/mlx-vlm overrides this to send the real preloaded model path
+        (mlx_vlm.server has no `default_model` sentinel)."""
 
         class _MlxLike(_TestEngine):
             @staticmethod
             def _payload_model_value(handle):
-                return "default_model"
+                return handle["model_path"]
 
-        assert _MlxLike._payload_model_value({"alias": "ignored"}) == "default_model"
+        assert _MlxLike._payload_model_value(
+            {"alias": "ignored", "model_path": "/models/x"}
+        ) == "/models/x"
 
 
 # =====================================================================
