@@ -136,17 +136,17 @@ class TestWiring:
 
 class TestSearch:
     def test_search_is_filtered_by_kb_and_carries_metadata(self, kb_store, kb_rows):
-        from src.ingestion.vector_store import search_kb_chunks
+        from src.ingestion.vector_store import search_kb_chunks_scored
 
         kb_a, doc_a = kb_rows["a"]
         kb_b, doc_b = kb_rows["b"]
         _add(kb_a, doc_a, ["Paris est la capitale de la France."], "geo.pdf")
         _add(kb_b, doc_b, ["Paris est la capitale de la France."], "copie.pdf")
 
-        results = search_kb_chunks("capitale de la France", kb_id=kb_a, k=5)
+        results = search_kb_chunks_scored("capitale de la France", kb_id=kb_a)
         assert results
-        assert all(doc.metadata["kb_id"] == kb_a for doc in results)
-        top = results[0].metadata
+        assert all(doc.metadata["kb_id"] == kb_a for doc, _ in results)
+        top = results[0][0].metadata
         assert top["document_id"] == doc_a
         assert top["source_file"] == "geo.pdf"
         assert top["chunk_index"] == 0
@@ -155,7 +155,7 @@ class TestSearch:
         """Anti-regression: langchain-postgres freezes the first query's
         fts_query onto the SHARED store config, poisoning every later
         sparse search. Our layer must pass a fresh config per search."""
-        from src.ingestion.vector_store import search_kb_chunks
+        from src.ingestion.vector_store import search_kb_chunks_scored
 
         kb_id, doc_id = kb_rows["a"]
         _add(
@@ -168,14 +168,50 @@ class TestSearch:
             ],
         )
 
-        first = search_kb_chunks("REF-88412", kb_id=kb_id, k=1)
-        assert "REF-88412" in first[0].page_content
+        first = search_kb_chunks_scored("REF-88412", kb_id=kb_id)
+        assert "REF-88412" in first[0][0].page_content
 
-        second = search_kb_chunks("capitale de la France", kb_id=kb_id, k=1)
-        assert "capitale" in second[0].page_content
+        second = search_kb_chunks_scored("capitale de la France", kb_id=kb_id)
+        assert "capitale" in second[0][0].page_content
 
-        third = search_kb_chunks("Qui dort sur le canapé ?", kb_id=kb_id, k=1)
-        assert "chat" in third[0].page_content
+        third = search_kb_chunks_scored("Qui dort sur le canapé ?", kb_id=kb_id)
+        assert "chat" in third[0][0].page_content
+
+    def test_pool_is_wider_than_the_lib_branch_default(self, kb_store, kb_rows):
+        """Anti-regression (PR3 finding): HybridSearchConfig defaults its
+        per-branch SQL LIMITs (primary_top_k/secondary_top_k) to 4 — without
+        overriding them the "wide pool" silently degrades to 4+4 candidates.
+        With 10 indexed chunks the dense branch alone must return all 10."""
+        from src.ingestion.vector_store import search_kb_chunks_scored
+
+        kb_id, doc_id = kb_rows["a"]
+        _add(kb_id, doc_id, [f"Note interne numéro {i} sur des sujets divers." for i in range(10)])
+
+        pool = search_kb_chunks_scored("notes internes", kb_id=kb_id)
+        assert len(pool) == 10
+
+    def test_similarities_are_calibrated_dense_cosines(self, kb_store, kb_rows):
+        """The per-candidate score must be the dense cosine of the STORED
+        vector (not the RRF fusion score, which is a rank harmonic): bounded,
+        and higher for the on-topic chunk than for the off-topic one."""
+        from src.ingestion.vector_store import search_kb_chunks_scored
+
+        kb_id, doc_id = kb_rows["a"]
+        _add(
+            kb_id,
+            doc_id,
+            [
+                "Le délai de préavis de résiliation est de quatre-vingt-dix jours.",
+                "La recette de la tarte aux pommes demande trois pommes.",
+            ],
+        )
+
+        pool = search_kb_chunks_scored("préavis de résiliation du contrat", kb_id=kb_id)
+        sims = {doc.page_content: sim for doc, sim in pool}
+        assert all(-1.0 <= sim <= 1.0 for sim in sims.values())
+        on_topic = next(s for text, s in sims.items() if "préavis" in text)
+        off_topic = next(s for text, s in sims.items() if "pommes" in text)
+        assert on_topic > off_topic
 
     def test_stored_content_is_clean_for_generation(
         self, kb_store, kb_rows, pg_test_cluster
@@ -229,19 +265,84 @@ class TestCascade:
         assert remaining == 0
 
 
-class TestKbUtils:
-    def test_get_relevant_texts_returns_chunk_contents(self, kb_store, kb_rows):
+NIMBUS_LIKE_CORPUS = [
+    "Le plan Starter coûte 89 euros par mois et inclut trois utilisateurs.",
+    "Le plan Business coûte 290 euros par mois et inclut quinze utilisateurs.",
+    "Le plan Enterprise est sur devis à partir de 1100 euros par mois.",
+    "Le préavis de résiliation du contrat est de quatre-vingt-dix jours.",
+    "La machine à café de l'étage trois est en panne depuis lundi.",
+    "Le chat de la mascotte d'entreprise s'appelle Pixel.",
+]
+
+
+class TestKbUtilsAdaptiveSelection:
+    """End-to-end selection on REAL e5 embeddings: the adaptive cut must
+    scale the injected context to the question's shape (issue #81 problem
+    #2 — the flat kb_top_k=1 starved panorama/cross-doc questions)."""
+
+    def test_factoid_question_keeps_a_narrow_context(self, kb_store, kb_rows):
         from types import SimpleNamespace
 
-        from src.utils.kb_utils import get_relevant_texts_from_kb
+        from src.utils.kb_utils import retrieve_kb_excerpts
 
         kb_id, doc_id = kb_rows["a"]
-        _add(kb_id, doc_id, ["La procédure de remboursement prend dix jours."])
+        _add(kb_id, doc_id, NIMBUS_LIKE_CORPUS)
 
         llm = SimpleNamespace(kb_id=kb_id)
-        texts = get_relevant_texts_from_kb("délai de remboursement", llm, kb_top_k=1)
-        assert len(texts) == 1
-        assert "remboursement" in texts[0]
+        excerpts = retrieve_kb_excerpts(
+            "Quel est le préavis de résiliation du contrat ?", llm, token_budget=2000
+        )
+        texts = [e.text for e in excerpts]
+        assert texts
+        assert "préavis" in texts[0]
+        assert excerpts[0].source_file == "doc.pdf"  # attribution carried through
+        # The cut must at least shed the noise chunks (coffee machine, cat).
+        assert len(texts) < len(NIMBUS_LIKE_CORPUS)
+        assert not any("café" in t or "Pixel" in t for t in texts)
+
+    def test_panorama_question_keeps_the_cluster(self, kb_store, kb_rows):
+        from types import SimpleNamespace
+
+        from src.utils.kb_utils import retrieve_kb_excerpts
+
+        kb_id, doc_id = kb_rows["a"]
+        _add(kb_id, doc_id, NIMBUS_LIKE_CORPUS)
+
+        llm = SimpleNamespace(kb_id=kb_id)
+        texts = [
+            e.text
+            for e in retrieve_kb_excerpts(
+                "Quels sont les plans tarifaires disponibles et leurs prix ?",
+                llm,
+                token_budget=2000,
+            )
+        ]
+        # The three pricing chunks ride together: with kb_top_k=1 this
+        # question answered 1 plan out of 3 (baseline T1 failure).
+        plans_found = sum(
+            1 for plan in ("Starter", "Business", "Enterprise")
+            if any(plan in t for t in texts)
+        )
+        assert plans_found >= 2
+
+    def test_token_budget_caps_the_context(self, kb_store, kb_rows):
+        from types import SimpleNamespace
+
+        from src.ingestion.chunking import count_tokens
+        from src.utils.kb_utils import retrieve_kb_excerpts
+
+        kb_id, doc_id = kb_rows["a"]
+        _add(kb_id, doc_id, NIMBUS_LIKE_CORPUS)
+
+        llm = SimpleNamespace(kb_id=kb_id)
+        question = "Quels sont les plans tarifaires disponibles et leurs prix ?"
+        unbounded = retrieve_kb_excerpts(question, llm, token_budget=2000)
+        assert len(unbounded) >= 2  # the cut alone keeps several candidates
+
+        tight = retrieve_kb_excerpts(
+            question, llm, token_budget=count_tokens(unbounded[0].text)
+        )
+        assert tight == unbounded[:1]  # budget bites, best chunk survives
 
 
 GOLDEN_CORPUS = [
@@ -274,7 +375,7 @@ class TestGoldenQueries:
     corpus. Failure → escalate to e5-base (768d) BEFORE merge."""
 
     def test_golden_queries_fr_en(self, kb_store, kb_rows):
-        from src.ingestion.vector_store import search_kb_chunks
+        from src.ingestion.vector_store import search_kb_chunks_scored
 
         kb_id, doc_id = kb_rows["a"]
         _add(kb_id, doc_id, GOLDEN_CORPUS, "golden.md")
@@ -283,8 +384,8 @@ class TestGoldenQueries:
         misses: list[str] = []
         for query, expected_idx in GOLDEN_QUERIES:
             expected = GOLDEN_CORPUS[expected_idx]
-            results = search_kb_chunks(query, kb_id=kb_id, k=2)
-            contents = [r.page_content for r in results]
+            results = search_kb_chunks_scored(query, kb_id=kb_id)[:2]
+            contents = [doc.page_content for doc, _ in results]
             if contents and expected in contents[0]:
                 top1_hits += 1
             elif not any(expected in c for c in contents):

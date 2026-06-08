@@ -231,7 +231,12 @@ class CUDA_Engine(BaseLlamaCppEngine):
         gpu_layers: int = -1,
         **_ignored: Any,
     ) -> List[Any]:
-        """CUDA CLI for llama-server: injects computed `-ngl <gpu_layers>`."""
+        """CUDA CLI for llama-server: injects computed `-ngl <gpu_layers>`.
+
+        ``--jinja`` enables the model's own chat template and with it
+        OpenAI-style function calling (the agent's calculator tool) —
+        without it llama-server never emits ``tool_calls``.
+        """
         return [
             str(llama_server),
             "-m", str(model_gguf),
@@ -241,6 +246,7 @@ class CUDA_Engine(BaseLlamaCppEngine):
             "-c", str(ctx_size),
             "--threads", str(threads),
             "-ngl", str(gpu_layers),
+            "--jinja",
         ]
 
     @classmethod

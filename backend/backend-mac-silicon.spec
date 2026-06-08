@@ -55,7 +55,7 @@ datas += collect_data_files("filelock")
 tmp_ret = collect_all("mlx")
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
-tmp_ret = collect_all("mlx_lm")
+tmp_ret = collect_all("mlx_vlm")
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 # ── Analysis ──────────────────────────────────────────────────────────────────
@@ -127,8 +127,10 @@ a = Analysis(
         "src.engines.base_chat_server_engine",
         "src.engines.base_llama_cpp_engine",
         "src.engines.mlx_engine",
-        "src.engines._mlx_server_runner",  # picklable target for mp.Process spawning mlx_lm.server
-        "mlx_lm.server",  # imported lazily inside the runner; collect_all may miss it
+        "src.engines._mlx_vlm_server_runner",  # picklable target for mp.Process spawning mlx_vlm.server
+        "mlx_vlm.server",  # imported lazily inside the runner (uvicorn loads "mlx_vlm.server:app")
+        "mlx_vlm.server.app",  # the FastAPI app object uvicorn imports by string
+        "mlx_vlm.server.cli",  # main() entrypoint the runner calls
         "src.engines.cpu_engine",
         "src.engines.embedder_engine",
         "src.launcher",
@@ -217,6 +219,8 @@ a = Analysis(
         "_tkinter",
         "cv2",
         "wx",
+        # mlx-vlm audio synthesis (Qwen3-Omni TTS) — not on the chat/vision path
+        "mlx_audio",
         # Test tooling
         "pytest",
         "black",

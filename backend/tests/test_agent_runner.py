@@ -8,7 +8,7 @@ patching ``build_chat_model``. The engine is a bare ``BaseEngine`` subclass so
 
 import pytest
 from langchain.agents import create_agent
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from tests._helpers import ToolableFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -47,7 +47,7 @@ def _patch_model(monkeypatch, fake_model):
 
 
 async def test_astream_yields_raw_token_text(monkeypatch):
-    fake = GenericFakeChatModel(messages=iter([AIMessage(content="Python is awesome")]))
+    fake = ToolableFakeChatModel(messages=iter([AIMessage(content="Python is awesome")]))
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=InMemorySaver())
     out = [
@@ -62,7 +62,7 @@ async def test_astream_yields_raw_token_text(monkeypatch):
 
 
 async def test_multi_turn_restores_context_from_checkpointer(monkeypatch):
-    fake = GenericFakeChatModel(
+    fake = ToolableFakeChatModel(
         messages=iter([AIMessage(content="first"), AIMessage(content="second")])
     )
     _patch_model(monkeypatch, fake)
@@ -80,13 +80,13 @@ async def test_multi_turn_restores_context_from_checkpointer(monkeypatch):
         pass
 
     # Only the new message is sent each turn; the checkpointer restores + appends.
-    probe = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    probe = create_agent(ToolableFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
     snap = await probe.aget_state(cfg)
     assert [m.type for m in snap.values["messages"]] == ["human", "ai", "human", "ai"]
 
 
 async def test_arena_mode_runs_without_checkpointer(monkeypatch):
-    fake = GenericFakeChatModel(messages=iter([AIMessage(content="duel answer")]))
+    fake = ToolableFakeChatModel(messages=iter([AIMessage(content="duel answer")]))
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=None)
     out = [
@@ -120,7 +120,7 @@ async def test_repair_alternation_appends_ai_after_dangling_human(monkeypatch):
     # M2: a failed turn that left a dangling HumanMessage must be repaired so the
     # next turn doesn't send two consecutive user messages (local templates 400).
     cp = InMemorySaver()
-    agent = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    agent = create_agent(ToolableFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
     cfg = {"configurable": {"thread_id": "c1"}}
     await agent.aupdate_state(cfg, {"messages": [HumanMessage("orphan question")]})
     assert (await agent.aget_state(cfg)).values["messages"][-1].type == "human"
@@ -133,11 +133,12 @@ async def test_repair_alternation_appends_ai_after_dangling_human(monkeypatch):
     assert ERROR_SENTINEL in msgs[-1].content
 
 
-def test_build_middleware_returns_summarization_middleware():
+def test_build_middleware_includes_strip_and_summarization():
     from langchain.agents.middleware import SummarizationMiddleware
 
-    built = AgentRunner()._build_middleware(GenericFakeChatModel(messages=iter([])))
-    assert len(built) == 1 and isinstance(built[0], SummarizationMiddleware)
+    built = AgentRunner()._build_middleware(ToolableFakeChatModel(messages=iter([])))
+    assert any(isinstance(m, SummarizationMiddleware) for m in built)
+    assert any(type(m).__name__ == "_StripStaleImagesMiddleware" for m in built)
 
 
 async def test_summarization_compacts_checkpointer_state(monkeypatch):
@@ -151,7 +152,7 @@ async def test_summarization_compacts_checkpointer_state(monkeypatch):
         for i in itertools.count():
             yield AIMessage(content=f"answer {i} with several words here")
 
-    fake = GenericFakeChatModel(messages=infinite())
+    fake = ToolableFakeChatModel(messages=infinite())
     monkeypatch.setattr(runner_module, "build_chat_model", lambda llm, **kw: fake)
 
     cp = InMemorySaver()
@@ -163,7 +164,7 @@ async def test_summarization_compacts_checkpointer_state(monkeypatch):
         ):
             pass
 
-    probe = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    probe = create_agent(ToolableFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
     msgs = (await probe.aget_state({"configurable": {"thread_id": "c1"}})).values["messages"]
     # 5 turns = 10 messages un-summarized; compaction keeps the agent context bounded.
     assert len(msgs) < 10
@@ -234,7 +235,7 @@ async def test_thread_id_isolation_no_cross_bleed(monkeypatch):
     monkeypatch.setattr(
         runner_module,
         "build_chat_model",
-        lambda llm, **kw: GenericFakeChatModel(messages=infinite()),
+        lambda llm, **kw: ToolableFakeChatModel(messages=infinite()),
     )
     cp = InMemorySaver()
     runner = AgentRunner(checkpointer=cp)
@@ -248,7 +249,7 @@ async def test_thread_id_isolation_no_cross_bleed(monkeypatch):
     ):
         pass
 
-    probe = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    probe = create_agent(ToolableFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
     msgs_1 = (await probe.aget_state({"configurable": {"thread_id": "conv-1"}})).values["messages"]
     msgs_2 = (await probe.aget_state({"configurable": {"thread_id": "conv-2"}})).values["messages"]
     assert [m.content for m in msgs_1 if m.type == "human"] == ["alpha"]
@@ -262,7 +263,7 @@ async def test_purged_thread_starts_fresh_no_resurrection(monkeypatch):
     monkeypatch.setattr(
         runner_module,
         "build_chat_model",
-        lambda llm, **kw: GenericFakeChatModel(
+        lambda llm, **kw: ToolableFakeChatModel(
             messages=iter([AIMessage(content="a"), AIMessage(content="b")])
         ),
     )
@@ -282,7 +283,7 @@ async def test_purged_thread_starts_fresh_no_resurrection(monkeypatch):
     ):
         pass
 
-    probe = create_agent(GenericFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
+    probe = create_agent(ToolableFakeChatModel(messages=iter([])), tools=[], checkpointer=cp)
     msgs = (await probe.aget_state(cfg)).values["messages"]
     # Only the new turn — the deleted "old-secret" turn must NOT reappear.
     assert [m.type for m in msgs] == ["human", "ai"]
@@ -297,7 +298,7 @@ async def test_astream_holds_generation_lock_across_whole_stream(monkeypatch):
     monkeypatch.setattr(
         runner_module,
         "build_chat_model",
-        lambda llm, **kw: GenericFakeChatModel(messages=iter([AIMessage(content="one two three")])),
+        lambda llm, **kw: ToolableFakeChatModel(messages=iter([AIMessage(content="one two three")])),
     )
     runner = AgentRunner(checkpointer=InMemorySaver())
 
@@ -311,3 +312,214 @@ async def test_astream_holds_generation_lock_across_whole_stream(monkeypatch):
     assert observed_locked and all(observed_locked)  # lock held for every token
     # Released once the stream completes (model reapable again).
     assert _FakeEngine._generation_lock is None or not _FakeEngine._generation_lock.locked()
+
+
+# ===================== KB context middleware (PR3, issue #81) =====================
+
+from pydantic import Field  # noqa: E402
+
+
+class _RecordingModel(ToolableFakeChatModel):
+    """Fake model that records the exact message lists it receives."""
+
+    received: list = Field(default_factory=list)
+
+    def _stream(self, messages, stop=None, run_manager=None, **kwargs):
+        self.received.append(list(messages))
+        yield from super()._stream(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        self.received.append(list(messages))
+        return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+
+_BLOCK_1 = "[Document: a.md]\nLe préavis est de 90 jours.\n\nAnswer ONLY from the excerpts above."
+_BLOCK_2 = "[Document: b.md]\nLe SLA est de 99,7 %.\n\nAnswer ONLY from the excerpts above."
+
+
+async def test_kb_block_is_merged_into_the_model_request(monkeypatch):
+    """The per-turn KB block rides the LAST user message of the model call
+    (close to generation — system instructions dissolve over turn depth on
+    small local models), with the real question kept last."""
+    fake = _RecordingModel(messages=iter([AIMessage(content="90 jours.")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="Quel est le préavis ?", system_prompt="sys",
+        params=_PARAMS, thread_id="c-kb", kb_context_block=_BLOCK_1,
+        kb_language_line="Réponds en français.",
+    ):
+        pass
+
+    last_call = fake.received[-1]
+    merged = last_call[-1]
+    assert merged.type == "human"
+    assert _BLOCK_1 in merged.text
+    assert "Quel est le préavis ?" in merged.text
+    # The user-voiced language request is the LAST thing before generation
+    # (no English "Question:" label — structural English feeds the drift).
+    assert "Question:" not in merged.text
+    assert merged.text.strip().endswith("Réponds en français.")
+    assert merged.text.find("Quel est le préavis ?") < merged.text.find("Réponds en français.")
+
+
+async def test_kb_block_is_ephemeral_history_stays_clean(monkeypatch):
+    """The merge happens in the model REQUEST only: the checkpointer keeps
+    the clean question, so turn 2's history must show turn 1's question
+    WITHOUT its excerpts (no context pollution, no parroting fuel)."""
+    fake = _RecordingModel(
+        messages=iter([AIMessage(content="r1"), AIMessage(content="r2")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="q1", system_prompt="s",
+        params=_PARAMS, thread_id="c-kb2", kb_context_block=_BLOCK_1,
+    ):
+        pass
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="q2", system_prompt="s",
+        params=_PARAMS, thread_id="c-kb2", kb_context_block=_BLOCK_2,
+    ):
+        pass
+
+    second_call = fake.received[-1]
+    history_humans = [m for m in second_call if m.type == "human"]
+    # Turn 1's question is back to its clean form in the history…
+    assert history_humans[0].text == "q1"
+    assert _BLOCK_1 not in "".join(m.text for m in second_call)
+    # …and only the current turn carries its own fresh block.
+    assert _BLOCK_2 in history_humans[-1].text
+    assert "q2" in history_humans[-1].text
+
+
+async def test_no_kb_block_leaves_messages_untouched(monkeypatch):
+    fake = _RecordingModel(messages=iter([AIMessage(content="hello")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="hi", system_prompt="sys",
+        params=_PARAMS, thread_id="c-plain",
+    ):
+        pass
+
+    assert fake.received[-1][-1].text == "hi"
+
+
+# ===================== Calculator tool in the agent loop (PR3) =====================
+
+
+async def test_tool_call_round_trip_streams_only_final_text(monkeypatch):
+    """Full agentic loop with the REAL calculator tool: the scripted model
+    requests calculator(expression), the tool node executes it, and the
+    model answers from the ToolMessage. The text/plain wire contract must
+    only carry the FINAL answer (tool steps emit no text tokens)."""
+    tool_call_msg = AIMessage(
+        content="",
+        tool_calls=[{
+            "name": "calculator",
+            "args": {"expression": "1240 + 1378 + 1456 + 1689"},
+            "id": "call-1",
+        }],
+    )
+    fake = _RecordingModel(
+        messages=iter([tool_call_msg, AIMessage(content="Le total est 5763 k€.")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    out = [
+        t
+        async for t in runner.astream_text(
+            llm=_Llm(), user_message="Additionne les quatre trimestres.",
+            system_prompt="sys", params=_PARAMS, thread_id="c-calc",
+        )
+    ]
+
+    assert "".join(out) == "Le total est 5763 k€."
+    # The second model call must carry the REAL tool result (5763), proof
+    # the calculator executed inside the loop.
+    second_call = fake.received[-1]
+    tool_messages = [m for m in second_call if m.type == "tool"]
+    assert tool_messages and tool_messages[-1].text == "5763"
+
+
+# ===================== Vision input (mlx-vlm swap, image content-parts) =====================
+
+_IMG = {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgoAAAANS"}}
+
+
+async def test_astream_accepts_multimodal_user_message(monkeypatch):
+    """A list user_message (text + image_url parts) reaches the model as a
+    HumanMessage whose content keeps the image part."""
+    fake = _RecordingModel(messages=iter([AIMessage(content="a red square")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message=[{"type": "text", "text": "what is this?"}, _IMG],
+        system_prompt="sys", params=_PARAMS, thread_id="c-img", summarize=False,
+    ):
+        pass
+
+    last = fake.received[-1][-1]
+    assert last.type == "human"
+    assert isinstance(last.content, list)
+    assert any(p.get("type") == "image_url" for p in last.content)
+
+
+async def test_kb_merge_preserves_image_parts(monkeypatch):
+    """With a KB block AND an image, the merged last message carries the KB
+    block in its text part and STILL keeps the image part."""
+    fake = _RecordingModel(messages=iter([AIMessage(content="90 jours.")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message=[{"type": "text", "text": "Quel préavis ?"}, _IMG],
+        system_prompt="sys", params=_PARAMS, thread_id="c-kb-img",
+        kb_context_block=_BLOCK_1, kb_language_line="Réponds en français.",
+    ):
+        pass
+
+    merged = fake.received[-1][-1]
+    assert isinstance(merged.content, list)
+    text_part = next(p for p in merged.content if p.get("type") == "text")
+    assert _BLOCK_1 in text_part["text"]
+    assert "Quel préavis ?" in text_part["text"]
+    assert any(p.get("type") == "image_url" for p in merged.content)
+
+
+async def test_stale_images_stripped_on_followup(monkeypatch):
+    """Turn 1 sends an image; turn 2 is text-only. Turn 2's model call must NOT
+    re-send turn 1's image (it collapses to an [image] marker), keeping the
+    small VLM context bounded — vision is single-turn."""
+    fake = _RecordingModel(
+        messages=iter([AIMessage(content="r1"), AIMessage(content="r2")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message=[{"type": "text", "text": "see this"}, _IMG],
+        system_prompt="s", params=_PARAMS, thread_id="c-strip", summarize=True,
+    ):
+        pass
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="and now?", system_prompt="s",
+        params=_PARAMS, thread_id="c-strip", summarize=True,
+    ):
+        pass
+
+    second_call = fake.received[-1]
+    # No image_url survives anywhere in turn 2's request.
+    for m in second_call:
+        if isinstance(m.content, list):
+            assert all(p.get("type") != "image_url" for p in m.content)
+    # Turn 1's human message kept its text + an [image] marker (flattened).
+    past_human = [m for m in second_call if m.type == "human"][0]
+    assert "[image]" in past_human.content
+    assert "see this" in past_human.content

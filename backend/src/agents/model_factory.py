@@ -39,8 +39,9 @@ def build_chat_model(
     from async code (the agent runner does).
 
     The ``model`` field MUST go through the engine's ``_payload_model_value`` —
-    MLX's server expects a ``"default_model"`` sentinel rather than the alias, so
-    hardcoding ``handle["alias"]`` would break MLX inference.
+    mlx_vlm.server resolves it via ``get_cached_model(request.model)`` so MLX
+    sends the real preloaded model path, while llama.cpp sends the alias;
+    hardcoding either would break the other.
 
     Params are set on the constructor (NOT via ``.bind`` — LangChain v1 rejects
     pre-bound models passed to ``create_agent``).
@@ -49,7 +50,7 @@ def build_chat_model(
     handle, _tokenizer = engine.get_model_and_tokenizer(llm.id, llm.link)
     model_field = engine._payload_model_value(handle)
 
-    # Extra sampling params absent from the OpenAI wire schema. mlx_lm.server reads
+    # Extra sampling params absent from the OpenAI wire schema. mlx_vlm.server reads
     # the HF names natively; llama.cpp engines translate them to their wire names
     # (repeat_penalty / repeat_last_n) via ``_translate_payload_kwargs``. Sent via
     # ChatOpenAI.extra_body so they land in the local server's chat-completions

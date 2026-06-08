@@ -164,10 +164,13 @@ Never include internal hints, model metadata, or training data references. Outpu
 
 
 def get_prompting_strategy(param_size: float) -> dict:
-    """Select the system-prompt tier + KB-retrieval settings for a model size.
+    """Select the system-prompt tier + KB context budget for a model size.
 
-    Larger models get a richer system-prompt tier and more KB chunks; tiny
-    models stay minimal to fit their context window.
+    The KB budget is a token ceiling (e5 tokens, ~180/chunk), not a chunk
+    count: the adaptive cut in ``kb_utils`` decides per-query how much of it
+    to consume. Ceilings follow the measured literature (peak quality scales
+    with model size; below ~3B oversized context degrades net accuracy), far
+    under even pessimistic effective context windows.
 
     Args:
         param_size: Model parameter count in billions (e.g. 7 for a 7B model;
@@ -177,16 +180,16 @@ def get_prompting_strategy(param_size: float) -> dict:
         dict with the three keys read downstream:
         - ``system_prompt_size_category``: "tiny"|"small"|"medium"|"large"|"xlarge"
           (consumed by ``build_agent_system_prompt``);
-        - ``use_kb_context``: whether to inject Knowledge Base chunks (arena);
-        - ``kb_top_k``: number of KB chunks to retrieve.
+        - ``use_kb_context``: whether to inject Knowledge Base chunks;
+        - ``kb_token_budget``: max KB context size in e5 tokens.
     """
     if param_size <= 2:
-        return {"system_prompt_size_category": "tiny", "use_kb_context": True, "kb_top_k": 1}
+        return {"system_prompt_size_category": "tiny", "use_kb_context": True, "kb_token_budget": 400}
     elif param_size <= 4:
-        return {"system_prompt_size_category": "small", "use_kb_context": True, "kb_top_k": 1}
+        return {"system_prompt_size_category": "small", "use_kb_context": True, "kb_token_budget": 700}
     elif param_size < 8:
-        return {"system_prompt_size_category": "medium", "use_kb_context": True, "kb_top_k": 1}
+        return {"system_prompt_size_category": "medium", "use_kb_context": True, "kb_token_budget": 1000}
     elif param_size <= 16:
-        return {"system_prompt_size_category": "large", "use_kb_context": True, "kb_top_k": 1}
+        return {"system_prompt_size_category": "large", "use_kb_context": True, "kb_token_budget": 1400}
     else:
-        return {"system_prompt_size_category": "xlarge", "use_kb_context": True, "kb_top_k": 3}
+        return {"system_prompt_size_category": "xlarge", "use_kb_context": True, "kb_token_budget": 2000}

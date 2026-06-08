@@ -1,7 +1,7 @@
 """Abstract base for engines that wrap an OpenAI-compatible HTTP server child.
 
 Currently shared by:
-- `MLX_Engine`        spawns `mlx_lm.server` via `multiprocessing.Process`
+- `MLX_Engine`        spawns `mlx_vlm.server` via `multiprocessing.Process`
 - `BaseLlamaCppEngine` → `CPU_Engine` / `CUDA_Engine`  spawn `llama-server`
   via `subprocess.Popen`
 
@@ -16,7 +16,7 @@ The pattern:
    before a model switch (fixes the original closure leak — without this,
    every swap would leak a stale handler holding a dead `proc`).
 5. Hand back the child's `base_url` + a per-engine `_translate_payload_kwargs`
-   hook (mlx_lm.server uses HF/transformers names, llama-server uses its own).
+   hook (mlx_vlm.server uses HF/transformers names, llama-server uses its own).
    The agent layer streams tokens over this `base_url` via `ChatOpenAI`; the
    engine no longer parses SSE itself.
 
@@ -114,8 +114,8 @@ class BaseChatServerEngine(BaseEngine):
         """Value to send as the `"model"` field in `/v1/chat/completions`.
 
         Default: use the handle's `alias` (llama-server convention). MLX
-        overrides to return the literal sentinel `"default_model"` (mlx_lm.server
-        falls back to the model loaded with `--model` when this sentinel appears).
+        overrides to return the real preloaded model path, since mlx_vlm.server
+        resolves every request's model via `get_cached_model(request.model)`.
         """
         return handle["alias"]
 
@@ -133,7 +133,7 @@ class BaseChatServerEngine(BaseEngine):
         """Translate engine-agnostic kwarg names (HF/transformers vocabulary)
         into the names the upstream server expects.
 
-        Default: identity (mlx_lm.server already uses HF names). LlamaCpp
+        Default: identity (mlx_vlm.server already uses HF names). LlamaCpp
         engines override to translate `repetition_penalty → repeat_penalty`
         and `repetition_context_size → repeat_last_n`.
         """
@@ -210,26 +210,26 @@ class BaseChatServerEngine(BaseEngine):
         cls,
         base_url: str,
         proc: Any = None,
-        alias: Optional[str] = None,
+        model_field: str = "default_model",
     ) -> None:
         """Two-stage readiness probe.
 
-        Stage 1: poll `GET /health` until 200 OK. The upstream contract is:
-        - 503 with `{"error": {"message": "Loading model"}}` while the model loads.
-        - 200 with `{"status": "ok"}` once ready.
+        Stage 1: poll `GET /health` until 200 OK. Readiness contract:
+        - a non-200 (e.g. 503) means "still loading" → keep polling;
+        - 200 means ready (mlx-vlm returns `{"status": "healthy", ...}` once the
+          preloaded model is up; llama-server returns its own 200 body).
+        Only the status code is read, so the exact body is irrelevant.
         If `proc` is provided, `_proc_is_alive(proc)` is checked each iteration
         so a child that crashes early (e.g., DLL_NOT_FOUND on Windows) is
         reported immediately rather than timing out at `_probe_timeout_s`.
 
         Stage 2: send a single `POST /v1/chat/completions` with `max_tokens=1`.
         This validates the chat template + tokenizer + sampling chain — a
-        broken GGUF (missing chat template) returns 200 on `/health` but 400
-        on the first chat call. The `model` field is built via
-        `_payload_model_value({"alias": alias})` when `alias` is provided, so
-        each subclass picks the same field name it'd use for real inference
-        (llama-cpp returns the alias; MLX returns the `"default_model"`
-        sentinel). Without `alias`, falls back to `"default_model"` for
-        backward compatibility.
+        broken model (missing chat template) returns 200 on `/health` but 400
+        on the first chat call. `model_field` is the value each subclass sends
+        for real inference (`_start_server` computes it via
+        `_payload_model_value(handle)`: llama-cpp returns the alias, MLX returns
+        the preloaded model path mlx_vlm.server resolves with `get_cached_model`).
         """
         deadline = time.monotonic() + cls._probe_timeout_s
         last_status: Optional[int] = None
@@ -262,13 +262,8 @@ class BaseChatServerEngine(BaseEngine):
                     f"server — check `lsof -i :{port}`."
                 ),
             )
-        # Stage 2 — cheap chat-completions ping (1 token).
-        if alias is not None:
-            model_field = cls._payload_model_value({"alias": alias})
-        else:
-            # Backward-compat fallback: mlx_lm.server's sentinel, accepted by
-            # llama-server as well (it picks the only loaded model).
-            model_field = "default_model"
+        # Stage 2 — cheap chat-completions ping (1 token). `model_field` is the
+        # real per-subclass model identifier computed by `_start_server`.
         try:
             resp = requests.post(
                 f"{base_url}/v1/chat/completions",
@@ -341,7 +336,7 @@ class BaseChatServerEngine(BaseEngine):
             cls._probe_ready(
                 handle["base_url"],
                 proc=handle.get("proc"),
-                alias=handle.get("alias"),
+                model_field=cls._payload_model_value(handle),
             )
         except Exception:
             cls._terminate_process(handle.get("proc"))

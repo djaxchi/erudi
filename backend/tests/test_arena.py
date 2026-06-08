@@ -13,7 +13,7 @@ import pytest
 from unittest.mock import patch
 from fastapi import status
 
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from tests._helpers import ToolableFakeChatModel
 from langchain_core.messages import AIMessage
 
 import src.agents.runner as agent_runner
@@ -23,6 +23,7 @@ from src.agents.runner import ERROR_SENTINEL
 from src.domains.arena.repository import ArenaRepository
 from src.domains.arena.services import ArenaService
 from src.domains.arena.schemas import ArenaQueryPayload
+from src.utils.kb_utils import KbExcerpt
 
 
 class _FakeEngine(BaseEngine):
@@ -32,7 +33,7 @@ class _FakeEngine(BaseEngine):
 def _fake_chat_model(*texts):
     """Return a build_chat_model replacement yielding a scripted fake model."""
     msgs = [AIMessage(content=t) for t in texts]
-    return lambda llm, **kw: GenericFakeChatModel(messages=iter(msgs))
+    return lambda llm, **kw: ToolableFakeChatModel(messages=iter(msgs))
 
 
 # ============ Repository Tests ============
@@ -90,12 +91,16 @@ class TestArenaService:
         service = ArenaService(test_db_session)
         payload = ArenaQueryPayload(question="What is in the KB?", temperature=0.5)
 
-        with patch("src.domains.arena.services.get_relevant_texts_from_kb") as mock_kb:
-            mock_kb.return_value = ["Relevant KB context"]
+        with patch("src.domains.arena.services.retrieve_kb_excerpts") as mock_kb:
+            mock_kb.return_value = [
+                KbExcerpt(source_file="notes.md", text="Relevant KB context")
+            ]
             result = [t async for t in service.query_llm_stream(llm.id, payload)]
 
         assert "".join(result) == "Answer from KB."
         mock_kb.assert_called_once()
+        # param_size=7 → medium tier → its KB token budget reaches retrieval.
+        assert mock_kb.call_args.kwargs["token_budget"] == 1000
 
     async def test_query_llm_stream_custom_params(self, test_db_session, mock_llm, monkeypatch):
         # Per-request generation params must reach the model factory.
@@ -103,7 +108,7 @@ class TestArenaService:
 
         def _capture(llm, **kw):
             captured.update(kw)
-            return GenericFakeChatModel(messages=iter([AIMessage(content="Custom response.")]))
+            return ToolableFakeChatModel(messages=iter([AIMessage(content="Custom response.")]))
 
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
         monkeypatch.setattr(agent_runner, "build_chat_model", _capture)

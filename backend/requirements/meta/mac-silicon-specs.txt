@@ -1,1 +1,5 @@
-mlx_lm==0.31.3
+# mlx-vlm is a superset of mlx-lm (it depends on it transitively) and ships the
+# OpenAI server the MLX engine now spawns. It unlocks native tool calling (no
+# mlx_lm.server EOS-flush bug) and image input. Pulls Pillow/opencv/datasets/
+# mlx-audio transitively (the inference path keeps cv2/datasets/mlx_audio lazy).
+mlx-vlm==0.6.2
