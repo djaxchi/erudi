@@ -8,7 +8,7 @@ Windows output:
 
 macOS output:
     backend/dist/backend/backend            <- spawned by Electron main.js
-    (MLX inference via mlx_lm, no llama-server needed)
+    (MLX inference via mlx_vlm, no llama-server needed)
 
 Build from backend/:
     Windows:  venv\\Scripts\\pyinstaller backend.spec
@@ -212,7 +212,9 @@ _hidden_windows = [
 _hidden_macos = [
     "src.engines.mlx_engine",   # Apple Silicon MLX inference engine
     "mlx",
-    "mlx_lm",
+    "mlx_vlm",
+    "src.engines._mlx_vlm_server_runner",  # picklable mp.Process target
+    "mlx_vlm.server",           # uvicorn loads "mlx_vlm.server:app"
 ]
 
 hiddenimports = _hidden_common
@@ -247,7 +249,7 @@ _excludes_common = [
 
 _excludes_windows = [
     "mlx",
-    "mlx_lm",
+    "mlx_vlm",
 ]
 
 _excludes_macos = [

@@ -1,7 +1,7 @@
 """Abstract base for engines that wrap an OpenAI-compatible HTTP server child.
 
 Currently shared by:
-- `MLX_Engine`        spawns `mlx_lm.server` via `multiprocessing.Process`
+- `MLX_Engine`        spawns `mlx_vlm.server` via `multiprocessing.Process`
 - `BaseLlamaCppEngine` → `CPU_Engine` / `CUDA_Engine`  spawn `llama-server`
   via `subprocess.Popen`
 
@@ -16,7 +16,7 @@ The pattern:
    before a model switch (fixes the original closure leak — without this,
    every swap would leak a stale handler holding a dead `proc`).
 5. Hand back the child's `base_url` + a per-engine `_translate_payload_kwargs`
-   hook (mlx_lm.server uses HF/transformers names, llama-server uses its own).
+   hook (mlx_vlm.server uses HF/transformers names, llama-server uses its own).
    The agent layer streams tokens over this `base_url` via `ChatOpenAI`; the
    engine no longer parses SSE itself.
 
@@ -114,8 +114,8 @@ class BaseChatServerEngine(BaseEngine):
         """Value to send as the `"model"` field in `/v1/chat/completions`.
 
         Default: use the handle's `alias` (llama-server convention). MLX
-        overrides to return the literal sentinel `"default_model"` (mlx_lm.server
-        falls back to the model loaded with `--model` when this sentinel appears).
+        overrides to return the real preloaded model path, since mlx_vlm.server
+        resolves every request's model via `get_cached_model(request.model)`.
         """
         return handle["alias"]
 
@@ -133,7 +133,7 @@ class BaseChatServerEngine(BaseEngine):
         """Translate engine-agnostic kwarg names (HF/transformers vocabulary)
         into the names the upstream server expects.
 
-        Default: identity (mlx_lm.server already uses HF names). LlamaCpp
+        Default: identity (mlx_vlm.server already uses HF names). LlamaCpp
         engines override to translate `repetition_penalty → repeat_penalty`
         and `repetition_context_size → repeat_last_n`.
         """

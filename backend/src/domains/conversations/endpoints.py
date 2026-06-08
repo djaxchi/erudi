@@ -111,7 +111,7 @@ from src.domains.conversations.services import ConversationService
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
-# MLX_Engine spawns `mlx_lm.server` in a child process, so the GPU stream lives
+# MLX_Engine spawns `mlx_vlm.server` in a child process, so the GPU stream lives
 # entirely in the child — the parent FastAPI process never touches MLX. Starlette
 # wraps the sync generator returned by ConversationService via
 # `iterate_in_threadpool`, any worker thread is fine. Same pattern as

@@ -339,7 +339,7 @@ class ModelLoadingException(AppBaseException):
     Examples:
         from src.core.exceptions import ModelLoadingException
         try:
-            model, tokenizer = mlx_lm.load(model_path)
+            model, tokenizer = mlx_vlm.load(model_path)
         except Exception as e:
             raise ModelLoadingException(f"Failed to load model: {e}", trace=str(e))
 
@@ -370,7 +370,7 @@ class QuantizationException(AppBaseException):
     Examples:
         from src.core.exceptions import QuantizationException
         try:
-            mlx_lm.convert(hf_path, mlx_path, quantize=True, q_bits="4")
+            mlx_vlm.convert(hf_path, mlx_path, quantize=True, q_bits="4")
         except Exception as e:
             raise QuantizationException(f"Quantization failed: {e}", trace=str(e))
 
