@@ -254,6 +254,10 @@ class ConversationQuery(BaseModel):
             )
     """
     question: str
+    images: Optional[List[str]] = Field(
+        default=None,
+        description="Optional base64 data-URL images attached to the question (vision models)",
+    )
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_new_tokens: Optional[int] = None

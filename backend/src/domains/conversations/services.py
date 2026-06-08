@@ -212,7 +212,12 @@ class ConversationService:
 
         assistant_response = ""
         try:
-            await run_in_threadpool(self._persist_user_message, conversation_id, payload.question)
+            user_message = self._build_user_message(payload.question, payload.images)
+            await run_in_threadpool(
+                self._persist_user_message,
+                conversation_id,
+                self._user_display_content(payload.question, payload.images),
+            )
 
             starred = await run_in_threadpool(
                 self.message_repo.get_starred_messages, conversation_id
@@ -248,7 +253,7 @@ class ConversationService:
 
             async for token in self.runner.astream_text(
                 llm=llm,
-                user_message=payload.question,
+                user_message=user_message,
                 system_prompt=system_prompt,
                 params=params,
                 thread_id=str(conversation_id),
@@ -332,6 +337,28 @@ class ConversationService:
             self.db.commit()
             llm = local_llm
         return conversation, llm
+
+    @staticmethod
+    def _build_user_message(question: str, images):
+        """Multimodal content (text + ``image_url`` parts) when images are
+        attached, else the plain question string. The base64 data-URLs ride the
+        live turn only; ``_StripStaleImagesMiddleware`` drops them on follow-ups."""
+        if not images:
+            return question
+        return [
+            {"type": "text", "text": question},
+            *[{"type": "image_url", "image_url": {"url": url}} for url in images],
+        ]
+
+    @staticmethod
+    def _user_display_content(question: str, images) -> str:
+        """Short text persisted in the Message table: the question plus one
+        ``[image]`` marker per attachment. The base64 image is NEVER stored (it
+        would blow the 32768-char content limit)."""
+        if not images:
+            return question
+        markers = " ".join("[image]" for _ in images)
+        return f"{question} {markers}".strip() if question.strip() else markers
 
     def _persist_user_message(self, conversation_id: int, content: str) -> None:
         self.message_repo.create_message(

@@ -123,6 +123,7 @@ class MLX_Engine(BaseChatServerEngine):
         "meta-llama/Llama-3.1-8B-Instruct":    "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit",
         "meta-llama/Llama-3-8B-Instruct":      "mlx-community/Meta-Llama-3-8B-Instruct-4bit",
         "Qwen/Qwen2.5-7B-Instruct":            "mlx-community/Qwen2.5-7B-Instruct-4bit",
+        "Qwen/Qwen2.5-VL-3B-Instruct":         "mlx-community/Qwen2.5-VL-3B-Instruct-4bit",
         "google/gemma-4-26b-a4b-it":           "mlx-community/gemma-4-26b-a4b-it-4bit",
         "google/gemma-4-31b-it":               "mlx-community/gemma-4-31b-it-4bit",
     }

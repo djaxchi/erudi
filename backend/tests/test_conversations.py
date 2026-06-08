@@ -364,6 +364,59 @@ class TestConversationService:
         assert messages[1].sender == "llm"
         assert messages[1].content == "Decorators are functions."
 
+    async def test_query_stream_with_images_multimodal_and_placeholder(
+        self, test_db_session, mock_llm, monkeypatch
+    ):
+        """An attached image rides the model call as multimodal content, but the
+        DB stores only a short ``[image]`` placeholder (never the base64)."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("A red square."))
+        service = ConversationService(test_db_session, InMemorySaver())
+        conversation = service.create_conversation(
+            llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024
+        )
+
+        captured = {}
+        original = service.runner.astream_text
+
+        def spy(**kwargs):
+            captured.update(kwargs)
+            return original(**kwargs)
+
+        monkeypatch.setattr(service.runner, "astream_text", spy)
+
+        data_url = "data:image/png;base64," + "A" * 4000  # large: must NOT be persisted
+        payload = ConversationQuery(question="What is this?", images=[data_url])
+
+        result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
+        assert "".join(result) == "A red square."
+
+        # The model received multimodal content carrying the image.
+        um = captured["user_message"]
+        assert isinstance(um, list)
+        assert any(
+            p.get("type") == "image_url" and p["image_url"]["url"] == data_url for p in um
+        )
+
+        # The persisted user message is a short placeholder, not the base64.
+        messages = service.message_repo.get_messages_by_conversation(conversation.id)
+        assert messages[0].sender == "user"
+        assert messages[0].content == "What is this? [image]"
+        assert "base64" not in messages[0].content
+        assert len(messages[0].content) < 100
+
+    def test_user_display_content_placeholder(self):
+        assert ConversationService._user_display_content("hi", None) == "hi"
+        assert ConversationService._user_display_content("hi", ["x"]) == "hi [image]"
+        assert ConversationService._user_display_content("", ["x", "y"]) == "[image] [image]"
+
+    def test_build_user_message_shape(self):
+        assert ConversationService._build_user_message("hi", None) == "hi"
+        msg = ConversationService._build_user_message("hi", ["data:image/png;base64,AAA"])
+        assert msg[0] == {"type": "text", "text": "hi"}
+        assert msg[1]["type"] == "image_url"
+        assert msg[1]["image_url"]["url"] == "data:image/png;base64,AAA"
+
     async def test_query_and_respond_stream_with_context(self, test_db_session, mock_llm, monkeypatch):
         """Query with prior messages persists a 4th message (2 prior + user + llm)."""
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)

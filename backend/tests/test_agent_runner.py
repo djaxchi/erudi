@@ -133,11 +133,12 @@ async def test_repair_alternation_appends_ai_after_dangling_human(monkeypatch):
     assert ERROR_SENTINEL in msgs[-1].content
 
 
-def test_build_middleware_returns_summarization_middleware():
+def test_build_middleware_includes_strip_and_summarization():
     from langchain.agents.middleware import SummarizationMiddleware
 
     built = AgentRunner()._build_middleware(ToolableFakeChatModel(messages=iter([])))
-    assert len(built) == 1 and isinstance(built[0], SummarizationMiddleware)
+    assert any(isinstance(m, SummarizationMiddleware) for m in built)
+    assert any(type(m).__name__ == "_StripStaleImagesMiddleware" for m in built)
 
 
 async def test_summarization_compacts_checkpointer_state(monkeypatch):
@@ -444,3 +445,81 @@ async def test_tool_call_round_trip_streams_only_final_text(monkeypatch):
     second_call = fake.received[-1]
     tool_messages = [m for m in second_call if m.type == "tool"]
     assert tool_messages and tool_messages[-1].text == "5763"
+
+
+# ===================== Vision input (mlx-vlm swap, image content-parts) =====================
+
+_IMG = {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgoAAAANS"}}
+
+
+async def test_astream_accepts_multimodal_user_message(monkeypatch):
+    """A list user_message (text + image_url parts) reaches the model as a
+    HumanMessage whose content keeps the image part."""
+    fake = _RecordingModel(messages=iter([AIMessage(content="a red square")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message=[{"type": "text", "text": "what is this?"}, _IMG],
+        system_prompt="sys", params=_PARAMS, thread_id="c-img", summarize=False,
+    ):
+        pass
+
+    last = fake.received[-1][-1]
+    assert last.type == "human"
+    assert isinstance(last.content, list)
+    assert any(p.get("type") == "image_url" for p in last.content)
+
+
+async def test_kb_merge_preserves_image_parts(monkeypatch):
+    """With a KB block AND an image, the merged last message carries the KB
+    block in its text part and STILL keeps the image part."""
+    fake = _RecordingModel(messages=iter([AIMessage(content="90 jours.")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message=[{"type": "text", "text": "Quel préavis ?"}, _IMG],
+        system_prompt="sys", params=_PARAMS, thread_id="c-kb-img",
+        kb_context_block=_BLOCK_1, kb_language_line="Réponds en français.",
+    ):
+        pass
+
+    merged = fake.received[-1][-1]
+    assert isinstance(merged.content, list)
+    text_part = next(p for p in merged.content if p.get("type") == "text")
+    assert _BLOCK_1 in text_part["text"]
+    assert "Quel préavis ?" in text_part["text"]
+    assert any(p.get("type") == "image_url" for p in merged.content)
+
+
+async def test_stale_images_stripped_on_followup(monkeypatch):
+    """Turn 1 sends an image; turn 2 is text-only. Turn 2's model call must NOT
+    re-send turn 1's image (it collapses to an [image] marker), keeping the
+    small VLM context bounded — vision is single-turn."""
+    fake = _RecordingModel(
+        messages=iter([AIMessage(content="r1"), AIMessage(content="r2")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message=[{"type": "text", "text": "see this"}, _IMG],
+        system_prompt="s", params=_PARAMS, thread_id="c-strip", summarize=True,
+    ):
+        pass
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="and now?", system_prompt="s",
+        params=_PARAMS, thread_id="c-strip", summarize=True,
+    ):
+        pass
+
+    second_call = fake.received[-1]
+    # No image_url survives anywhere in turn 2's request.
+    for m in second_call:
+        if isinstance(m.content, list):
+            assert all(p.get("type") != "image_url" for p in m.content)
+    # Turn 1's human message kept its text + an [image] marker (flattened).
+    past_human = [m for m in second_call if m.type == "human"][0]
+    assert "[image]" in past_human.content
+    assert "see this" in past_human.content

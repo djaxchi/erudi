@@ -64,6 +64,38 @@ class GenParams:
     max_tokens: int
 
 
+def _split_multimodal(content):
+    """Split message content into (joined_text, image_parts).
+
+    For plain-string content, returns (content, []). For OpenAI multimodal
+    content (a list of ``{"type": "text"|"image_url", ...}`` parts), returns
+    the joined text of the text parts and the list of image parts.
+    """
+    if isinstance(content, str):
+        return content, []
+    text = " ".join(
+        p["text"]
+        for p in content
+        if isinstance(p, dict) and p.get("type") == "text" and p.get("text")
+    )
+    images = [p for p in content if isinstance(p, dict) and p.get("type") == "image_url"]
+    return text, images
+
+
+def _flatten_without_images(content) -> str:
+    """Plain-text rendering of multimodal content; each image -> ``[image]``."""
+    if isinstance(content, str):
+        return content
+    out = []
+    for p in content:
+        if isinstance(p, dict):
+            if p.get("type") == "text" and p.get("text"):
+                out.append(p["text"])
+            elif p.get("type") == "image_url":
+                out.append("[image]")
+    return " ".join(out).strip()
+
+
 class _KbContextMiddleware(AgentMiddleware):
     """Merge the per-turn KB block into the model request's LAST user message.
 
@@ -91,9 +123,16 @@ class _KbContextMiddleware(AgentMiddleware):
         last = messages[-1]
         # No "Question:" label: any English structural string near the
         # question feeds the English attractor (run-5 eval finding).
-        merged = HumanMessage(
-            content=f"{self.context_block}\n\n{last.text}\n\n{self.language_line}"
-        )
+        question_text, image_parts = _split_multimodal(last.content)
+        merged_text = f"{self.context_block}\n\n{question_text}\n\n{self.language_line}"
+        if image_parts:
+            # Multimodal turn: merge the KB block into the text part and keep
+            # the screenshot(s) attached for the VLM.
+            merged = HumanMessage(
+                content=[{"type": "text", "text": merged_text}, *image_parts]
+            )
+        else:
+            merged = HumanMessage(content=merged_text)
         return request.override(messages=[*messages[:-1], merged])
 
     def wrap_model_call(self, request, handler):
@@ -101,6 +140,40 @@ class _KbContextMiddleware(AgentMiddleware):
 
     async def awrap_model_call(self, request, handler):
         return await handler(self._merge(request))
+
+
+class _StripStaleImagesMiddleware(AgentMiddleware):
+    """Keep only the CURRENT turn's images in the model request.
+
+    The checkpointer stores each turn's multimodal ``HumanMessage``, so without
+    this every past screenshot would be re-sent on each follow-up and blow the
+    (small, local) VLM context. Vision is therefore single-turn: an image is
+    seen only on the turn it is sent; in later turns it collapses to an
+    ``[image]`` text marker. The current turn — the last human message, even
+    across tool-call loops where a ToolMessage is last — keeps its images.
+    """
+
+    def _strip(self, request):
+        messages = list(request.messages)
+        human_idxs = [i for i, m in enumerate(messages) if m.type == "human"]
+        if not human_idxs:
+            return request
+        keep = human_idxs[-1]
+        changed = False
+        for i, m in enumerate(messages):
+            if i == keep or not isinstance(m.content, list):
+                continue
+            messages[i] = m.model_copy(
+                update={"content": _flatten_without_images(m.content)}
+            )
+            changed = True
+        return request.override(messages=messages) if changed else request
+
+    def wrap_model_call(self, request, handler):
+        return handler(self._strip(request))
+
+    async def awrap_model_call(self, request, handler):
+        return await handler(self._strip(request))
 
 
 class AgentRunner:
@@ -117,7 +190,7 @@ class AgentRunner:
         self,
         *,
         llm,
-        user_message: str,
+        user_message: str | list,
         system_prompt: str,
         params: GenParams,
         thread_id: Optional[str] = None,
@@ -217,12 +290,13 @@ class AgentRunner:
         untouched, so the UI still shows the full conversation.
         """
         return [
+            _StripStaleImagesMiddleware(),
             SummarizationMiddleware(
                 model=model,
                 trigger=("messages", SUMMARY_TRIGGER_MESSAGES),
                 keep=("messages", SUMMARY_KEEP_MESSAGES),
                 token_counter=count_tokens_approximately,
-            )
+            ),
         ]
 
     async def _repair_alternation(self, agent, run_config) -> None:
