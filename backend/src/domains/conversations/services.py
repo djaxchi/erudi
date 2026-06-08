@@ -18,14 +18,19 @@ from typing import AsyncGenerator, Optional
 from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
-from src.agents.prompts import build_agent_system_prompt
+from src.agents.prompts import (
+    answer_language_line,
+    build_agent_system_prompt,
+    build_kb_context_block,
+    build_kb_system_prompt,
+)
 from src.agents.runner import AgentRunner, GenParams, ERROR_MESSAGE
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.conversations.schemas import ConversationQuery
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
 from src.core.exceptions import ModelNotFoundException
-from src.utils.kb_utils import get_relevant_texts_from_kb
+from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
 from src.utils.prompt_utils import get_prompting_strategy
 
 
@@ -160,32 +165,28 @@ class ConversationService:
         return message.id
 
     # ===================== Streaming generation =====================
-    def _build_kb_context(self, llm: Llm, query: str) -> str:
-        """Top-k KB chunks for this question, or "" (no KB / disabled / error).
+    def _retrieve_kb_excerpts(self, llm: Llm, query: str) -> list[KbExcerpt]:
+        """Adaptive KB excerpts for this question, or [] (no KB / disabled / error).
 
-        Same contract as the arena's KB context, with one difference: a
+        Same contract as the arena's retrieval, with one difference: a
         retrieval failure degrades to no-context instead of erroring — a
         broken vector store must not sink an ongoing conversation.
         """
         if not llm.is_attached_to_kb:
-            return ""
+            return []
 
         param_size = llm.param_size if llm.param_size is not None else 2
         strategy = get_prompting_strategy(param_size)
         if not strategy.get("use_kb_context", False):
-            return ""
+            return []
 
         try:
-            relevant_texts = get_relevant_texts_from_kb(
-                query, llm, kb_top_k=strategy.get("kb_top_k", 1)
+            return retrieve_kb_excerpts(
+                query, llm, token_budget=strategy["kb_token_budget"]
             )
         except Exception:
             logger.exception("KB retrieval failed; continuing without context")
-            return ""
-
-        if relevant_texts:
-            return "Relevant context from Knowledge Base:\n" + "\n".join(relevant_texts)
-        return ""
+            return []
 
     async def query_and_respond_stream(
         self,
@@ -211,21 +212,39 @@ class ConversationService:
 
         assistant_response = ""
         try:
-            await run_in_threadpool(self._persist_user_message, conversation_id, payload.question)
+            user_message = self._build_user_message(payload.question, payload.images)
+            await run_in_threadpool(
+                self._persist_user_message,
+                conversation_id,
+                self._user_display_content(payload.question, payload.images),
+            )
 
             starred = await run_in_threadpool(
                 self.message_repo.get_starred_messages, conversation_id
             )
-            system_prompt = build_agent_system_prompt(
-                llm, starred_messages=starred, custom_prompt=payload.custom_prompt
-            )
-            # KB-attached assistant: retrieve per-question context (hybrid
+            # KB-attached assistant: retrieve per-question excerpts (hybrid
             # search is sync — embed + SQL — so it runs in the threadpool).
-            kb_context = await run_in_threadpool(
-                self._build_kb_context, llm, payload.question
+            # With excerpts, the dedicated KB prompt REPLACES the tier prompt
+            # (strict grounding; the tier prompts fight RAG — issue #81).
+            excerpts = await run_in_threadpool(
+                self._retrieve_kb_excerpts, llm, payload.question
             )
-            if kb_context:
-                system_prompt = f"{system_prompt}\n\n{kb_context}"
+            if excerpts:
+                system_prompt = build_kb_system_prompt(
+                    llm,
+                    custom_prompt=payload.custom_prompt,
+                    starred_messages=starred,
+                )
+                kb_context_block = build_kb_context_block(
+                    excerpts=excerpts, question=payload.question
+                )
+                kb_language_line = answer_language_line(payload.question)
+            else:
+                system_prompt = build_agent_system_prompt(
+                    llm, starred_messages=starred, custom_prompt=payload.custom_prompt
+                )
+                kb_context_block = None
+                kb_language_line = ""
             params = GenParams(
                 temperature=payload.temperature if payload.temperature is not None else conversation.temperature,
                 top_p=payload.top_p if payload.top_p is not None else conversation.top_p,
@@ -234,11 +253,13 @@ class ConversationService:
 
             async for token in self.runner.astream_text(
                 llm=llm,
-                user_message=payload.question,
+                user_message=user_message,
                 system_prompt=system_prompt,
                 params=params,
                 thread_id=str(conversation_id),
                 summarize=True,
+                kb_context_block=kb_context_block,
+                kb_language_line=kb_language_line,
             ):
                 assistant_response += token
                 yield token
@@ -316,6 +337,28 @@ class ConversationService:
             self.db.commit()
             llm = local_llm
         return conversation, llm
+
+    @staticmethod
+    def _build_user_message(question: str, images):
+        """Multimodal content (text + ``image_url`` parts) when images are
+        attached, else the plain question string. The base64 data-URLs ride the
+        live turn only; ``_StripStaleImagesMiddleware`` drops them on follow-ups."""
+        if not images:
+            return question
+        return [
+            {"type": "text", "text": question},
+            *[{"type": "image_url", "image_url": {"url": url}} for url in images],
+        ]
+
+    @staticmethod
+    def _user_display_content(question: str, images) -> str:
+        """Short text persisted in the Message table: the question plus one
+        ``[image]`` marker per attachment. The base64 image is NEVER stored (it
+        would blow the 32768-char content limit)."""
+        if not images:
+            return question
+        markers = " ".join("[image]" for _ in images)
+        return f"{question} {markers}".strip() if question.strip() else markers
 
     def _persist_user_message(self, conversation_id: int, content: str) -> None:
         self.message_repo.create_message(

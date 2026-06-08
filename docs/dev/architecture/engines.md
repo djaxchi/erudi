@@ -15,7 +15,7 @@ BaseEngine
 └── BaseChatServerEngine        ← shared: port pick, /health + chat-ping probe,
     │                             SSE byte-buffer parser, atexit storage,
     │                             idle-cleanup active marker, kwarg translation
-    ├── MLX_Engine               (mp.Process + mlx_lm.server, port 9080+)
+    ├── MLX_Engine               (mp.Process + mlx_vlm.server, port 9080+)
     └── BaseLlamaCppEngine      ← shared CPU/CUDA: Popen, llama-server resolution,
         │                         GGUF picker (q4_k_m > q4_0 > … > smallest),
         │                         `repetition_penalty → repeat_penalty` rename
@@ -25,7 +25,7 @@ BaseEngine
 
 Concrete engines implement only the small surface that is genuinely
 backend-specific: `_spawn_child` (CPU/CUDA via `subprocess.Popen`, MLX
-via `multiprocessing.Process(target=run_mlx_server, ...)`),
+via `multiprocessing.Process(target=run_mlx_vlm_server, ...)`),
 `_terminate_process`, `_proc_is_alive`, and `_resolve_model_artifact`.
 LlamaCpp subclasses additionally implement `_build_spawn_argv` and
 `_build_spawn_env` (CUDA prepends the CUDA toolkit `bin/` to `PATH` for
@@ -97,7 +97,7 @@ The `Embedder_Engine` is in `src/engines/` (not `src/utils/`) because:
 
 | Engine | Hardware | Model format | Inference backend | Child launch |
 |--------|----------|--------------|--------------------|--------------|
-| MLX    | Mac Silicon | MLX 4-bit (mlx-community/* repos) | `mlx_lm.server` | `mp.Process` |
+| MLX    | Mac Silicon | MLX 4-bit (mlx-community/* repos) | `mlx_vlm.server` | `mp.Process` |
 | CUDA   | NVIDIA GPU | GGUF (Q4_K_M default, Q5_K_M, Q8_0, FP16 fallback) | `llama-server` binary | `subprocess.Popen` |
 | CPU    | Any CPU | GGUF (same as CUDA) | `llama-server` binary | `subprocess.Popen` |
 

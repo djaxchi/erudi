@@ -16,11 +16,11 @@ Clean API Surface:
 Examples:
     >>> # Direct module imports (preferred for clarity)
     >>> from src.utils.prompt_utils import build_system_prompt
-    >>> from src.utils.kb_utils import get_relevant_texts_from_kb
+    >>> from src.utils.kb_utils import retrieve_kb_excerpts
     >>>
     >>> # Package-level imports (convenient)
     >>> from src.utils import build_system_prompt
-    >>> from src.utils import get_relevant_texts_from_kb
+    >>> from src.utils import retrieve_kb_excerpts
 
 See Also:
     - src.ingestion: KB document ingestion (extraction, chunking, embeddings)
@@ -37,7 +37,8 @@ from src.utils.prompt_utils import (
 
 # Knowledge base utilities
 from src.utils.kb_utils import (
-    get_relevant_texts_from_kb,
+    KbExcerpt,
+    retrieve_kb_excerpts,
 )
 
 # File processing utilities (training pipeline)
@@ -62,7 +63,8 @@ __all__ = [
     'build_system_prompt',
     'get_prompting_strategy',
     # KB utilities
-    'get_relevant_texts_from_kb',
+    'KbExcerpt',
+    'retrieve_kb_excerpts',
     # File processing (training)
     'split_sentences',
     'extract_text_from_pdf',

@@ -248,7 +248,7 @@ class TestCleanupAndCache:
             "base_url": "http://127.0.0.1:9090",
             "alias": "erudi-x", "model_path": "/x",
         }
-        MLX_Engine._tokenizer = {"type": "remote", "provider": "mlx-lm-server"}
+        MLX_Engine._tokenizer = {"type": "remote", "provider": "mlx-vlm-server"}
         MLX_Engine._model_id = "x"
 
         MLX_Engine.cleanup()
@@ -287,7 +287,7 @@ class TestCleanupAndCache:
             "base_url": "http://127.0.0.1:9091",
             "alias": "erudi-old", "model_path": "/old",
         }
-        MLX_Engine._tokenizer = {"type": "remote", "provider": "mlx-lm-server"}
+        MLX_Engine._tokenizer = {"type": "remote", "provider": "mlx-vlm-server"}
         MLX_Engine._model_id = "old"
 
         new_handle = {
@@ -310,27 +310,96 @@ class TestCleanupAndCache:
 
 
 # =====================================================================
-# UNIT — _mlx_server_runner helper module (picklable target)
+# UNIT — _mlx_vlm_server_runner helper module (picklable target)
 # =====================================================================
 
 @pytest.mark.unit
-class TestMlxServerRunnerHelper:
+class TestMlxVlmServerRunnerHelper:
     """The runner is a module-level function so it can be pickled by spawn."""
 
     def test_module_function_is_importable(self):
-        from src.engines import _mlx_server_runner
-        assert hasattr(_mlx_server_runner, "run_mlx_server")
-        assert callable(_mlx_server_runner.run_mlx_server)
+        from src.engines import _mlx_vlm_server_runner
+        assert hasattr(_mlx_vlm_server_runner, "run_mlx_vlm_server")
+        assert callable(_mlx_vlm_server_runner.run_mlx_vlm_server)
 
-    def test_runner_patches_sys_argv_and_calls_main(self):
-        from src.engines import _mlx_server_runner
-        with patch.object(_mlx_server_runner, "_import_mlx_server_main") as mock_import:
-            fake_main = MagicMock()
-            mock_import.return_value = fake_main
-            _mlx_server_runner.run_mlx_server(
-                ["mlx_lm.server", "--model", "/x", "--port", "9080"]
+    def test_runner_patches_sys_argv_and_calls_main(self, monkeypatch):
+        import sys
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        argv = ["mlx_vlm.server", "--model", "/x", "--host", "127.0.0.1", "--port", "9080"]
+        captured: dict = {}
+        fake_main = MagicMock(side_effect=lambda: captured.update(argv=list(sys.argv)))
+        monkeypatch.setattr(runner, "_import_mlx_vlm_server_main", lambda: fake_main)
+        monkeypatch.setattr(sys, "argv", ["pytest"])  # auto-restored by monkeypatch
+
+        runner.run_mlx_vlm_server(argv)
+
+        fake_main.assert_called_once()
+        assert captured["argv"] == argv
+
+
+# =====================================================================
+# UNIT — MLX_Engine spawn argv + class attributes + payload model value
+# =====================================================================
+
+@pytest.mark.unit
+class TestSpawnArgv:
+    """`_spawn_child` must target the mlx-vlm runner with a 127.0.0.1 argv."""
+
+    def test_spawn_argv_targets_mlx_vlm_runner(self, tmp_path):
+        from src.engines._mlx_vlm_server_runner import run_mlx_vlm_server
+
+        model_dir = tmp_path / "model"
+        model_dir.mkdir()
+        captured: dict = {}
+
+        def _fake_process(*, target, args, daemon):
+            captured["target"] = target
+            captured["argv"] = args[0]
+            proc = MagicMock()
+            proc.pid = 4321
+            return proc
+
+        with patch("src.engines.mlx_engine.mp.Process", side_effect=_fake_process):
+            handle = MLX_Engine._spawn_child(
+                model_path=model_dir, alias="erudi-x", port=9087,
             )
-            fake_main.assert_called_once()
+
+        assert captured["target"] is run_mlx_vlm_server
+        assert captured["argv"] == [
+            "mlx_vlm.server",
+            "--model", str(model_dir),
+            "--host", "127.0.0.1",
+            "--port", "9087",
+            "--log-level", "INFO",
+        ]
+        assert handle["port"] == 9087
+        assert handle["alias"] == "erudi-x"
+        assert handle["model_path"] == str(model_dir)
+        assert handle["base_url"] == "http://127.0.0.1:9087"
+
+
+@pytest.mark.unit
+class TestClassAttributes:
+    """Pin the BaseChatServerEngine config the swap retargets."""
+
+    def test_server_name_is_mlx_vlm(self):
+        assert MLX_Engine._server_name == "mlx_vlm.server"
+
+    def test_tokenizer_provider_is_mlx_vlm(self):
+        assert MLX_Engine._tokenizer_provider == "mlx-vlm-server"
+
+    def test_port_range_start_unchanged(self):
+        assert MLX_Engine._port_range_start == 9080
+
+
+@pytest.mark.unit
+class TestPayloadModelValue:
+    """mlx-vlm requires the real preloaded model path, not a sentinel."""
+
+    def test_returns_model_path(self):
+        handle = {"alias": "erudi-x", "model_path": "/models/erudi-x"}
+        assert MLX_Engine._payload_model_value(handle) == "/models/erudi-x"
 
 
 # =====================================================================
@@ -357,7 +426,7 @@ class TestSubprocessReal:
             assert model["proc"].is_alive(), "subprocess died right after spawn"
             r = requests.get(f"{model['base_url']}/health", timeout=5)
             assert r.status_code == 200
-            assert tokenizer == {"type": "remote", "provider": "mlx-lm-server"}
+            assert tokenizer == {"type": "remote", "provider": "mlx-vlm-server"}
         finally:
             MLX_Engine.cleanup()
 

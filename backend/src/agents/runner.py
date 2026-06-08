@@ -22,14 +22,21 @@ from typing import AsyncIterator, Optional
 
 from fastapi.concurrency import run_in_threadpool
 from langchain.agents import create_agent
-from langchain.agents.middleware import SummarizationMiddleware
+from langchain.agents.middleware import AgentMiddleware, SummarizationMiddleware
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from src.agents.model_factory import build_chat_model
+from src.agents.tools import calculator
 from src.core import config
 from src.core.logging import logger
+
+# Deterministic tools carried by every chat/arena agent turn. Models with
+# native function calling invoke them through the standard loop; models
+# without (e.g. Gemma 3) never emit tool_calls — the server logs a warning
+# and generation proceeds normally (probed, harmless).
+AGENT_TOOLS = [calculator]
 
 # Auto-summarization thresholds (message-count based — token triggers need a
 # model profile the local server doesn't expose). Once a conversation's agent
@@ -57,6 +64,118 @@ class GenParams:
     max_tokens: int
 
 
+def _split_multimodal(content):
+    """Split message content into (joined_text, image_parts).
+
+    For plain-string content, returns (content, []). For OpenAI multimodal
+    content (a list of ``{"type": "text"|"image_url", ...}`` parts), returns
+    the joined text of the text parts and the list of image parts.
+    """
+    if isinstance(content, str):
+        return content, []
+    text = " ".join(
+        p["text"]
+        for p in content
+        if isinstance(p, dict) and p.get("type") == "text" and p.get("text")
+    )
+    images = [p for p in content if isinstance(p, dict) and p.get("type") == "image_url"]
+    return text, images
+
+
+def _flatten_without_images(content) -> str:
+    """Plain-text rendering of multimodal content; each image -> ``[image]``."""
+    if isinstance(content, str):
+        return content
+    out = []
+    for p in content:
+        if isinstance(p, dict):
+            if p.get("type") == "text" and p.get("text"):
+                out.append(p["text"])
+            elif p.get("type") == "image_url":
+                out.append("[image]")
+    return " ".join(out).strip()
+
+
+class _KbContextMiddleware(AgentMiddleware):
+    """Merge the per-turn KB block into the model request's LAST user message.
+
+    Request-time only (``request.override``): the checkpointer keeps the
+    clean question, so past turns never re-expose stale excerpts (no
+    context pollution, no parroting fuel). Rationale: on small local
+    models, grounding/language instructions dissolve with turn depth when
+    they live in the system prompt (chat templates prepend it before the
+    whole history) — the tail of the last user message is the one spot
+    that always stays inside the effective window.
+
+    Layout: excerpts+rules block, then the question, then the answer-
+    language request LAST in the user's voice — pre-question language
+    lines are ignored as block metadata (run-4 eval), in-question
+    requests are honored (T5).
+    """
+
+    def __init__(self, context_block: str, language_line: str):
+        super().__init__()
+        self.context_block = context_block
+        self.language_line = language_line
+
+    def _merge(self, request):
+        messages = list(request.messages)
+        last = messages[-1]
+        # No "Question:" label: any English structural string near the
+        # question feeds the English attractor (run-5 eval finding).
+        question_text, image_parts = _split_multimodal(last.content)
+        merged_text = f"{self.context_block}\n\n{question_text}\n\n{self.language_line}"
+        if image_parts:
+            # Multimodal turn: merge the KB block into the text part and keep
+            # the screenshot(s) attached for the VLM.
+            merged = HumanMessage(
+                content=[{"type": "text", "text": merged_text}, *image_parts]
+            )
+        else:
+            merged = HumanMessage(content=merged_text)
+        return request.override(messages=[*messages[:-1], merged])
+
+    def wrap_model_call(self, request, handler):
+        return handler(self._merge(request))
+
+    async def awrap_model_call(self, request, handler):
+        return await handler(self._merge(request))
+
+
+class _StripStaleImagesMiddleware(AgentMiddleware):
+    """Keep only the CURRENT turn's images in the model request.
+
+    The checkpointer stores each turn's multimodal ``HumanMessage``, so without
+    this every past screenshot would be re-sent on each follow-up and blow the
+    (small, local) VLM context. Vision is therefore single-turn: an image is
+    seen only on the turn it is sent; in later turns it collapses to an
+    ``[image]`` text marker. The current turn — the last human message, even
+    across tool-call loops where a ToolMessage is last — keeps its images.
+    """
+
+    def _strip(self, request):
+        messages = list(request.messages)
+        human_idxs = [i for i, m in enumerate(messages) if m.type == "human"]
+        if not human_idxs:
+            return request
+        keep = human_idxs[-1]
+        changed = False
+        for i, m in enumerate(messages):
+            if i == keep or not isinstance(m.content, list):
+                continue
+            messages[i] = m.model_copy(
+                update={"content": _flatten_without_images(m.content)}
+            )
+            changed = True
+        return request.override(messages=messages) if changed else request
+
+    def wrap_model_call(self, request, handler):
+        return handler(self._strip(request))
+
+    async def awrap_model_call(self, request, handler):
+        return await handler(self._strip(request))
+
+
 class AgentRunner:
     """Streams an agent turn as raw token text. Shared by conversation and arena.
 
@@ -71,11 +190,13 @@ class AgentRunner:
         self,
         *,
         llm,
-        user_message: str,
+        user_message: str | list,
         system_prompt: str,
         params: GenParams,
         thread_id: Optional[str] = None,
         summarize: bool = False,
+        kb_context_block: Optional[str] = None,
+        kb_language_line: str = "",
     ) -> AsyncIterator[str]:
         engine = config.LLM_Engine
         stateful = thread_id is not None and self.checkpointer is not None
@@ -90,12 +211,20 @@ class AgentRunner:
                     top_p=params.top_p,
                     max_tokens=params.max_tokens,
                 )
+                middleware = self._build_middleware(model) if summarize else []
+                if kb_context_block:
+                    # After summarization: the merge must see the final
+                    # message list that actually reaches the model.
+                    middleware = [
+                        *middleware,
+                        _KbContextMiddleware(kb_context_block, kb_language_line),
+                    ]
                 agent = create_agent(
                     model,
-                    tools=[],
+                    tools=AGENT_TOOLS,
                     system_prompt=system_prompt,
                     checkpointer=self.checkpointer if stateful else None,
-                    middleware=self._build_middleware(model) if summarize else [],
+                    middleware=middleware,
                 )
             except Exception:
                 logger.exception("Agent construction failed")
@@ -161,12 +290,13 @@ class AgentRunner:
         untouched, so the UI still shows the full conversation.
         """
         return [
+            _StripStaleImagesMiddleware(),
             SummarizationMiddleware(
                 model=model,
                 trigger=("messages", SUMMARY_TRIGGER_MESSAGES),
                 keep=("messages", SUMMARY_KEEP_MESSAGES),
                 token_counter=count_tokens_approximately,
-            )
+            ),
         ]
 
     async def _repair_alternation(self, agent, run_config) -> None:

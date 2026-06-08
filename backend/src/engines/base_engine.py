@@ -142,7 +142,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
             FileNotFoundError: If source model path doesn't exist.
             
         Note:
-            Implementation is backend-specific. MLX uses mlx-lm convert,
+            Implementation is backend-specific. MLX uses mlx-vlm convert,
             CUDA uses bitsandbytes, CPU may skip quantization.
 
         """

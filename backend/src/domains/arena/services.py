@@ -22,8 +22,13 @@ from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
 from src.utils.prompt_utils import get_prompting_strategy
-from src.utils.kb_utils import get_relevant_texts_from_kb
-from src.agents.prompts import build_agent_system_prompt
+from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
+from src.agents.prompts import (
+    answer_language_line,
+    build_agent_system_prompt,
+    build_kb_context_block,
+    build_kb_system_prompt,
+)
 from src.agents.runner import AgentRunner, GenParams
 from src.domains.arena.repository import ArenaRepository
 from src.domains.arena.schemas import ArenaQueryPayload
@@ -53,26 +58,24 @@ class ArenaService:
         """Retrieve LLM entity by ID via repository (raises 404 if missing)."""
         return self.arena_repo.get_llm_by_id(llm_id)
 
-    def _build_kb_context(
+    def _retrieve_kb_excerpts(
         self,
         llm: Llm,
         query: str,
         strategy: Dict[str, Any],
-    ) -> str:
-        """Build a KB context string if the LLM has a KB attached and strategy allows.
+    ) -> list[KbExcerpt]:
+        """Adaptive KB excerpts if the LLM has a KB attached and strategy allows.
 
-        Retrieves top-k chunks through the hybrid pgvector search (``kb_utils``
-        façade). Returns an empty string when KB is unavailable/disabled.
+        Adaptive selection through the hybrid pgvector search (``kb_utils``
+        façade). Returns an empty list when KB is unavailable/disabled.
         """
         if not llm.is_attached_to_kb or not strategy.get("use_kb_context", False):
-            return ""
+            return []
 
         try:
-            relevant_texts = get_relevant_texts_from_kb(
-                query, llm, kb_top_k=strategy.get("kb_top_k", 1)
+            return retrieve_kb_excerpts(
+                query, llm, token_budget=strategy["kb_token_budget"]
             )
-            if relevant_texts:
-                return "Relevant context from Knowledge Base:\n" + "\n".join(relevant_texts)
         except (KnowledgeBaseNotFoundException, KnowledgeBaseCorruptedException):
             raise
         except Exception as e:
@@ -82,8 +85,6 @@ class ArenaService:
                 f"Knowledge Base retrieval error: {e}",
                 trace=str(e),
             )
-
-        return ""
 
     async def query_llm_stream(
         self,
@@ -111,12 +112,25 @@ class ArenaService:
         strategy = get_prompting_strategy(param_size)
 
         # Hybrid retrieval is sync (embed + SQL) — run it off the event loop.
-        kb_context = await run_in_threadpool(
-            self._build_kb_context, llm, payload.question, strategy
+        # With excerpts, the dedicated KB prompt REPLACES the tier prompt
+        # (strict grounding; the tier prompts fight RAG — issue #81).
+        excerpts = await run_in_threadpool(
+            self._retrieve_kb_excerpts, llm, payload.question, strategy
         )
-        system_prompt = build_agent_system_prompt(llm, custom_prompt=payload.custom_prompt)
-        if kb_context:
-            system_prompt = f"{system_prompt}\n\n{kb_context}"
+        if excerpts:
+            system_prompt = build_kb_system_prompt(
+                llm, custom_prompt=payload.custom_prompt
+            )
+            kb_context_block = build_kb_context_block(
+                excerpts=excerpts, question=payload.question
+            )
+            kb_language_line = answer_language_line(payload.question)
+        else:
+            system_prompt = build_agent_system_prompt(
+                llm, custom_prompt=payload.custom_prompt
+            )
+            kb_context_block = None
+            kb_language_line = ""
 
         params = GenParams(
             temperature=payload.temperature,
@@ -131,5 +145,7 @@ class ArenaService:
             params=params,
             thread_id=None,
             summarize=False,
+            kb_context_block=kb_context_block,
+            kb_language_line=kb_language_line,
         ):
             yield token

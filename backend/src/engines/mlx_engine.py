@@ -1,18 +1,21 @@
-"""MLX engine for Apple Silicon inference via `mlx_lm.server` subprocess.
+"""MLX engine for Apple Silicon inference via `mlx_vlm.server` subprocess.
 
-Inference is delegated to an out-of-process `mlx_lm.server` HTTP server
+Inference is delegated to an out-of-process `mlx_vlm.server` HTTP server
 (OpenAI-compatible), spawned by `multiprocessing.Process` and reached over
 loopback HTTP — exactly aligned with the CPU/CUDA pattern that wraps the
-`llama-server` binary. Quantization helpers (`quant_and_save_from_hf_format`)
-and Apple Silicon hardware detection remain in-process: they don't need the
-server and would only inflate cold-start time if they did.
+`llama-server` binary. mlx-vlm is a superset of mlx-lm (it depends on it): it
+serves plain text models, carries a working tool-calling parser (no
+mlx_lm.server EOS-flush drop, so agentic tools fire), and accepts image input.
+Quantization helpers (`quant_and_save_from_hf_format`) and Apple Silicon
+hardware detection remain in-process: they don't need the server and would
+only inflate cold-start time if they did.
 
 Architecture:
     MLX_Engine (singleton)
     ┌───────────────────────────────────────────────────────────────┐
     │ get_model_and_tokenizer(llm_id, path)                         │
     │  1. Pick free TCP port (9080+)                                │
-    │  2. Spawn child: mp.Process(target=run_mlx_server, args=...)  │
+    │  2. Spawn child: mp.Process(target=run_mlx_vlm_server)        │
     │  3. Poll GET /health until 200 (≤120s)                        │
     │  4. atexit.register(terminate)                                │
     │  5. Cache handle {pid,proc,port,base_url,alias,model_path}    │
@@ -35,14 +38,13 @@ Why multiprocessing instead of subprocess.Popen([sys.executable, "-m", ...])?
     not a Python interpreter, so the `-m` flag is a no-op. `mp.spawn`
     (already configured in `backend/run.py:143-160` via `mp.freeze_support()`
     + `set_start_method("spawn", force=True)`) re-executes the binary in
-    child mode and reconstitutes the import graph — the same `run_mlx_server`
+    child mode and reconstitutes the import graph — the same `run_mlx_vlm_server`
     target works in dev (real Python) and in prod (frozen).
 
 Why the `<|channel>thought ... <channel|>` manual filter is gone:
-    `mlx_lm.server` already detects thinking-capable tokenizers
-    (`tokenizer_utils._infer_thinking`) and surfaces reasoning text in a
-    dedicated `choices[0].delta.reasoning` field — the agent layer (ChatOpenAI)
-    simply ignores it, matching the previous in-engine filter.
+    `mlx_vlm.server` surfaces reasoning text in a dedicated
+    `choices[0].delta.reasoning` field (like mlx_lm.server did) — the agent
+    layer (ChatOpenAI) simply ignores it, matching the previous in-engine filter.
 
 Why the `_MLX_EXECUTOR` thread bottleneck is gone:
     Generation now runs in a separate OS process; the GPU stream is
@@ -56,7 +58,7 @@ Quantization Mapping:
     - google/gemma-2-2b-it → mlx-community/.../4bit
     Used by the downloader to fetch the right mlx-community/* repo;
     `quant_and_save_from_hf_format` handles HF-SafeTensors → MLX 4-bit
-    conversion via `mlx_lm.convert()` (in-process — no subprocess).
+    conversion via `mlx_vlm.convert()` (in-process — no subprocess).
 
 Example:
     ::
@@ -91,7 +93,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 from src.engines.base_chat_server_engine import BaseChatServerEngine
-from src.engines._mlx_server_runner import run_mlx_server
+from src.engines._mlx_vlm_server_runner import run_mlx_vlm_server
 from src.core.exceptions import (
     FileSystemException,
     HardwareException,
@@ -121,6 +123,7 @@ class MLX_Engine(BaseChatServerEngine):
         "meta-llama/Llama-3.1-8B-Instruct":    "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit",
         "meta-llama/Llama-3-8B-Instruct":      "mlx-community/Meta-Llama-3-8B-Instruct-4bit",
         "Qwen/Qwen2.5-7B-Instruct":            "mlx-community/Qwen2.5-7B-Instruct-4bit",
+        "Qwen/Qwen2.5-VL-3B-Instruct":         "mlx-community/Qwen2.5-VL-3B-Instruct-4bit",
         "google/gemma-4-26b-a4b-it":           "mlx-community/gemma-4-26b-a4b-it-4bit",
         "google/gemma-4-31b-it":               "mlx-community/gemma-4-31b-it-4bit",
     }
@@ -145,15 +148,15 @@ class MLX_Engine(BaseChatServerEngine):
             None. Quantized model saved to local_dest_path.
 
         Raises:
-            Exception: If mlx_lm.convert() fails (corrupted weights, OOM, etc.).
+            Exception: If mlx_vlm.convert() fails (corrupted weights, OOM, etc.).
 
         Note:
-            Uses mlx_lm.convert() which removes existing destination directory.
+            Uses mlx_vlm.convert() (same kwargs as mlx_lm.convert) which removes
+            the existing destination directory. mlx-vlm's converter preserves
+            vision/audio projections, so it quantizes both text and VL models;
             4-bit quantization reduces model size by ~75% with minimal quality loss.
         """
-        """Convert Hugging Face model to MLX format."""
-
-        mlx_lm = importlib.import_module("mlx_lm")
+        mlx_vlm = importlib.import_module("mlx_vlm")
         local_hf_path = str(local_hf_path)
         local_dest_path = str(local_dest_path)
 
@@ -162,7 +165,7 @@ class MLX_Engine(BaseChatServerEngine):
             start = datetime.now()
             if os.path.exists(local_dest_path):
                 shutil.rmtree(local_dest_path, ignore_errors=True)
-            mlx_lm.convert(
+            mlx_vlm.convert(
                 local_hf_path,
                 mlx_path=local_dest_path,
                 quantize=quantize,
@@ -195,35 +198,39 @@ class MLX_Engine(BaseChatServerEngine):
                 trace=str(e)
             )
 
-    # ======================= SUBPROCESS HTTP SERVER (mlx_lm.server) =======================
+    # ======================= SUBPROCESS HTTP SERVER (mlx_vlm.server) =======================
     #
-    # Inference goes through a subprocess `mlx_lm.server` (OpenAI-compatible HTTP),
-    # spawned via `multiprocessing.Process(target=run_mlx_server, args=([argv],))`.
-    # The shared lifecycle (port pick, /health + chat-ping probe, SSE parsing,
-    # atexit, idle cleanup) lives in `BaseChatServerEngine`. Only the hooks
-    # below are MLX-specific.
+    # Inference goes through a subprocess `mlx_vlm.server` (OpenAI-compatible HTTP),
+    # spawned via `multiprocessing.Process(target=run_mlx_vlm_server, args=([argv],))`.
+    # mlx-vlm is a superset of mlx-lm: it serves plain text models through the same
+    # endpoint, carries its own tool-calling parser (no mlx_lm.server EOS-flush drop,
+    # so agentic tool use works on Apple Silicon), and accepts image input. The
+    # shared lifecycle (port pick, /health + chat-ping probe, SSE parsing, atexit,
+    # idle cleanup) lives in `BaseChatServerEngine`. Only the hooks below are
+    # MLX-specific.
     #
     # Why `multiprocessing` and not `subprocess.Popen([sys.executable, "-m", ...])`:
     # in a PyInstaller frozen build, `sys.executable` is the launcher binary, not
     # a Python interpreter. `mp.spawn` (configured in `backend/run.py`) re-executes
     # the binary in child mode and reconstitutes the import graph, so the same
-    # `run_mlx_server` target works in dev (real Python) and in prod (frozen).
+    # `run_mlx_vlm_server` target works in dev (real Python) and in prod (frozen).
 
     # --- BaseChatServerEngine config overrides ---
     _port_range_start = 9080
-    _server_name = "mlx_lm.server"
-    _tokenizer_provider = "mlx-lm-server"
-    # mlx_lm.server uses HF/transformers kwarg names natively (repetition_penalty,
+    _server_name = "mlx_vlm.server"
+    _tokenizer_provider = "mlx-vlm-server"
+    # mlx_vlm.server accepts HF/transformers kwarg names natively (repetition_penalty,
     # repetition_context_size, top_k, ...), so MLX keeps the identity
     # `_translate_payload_kwargs`; model_factory sends them via ChatOpenAI extra_body.
 
     @staticmethod
     def _payload_model_value(handle: Dict[str, Any]) -> str:
-        """mlx_lm.server falls back from this sentinel to whatever was loaded
-        with `--model` at startup (server.py:1163). Sending the actual path
-        would also work but adds a per-request file existence check on the
-        server side."""
-        return "default_model"
+        """mlx_vlm.server resolves every request's `model` field through
+        `get_cached_model(request.model)` (there is no `default_model`
+        sentinel), so the chat payload must carry the real model path that was
+        preloaded with `--model`. The same value is used by the chat-ping probe
+        and by ChatOpenAI for real inference (model_factory)."""
+        return handle["model_path"]
 
     @classmethod
     def _resolve_model_artifact(cls, llm_local_path: Union[str, Path]) -> Path:
@@ -242,15 +249,15 @@ class MLX_Engine(BaseChatServerEngine):
         port: int,
         **ctx: Any,
     ) -> Dict[str, Any]:
-        """Spawn `mlx_lm.server` as an mp.Process. Returns the handle dict."""
+        """Spawn `mlx_vlm.server` as an mp.Process. Returns the handle dict."""
         argv = [
-            "mlx_lm.server",
+            "mlx_vlm.server",
             "--model", str(model_path),
             "--host", "127.0.0.1",
             "--port", str(port),
             "--log-level", "INFO",
         ]
-        proc = mp.Process(target=run_mlx_server, args=(argv,), daemon=False)
+        proc = mp.Process(target=run_mlx_vlm_server, args=(argv,), daemon=False)
         proc.start()
         return {
             "pid": proc.pid,

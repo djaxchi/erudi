@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ImagePlus, X } from "lucide-react";
+
+const MAX_IMAGES = 4;
 
 export default function QuestionInput({
   placeholder = "Ask a question…",
@@ -9,15 +11,34 @@ export default function QuestionInput({
   className = "",
 }) {
   const [value, setValue] = useState("");
+  const [images, setImages] = useState([]);
+  const [dragging, setDragging] = useState(false);
   const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  const canSend = !disabled && (value.trim() !== "" || images.length > 0);
+
+  const addFiles = (files) => {
+    const imageFiles = Array.from(files || []).filter((f) => f.type.startsWith("image/"));
+    imageFiles.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setImages((prev) => (prev.length >= MAX_IMAGES ? prev : [...prev, reader.result]));
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const removeImage = (idx) => setImages((prev) => prev.filter((_, i) => i !== idx));
 
   const handleSend = () => {
     const trimmed = value.trim();
-    if (!trimmed) {
+    if (!trimmed && images.length === 0) {
       return;
     }
-    onSend?.(trimmed);
+    onSend?.(trimmed, images);
     setValue("");
+    setImages([]);
     resizeTextarea();
   };
 
@@ -25,6 +46,34 @@ export default function QuestionInput({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  };
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) {
+      return;
+    }
+    const files = [];
+    for (const item of items) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const f = item.getAsFile();
+        if (f) {
+          files.push(f);
+        }
+      }
+    }
+    if (files.length) {
+      e.preventDefault();
+      addFiles(files);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragging(false);
+    if (e.dataTransfer?.files?.length) {
+      addFiles(e.dataTransfer.files);
     }
   };
 
@@ -41,11 +90,41 @@ export default function QuestionInput({
 
   return (
     <div className={["relative w-full", className].join(" ")}>
+      {/* Attached-image thumbnails */}
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2 px-1">
+          {images.map((src, idx) => (
+            <div key={idx} className="relative">
+              <img
+                src={src}
+                alt={`attachment ${idx + 1}`}
+                className="h-16 w-16 object-cover rounded-lg border border-emerald-200/20"
+              />
+              <button
+                type="button"
+                onClick={() => removeImage(idx)}
+                aria-label="Remove image"
+                className="absolute -top-2 -right-2 rounded-full bg-black/70 p-0.5 text-white/90 hover:text-white"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Panel "glassy" with emerald-900 tint */}
       <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
         className={[
           "relative flex items-center w-full rounded-[20px] overflow-hidden",
-          "border border-emerald-200/20",
+          "border",
+          dragging ? "border-emerald-400/60" : "border-emerald-200/20",
           "bg-emerald-200/5 backdrop-blur-[10px] saturate-[1.3]",
           "shadow-[0_10px_30px_-6px_rgba(0,0,0,0.5),0_2px_6px_-1px_rgba(0,0,0,0.45)]",
         ].join(" ")}
@@ -76,6 +155,28 @@ export default function QuestionInput({
           }}
         />
 
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            addFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled || images.length >= MAX_IMAGES}
+          className="pl-3 md:pl-4 text-white/70 hover:text-white disabled:opacity-40 transition"
+          aria-label="Attach image"
+          title="Attach image (or paste / drag and drop)"
+        >
+          <ImagePlus className="w-5 h-5" />
+        </button>
+
         <textarea
           ref={textareaRef}
           rows={1}
@@ -83,10 +184,11 @@ export default function QuestionInput({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           disabled={disabled}
           style={{ maxHeight: "160px" }}
           className={[
-            "w-full bg-transparent px-4 md:px-5 py-3 md:py-4",
+            "w-full bg-transparent px-3 md:px-4 py-3 md:py-4",
             "border-0 text-gray-100 placeholder-gray-300",
             "focus:outline-none focus:ring-0 focus:shadow-none",
             "disabled:opacity-50 resize-none overflow-y-auto",
@@ -97,7 +199,7 @@ export default function QuestionInput({
         <div className="pr-0 md:pr-2 flex items-center">
           <button
             onClick={handleSend}
-            disabled={disabled || value.trim() === ""}
+            disabled={!canSend}
             className={[
               "inline-flex items-center justify-center",
               "p-2",
