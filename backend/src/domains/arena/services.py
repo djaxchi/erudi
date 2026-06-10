@@ -23,12 +23,7 @@ from fastapi.concurrency import run_in_threadpool
 from src.core.logging import logger
 from src.utils.prompt_utils import get_prompting_strategy
 from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
-from src.agents.prompts import (
-    answer_language_line,
-    build_agent_system_prompt,
-    build_kb_context_block,
-    build_kb_system_prompt,
-)
+from src.agents.kb_mode import plan_turn
 from src.agents.runner import AgentRunner, GenParams
 from src.domains.arena.repository import ArenaRepository
 from src.domains.arena.schemas import ArenaQueryPayload
@@ -111,26 +106,16 @@ class ArenaService:
         param_size = llm.param_size if getattr(llm, "param_size", None) else 2
         strategy = get_prompting_strategy(param_size)
 
-        # Hybrid retrieval is sync (embed + SQL) — run it off the event loop.
-        # With excerpts, the dedicated KB prompt REPLACES the tier prompt
-        # (strict grounding; the tier prompts fight RAG — issue #81).
-        excerpts = await run_in_threadpool(
-            self._retrieve_kb_excerpts, llm, payload.question, strategy
+        # Derive the turn's mode (plain / systematic-KB / agentic-KB) from the
+        # model's tool-calling capability (#84). Retrieval is injected so it runs
+        # only in systematic mode and keeps arena's raise-on-failure policy.
+        plan = await run_in_threadpool(
+            plan_turn,
+            llm,
+            question=payload.question,
+            retrieve=lambda: self._retrieve_kb_excerpts(llm, payload.question, strategy),
+            custom_prompt=payload.custom_prompt,
         )
-        if excerpts:
-            system_prompt = build_kb_system_prompt(
-                llm, custom_prompt=payload.custom_prompt
-            )
-            kb_context_block = build_kb_context_block(
-                excerpts=excerpts, question=payload.question
-            )
-            kb_language_line = answer_language_line(payload.question)
-        else:
-            system_prompt = build_agent_system_prompt(
-                llm, custom_prompt=payload.custom_prompt
-            )
-            kb_context_block = None
-            kb_language_line = ""
 
         params = GenParams(
             temperature=payload.temperature,
@@ -141,11 +126,13 @@ class ArenaService:
         async for token in self.runner.astream_text(
             llm=llm,
             user_message=payload.question,
-            system_prompt=system_prompt,
+            system_prompt=plan.system_prompt,
             params=params,
             thread_id=None,
             summarize=False,
-            kb_context_block=kb_context_block,
-            kb_language_line=kb_language_line,
+            kb_context_block=plan.kb_context_block,
+            kb_language_line=plan.kb_language_line,
+            tools=plan.tools,
+            context=plan.context,
         ):
             yield token
