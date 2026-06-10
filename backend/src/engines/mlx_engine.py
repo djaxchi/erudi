@@ -241,6 +241,17 @@ class MLX_Engine(BaseChatServerEngine):
         return path
 
     @classmethod
+    def _load_capability_tokenizer(cls, llm_local_path: Union[str, Path]):
+        """Load the HF tokenizer from the MLX model directory (no weights, no server).
+
+        Used by ``compute_supports_tools`` for static tool-calling detection.
+        """
+        from transformers import AutoTokenizer
+
+        model_dir = cls._resolve_model_artifact(llm_local_path)
+        return AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=False)
+
+    @classmethod
     def _spawn_child(
         cls,
         *,

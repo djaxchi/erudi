@@ -185,6 +185,42 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         pass
 
 
+    # ======================= TOOL-CALLING CAPABILITY =======================
+    @classmethod
+    def _load_capability_tokenizer(cls, local_path: Union[str, Path]) -> Any:
+        """Load a tokenizer for static tool-calling detection (engine-specific).
+
+        Returns a tokenizer-like object exposing ``apply_chat_template``, or
+        raises if the artifact cannot be read. Overridden per engine: MLX reads
+        the HuggingFace directory, llama.cpp reads the GGUF via ``gguf_file=``.
+        ``compute_supports_tools`` treats any failure here as "not tool-capable".
+        """
+        raise NotImplementedError
+
+    @classmethod
+    def compute_supports_tools(cls, local_path: Union[str, Path]) -> bool:
+        """Static tool-calling capability of the model at ``local_path``.
+
+        Computed once at post-download time from the model's chat template by
+        differential rendering (see ``engines.tool_capability``): no inference,
+        no runtime probe. Any failure (unreadable artifact, missing template)
+        returns ``False`` so the model routes through the systematic KB path —
+        the capability is never assumed.
+        """
+        from src.engines.tool_capability import tokenizer_declares_tools
+
+        try:
+            tokenizer = cls._load_capability_tokenizer(local_path)
+        except Exception:
+            logger.warning(
+                f"[{cls.__name__}] tool-calling detection: could not load a "
+                f"tokenizer for {local_path}; treating as not tool-capable"
+            )
+            return False
+        if tokenizer is None:
+            return False
+        return tokenizer_declares_tools(tokenizer)
+
     # ======================= HARDWARE DETECTION & EVALUATION =======================
     @classmethod
     @abstractmethod

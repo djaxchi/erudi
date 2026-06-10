@@ -122,6 +122,20 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         return cls._select_gguf(llm_local_path)
 
     @classmethod
+    def _load_capability_tokenizer(cls, llm_local_path: Union[str, Path]):
+        """Load the tokenizer embedded in the GGUF (metadata only, no weights).
+
+        Used by ``compute_supports_tools`` for static tool-calling detection.
+        ``transformers`` reads the GGUF chat template via the ``gguf`` package.
+        """
+        from transformers import AutoTokenizer
+
+        gguf_path = cls._select_gguf(llm_local_path)
+        return AutoTokenizer.from_pretrained(
+            str(gguf_path.parent), gguf_file=gguf_path.name, trust_remote_code=False
+        )
+
+    @classmethod
     def _terminate_process(cls, proc: Any) -> None:
         """Idempotent terminate for `subprocess.Popen`.
 
