@@ -74,6 +74,7 @@ class LLMResponse(LLMBase):
     description: Optional[str] = None
     model_metadata: Optional[str] = None
     quantized: Optional[bool] = False
+    supports_tools: Optional[bool] = None
     param_size: Optional[float] = Field(default=4.0, gt=0, description="Parameter size must be positive")
 
     class Config:
