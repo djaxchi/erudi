@@ -176,6 +176,44 @@ class _StripStaleImagesMiddleware(AgentMiddleware):
         return await handler(self._strip(request))
 
 
+class _StripStaleKbToolMessages(AgentMiddleware):
+    """Placeholder the ``search_knowledge_base`` results of PAST turns.
+
+    The checkpointer persists every KB ToolMessage, so without this each
+    follow-up would re-send every past turn's (bulky) excerpts and re-introduce
+    the multi-turn context pollution the request-time design of issue #81 had
+    eliminated. The CURRENT turn's KB result stays intact (the model just
+    fetched it and must read it); only past ones shrink to a short marker. We
+    rewrite content only, never dropping the message, so the
+    ``AIMessage(tool_calls) -> ToolMessage`` pairing the chat template requires
+    stays valid. The checkpointer keeps the full result, so the UI is
+    unaffected — symmetric to ``_StripStaleImagesMiddleware`` for images.
+    """
+
+    _MARKER = "[knowledge base results from an earlier turn omitted]"
+
+    def _strip(self, request):
+        messages = list(request.messages)
+        human_idxs = [i for i, m in enumerate(messages) if m.type == "human"]
+        if not human_idxs:
+            return request
+        keep = human_idxs[-1]  # last human marks the current turn; earlier = past
+        changed = False
+        for i, m in enumerate(messages):
+            if i >= keep:
+                continue
+            if m.type == "tool" and getattr(m, "name", None) == "search_knowledge_base":
+                messages[i] = m.model_copy(update={"content": self._MARKER})
+                changed = True
+        return request.override(messages=messages) if changed else request
+
+    def wrap_model_call(self, request, handler):
+        return handler(self._strip(request))
+
+    async def awrap_model_call(self, request, handler):
+        return await handler(self._strip(request))
+
+
 class AgentRunner:
     """Streams an agent turn as raw token text. Shared by conversation and arena.
 
@@ -295,6 +333,7 @@ class AgentRunner:
         """
         return [
             _StripStaleImagesMiddleware(),
+            _StripStaleKbToolMessages(),
             SummarizationMiddleware(
                 model=model,
                 trigger=("messages", SUMMARY_TRIGGER_MESSAGES),

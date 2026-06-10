@@ -599,3 +599,53 @@ async def test_kb_tool_returns_not_found_message_on_empty_pool(monkeypatch):
 
     tool_messages = [m for m in fake.received[-1] if m.type == "tool"]
     assert "not in their documents" in tool_messages[-1].text
+
+
+def test_build_middleware_includes_kb_tool_strip():
+    built = AgentRunner()._build_middleware(ToolableFakeChatModel(messages=iter([])))
+    assert any(type(m).__name__ == "_StripStaleKbToolMessages" for m in built)
+
+
+async def test_stale_kb_tool_results_placeholdered_on_followup(monkeypatch):
+    """The checkpointer persists every KB ToolMessage; on a follow-up the model
+    request must placeholder PAST turns' (bulky) excerpts to avoid multi-turn
+    pollution, while keeping the CURRENT turn's result intact and the
+    AIMessage(tool_calls) -> ToolMessage pairing valid."""
+    ex1 = [KbExcerpt(source_file="d1.pdf", text="Le préavis est de 90 jours.")]
+    ex2 = [KbExcerpt(source_file="d2.pdf", text="Le SLA est de 99,7 pourcent.")]
+    monkeypatch.setattr(
+        "src.agents.tools.retrieve_kb_excerpts", MagicMock(side_effect=[ex1, ex2])
+    )
+
+    tc1 = AIMessage(
+        content="",
+        tool_calls=[{"name": "search_knowledge_base", "args": {"query": "préavis"}, "id": "a"}],
+    )
+    tc2 = AIMessage(
+        content="",
+        tool_calls=[{"name": "search_knowledge_base", "args": {"query": "sla"}, "id": "b"}],
+    )
+    fake = _RecordingModel(
+        messages=iter([tc1, AIMessage(content="r1"), tc2, AIMessage(content="r2")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+    ctx = KbToolContext(kb_id=7, token_budget=1000)
+
+    for q in ("q1", "q2"):
+        async for _ in runner.astream_text(
+            llm=_Llm(), user_message=q, system_prompt="s", params=_PARAMS,
+            thread_id="c-kbstrip", summarize=True,
+            tools=[search_knowledge_base], context=ctx,
+        ):
+            pass
+
+    last_call = fake.received[-1]  # turn 2, post-tool model call
+    tool_msgs = [m for m in last_call if m.type == "tool"]
+    # Pairing preserved: both ToolMessages still present (none dropped).
+    assert len(tool_msgs) == 2
+    # Past turn's real excerpts are gone (placeholdered)…
+    assert "90 jours" not in "".join(m.text for m in last_call)
+    assert any("earlier turn omitted" in m.content for m in tool_msgs)
+    # …and the current turn's KB result is intact.
+    assert any("99,7" in m.text for m in tool_msgs)
