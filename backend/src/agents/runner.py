@@ -18,7 +18,7 @@ never reaps the model mid-stream.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 
 from fastapi.concurrency import run_in_threadpool
 from langchain.agents import create_agent
@@ -197,6 +197,8 @@ class AgentRunner:
         summarize: bool = False,
         kb_context_block: Optional[str] = None,
         kb_language_line: str = "",
+        tools: Optional[list] = None,
+        context: Optional[Any] = None,
     ) -> AsyncIterator[str]:
         engine = config.LLM_Engine
         stateful = thread_id is not None and self.checkpointer is not None
@@ -221,10 +223,11 @@ class AgentRunner:
                     ]
                 agent = create_agent(
                     model,
-                    tools=AGENT_TOOLS,
+                    tools=tools if tools is not None else AGENT_TOOLS,
                     system_prompt=system_prompt,
                     checkpointer=self.checkpointer if stateful else None,
                     middleware=middleware,
+                    context_schema=type(context) if context is not None else None,
                 )
             except Exception:
                 logger.exception("Agent construction failed")
@@ -235,6 +238,7 @@ class AgentRunner:
                 async for token, meta in agent.astream(
                     {"messages": [HumanMessage(user_message)]},
                     config=run_config,
+                    context=context,
                     stream_mode="messages",
                 ):
                     if meta.get("langgraph_node") == "model" and getattr(token, "text", ""):

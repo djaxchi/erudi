@@ -523,3 +523,79 @@ async def test_stale_images_stripped_on_followup(monkeypatch):
     past_human = [m for m in second_call if m.type == "human"][0]
     assert "[image]" in past_human.content
     assert "see this" in past_human.content
+
+
+# ===================== Agentic KB tool (issue #84) =====================
+
+from unittest.mock import MagicMock  # noqa: E402
+
+from src.agents.tools import KbToolContext, search_knowledge_base  # noqa: E402
+from src.utils.kb_utils import KbExcerpt  # noqa: E402
+
+
+def test_kb_tool_exposes_only_query_to_the_model():
+    # The runtime context (kb_id, token_budget) must be hidden from the model;
+    # only `query` is part of the tool schema the model sees.
+    assert "query" in search_knowledge_base.args
+    assert "runtime" not in search_knowledge_base.args
+
+
+async def test_kb_tool_round_trip_searches_with_runtime_context(monkeypatch):
+    """The model calls search_knowledge_base(query=...); the tool retrieves with
+    the HIDDEN kb_id/token_budget from its runtime context, and its grounded
+    result reaches the second model call as a ToolMessage."""
+    excerpts = [KbExcerpt(source_file="contrat.pdf", text="Le préavis est de 90 jours.")]
+    mock_retrieve = MagicMock(return_value=excerpts)
+    monkeypatch.setattr("src.agents.tools.retrieve_kb_excerpts", mock_retrieve)
+
+    tool_call = AIMessage(
+        content="",
+        tool_calls=[{
+            "name": "search_knowledge_base",
+            "args": {"query": "préavis de résiliation"},
+            "id": "k1",
+        }],
+    )
+    fake = _RecordingModel(messages=iter([tool_call, AIMessage(content="90 jours.")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    out = [
+        t
+        async for t in runner.astream_text(
+            llm=_Llm(), user_message="Quel est le préavis ?", system_prompt="sys",
+            params=_PARAMS, thread_id="c-kbtool",
+            tools=[search_knowledge_base],
+            context=KbToolContext(kb_id=7, token_budget=1000),
+        )
+    ]
+
+    assert "".join(out) == "90 jours."
+    # query from the model + kb_id/budget from the hidden runtime context
+    mock_retrieve.assert_called_once_with("préavis de résiliation", 7, 1000)
+    tool_messages = [m for m in fake.received[-1] if m.type == "tool"]
+    assert tool_messages
+    assert "[Document: contrat.pdf]" in tool_messages[-1].text
+    assert "90 jours" in tool_messages[-1].text
+
+
+async def test_kb_tool_returns_not_found_message_on_empty_pool(monkeypatch):
+    monkeypatch.setattr("src.agents.tools.retrieve_kb_excerpts", MagicMock(return_value=[]))
+    tool_call = AIMessage(
+        content="",
+        tool_calls=[{"name": "search_knowledge_base", "args": {"query": "x"}, "id": "k2"}],
+    )
+    fake = _RecordingModel(
+        messages=iter([tool_call, AIMessage(content="Ce n'est pas dans les documents.")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message="?", system_prompt="s", params=_PARAMS, thread_id="c-empty",
+        tools=[search_knowledge_base], context=KbToolContext(kb_id=7, token_budget=1000),
+    ):
+        pass
+
+    tool_messages = [m for m in fake.received[-1] if m.type == "tool"]
+    assert "not in their documents" in tool_messages[-1].text

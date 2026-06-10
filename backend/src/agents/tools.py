@@ -17,8 +17,15 @@ from __future__ import annotations
 
 import ast
 import operator
+from dataclasses import dataclass
+from typing import List, Optional
 
+from fastapi.concurrency import run_in_threadpool
+from langchain.tools import ToolRuntime
 from langchain_core.tools import tool
+
+from src.agents.prompts import answer_language_line, build_kb_context_block
+from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
 
 _BINARY_OPERATORS = {
     ast.Add: operator.add,
@@ -101,3 +108,56 @@ def calculator(expression: str) -> str:
     except ValueError as exc:
         # Text the model can react to — never crash the agent loop.
         return f"Error: {exc}. Provide a pure arithmetic expression."
+
+
+# ===================== Agentic knowledge base (issue #84) =====================
+
+
+@dataclass
+class KbToolContext:
+    """Per-turn context for the KB tool, hidden from the model.
+
+    Passed to the agent via ``create_agent(context_schema=KbToolContext)`` +
+    ``astream(..., context=...)`` and read through ``ToolRuntime``; the model
+    only ever sees the ``query`` argument.
+    """
+
+    kb_id: Optional[int]
+    token_budget: int
+
+
+def format_kb_tool_result(excerpts: List[KbExcerpt], query: str) -> str:
+    """Grounded ToolMessage payload: attributed excerpts + grounding reminder +
+    the localized answer-language line, LAST (close to generation — the spot
+    small local models honor, per the issue #81 findings). Reuses the systematic
+    block builder so both KB paths ground identically. Empty pool -> an explicit
+    "not in the documents" instruction rather than silence."""
+    if not excerpts:
+        return (
+            "No relevant excerpts were found in the user's documents for this "
+            "query. Tell the user the information is not in their documents."
+        )
+    block = build_kb_context_block(excerpts=excerpts, question=query)
+    return f"{block}\n\n{answer_language_line(query)}"
+
+
+@tool
+async def search_knowledge_base(query: str, runtime: ToolRuntime[KbToolContext]) -> str:
+    """Search the user's personal knowledge base (their uploaded documents).
+
+    Use this whenever the question concerns the content of those documents.
+    Answer only from what this tool returns; if it returns no excerpts, tell the
+    user the information is not in their documents.
+
+    Args:
+        query: A focused natural-language search query for the documents.
+    """
+    ctx = runtime.context
+    try:
+        excerpts = await run_in_threadpool(
+            retrieve_kb_excerpts, query, ctx.kb_id, ctx.token_budget
+        )
+    except Exception:
+        # A broken vector store must not crash the agent loop.
+        return "The knowledge base could not be searched right now."
+    return format_kb_tool_result(excerpts, query)
