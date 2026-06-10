@@ -182,7 +182,7 @@ class ConversationService:
 
         try:
             return retrieve_kb_excerpts(
-                query, llm, token_budget=strategy["kb_token_budget"]
+                query, llm.kb_id, token_budget=strategy["kb_token_budget"]
             )
         except Exception:
             logger.exception("KB retrieval failed; continuing without context")
