@@ -125,6 +125,33 @@ conversational recall of "33 nouveaux clients" (only the CA 1 689 k€
 survived), confirming the inject-excerpts-on-meta-question hypothesis. T7
 and T10 are the two cases addressed next in this PR.
 
+**Run 5 (2026-06-15, conv 31, Nimbus corpus, `Gemma-4-E4B-it-qat-4bit` — first
+tool-capable model at the 4B tier) — first run on the issue #84 AGENTIC path**
+(the model OWNS the decision to call `search_knowledge_base`; no systematic
+injection). Two passes:
+
+- **Original agentic prompt → 4 PASS / 2 PARTIAL / 4 FAIL** — a regression vs the
+  systematic baseline. The model **under-called the tool** (5 `ToolMessage`s
+  across 10 turns): T1/T4/T5/T9 were answered "the information is not in the
+  documents" **without ever searching**, and those turns were tell-tale fast
+  (T4 = 7 s, T5 = 9 s). This is exactly the risk #84's design acknowledged ("a
+  tool-capable model may choose not to search").
+- **Hardened agentic prompt (commit `5c902b6`: force a search whenever unsure,
+  forbid presuming absence before searching, don't lean on the assistant's
+  name/description) → 8 PASS / 2 PARTIAL / 0 FAIL** — the model searched on
+  every relevant turn (12 `ToolMessage`s) and now **beats the Gemma-4B
+  systematic baseline**. Per-case: T1–T6 PASS, T7 PARTIAL (genuine two-document
+  comparison, but no firm coherence verdict — bi-topic, #85), T8–T9 PASS, T10
+  PARTIAL (recalled only 1 of the 2 Q4 figures — 1 689 k€, dropped "33 clients").
+  Latency 14–71 s/turn (E4B is heavier than Gemma-4B).
+
+**T5 PASS for the FIRST time across all runs**: a tool-capable model on the
+agentic path retrieves the four quarterly figures AND reaches the correct annual
+total **5 763 k€** — the arithmetic failure (problem #4) is resolved by tool
+calling, not by the chain. **Headline: the agentic path's quality hinges
+entirely on the call guardrails** — same model/corpus/retrieval, only the prompt
+wording changed, and the score went 4 PASS → 8 PASS.
+
 ## Baseline failure analysis (what, not how-to-fix)
 
 1. **Out-of-corpus hallucination** (T8, T9, T1): the model invents precise
