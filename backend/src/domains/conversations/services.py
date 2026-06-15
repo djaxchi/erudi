@@ -18,12 +18,7 @@ from typing import AsyncGenerator, Optional
 from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
-from src.agents.prompts import (
-    answer_language_line,
-    build_agent_system_prompt,
-    build_kb_context_block,
-    build_kb_system_prompt,
-)
+from src.agents.kb_mode import plan_turn
 from src.agents.runner import AgentRunner, GenParams, ERROR_MESSAGE
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.conversations.schemas import ConversationQuery
@@ -182,7 +177,7 @@ class ConversationService:
 
         try:
             return retrieve_kb_excerpts(
-                query, llm, token_budget=strategy["kb_token_budget"]
+                query, llm.kb_id, token_budget=strategy["kb_token_budget"]
             )
         except Exception:
             logger.exception("KB retrieval failed; continuing without context")
@@ -222,29 +217,18 @@ class ConversationService:
             starred = await run_in_threadpool(
                 self.message_repo.get_starred_messages, conversation_id
             )
-            # KB-attached assistant: retrieve per-question excerpts (hybrid
-            # search is sync — embed + SQL — so it runs in the threadpool).
-            # With excerpts, the dedicated KB prompt REPLACES the tier prompt
-            # (strict grounding; the tier prompts fight RAG — issue #81).
-            excerpts = await run_in_threadpool(
-                self._retrieve_kb_excerpts, llm, payload.question
+            # Derive the turn's mode (plain / systematic-KB / agentic-KB) from
+            # the model's tool-calling capability and build the runner bundle
+            # (#84). Retrieval is injected so it runs only in systematic mode and
+            # keeps the conversation's degrade-to-no-context policy.
+            plan = await run_in_threadpool(
+                plan_turn,
+                llm,
+                question=payload.question,
+                retrieve=lambda: self._retrieve_kb_excerpts(llm, payload.question),
+                custom_prompt=payload.custom_prompt,
+                starred_messages=starred,
             )
-            if excerpts:
-                system_prompt = build_kb_system_prompt(
-                    llm,
-                    custom_prompt=payload.custom_prompt,
-                    starred_messages=starred,
-                )
-                kb_context_block = build_kb_context_block(
-                    excerpts=excerpts, question=payload.question
-                )
-                kb_language_line = answer_language_line(payload.question)
-            else:
-                system_prompt = build_agent_system_prompt(
-                    llm, starred_messages=starred, custom_prompt=payload.custom_prompt
-                )
-                kb_context_block = None
-                kb_language_line = ""
             params = GenParams(
                 temperature=payload.temperature if payload.temperature is not None else conversation.temperature,
                 top_p=payload.top_p if payload.top_p is not None else conversation.top_p,
@@ -254,12 +238,14 @@ class ConversationService:
             async for token in self.runner.astream_text(
                 llm=llm,
                 user_message=user_message,
-                system_prompt=system_prompt,
+                system_prompt=plan.system_prompt,
                 params=params,
                 thread_id=str(conversation_id),
                 summarize=True,
-                kb_context_block=kb_context_block,
-                kb_language_line=kb_language_line,
+                kb_context_block=plan.kb_context_block,
+                kb_language_line=plan.kb_language_line,
+                tools=plan.tools,
+                context=plan.context,
             ):
                 assistant_response += token
                 yield token

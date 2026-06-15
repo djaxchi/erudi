@@ -17,6 +17,7 @@ import pytest
 from src.agents.prompts import (
     answer_language_line,
     build_agent_system_prompt,
+    build_kb_agentic_system_prompt,
     build_kb_context_block,
     build_kb_system_prompt,
 )
@@ -87,6 +88,43 @@ class TestBuildKbSystemPrompt:
         )
         assert "Additional instructions: Tutoie l'utilisateur" in p
         assert "Important points" in p and "le client est Meridia" in p
+
+
+class TestBuildKbAgenticSystemPrompt:
+    def _prompt(self, **kwargs):
+        return build_kb_agentic_system_prompt(_Llm(name="Agent 7B"), **kwargs)
+
+    def test_imperative_call_guardrails(self):
+        # The model owns the decision to search, so the call guardrails must be
+        # imperative: a missed call = answering from memory about unread docs.
+        p = self._prompt()
+        assert "Agent 7B" in p
+        assert "search_knowledge_base" in p
+        assert "MUST call" in p
+        assert "ONLY from what it returns" in p
+        assert "not in the documents" in p
+
+    def test_forces_search_when_unsure_and_forbids_presuming_absence(self):
+        # The quality eval showed the model skipping the tool and falsely
+        # claiming the info isn't in the docs. The prompt must force a search
+        # whenever unsure, forbid presuming absence before searching, and stop
+        # the model from leaning on the assistant's name/description to decide.
+        p = self._prompt()
+        low = p.lower()
+        assert "unsure" in low
+        assert "never assume" in low
+        assert "name or description" in low
+
+    def test_language_fallback_and_calculator_rule(self):
+        p = self._prompt()
+        # Language line is the fallback for the no-search case.
+        assert "same language" in p
+        assert "calculator" in p
+
+    def test_custom_prompt_and_starred_are_kept(self):
+        p = self._prompt(custom_prompt="Tutoie", starred_messages=["client Meridia"])
+        assert "Additional instructions: Tutoie" in p
+        assert "Important points" in p and "client Meridia" in p
 
 
 class TestBuildKbContextBlock:

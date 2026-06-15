@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
 from src.core.exceptions import KnowledgeBaseNotFoundException
-from src.entities.Llm import Llm
 from src.ingestion.chunking import count_tokens
 from src.ingestion.vector_store import search_kb_chunks_scored
 
@@ -75,14 +74,15 @@ def _truncate_to_token_budget(texts: List[str], token_budget: int) -> List[str]:
 
 def retrieve_kb_excerpts(
     query: str,
-    llm: Llm,
+    kb_id: Optional[int],
     token_budget: int,
 ) -> List[KbExcerpt]:
     """Select the KB context for a query: pool → adaptive cut → token budget.
 
     Args:
         query: User query to search against the KB.
-        llm: Specialized Llm whose ``kb_id`` selects the corpus.
+        kb_id: KnowledgeBase id selecting the corpus (the model's ``kb_id``;
+            the agentic tool passes it from its runtime context).
         token_budget: Max context size in e5 tokens (from the model-size
             strategy, ``get_prompting_strategy``).
 
@@ -91,12 +91,12 @@ def retrieve_kb_excerpts(
         when the KB holds no indexed chunks yet.
 
     Raises:
-        KnowledgeBaseNotFoundException: If the LLM has no KB attached.
+        KnowledgeBaseNotFoundException: If no ``kb_id`` is provided.
     """
-    if not llm.kb_id:
-        raise KnowledgeBaseNotFoundException(llm.kb_id)
+    if not kb_id:
+        raise KnowledgeBaseNotFoundException(kb_id)
 
-    pool = search_kb_chunks_scored(query, kb_id=llm.kb_id)
+    pool = search_kb_chunks_scored(query, kb_id=kb_id)
     if not pool:
         return []
 

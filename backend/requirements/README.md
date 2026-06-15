@@ -164,9 +164,9 @@ bash scripts/dev/backend/setup-mac-silicon.sh
 
 ### Production Dependencies (`*-prod.txt`)
 - **Core Framework**: FastAPI, Uvicorn
-- **Database**: SQLAlchemy
+- **Database**: SQLAlchemy, PostgreSQL (pgserver), pgvector
 - **LLM Inference**: Platform-specific (MLX, CUDA, CPU)
-- **Embeddings**: Sentence Transformers, FAISS
+- **Embeddings**: Sentence Transformers (multilingual-e5-small)
 - **Utilities**: Pydantic, python-dotenv, pypdf, tqdm
 - **System**: NumPy, psutil, py-cpuinfo
 

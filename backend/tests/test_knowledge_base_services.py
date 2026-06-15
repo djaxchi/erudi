@@ -48,6 +48,25 @@ class TestAssistantLifecycle:
         assert job.new_model_id == llm_id
         assert job.kb_id == specialized.kb_id
 
+    def test_kb_assistant_inherits_supports_tools(self, test_db_session, mock_llm):
+        # A KB assistant built from a tool-capable base model must stay
+        # tool-capable: otherwise plan_turn routes it to the systematic path and
+        # the agentic search_knowledge_base tool is never offered (#84).
+        mock_llm.supports_tools = True
+        test_db_session.flush()
+
+        service = KB_Service()
+        llm_id, _ = service.create_kb_assistant(
+            db=test_db_session,
+            base_llm_id=mock_llm.id,
+            model_name="Tool-capable assistant",
+            description="",
+            file_paths=["/tmp/whatever.pdf"],
+        )
+
+        specialized = test_db_session.query(Llm).get(llm_id)
+        assert specialized.supports_tools is True
+
     def test_create_requires_local_base_llm(self, test_db_session):
         service = KB_Service()
         with pytest.raises(ValueError, match="not found or not local"):

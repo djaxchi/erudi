@@ -290,7 +290,7 @@ class TestKbUtilsAdaptiveSelection:
 
         llm = SimpleNamespace(kb_id=kb_id)
         excerpts = retrieve_kb_excerpts(
-            "Quel est le préavis de résiliation du contrat ?", llm, token_budget=2000
+            "Quel est le préavis de résiliation du contrat ?", llm.kb_id, token_budget=2000
         )
         texts = [e.text for e in excerpts]
         assert texts
@@ -313,7 +313,7 @@ class TestKbUtilsAdaptiveSelection:
             e.text
             for e in retrieve_kb_excerpts(
                 "Quels sont les plans tarifaires disponibles et leurs prix ?",
-                llm,
+                llm.kb_id,
                 token_budget=2000,
             )
         ]
@@ -336,11 +336,11 @@ class TestKbUtilsAdaptiveSelection:
 
         llm = SimpleNamespace(kb_id=kb_id)
         question = "Quels sont les plans tarifaires disponibles et leurs prix ?"
-        unbounded = retrieve_kb_excerpts(question, llm, token_budget=2000)
+        unbounded = retrieve_kb_excerpts(question, llm.kb_id, token_budget=2000)
         assert len(unbounded) >= 2  # the cut alone keeps several candidates
 
         tight = retrieve_kb_excerpts(
-            question, llm, token_budget=count_tokens(unbounded[0].text)
+            question, llm.kb_id, token_budget=count_tokens(unbounded[0].text)
         )
         assert tight == unbounded[:1]  # budget bites, best chunk survives
 

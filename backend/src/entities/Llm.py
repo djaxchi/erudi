@@ -67,6 +67,10 @@ class Llm(Base):
     description = Column(String, nullable=True)
     model_metadata = Column(String, nullable=True)
     quantized = Column(Boolean, default=False, nullable=False)
+    # Tool-calling capability, detected once at post-download from the model's
+    # chat template (#84). NULL = unknown (remote/not-yet-downloaded); the
+    # agent treats NULL/False as "not tool-capable" -> systematic KB path.
+    supports_tools = Column(Boolean, nullable=True)
     param_size = Column(Float, default=4.0, nullable=False)
     is_attached_to_kb = Column(Boolean, default=False, nullable=False)
     kb_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="SET NULL"), nullable=True)

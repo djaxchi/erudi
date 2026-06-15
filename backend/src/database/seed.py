@@ -57,6 +57,7 @@ from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.core.logging import logger
@@ -79,6 +80,7 @@ from src.utils.hf_model_metadata import (
 )
 from src.domains.hardware.repository import Hardware_Repository
 from src.domains.hardware.services import Hardware_Service
+from src.engines.tool_capability import tool_capability_from_hf_repo
 
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
@@ -465,7 +467,10 @@ class Model_Seeder:
             type=model_config.model_type,
             quantized=is_quantized,
             model_metadata=metadata,
-            param_size=param_size
+            param_size=param_size,
+            # Pre-download tool-calling detection from the HF chat template (#86):
+            # lets the catalog recommend agentic models before they are downloaded.
+            supports_tools=tool_capability_from_hf_repo(actual_link),
         )
     
     def _create_base_llm_fallback(self, model_config: Model_Config) -> Llm:
@@ -502,7 +507,8 @@ class Model_Seeder:
             type=model_config.model_type,
             quantized=is_quantized,
             model_metadata=fallback_metadata,
-            param_size=param_size
+            param_size=param_size,
+            supports_tools=tool_capability_from_hf_repo(actual_link),
         )
     
     def _extract_param_size(self, name: str, link: str) -> float:
@@ -1052,6 +1058,14 @@ class Database_Seeder:
             )
         try:
             Base.metadata.create_all(bind=core.db_engine)
+            # No migration framework here (create_all only creates MISSING
+            # tables, it never adds a column to a table that already exists in a
+            # persisted/packaged database). Backfill the supports_tools column
+            # (#84) idempotently so existing installs gain it on next startup.
+            with core.db_engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE llms ADD COLUMN IF NOT EXISTS supports_tools BOOLEAN")
+                )
             logger.info("Database tables created successfully")
         except Exception as e:
             logger.error(f"Failed to create tables: {e}", exc_info=True)
