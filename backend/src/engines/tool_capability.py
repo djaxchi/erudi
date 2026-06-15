@@ -13,7 +13,9 @@ decision below is shared and agnostic: it consumes any object exposing
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
+
+from src.core.logging import logger
 
 # A trivial conversation + one well-formed tool. Tool-aware templates branch on
 # the ``tools`` variable (``{%- if tools %}`` and friends), so injecting one
@@ -56,3 +58,32 @@ def tokenizer_declares_tools(tokenizer: Any) -> bool:
         # A template that cannot render with tools does not support them.
         return False
     return with_tools != base
+
+
+def tool_capability_from_hf_repo(repo_id: str) -> Optional[bool]:
+    """Tool-calling capability of a HuggingFace repo WITHOUT downloading weights.
+
+    ``AutoTokenizer.from_pretrained`` pulls only the tokenizer/template files
+    (``tokenizer_config.json`` / ``chat_template`` — never the multi-GB weights),
+    so we can run the exact same differential render as the post-download path
+    and flag tool-capable models in the catalog BEFORE a user downloads them
+    (so the model picker can recommend agentic models — #86).
+
+    Returns ``None`` on any failure (empty id, unreachable/gated repo, missing
+    template): pre-download we never assume a capability we could not probe, so
+    the column stays unset rather than being wrongly pinned to False.
+    """
+    if not repo_id:
+        return None
+    try:
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(repo_id, trust_remote_code=False)
+    except Exception:
+        logger.warning(
+            f"tool-calling pre-detection: could not load a tokenizer for {repo_id!r}"
+        )
+        return None
+    if tokenizer is None:
+        return None
+    return tokenizer_declares_tools(tokenizer)

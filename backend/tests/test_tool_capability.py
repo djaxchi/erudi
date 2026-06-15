@@ -24,7 +24,10 @@ from pathlib import Path
 import pytest
 
 from src.engines.base_engine import BaseEngine
-from src.engines.tool_capability import tokenizer_declares_tools
+from src.engines.tool_capability import (
+    tokenizer_declares_tools,
+    tool_capability_from_hf_repo,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "chat_templates"
 
@@ -155,6 +158,39 @@ def test_compute_supports_tools_graceful_on_load_failure():
 @pytest.mark.unit
 def test_compute_supports_tools_graceful_on_none_tokenizer():
     assert _NoneEngine.compute_supports_tools("/any/path") is False
+
+
+# ---------------- unit: pre-download detection from a HF repo (#84/#86) ----------------
+
+
+@pytest.mark.unit
+def test_hf_repo_tool_capable(monkeypatch):
+    tok = _minimal_tokenizer_with_template((FIXTURES / "qwen2.5-instruct.jinja").read_text())
+    monkeypatch.setattr("transformers.AutoTokenizer.from_pretrained", lambda *a, **k: tok)
+    assert tool_capability_from_hf_repo("org/qwen-like") is True
+
+
+@pytest.mark.unit
+def test_hf_repo_not_tool_capable(monkeypatch):
+    tok = _minimal_tokenizer_with_template((FIXTURES / "gemma-3.jinja").read_text())
+    monkeypatch.setattr("transformers.AutoTokenizer.from_pretrained", lambda *a, **k: tok)
+    assert tool_capability_from_hf_repo("org/gemma-like") is False
+
+
+@pytest.mark.unit
+def test_hf_repo_none_on_load_failure(monkeypatch):
+    # Pre-download we never assume a capability we could not probe: an
+    # unreachable/gated repo yields None (unknown), NOT False.
+    def boom(*a, **k):
+        raise OSError("repo not found / gated")
+
+    monkeypatch.setattr("transformers.AutoTokenizer.from_pretrained", boom)
+    assert tool_capability_from_hf_repo("org/missing") is None
+
+
+@pytest.mark.unit
+def test_hf_repo_none_on_empty_repo_id():
+    assert tool_capability_from_hf_repo("") is None
 
 
 # ---------------- mlx_only: real tokenizer load ----------------
