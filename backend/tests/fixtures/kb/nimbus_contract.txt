@@ -1,0 +1,17 @@
+# Contrat de service Nimbus
+
+## Résiliation
+Le préavis de résiliation du contrat Nimbus est de 90 jours calendaires.
+Toute demande de résiliation doit être adressée par écrit au service client.
+
+## Disponibilité
+Le SLA garanti est de 99,7 pourcent de disponibilité mensuelle.
+En cas de manquement, une pénalité de 5 pourcent est appliquée sur la facture du mois concerné.
+
+## Support
+Le support technique Nimbus répond aux tickets sous 48 heures ouvrées.
+Les incidents critiques sont pris en charge sous 4 heures.
+
+## Facturation
+La facturation Nimbus est mensuelle et émise le premier jour ouvré de chaque mois.
+Tout retard de paiement au-delà de 30 jours entraîne la suspension du service.
