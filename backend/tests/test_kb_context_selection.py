@@ -109,7 +109,7 @@ class TestRetrieveKbExcerpts:
         )
         llm = SimpleNamespace(kb_id=7)
         with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=pool):
-            excerpts = retrieve_kb_excerpts("question", llm, token_budget=2000)
+            excerpts = retrieve_kb_excerpts("question", llm.kb_id, token_budget=2000)
         assert [e.text for e in excerpts] == [
             "chunk pertinent A", "chunk pertinent B", "chunk pertinent C",
         ]
@@ -118,14 +118,14 @@ class TestRetrieveKbExcerpts:
         pool = _pool([("contenu", 0.9)])
         llm = SimpleNamespace(kb_id=7)
         with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=pool):
-            excerpts = retrieve_kb_excerpts("question", llm, token_budget=2000)
+            excerpts = retrieve_kb_excerpts("question", llm.kb_id, token_budget=2000)
         assert excerpts == [KbExcerpt(source_file="doc-0.md", text="contenu")]
 
     def test_flat_pool_falls_back_to_budget_only(self):
         pool = _pool([("a", 0.701), ("b", 0.700), ("c", 0.699)])
         llm = SimpleNamespace(kb_id=7)
         with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=pool):
-            excerpts = retrieve_kb_excerpts("question", llm, token_budget=2000)
+            excerpts = retrieve_kb_excerpts("question", llm.kb_id, token_budget=2000)
         assert [e.text for e in excerpts] == ["a", "b", "c"]
 
     def test_budget_caps_the_survivors(self):
@@ -133,15 +133,15 @@ class TestRetrieveKbExcerpts:
         pool = _pool([(long_a, 0.88), ("suite du contexte", 0.86)])
         llm = SimpleNamespace(kb_id=7)
         with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=pool):
-            excerpts = retrieve_kb_excerpts("question", llm, token_budget=100)
+            excerpts = retrieve_kb_excerpts("question", llm.kb_id, token_budget=100)
         assert [e.text for e in excerpts] == [long_a]
 
     def test_empty_pool_returns_empty(self):
         llm = SimpleNamespace(kb_id=7)
         with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=[]):
-            assert retrieve_kb_excerpts("question", llm, token_budget=500) == []
+            assert retrieve_kb_excerpts("question", llm.kb_id, token_budget=500) == []
 
     def test_llm_without_kb_raises(self):
         llm = SimpleNamespace(kb_id=None)
         with pytest.raises(KnowledgeBaseNotFoundException):
-            retrieve_kb_excerpts("question", llm, token_budget=500)
+            retrieve_kb_excerpts("question", llm.kb_id, token_budget=500)

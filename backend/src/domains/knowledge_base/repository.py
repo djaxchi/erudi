@@ -192,6 +192,10 @@ class KB_Repository:
             kb_id=kb_id,
             param_size=base_llm.param_size,
             quantized=base_llm.quantized,
+            # Inherit tool-calling capability from the base model: a KB assistant
+            # shares the base weights/template, so plan_turn must see the same
+            # supports_tools to route it to the agentic KB path (#84).
+            supports_tools=base_llm.supports_tools,
         )
         db.add(specialized_llm)
         db.flush()

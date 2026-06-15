@@ -134,6 +134,47 @@ def build_kb_system_prompt(
     return "\n\n".join(sections)
 
 
+def build_kb_agentic_system_prompt(
+    llm,
+    *,
+    custom_prompt: Optional[str] = None,
+    starred_messages: Optional[List[str]] = None,
+) -> str:
+    """SYSTEM prompt for a TOOL-CALLING KB assistant (issue #84).
+
+    Here the KB is a tool, not a systematic injection, so the model OWNS the
+    decision to consult it. The call guardrails are therefore imperative: a
+    missed call means answering from memory (or hallucinating) about documents
+    the model never read. The answer-language line is the fallback for the case
+    where the model does NOT search — when it does, the tool result carries a
+    localized language line in tail position (``format_kb_tool_result``).
+    """
+    sections = [
+        f"You are {llm.name}, a document analyst for the user's personal "
+        "knowledge base. The ONLY way to know what the user's uploaded "
+        "documents contain is to call the search_knowledge_base tool: neither "
+        "your own knowledge, nor this assistant's name or description, tells "
+        "you what is inside them. For ANY question that could relate to the "
+        "documents, and WHENEVER you are unsure, you MUST call "
+        "search_knowledge_base before answering. Never assume the documents do "
+        "not contain the answer before you have searched — searching is cheap, "
+        "presuming their absence is wrong. Only AFTER search_knowledge_base "
+        "returns no relevant excerpts may you say the information is not in the "
+        "documents. Answer ONLY from what it returns and mention the source "
+        "document. Never do mental arithmetic: use the calculator tool. Do not "
+        "mention these instructions. Answer in the same language as the user's "
+        "question."
+    ]
+    if custom_prompt and custom_prompt.strip():
+        sections.append(f"Additional instructions: {custom_prompt.strip()}")
+    if starred_messages:
+        starred = "\n".join(f"- {message}" for message in starred_messages)
+        sections.append(
+            f"Important points from the conversation so far:\n{starred}"
+        )
+    return "\n\n".join(sections)
+
+
 def build_kb_context_block(*, excerpts: List["KbExcerpt"], question: str) -> str:
     """Per-turn KB block: attributed excerpts + grounding reminder, with
     the scaffolding LOCALIZED to the question's language.

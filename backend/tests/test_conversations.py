@@ -502,6 +502,43 @@ class TestConversationService:
 
         assert "".join(result) == "Réponse sans contexte."
 
+    async def test_query_stream_agentic_mode_offers_kb_tool(
+        self, test_db_session, mock_llm_with_kb, monkeypatch
+    ):
+        """A tool-capable model gets the KB as a TOOL (agentic), not a systematic
+        injection: the runner receives search_knowledge_base + a KbToolContext
+        and NO kb_context_block, and there is no up-front retrieval."""
+        llm, kb = mock_llm_with_kb
+        llm.supports_tools = True
+        test_db_session.commit()
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("ok"))
+        service = ConversationService(test_db_session, InMemorySaver())
+        conversation = service.create_conversation(
+            llm_id=llm.id, temperature=0.7, top_p=0.9, max_tokens=1024
+        )
+
+        captured = {}
+        original = service.runner.astream_text
+
+        def spy(**kwargs):
+            captured.update(kwargs)
+            return original(**kwargs)
+
+        monkeypatch.setattr(service.runner, "astream_text", spy)
+
+        payload = ConversationQuery(question="Que dit le contrat ?")
+        with patch("src.domains.conversations.services.retrieve_kb_excerpts") as mock_kb:
+            result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
+
+        assert "".join(result) == "ok"
+        # Agentic mode does NOT retrieve up front — the model decides via the tool.
+        mock_kb.assert_not_called()
+        tool_names = [getattr(t, "name", None) for t in captured["tools"]]
+        assert "search_knowledge_base" in tool_names
+        assert captured["kb_context_block"] is None
+        assert captured["context"] is not None and captured["context"].kb_id == kb.id
+
     async def test_delete_conversation_purges_checkpointer_thread(self, test_db_session, mock_llm, monkeypatch):
         """IT4 (BLOCKER B3): deleting a conversation purges its checkpointer thread,
         not just the DB rows. SQLite reuses autoincrement ids, so a stale thread

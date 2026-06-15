@@ -397,6 +397,24 @@ class Download_Job_Repository:
                 logger.debug(f"Removed final directory: {job.final_local_model_link}")
 
 
+def detect_supports_tools(local_path: Optional[str]) -> Optional[bool]:
+    """Static tool-calling capability for a freshly downloaded model (#84).
+
+    Reads the model's chat template via the active engine. Returns None (the
+    column stays unset) when the engine or path is unavailable, or on any
+    failure, so a detection problem never blocks download finalization and the
+    model simply routes through the systematic KB path until recomputed.
+    """
+    engine = config.LLM_Engine
+    if engine is None or not local_path:
+        return None
+    try:
+        return engine.compute_supports_tools(local_path)
+    except Exception:
+        logger.warning(f"tool-calling detection failed for {local_path}")
+        return None
+
+
 def update_db_with_progress(job_tracker, job_id: int, model_id: int) -> None:
     """Background thread function that polls DownloadTracker and persists progress to database.
 
@@ -455,6 +473,9 @@ def update_db_with_progress(job_tracker, job_id: int, model_id: int) -> None:
         # Finalize job state
         dbj.progress = 100.0
         dbj.status = "completed"
+        # Detect tool-calling capability once, from the freshly downloaded files,
+        # before the model becomes selectable (#84).
+        llm.supports_tools = detect_supports_tools(llm.link)
         llm.local = 1
         session.commit()
         logger.info(f"Job {job_id} completed successfully")
