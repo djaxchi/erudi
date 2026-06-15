@@ -104,6 +104,17 @@ class TestBuildKbAgenticSystemPrompt:
         assert "ONLY from what it returns" in p
         assert "not in the documents" in p
 
+    def test_forces_search_when_unsure_and_forbids_presuming_absence(self):
+        # The quality eval showed the model skipping the tool and falsely
+        # claiming the info isn't in the docs. The prompt must force a search
+        # whenever unsure, forbid presuming absence before searching, and stop
+        # the model from leaning on the assistant's name/description to decide.
+        p = self._prompt()
+        low = p.lower()
+        assert "unsure" in low
+        assert "never assume" in low
+        assert "name or description" in low
+
     def test_language_fallback_and_calculator_rule(self):
         p = self._prompt()
         # Language line is the fallback for the no-search case.
