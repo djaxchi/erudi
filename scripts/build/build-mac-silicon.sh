@@ -111,9 +111,9 @@ if [ -d "$OUT_DIR" ]; then
 fi
 
 # ── Build Electron app + DMG ───────────────────────────────────────────────────
-step "Building Electron app and DMG (electron-forge make)..."
+step "Building Electron app and DMG (electron-builder)..."
 cd "$FRONTEND_ROOT"
-npm run make || fail "npm run make failed."
+npm run dist:mac || fail "npm run dist:mac failed."
 cd "$REPO_ROOT"
 
 # ── Report output ──────────────────────────────────────────────────────────────
@@ -122,12 +122,12 @@ echo "============================================================"
 ok "Build complete!"
 echo ""
 echo "Installer output:"
-if [ -d "$FRONTEND_ROOT/out/make" ]; then
-    find "$FRONTEND_ROOT/out/make" -name "*.dmg" | while read -r f; do
+if [ -d "$FRONTEND_ROOT/dist" ]; then
+    find "$FRONTEND_ROOT/dist" -name "*.dmg" | while read -r f; do
         echo "  $f"
     done
 else
-    warn "out/make directory not found. Check build output above."
+    warn "dist directory not found. Check build output above."
 fi
 echo "============================================================"
 echo ""
