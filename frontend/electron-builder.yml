@@ -2,19 +2,45 @@ appId: com.erudi.app
 productName: Erudi
 copyright: "Copyright © 2025 Erudi Team"
 
-# electron-builder is invoked with --prepackaged (out/erudi-win32-x64 or out/erudi-darwin-arm64),
-# so it wraps the already-forge-packaged directory rather than re-bundling sources.
-
+# Autonomous build: electron-builder packages the standalone webpack output
+# directly (no electron-forge, no --prepackaged). The main entry is
+# package.json "main" = .webpack/main.
 directories:
-  output: out/installer
+  output: dist
+  buildResources: assets
 
-# GitHub Releases publish config — used by electron-updater at runtime to check for updates.
-# GH_TOKEN env var must be set when running with --publish always.
+files:
+  - ".webpack/**/*"
+  - "package.json"
+  - "!**/*.map"
+
+asar: true
+asarUnpack:
+  - "**/*.node"
+
+# The PyInstaller-frozen backend ships outside the asar (it is spawned as a
+# child process). Built by CI before electron-builder runs; staged at
+# backend/dist/backend.
+extraResources:
+  - from: "../backend/dist/backend"
+    to: "backend"
+
+# Reproduce the security fuses the forge plugin used to apply at package time.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+
+# GitHub Releases — electron-updater reads latest*.yml from here at runtime.
+# Draft first so artifacts can be verified before the release goes public.
 publish:
   provider: github
   owner: djaxchi
   repo: erudi
-  releaseType: release
+  releaseType: draft
 
 # ---------- Windows ----------
 win:
@@ -35,8 +61,9 @@ nsis:
   shortcutName: Erudi
 
 # ---------- macOS ----------
-# electron-updater on macOS requires a zip target (not DMG) to deliver delta updates.
-# The DMG is kept for first-time installation; the zip feeds the auto-updater.
+# electron-updater needs the zip target for delta updates; the DMG is the
+# first-install artifact. electron-builder signs (with the entitlements below),
+# notarizes and staples in one pass — no manual codesign dance.
 mac:
   target:
     - target: dmg
@@ -45,12 +72,15 @@ mac:
       arch: arm64
   icon: assets/icons/icon.icns
   category: public.app-category.productivity
-  # Required for Gatekeeper: sign with hardened runtime and notarize.
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: assets/entitlements.mac.plist
   entitlementsInherit: assets/entitlements.mac.plist
   notarize: true
+  # Explicitly sign the bundled PyInstaller backend executable (electron-builder
+  # does not discover arbitrary Mach-O binaries under Resources/ on its own).
+  binaries:
+    - "Contents/Resources/backend/backend"
 
 dmg:
   background: assets/installers/dmg-background.png

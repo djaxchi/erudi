@@ -2,15 +2,31 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
+    <!-- Hardened Runtime: Electron's V8 needs JIT + unsigned executable memory. -->
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
+
+    <!-- The bundled PyInstaller backend loads dylibs (MLX, numpy, psycopg…) that
+         are NOT signed by our Team ID; without disable-library-validation it is
+         killed at launch. It also sets DYLD_* env vars to find those libs. -->
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+
+    <!-- The backend is a localhost HTTP server (127.0.0.1:8765): it both makes
+         and accepts loopback connections. -->
     <key>com.apple.security.network.client</key>
     <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+
+    <!-- File access for model/data import + user-selected paths. -->
     <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.downloads.read-write</key>
     <true/>
   </dict>
 </plist>
