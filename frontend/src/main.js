@@ -22,9 +22,25 @@ if (app.isPackaged) {
   }
 }
 
-// Add this line to define the entry point
-const MAIN_WINDOW_WEBPACK_ENTRY = process.env.MAIN_WINDOW_WEBPACK_ENTRY || "http://localhost:3000";
-const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY = process.env.MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY;
+// Renderer + preload entry resolution (replaces the @electron-forge/plugin-webpack
+// magic globals). Prod (packaged): load the built files that sit next to this
+// main bundle — .webpack/renderer/main_window/ — via file://. Dev: the
+// webpack-dev-server serves the renderer at :3000 and writes preload.js to disk.
+const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY = path.join(
+  __dirname,
+  "..",
+  "renderer",
+  "main_window",
+  "preload.js"
+);
+const MAIN_WINDOW_RENDERER_INDEX = path.join(
+  __dirname,
+  "..",
+  "renderer",
+  "main_window",
+  "index.html"
+);
+const RENDERER_DEV_URL = "http://localhost:3000/";
 
 let backendProcess = null;
 let mainWindow = null;
@@ -698,7 +714,11 @@ const createWindow = () => {
     });
   });
 
-  mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+  if (app.isPackaged) {
+    mainWindow.loadFile(MAIN_WINDOW_RENDERER_INDEX);
+  } else {
+    mainWindow.loadURL(RENDERER_DEV_URL);
+  }
 
   if (process.env.NODE_ENV === "development") {
     mainWindow.webContents.openDevTools();
