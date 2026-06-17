@@ -27,11 +27,14 @@ jobs:
             reqs: mac-silicon-prod.txt
             spec: backend-mac-silicon.spec
             release_script: release:mac
-          - os: windows-latest # x64 (CUDA build)
-            variant: win-cuda
-            reqs: win-cuda-121-prod.txt
-            spec: backend.spec
-            release_script: release:win
+          # Windows (win-cuda) temporarily skipped: the frozen Windows backend
+          # chain is not yet validated (no Windows runner). Re-enable once
+          # proven. The leg config is preserved verbatim for that.
+          # - os: windows-latest # x64 (CUDA build)
+          #   variant: win-cuda
+          #   reqs: win-cuda-121-prod.txt
+          #   spec: backend.spec
+          #   release_script: release:win
     runs-on: ${{ matrix.os }}
     defaults:
       run:
