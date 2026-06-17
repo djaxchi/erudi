@@ -58,6 +58,13 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all("mlx_vlm")
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
+# mlx_vlm loads the per-architecture model module by NAME at runtime
+# (mlx_lm.utils._get_classes -> import mlx_lm.models.<arch>, e.g.
+# gemma3_text), which static analysis misses. collect_all pulls every
+# mlx_lm.models.* submodule so any downloaded model's arch resolves.
+tmp_ret = collect_all("mlx_lm")
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
 # ── pgserver: bundle the embedded PostgreSQL binaries (pginstall/bin) ──────────
 # The hiddenimport alone ships the Python module but NOT the postgres binaries it
 # spawns; without this the frozen backend dies at startup with

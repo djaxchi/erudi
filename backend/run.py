@@ -378,6 +378,16 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # MUST run before anything else (especially argparse): in PyInstaller
+    # bundles the frozen exe is re-invoked as multiprocessing children and the
+    # resource tracker. freeze_support() intercepts those relaunches and exits,
+    # so our --port argparse never sees their internal args
+    # ("-B -S -I -c from multiprocessing...") and the MLX inference subprocess
+    # (multiprocessing.Process) can actually spawn.
+    import multiprocessing
+
+    multiprocessing.freeze_support()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
