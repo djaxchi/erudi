@@ -55,6 +55,16 @@ datas += collect_data_files("filelock")
 # dies with FileNotFoundError on .../py3langid/data/model.plzma.
 datas += collect_data_files("py3langid")
 
+# pgserver: bundle the embedded PostgreSQL binaries (pginstall/bin). The
+# hiddenimport alone ships the Python module but NOT the postgres binaries it
+# spawns; without this the frozen backend dies at startup with a missing
+# pgserver/pginstall/bin. collect_all is platform-agnostic — on the Windows
+# runner it picks up the Windows postgres binaries. (Proven on the mac build;
+# the libpq runtime hook used there is dyld-specific and is NOT wired here —
+# Windows DLL resolution differs and needs its own validation on a Win runner.)
+tmp_ret = collect_all("pgserver")
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
 # ── llama.cpp CUDA artifacts (Windows only) ───────────────────────────────────
 if IS_WIN:
     llama_bin = spec_root / "artifacts" / "llama-cpp" / "cuda" / "bin"

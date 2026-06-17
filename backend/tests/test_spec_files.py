@@ -68,6 +68,15 @@ def test_all_specs_bundle_py3langid_data():
 
 
 @pytest.mark.unit
+def test_all_specs_collect_pgserver_binaries():
+    # pgserver's embedded postgres binaries must be collected on every platform,
+    # else the frozen backend dies at startup (packaging bug 1).
+    for name in ("backend-mac-silicon.spec", "backend.spec"):
+        spec = _read(name)
+        assert 'collect_all("pgserver")' in spec, name
+
+
+@pytest.mark.unit
 def test_cpu_spec_excludes_mlx_vlm():
     spec = _read("backend-cpu.spec")
     assert "mlx_vlm" in spec
