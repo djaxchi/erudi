@@ -49,6 +49,12 @@ datas += collect_data_files("tqdm")
 # filelock (used by transformers / huggingface_hub)
 datas += collect_data_files("filelock")
 
+# py3langid: the language-ID model (model.plzma) ships as package data and is
+# loaded by src/agents/language.py at runtime. Without it, the systematic KB
+# path (build_kb_context_block -> detect_language) dies with
+# FileNotFoundError: .../py3langid/data/model.plzma.
+datas += collect_data_files("py3langid")
+
 # ── MLX: Apple Silicon inference framework ────────────────────────────────────
 # collect_all captures compiled .so extensions, Metal shader kernels, and
 # Python submodules that static analysis misses.
@@ -56,6 +62,20 @@ tmp_ret = collect_all("mlx")
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 tmp_ret = collect_all("mlx_vlm")
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+# mlx_vlm loads the per-architecture model module by NAME at runtime
+# (mlx_lm.utils._get_classes -> import mlx_lm.models.<arch>, e.g.
+# gemma3_text), which static analysis misses. collect_all pulls every
+# mlx_lm.models.* submodule so any downloaded model's arch resolves.
+tmp_ret = collect_all("mlx_lm")
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+# ── pgserver: bundle the embedded PostgreSQL binaries (pginstall/bin) ──────────
+# The hiddenimport alone ships the Python module but NOT the postgres binaries it
+# spawns; without this the frozen backend dies at startup with
+# "No such file or directory: .../pgserver/pginstall/bin".
+tmp_ret = collect_all("pgserver")
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 # ── Analysis ──────────────────────────────────────────────────────────────────
@@ -200,7 +220,7 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[str(spec_root / "pyi_rth_libpq.py")],
     excludes=[
         # Windows-only / CUDA-only — not present on macOS
         "pynvml",
