@@ -18,17 +18,51 @@ explicitly from the FastAPI lifespan shutdown for a deterministic order
 
 from __future__ import annotations
 
+import hashlib
 import json
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 import pgserver
+import pgserver.postgres_server as _pg_server_mod
 import psutil
 import psycopg
+from pgserver.utils import find_suitable_socket_dir as _orig_find_socket_dir
+from pgserver.utils import socket_name_length_ok
 
 from src.core.logging import logger
 
 DB_NAME = "erudi"
+
+
+def _space_safe_socket_dir(pgdata, runtime_path):
+    """Choose a postgres unix-socket dir that contains no spaces.
+
+    pgserver hands the socket dir to postgres via ``pg_ctl -o "-k <dir>"`` — a
+    string postgres re-parses by splitting on whitespace, so a dir with a space
+    (e.g. the macOS-idiomatic ``~/Library/Application Support/…``) breaks
+    startup with ``postgres: invalid argument``. The DATA dir stays in the
+    platform's idiomatic per-OS location (it is passed to ``-D`` as a list
+    argument, which preserves spaces); only the ephemeral socket is relocated to
+    a short, space-free temp dir — where unix sockets conventionally live. When
+    pgdata has no space, pgserver's own logic is used unchanged.
+    """
+    pgdata = Path(pgdata)
+    if " " not in str(pgdata):
+        return _orig_find_socket_dir(pgdata, runtime_path)
+    base = Path(tempfile.gettempdir())  # space-free on macOS/Windows/Linux
+    digest = hashlib.sha256(f"{pgdata}-{pgdata.stat().st_ino}".encode()).hexdigest()[:10]
+    socket_dir = base / f"erudi-pg-{digest}"
+    socket_dir.mkdir(parents=True, exist_ok=True)
+    if not socket_name_length_ok(socket_dir / ".s.PGSQL.5432"):
+        return _orig_find_socket_dir(pgdata, runtime_path)
+    logger.info(f"Using space-free postgres socket dir: {socket_dir}")
+    return socket_dir
+
+
+# pgserver looks this name up on its own module at call time, so patch there.
+_pg_server_mod.find_suitable_socket_dir = _space_safe_socket_dir
 
 
 def _prune_stale_handle_pids(data_dir: Path) -> None:
