@@ -58,6 +58,13 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all("mlx_vlm")
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
+# ── pgserver: bundle the embedded PostgreSQL binaries (pginstall/bin) ──────────
+# The hiddenimport alone ships the Python module but NOT the postgres binaries it
+# spawns; without this the frozen backend dies at startup with
+# "No such file or directory: .../pgserver/pginstall/bin".
+tmp_ret = collect_all("pgserver")
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
 # ── Analysis ──────────────────────────────────────────────────────────────────
 a = Analysis(
     ["run.py"],
@@ -200,7 +207,7 @@ a = Analysis(
     ],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[str(spec_root / "pyi_rth_libpq.py")],
     excludes=[
         # Windows-only / CUDA-only — not present on macOS
         "pynvml",
