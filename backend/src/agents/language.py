@@ -20,15 +20,27 @@ from py3langid.langid import MODEL_FILE, LanguageIdentifier
 MIN_CONFIDENCE = 0.7
 
 _identifier: Optional[LanguageIdentifier] = None
+# Cache a load failure so a missing/unreadable model file is not retried on
+# every turn (it would never recover within a process).
+_load_failed = False
 
 
-def _get_identifier() -> LanguageIdentifier:
-    """Resident classifier (lazy singleton — same pattern as E5Embeddings)."""
-    global _identifier
-    if _identifier is None:
-        _identifier = LanguageIdentifier.from_pickled_model(
-            MODEL_FILE, norm_probs=True
-        )
+def _get_identifier() -> Optional[LanguageIdentifier]:
+    """Resident classifier (lazy singleton — same pattern as E5Embeddings).
+
+    Returns None if the pickled model cannot be loaded (e.g. the data file is
+    missing from a packaged build); callers then fall back to the generic
+    answer-language line instead of crashing the query.
+    """
+    global _identifier, _load_failed
+    if _identifier is None and not _load_failed:
+        try:
+            _identifier = LanguageIdentifier.from_pickled_model(
+                MODEL_FILE, norm_probs=True
+            )
+        except Exception:
+            _load_failed = True
+            return None
     return _identifier
 
 
@@ -37,5 +49,11 @@ def detect_language(text: str) -> Optional[str]:
     text = (text or "").strip()
     if not text:
         return None
-    language, probability = _get_identifier().classify(text)
+    identifier = _get_identifier()
+    if identifier is None:
+        return None
+    try:
+        language, probability = identifier.classify(text)
+    except Exception:
+        return None
     return language if probability >= MIN_CONFIDENCE else None

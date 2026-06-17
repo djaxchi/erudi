@@ -24,7 +24,10 @@ def _read(name: str) -> str:
 def test_mac_silicon_spec_collects_mlx_vlm():
     spec = _read("backend-mac-silicon.spec")
     assert 'collect_all("mlx_vlm")' in spec
-    assert 'collect_all("mlx_lm")' not in spec
+    # mlx_lm IS collected — not as a server, but because mlx-vlm's text-only
+    # path imports the per-architecture model module (mlx_lm.models.<arch>) by
+    # name at runtime (bug 5). The swap guard is that the SERVER stays mlx-vlm.
+    assert 'collect_all("mlx_lm")' in spec
     assert "src.engines._mlx_vlm_server_runner" in spec
     assert '"mlx_vlm.server"' in spec
     assert "_mlx_server_runner" not in spec
@@ -37,6 +40,15 @@ def test_mac_silicon_spec_excludes_unused_heavy_deps():
     spec = _read("backend-mac-silicon.spec")
     assert '"cv2"' in spec
     assert '"mlx_audio"' in spec
+
+
+@pytest.mark.unit
+def test_mac_silicon_spec_bundles_py3langid_data():
+    # The langid model (model.plzma) is package data loaded at runtime by
+    # src/agents/language.py; without collecting it the systematic KB path
+    # dies with FileNotFoundError (packaging bug 6).
+    spec = _read("backend-mac-silicon.spec")
+    assert 'collect_data_files("py3langid")' in spec
 
 
 @pytest.mark.unit
