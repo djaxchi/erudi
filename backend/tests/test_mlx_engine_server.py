@@ -337,6 +337,128 @@ class TestMlxVlmServerRunnerHelper:
         fake_main.assert_called_once()
         assert captured["argv"] == argv
 
+    def test_runner_applies_tied_embedding_patch_before_main(self, monkeypatch):
+        """The tied-embedding patch must run before the server's main() loads a model."""
+        import sys
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        order: list[str] = []
+        monkeypatch.setattr(
+            runner,
+            "_patch_text_only_tied_embeddings",
+            lambda: order.append("patch") or True,
+        )
+        fake_main = MagicMock(side_effect=lambda: order.append("main"))
+        monkeypatch.setattr(runner, "_import_mlx_vlm_server_main", lambda: fake_main)
+        monkeypatch.setattr(sys, "argv", ["pytest"])
+
+        runner.run_mlx_vlm_server(["mlx_vlm.server", "--port", "9080"])
+
+        assert order == ["patch", "main"]
+
+
+@pytest.mark.unit
+class TestTiedEmbeddingPatch:
+    """`_patch_text_only_tied_embeddings` re-runs sanitize for tied text-only checkpoints.
+
+    mlx_vlm.utils.load_model skips sanitize for MLX-format checkpoints, but Gemma3
+    text-only models (gemma-3-270m / 1b) ship without `lm_head.weight` (tied
+    embeddings) and need the inner model's sanitize() to pop the untied lm_head,
+    otherwise the strict weight load dies with "Missing 1 parameters: lm_head.weight".
+    """
+
+    def _install_fake_mlx_vlm(self, monkeypatch, *, sanitize_pops_lm_head=True):
+        """Inject a minimal fake `mlx_vlm.models.text_only` with a Model wrapper."""
+        import sys
+        import types
+
+        calls: dict = {"sanitize": None, "inner_load": None, "orig_load": None}
+
+        class _InnerModel:
+            def sanitize(self, weights):
+                calls["sanitize"] = dict(weights)
+                out = dict(weights)
+                if sanitize_pops_lm_head:
+                    out.pop("lm_head.weight", None)  # already absent; mirrors real pop()
+                return out
+
+            def load_weights(self, items, *args, **kwargs):
+                calls["inner_load"] = list(items)
+                return "inner-loaded"
+
+        class _LanguageModel:
+            def __init__(self, inner):
+                self._model = inner
+
+        class Model:
+            def __init__(self):
+                self.language_model = _LanguageModel(_InnerModel())
+
+            def load_weights(self, weights, *args, **kwargs):
+                calls["orig_load"] = (
+                    list(weights.items()) if isinstance(weights, dict) else list(weights)
+                )
+                return "orig-loaded"
+
+        mlx_vlm = types.ModuleType("mlx_vlm")
+        models = types.ModuleType("mlx_vlm.models")
+        text_only = types.ModuleType("mlx_vlm.models.text_only")
+        text_only.Model = Model
+        models.text_only = text_only
+        mlx_vlm.models = models
+        monkeypatch.setitem(sys.modules, "mlx_vlm", mlx_vlm)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models", models)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.text_only", text_only)
+        return Model, calls
+
+    def test_returns_false_when_mlx_vlm_absent(self, monkeypatch):
+        import sys
+        import types
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        # Simulate a host without mlx-vlm (Linux CI): the parent package exists
+        # but the `text_only` submodule import raises (None entry in sys.modules).
+        bare_models = types.ModuleType("mlx_vlm.models")  # no `text_only` attribute
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models", bare_models)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.text_only", None)
+        assert runner._patch_text_only_tied_embeddings() is False
+
+    def test_sanitize_runs_when_lm_head_missing(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        Model, calls = self._install_fake_mlx_vlm(monkeypatch)
+        assert runner._patch_text_only_tied_embeddings() is True
+
+        m = Model()
+        # Tied checkpoint: no lm_head.weight present.
+        result = m.load_weights({"model.embed_tokens.weight": 1, "model.norm.weight": 2})
+
+        assert calls["sanitize"] is not None  # inner sanitize was invoked
+        assert result == "inner-loaded"
+        assert calls["orig_load"] is None  # original strict path bypassed
+
+    def test_untied_checkpoint_uses_original_path(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        Model, calls = self._install_fake_mlx_vlm(monkeypatch)
+        assert runner._patch_text_only_tied_embeddings() is True
+
+        m = Model()
+        # lm_head.weight present → leave mlx-vlm's behavior untouched.
+        result = m.load_weights({"lm_head.weight": 9, "model.norm.weight": 2})
+
+        assert calls["sanitize"] is None
+        assert result == "orig-loaded"
+
+    def test_patch_is_idempotent(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        Model, _ = self._install_fake_mlx_vlm(monkeypatch)
+        assert runner._patch_text_only_tied_embeddings() is True
+        first = Model.load_weights
+        assert runner._patch_text_only_tied_embeddings() is True
+        assert Model.load_weights is first  # not double-wrapped
+
 
 # =====================================================================
 # UNIT — MLX_Engine spawn argv + class attributes + payload model value
