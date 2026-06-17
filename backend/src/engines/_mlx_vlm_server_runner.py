@@ -36,6 +36,52 @@ from __future__ import annotations
 from typing import List
 
 
+def _patch_text_only_tied_embeddings() -> bool:
+    """Teach mlx-vlm to load MLX-format text-only checkpoints with tied embeddings.
+
+    ``mlx_vlm.utils.load_model`` skips weight sanitization for MLX-format
+    checkpoints (``format == "mlx"``), but tied-embedding architectures such as
+    Gemma3 text-only (``gemma-3-270m``, ``gemma-3-1b``) ship *without* an
+    ``lm_head.weight`` tensor: the inner ``mlx_lm`` model's ``sanitize()`` is
+    what pops the untied ``lm_head`` so the strict weight load succeeds. With the
+    sanitize step skipped, loading dies with
+    ``ValueError: Missing 1 parameters: lm_head.weight``.
+
+    We re-introduce that sanitize step at the text-only wrapper's
+    ``load_weights`` boundary, *only* when ``lm_head.weight`` is genuinely
+    absent, leaving every other (untied / multimodal / non-MLX) path untouched.
+
+    Returns:
+        True if the patch was applied (or already present), False if mlx-vlm's
+        text-only module could not be imported (non-MLX hosts, CI). Idempotent.
+    """
+    try:
+        from mlx_vlm.models import text_only
+    except Exception:
+        return False
+
+    model_cls = getattr(text_only, "Model", None)
+    if model_cls is None:
+        return False
+    if getattr(model_cls, "_erudi_tied_embed_patch", False):
+        return True
+
+    _orig_load_weights = model_cls.load_weights
+
+    def _load_weights(self, weights, *args, **kwargs):
+        items = list(weights.items()) if isinstance(weights, dict) else list(weights)
+        has_lm_head = any(str(k).endswith("lm_head.weight") for k, _ in items)
+        inner = getattr(getattr(self, "language_model", None), "_model", None)
+        if not has_lm_head and inner is not None and hasattr(inner, "sanitize"):
+            sanitized = inner.sanitize(dict(items))
+            return inner.load_weights(list(sanitized.items()), *args, **kwargs)
+        return _orig_load_weights(self, weights, *args, **kwargs)
+
+    model_cls.load_weights = _load_weights
+    model_cls._erudi_tied_embed_patch = True
+    return True
+
+
 def _import_mlx_vlm_server_main():
     """Import and return `mlx_vlm.server.cli.main`.
 
@@ -62,5 +108,8 @@ def run_mlx_vlm_server(argv: List[str]) -> None:
     import sys
 
     sys.argv = list(argv)
+    # Applied in-child before the server loads any model so MLX-format
+    # tied-embedding text-only checkpoints (Gemma3 270m/1b) load cleanly.
+    _patch_text_only_tied_embeddings()
     main = _import_mlx_vlm_server_main()
     main()
