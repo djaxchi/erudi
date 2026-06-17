@@ -59,6 +59,15 @@ def test_backend_spec_targets_mlx_vlm_not_mlx_lm():
 
 
 @pytest.mark.unit
+def test_all_specs_bundle_py3langid_data():
+    # The systematic KB path (detect_language) is shared across platforms, so
+    # every spec must collect py3langid's model data (packaging bug 6).
+    for name in ("backend-mac-silicon.spec", "backend.spec"):
+        spec = _read(name)
+        assert 'collect_data_files("py3langid")' in spec, name
+
+
+@pytest.mark.unit
 def test_cpu_spec_excludes_mlx_vlm():
     spec = _read("backend-cpu.spec")
     assert "mlx_vlm" in spec

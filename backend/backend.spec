@@ -49,6 +49,12 @@ datas += collect_data_files("tqdm")
 # filelock (used by transformers / huggingface_hub)
 datas += collect_data_files("filelock")
 
+# py3langid: the language-ID model (model.plzma) ships as package data and is
+# loaded by src/agents/language.py at runtime. Shared across all platforms:
+# without it the systematic KB path (build_kb_context_block -> detect_language)
+# dies with FileNotFoundError on .../py3langid/data/model.plzma.
+datas += collect_data_files("py3langid")
+
 # ── llama.cpp CUDA artifacts (Windows only) ───────────────────────────────────
 if IS_WIN:
     llama_bin = spec_root / "artifacts" / "llama-cpp" / "cuda" / "bin"
