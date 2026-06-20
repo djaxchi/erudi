@@ -70,9 +70,16 @@ def pg_test_cluster(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def _session_db_engine(pg_test_cluster):
-    """Session-scoped engine with the full schema created once."""
+    """Session-scoped engine with the full schema applied via Alembic.
+
+    Uses the REAL startup path (``run_migrations`` → ``alembic upgrade head``)
+    rather than ``create_all``, so the whole suite exercises the migration chain
+    that ships to users — a broken/incomplete migration fails fast here.
+    """
+    from src.database.migrations import run_migrations
+
+    run_migrations(pg_test_cluster.sqlalchemy_url)
     engine = create_engine(pg_test_cluster.sqlalchemy_url)
-    Base.metadata.create_all(bind=engine)
     yield engine
     Base.metadata.drop_all(bind=engine)
     engine.dispose()
