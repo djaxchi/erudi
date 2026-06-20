@@ -1,5 +1,0 @@
-# Production Dependencies Only
--r ../../meta/base.txt
--r ../../meta/cuda-base-specs.txt
--r ../../meta/cuda-118-specs.txt
--r ../../meta/cuda-linux-specs.txt

@@ -1,263 +1,63 @@
-# Erudi Backend Requirements Structure# Requirements configuration
+# Erudi Backend — Requirements
 
+Dependencies are split per platform/hardware to keep each build minimal and
+reproducible. Composition is layered: an **entrypoint** pulls in shared **meta**
+modules (`-r ...`).
 
-
-## 📂 Directory StructureFor better maintainance of the packages and supported builds, the reqs have been separated folowwing needs of each system and/or hardware.
-
-
-
-```## It is built as follows :
-
-requirements/- Entry-points
-
-├── README.md                    # This file- Meta-reqs in meta/
-
-├── entrypoints/                 # Entry point files for installations---
-
-│   ├── mac-silicon.txt          # Dev: Mac Silicon (M1/M2/M3+)
-
-│   ├── mac-silicon-prod.txt     # Prod: Mac Silicon`meta/base.txt`
-
-│   ├── mac-intel.txt            # Dev: Mac IntelThis is the base requirements common to every version, regardless of the platform, system or hardware.
-
-│   ├── mac-intel-prod.txt       # Prod: Mac Intel
-
-│   ├── linux-cpu.txt            # Dev: Linux CPU`meta/win-specs.txt`
-
-│   ├── linux-cpu-prod.txt       # Prod: Linux CPUThis is the base requirements for Windows platforms, that cannot be shared with Linux or MacOS distributions.
-
-│   ├── linux-cuda-121.txt       # Dev: Linux CUDA 12.1
-
-│   ├── linux-cuda-121-prod.txt  # Prod: Linux CUDA 12.1`meta/linux-specs.txt`
-
-│   ├── linux-cuda-118.txt       # Dev: Linux CUDA 11.8This is the base requirements for Windows platforms, that cannot be shared with Linux or MacOS distributions.
-
-│   ├── linux-cuda-118-prod.txt  # Prod: Linux CUDA 11.8
-
-│   ├── win-cpu.txt              # Dev: Windows CPU`meta/mac-intel-specs.txt`
-
-│   ├── win-cpu-prod.txt         # Prod: Windows CPUThis is the old intel chips MacOS requirements that are specific to that hardware.
-
-│   ├── win-cuda-121.txt         # Dev: Windows CUDA 12.1
-
-│   ├── win-cuda-121-prod.txt    # Prod: Windows CUDA 12.1`meta/mac-silicon-specs.txt`
-
-│   ├── win-cuda-118.txt         # Dev: Windows CUDA 11.8This is the latest M-Series chips MacOS requirements that are specific to that hardware.
-
-│   └── win-cuda-118-prod.txt    # Prod: Windows CUDA 11.8
-
-├── meta/                        # Modular requirement files`meta/cuda-base-specs.txt`
-
-│   ├── base.txt                 # Core dependencies (FastAPI, SQLAlchemy, etc.)This is the requirements that are shared by all CUDA GPUs, regardless of their version.
-
-│   ├── dev.txt                  # Development tools (pytest, black, ruff, mypy)
-
-│   ├── cpu.txt                  # CPU-specific packages`meta/cuda-118-specs.txt`
-
-│   ├── cuda-base-specs.txt      # Base CUDA packagesThis is the requirements that are specific to CUDA-11.8 up to CUDA-12.0 GPUs. Erudi will not run for GPUs that do not support this runtime (it should not be a problem as this supports RTX 20xx and others, which are veryyy old. Older than these would not run on transformers and other similar frameworks)
-
-│   ├── cuda-118-specs.txt       # CUDA 11.8 specific
-
-│   ├── cuda-121-specs.txt       # CUDA 12.1 specific`meta/cuda-121-specs.txt`
-
-│   ├── cuda-linux-specs.txt     # CUDA Linux specificThis is the requirements that are specific to CUDA-12.1+ GPUs. It is the latest stable version supported by pytorch (hence transformers and all other frameworks). It should cover every GPU so far.
-
-│   ├── cuda-win-specs.txt       # CUDA Windows specific
-
-│   ├── linux-specs.txt          # Linux specific`meta/cuda-linux-specs.txt`
-
-│   ├── mac-intel-specs.txt      # Mac Intel specificThis is the requirements that are specific to CUDA GPUs running on Linux systems.
-
-│   ├── mac-silicon-specs.txt    # Mac Silicon specific (MLX)
-
-│   └── win-specs.txt            # Windows specific`meta/cuda-win-specs.txt`
-
-└── freezes/                     # Frozen requirements for reproducibilityThis is the requirements that are specific to CUDA GPUs running on Windows systems.
-
-    └── v0.1.0-win-cuda-121-freeze.txt
-
-````meta/cpu.txt`
-
-This is the requirements that are specific to Linux and Windows that don't have a CUDA GPU (they may have a AMD GPU but it might not be used for acceleration).
-
-## 🎯 Usage---
-
-
-
-### Development Installation`requirements-win-cuda-121.txt`
-
-This is the entry-point for the Windows CUDA-12.1+ machines. It combines:
-
-For local development with testing, linting, and debugging tools:- `meta/base.txt`
-
-- `meta/win-specs.txt`
-
-**Mac Silicon:**- `meta/cuda-base-specs.txt`
-
-```bash- `meta/cuda-win-specs.txt`
-
-pip install -r requirements/entrypoints/dev/mac-silicon.txt
+## Layout
 
 ```
-
-And others que j'ai la flemme de lister...
-**Linux CUDA 12.1:**
-```bash
-pip install -r requirements/entrypoints/dev/linux-cuda-121.txt
+requirements/
+├── entrypoints/
+│   ├── dev/                  # prod + dev tools (pytest, ruff, …)
+│   │   ├── mac-silicon.txt
+│   │   ├── mac-intel.txt
+│   │   ├── linux-cpu.txt
+│   │   ├── linux-cuda.txt
+│   │   ├── win-cpu.txt
+│   │   └── win-cuda.txt
+│   └── prod/                 # minimal runtime deps (one per platform, *-prod.txt)
+├── meta/
+│   ├── base.txt              # shared core: FastAPI, SQLAlchemy, pgserver,
+│   │                         #   langchain, sentence-transformers, transformers (pinned 5.10.2)
+│   ├── dev.txt               # pytest / ruff / black / mypy
+│   ├── cpu.txt               # CPU torch (official CPU index) + gguf — REUSED by the CUDA entrypoints
+│   ├── cuda-specs.txt        # CUDA-only non-torch bits (pynvml). No torch+cuXXX.
+│   ├── cuda-win-specs.txt    # Windows CUDA build tools (cmake)
+│   ├── linux-specs.txt
+│   ├── mac-intel-specs.txt
+│   ├── mac-silicon-specs.txt # MLX (mlx-vlm)
+│   └── win-specs.txt         # Windows-only (wmi)
+└── freezes/                  # optional pinned freezes
 ```
 
-**Windows CUDA 12.1:**
-```powershell
-pip install -r requirements/entrypoints/dev/win-cuda-121.txt
-```
+## Key design notes
 
-### Production Installation
+- **Inference is llama.cpp / MLX, not torch.** torch is only pulled (CPU build)
+  by sentence-transformers for the e5 KB embeddings. There is **no torch+CUDA**:
+  the CUDA build uses **CPU torch** plus a CUDA-compiled `llama-server` binary
+  (built by `scripts/dev/backend/build-llamacpp-cuda-*`). The CUDA toolkit version
+  lives in the **binary build**, not in pip — which is why there is a single
+  `cuda` entrypoint per OS (no 118/121 split anymore).
+- **transformers is pinned once in `base.txt` (5.10.2)** for every platform. It is
+  coupled to torch (5.10.2 imports `torch.float8_e8m0fnu`, needing torch>=2.7).
+- Fine-tuning deps (peft/accelerate/datasets/bitsandbytes) were removed — the
+  feature is unimplemented dead code (see the fine-tuning cleanup issue).
 
-For production deployment with minimal dependencies:
-
-**Mac Silicon:**
-```bash
-pip install -r requirements/entrypoints/prod/mac-silicon-prod.txt
-```
-
-**Linux CUDA 12.1:**
-```bash
-pip install -r requirements/entrypoints/prod/linux-cuda-121-prod.txt
-```
-
-**Windows CUDA 12.1:**
-```powershell
-pip install -r requirements/entrypoints/prod/win-cuda-121-prod.txt
-```
-
-## 🔧 Automated Setup Scripts
-
-Use platform-specific setup scripts for automated environment configuration:
-
-### Mac Silicon
-```bash
-bash scripts/dev/backend/setup-mac-silicon.sh
-```
-
-The script will prompt you to choose:
-- **[1] Development**: Includes pytest, black, ruff, mypy, ipython
-- **[2] Production**: Minimal dependencies only
-
-### Linux/Windows
-Similar scripts available for other platforms in `scripts/dev/backend/`
-
-### CI/CD Mode
-
-Scripts automatically detect CI/CD environments and default to production mode:
+## Usage
 
 ```bash
-# Force production in CI
-export INSTALL_TYPE=prod
-bash scripts/dev/backend/setup-mac-silicon.sh
-
-# Force development in CI
-export INSTALL_TYPE=dev
-bash scripts/dev/backend/setup-mac-silicon.sh
+# Dev (with testing/linting tools)
+pip install -r requirements/entrypoints/dev/<platform>.txt
+# Prod (minimal)
+pip install -r requirements/entrypoints/prod/<platform>-prod.txt
 ```
 
-## 📦 What's Included
+Or use the platform setup scripts in `scripts/dev/backend/` (they default to prod
+in CI; set `INSTALL_TYPE=dev|prod` to force).
 
-### Production Dependencies (`*-prod.txt`)
-- **Core Framework**: FastAPI, Uvicorn
-- **Database**: SQLAlchemy, PostgreSQL (pgserver), pgvector
-- **LLM Inference**: Platform-specific (MLX, CUDA, CPU)
-- **Embeddings**: Sentence Transformers (multilingual-e5-small)
-- **Utilities**: Pydantic, python-dotenv, pypdf, tqdm
-- **System**: NumPy, psutil, py-cpuinfo
+## Adding a dependency
 
-### Development Dependencies (`meta/dev.txt`)
-- **Testing**: pytest, pytest-asyncio, pytest-cov, httpx
-- **Code Quality**: black, ruff, mypy
-- **Debugging**: ipython, ipdb
-- **Type Checking**: types-python-dateutil
-
-## 🏗️ Architecture
-
-### Modular Design
-
-Requirements are organized in a modular way to avoid duplication:
-
-```
-entrypoints/dev/mac-silicon.txt
-  ├─> entrypoints/prod/mac-silicon-prod.txt
-  │     ├─> meta/base.txt (core deps)
-  │     └─> meta/mac-silicon-specs.txt (MLX)
-  └─> meta/dev.txt (testing tools)
-```
-
-### Benefits
-
-1. **DRY Principle**: No duplication between dev and prod
-2. **Easy Updates**: Update `base.txt` once, affects all platforms
-3. **Clear Separation**: Dev tools isolated in `meta/dev.txt`
-4. **Platform Flexibility**: Easy to add new platforms or CUDA versions
-5. **CI/CD Ready**: Production freezes for reproducible builds
-
-## 🚀 Best Practices
-
-### For Developers
-
-1. Always use development requirements during local development
-2. Run tests before committing: `pytest`
-3. Format code: `black .` and `ruff check .`
-4. Type check: `mypy src/`
-
-### For Production
-
-1. Use production requirements for deployments
-2. Consider creating freezes: `pip freeze > requirements/freezes/v0.x.x-freeze.txt`
-3. Test prod requirements before deploying
-4. Keep prod requirements minimal for security and performance
-
-### For CI/CD
-
-1. Set `INSTALL_TYPE=prod` environment variable
-2. Use frozen requirements for reproducible builds
-3. Cache virtual environments to speed up pipelines
-4. Run tests with production dependencies
-
-## 📝 Adding New Dependencies
-
-### Core Dependency (all platforms)
-Add to `meta/base.txt`
-
-### Development Tool
-Add to `meta/dev.txt`
-
-### Platform-Specific
-Add to appropriate `meta/*-specs.txt`
-
-### New Platform
-1. Create `meta/new-platform-specs.txt`
-2. Create `entrypoints/prod/new-platform-prod.txt` referencing base + new specs
-3. Create `entrypoints/dev/new-platform.txt` referencing prod + dev
-4. Create setup script in `scripts/dev/backend/`
-
-## 🔒 Security
-
-- Review all dependency updates for vulnerabilities
-- Use `pip-audit` to scan for known security issues
-- Keep dependencies updated regularly
-- Minimize production dependencies to reduce attack surface
-
-## 📊 Maintenance
-
-### Regular Updates
-```bash
-# Update all packages
-pip install --upgrade -r requirements/entrypoints/dev/mac-silicon.txt
-
-# Create new freeze
-pip freeze > requirements/freezes/v0.x.x-freeze.txt
-```
-
-### Dependency Review
-- Quarterly review of all dependencies
-- Remove unused packages
-- Check for newer stable versions
-- Test thoroughly after updates
+- Shared (all platforms) → `meta/base.txt`
+- Dev tool → `meta/dev.txt`
+- Platform / hardware-specific → the matching `meta/*-specs.txt`

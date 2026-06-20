@@ -6,6 +6,12 @@ py-cpuinfo==9.0.0
 huggingface_hub==1.10.1
 pydantic==2.11.5
 sentence-transformers==5.4.0
+# transformers: normalized to 5.10.2 for ALL platforms. Now possible because
+# torch-CUDA was dropped — every build runs a CPU/recent torch (>=2.7). The value
+# is dictated by mlx-vlm 0.6.2 on mac (5.12 changed AutoProcessor resolution and
+# breaks Gemma3 -> "Unrecognized processing class"); 5.10.2 is the known-good.
+# 5.10.2 needs torch>=2.7 at import (references torch.float8_e8m0fnu).
+transformers==5.10.2
 python-dotenv==1.1.0
 pypdf==5.6.0
 tqdm==4.67.1

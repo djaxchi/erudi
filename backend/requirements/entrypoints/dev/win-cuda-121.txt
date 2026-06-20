@@ -1,4 +1,0 @@
-# Development Dependencies (includes prod + dev tools)
-
--r ../prod/win-cuda-121-prod.txt
--r ../../meta/dev.txt

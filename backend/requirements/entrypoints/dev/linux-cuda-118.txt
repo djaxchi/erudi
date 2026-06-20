@@ -1,4 +1,0 @@
-# Development Dependencies (includes prod + dev tools)
-
--r ../prod/linux-cuda-118-prod.txt
--r ../../meta/dev.txt
