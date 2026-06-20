@@ -26,13 +26,13 @@ is_ci_mode() {
 current_dir=$(basename "$PWD")
 if [ "$current_dir" == "backend" ]; then
     write_status "Running from erudi/backend/"
-    req_dev="./requirements/entrypoints/dev/linux-cuda-121.txt"
-    req_prod="./requirements/entrypoints/prod/linux-cuda-121-prod.txt"
+    req_dev="./requirements/entrypoints/dev/linux-cuda.txt"
+    req_prod="./requirements/entrypoints/prod/linux-cuda-prod.txt"
     venv_path="./venv"
 else
     write_status "Running from erudi/ (don't forget to cd backend/ after setup)"
-    req_dev="./backend/requirements/entrypoints/dev/linux-cuda-121.txt"
-    req_prod="./backend/requirements/entrypoints/prod/linux-cuda-121-prod.txt"
+    req_dev="./backend/requirements/entrypoints/dev/linux-cuda.txt"
+    req_prod="./backend/requirements/entrypoints/prod/linux-cuda-prod.txt"
     venv_path="./backend/venv"
 fi
 

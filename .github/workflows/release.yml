@@ -32,7 +32,7 @@ jobs:
           # proven. The leg config is preserved verbatim for that.
           # - os: windows-latest # x64 (CUDA build)
           #   variant: win-cuda
-          #   reqs: win-cuda-121-prod.txt
+          #   reqs: win-cuda-prod.txt
           #   spec: backend.spec
           #   release_script: release:win
     runs-on: ${{ matrix.os }}

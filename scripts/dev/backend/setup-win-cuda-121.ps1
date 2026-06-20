@@ -23,13 +23,13 @@ function Is-CIMode {
 $currentDir = (Get-Item .).Name
 if ($currentDir -eq "backend") {
     Write-Status "Running from erudi\backend\"
-    $reqDev = ".\requirements\entrypoints\dev\win-cuda-121.txt"
-    $reqProd = ".\requirements\entrypoints\prod\win-cuda-121-prod.txt"
+    $reqDev = ".\requirements\entrypoints\dev\win-cuda.txt"
+    $reqProd = ".\requirements\entrypoints\prod\win-cuda-prod.txt"
     $venvPath = ".\venv"
 } else {
     Write-Status "Running from erudi\ (don't forget to cd backend\ after setup)"
-    $reqDev = ".\backend\requirements\entrypoints\dev\win-cuda-121.txt"
-    $reqProd = ".\backend\requirements\entrypoints\prod\win-cuda-121-prod.txt"
+    $reqDev = ".\backend\requirements\entrypoints\dev\win-cuda.txt"
+    $reqProd = ".\backend\requirements\entrypoints\prod\win-cuda-prod.txt"
     $venvPath = ".\backend\venv"
 }
 
