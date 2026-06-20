@@ -15,6 +15,7 @@ Build from backend/:
     macOS:    venv/bin/pyinstaller backend.spec
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -65,11 +66,20 @@ datas += collect_data_files("py3langid")
 tmp_ret = collect_all("pgserver")
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
-# ── llama.cpp CUDA artifacts (Windows only) ───────────────────────────────────
+# ── llama.cpp inference artifacts (Windows only) ──────────────────────────────
+# Bundle the llama-server binary that matches THIS build variant: the cpu spec
+# (backend-cpu.spec sets ERUDI_BUILD_VARIANT=cpu) ships artifacts/llama-cpp/cpu/bin,
+# the standalone (CUDA) spec ships artifacts/llama-cpp/cuda/bin. Both flavours are
+# compiled in CI from the llama.cpp submodule before PyInstaller runs (release.yml).
+# If the binary is absent (e.g. the boot-only merge smoke does not compile it) the
+# build still succeeds — inference simply has no server until a real release bundles
+# it. The CUDA binary also runs CPU inference, so a driverless machine falls back
+# (see BaseLlamaCppEngine._find_llama_server).
 if IS_WIN:
-    llama_bin = spec_root / "artifacts" / "llama-cpp" / "cuda" / "bin"
+    _llama_flavour = os.environ.get("ERUDI_BUILD_VARIANT", "cuda")
+    llama_bin = spec_root / "artifacts" / "llama-cpp" / _llama_flavour / "bin"
     if llama_bin.exists():
-        _dest = "artifacts/llama-cpp/cuda/bin"
+        _dest = f"artifacts/llama-cpp/{_llama_flavour}/bin"
         for _name in ("llama-server.exe", "llama-quantize.exe"):
             _f = llama_bin / _name
             if _f.exists():
@@ -82,8 +92,8 @@ if IS_WIN:
     else:
         import warnings
         warnings.warn(
-            f"llama-cpp CUDA binaries not found at {llama_bin}. "
-            "Run scripts/dev/backend/build-llamacpp-cuda-win.ps1 first."
+            f"llama-cpp {_llama_flavour} binaries not found at {llama_bin}. "
+            f"Run scripts/dev/backend/build-llamacpp-{_llama_flavour}-win.ps1 first."
         )
 
 # ── Analysis ──────────────────────────────────────────────────────────────────
