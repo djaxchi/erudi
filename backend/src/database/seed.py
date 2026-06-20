@@ -57,7 +57,6 @@ from datetime import datetime
 from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass
 
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from src.core.logging import logger
@@ -1057,15 +1056,11 @@ class Database_Seeder:
                 "Database not initialized: call init_database() before create_tables()"
             )
         try:
+            # Create MISSING tables from the models. Schema EVOLUTION of an
+            # existing (persisted) database is handled by Alembic at startup
+            # (src.database.migrations.run_migrations), not here — this primitive
+            # is the from-scratch creation used by tests and first boot.
             Base.metadata.create_all(bind=core.db_engine)
-            # No migration framework here (create_all only creates MISSING
-            # tables, it never adds a column to a table that already exists in a
-            # persisted/packaged database). Backfill the supports_tools column
-            # (#84) idempotently so existing installs gain it on next startup.
-            with core.db_engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE llms ADD COLUMN IF NOT EXISTS supports_tools BOOLEAN")
-                )
             logger.info("Database tables created successfully")
         except Exception as e:
             logger.error(f"Failed to create tables: {e}", exc_info=True)

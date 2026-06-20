@@ -41,7 +41,10 @@ _url = os.environ.get("ERUDI_ALEMBIC_URL") or config.get_main_option("sqlalchemy
 if _url:
     config.set_main_option("sqlalchemy.url", _url)
 
-if config.config_file_name is not None:
+# Configure logging from the ini ONLY for the dev CLI. The programmatic runner
+# sets attributes["configure_logger"] = False so a startup migration does not
+# reconfigure (and disable) the running app's loggers.
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
