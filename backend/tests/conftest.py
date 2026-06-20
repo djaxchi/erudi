@@ -78,7 +78,7 @@ def _session_db_engine(pg_test_cluster):
     """
     from src.database.migrations import run_migrations
 
-    run_migrations(pg_test_cluster.sqlalchemy_url)
+    run_migrations(pg_test_cluster)
     engine = create_engine(pg_test_cluster.sqlalchemy_url)
     yield engine
     Base.metadata.drop_all(bind=engine)

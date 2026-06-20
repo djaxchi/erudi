@@ -231,7 +231,7 @@ async def lifespan(app: FastAPI):
     # Step 4: migrate the schema to head (forward-only). Alembic is sync, so run
     # it off the event loop. Replaces create_all — which never altered an existing
     # (persisted) database — and auto-adopts pre-Alembic schemas (stamp baseline).
-    await run_in_threadpool(run_migrations, app.state.postgres.sqlalchemy_url)
+    await run_in_threadpool(run_migrations, app.state.postgres)
     # await delete_all_data()
     await startup_populate_database()
     # Hybrid KB vector store (rag.kb_chunks) — AFTER the schema migration: its

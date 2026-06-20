@@ -19,10 +19,13 @@ from __future__ import annotations
 from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect
 
 from src.core.config import ROOT_DIR
 from src.core.logging import logger
+from src.database.backup import backup_database
+from src.launcher.postgres_runtime import PostgresHandle
 
 # The root revision (see alembic/versions/…_baseline_schema.py). A pre-Alembic
 # database already matches this schema, so it is stamped to this revision.
@@ -48,27 +51,58 @@ def _alembic_config(sqlalchemy_url: str) -> Config:
     return cfg
 
 
-def run_migrations(sqlalchemy_url: str) -> None:
-    """Bring the database schema to head.
+def _head_revision(cfg: Config) -> str:
+    """The latest revision in the bundled migration scripts."""
+    return ScriptDirectory.from_config(cfg).get_current_head()
+
+
+def run_migrations(handle: PostgresHandle) -> None:
+    """Bring the database schema to head, snapshotting first when one will apply.
 
     Synchronous (Alembic is sync) — call via ``run_in_threadpool`` from the async
-    lifespan so it does not block the event loop.
+    lifespan so it does not block the event loop. On Postgres the upgrade runs in a
+    transaction (env.py wraps it), so a failure rolls back to the last good
+    revision rather than leaving a half-migrated schema.
     """
-    cfg = _alembic_config(sqlalchemy_url)
-    engine = create_engine(sqlalchemy_url)
+    cfg = _alembic_config(handle.sqlalchemy_url)
+    engine = create_engine(handle.sqlalchemy_url)
     try:
         with engine.connect() as conn:
             current = MigrationContext.configure(conn).get_current_revision()
             has_business_tables = inspect(conn).has_table(_SENTINEL_TABLE)
 
+        # Adopt a pre-Alembic database (full schema, no alembic_version) by stamping
+        # the baseline — replaying the baseline's CREATE TABLEs would collide.
         if current is None and has_business_tables:
             logger.info(
                 "Existing pre-Alembic schema detected — stamping baseline %s",
                 BASELINE_REVISION,
             )
             command.stamp(cfg, BASELINE_REVISION)
+            current = BASELINE_REVISION
 
-        command.upgrade(cfg, "head")
+        head = _head_revision(cfg)
+        # Snapshot only when a migration will ACTUALLY apply to existing data
+        # (a fresh DB has nothing to lose; an at-head DB has nothing to do).
+        if has_business_tables and current != head:
+            try:
+                backup_database(handle.psycopg_url, handle.data_dir, label=current or "unknown")
+            except Exception:
+                # A failed snapshot must NOT silently proceed into a (possibly
+                # destructive) migration with no safety net.
+                logger.error("Pre-migration backup failed — aborting migration", exc_info=True)
+                raise
+
+        try:
+            command.upgrade(cfg, "head")
+        except Exception:
+            logger.error(
+                "Migration to head failed; schema rolled back to the last good "
+                "revision. Restore the pre-migration snapshot with the previous app "
+                "version if data is affected (see db-backups/).",
+                exc_info=True,
+            )
+            raise
         logger.info("Database schema is at head")
     finally:
         engine.dispose()

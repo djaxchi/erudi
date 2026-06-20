@@ -14,6 +14,7 @@ import pytest
 from alembic import command
 from sqlalchemy import create_engine, inspect, text
 
+from src.database.backup import backup_database, backups_dir_for
 from src.database.core import Base
 from src.database.migrations import (
     BASELINE_REVISION,
@@ -36,7 +37,10 @@ def _alembic_version(url: str) -> str | None:
 
 @pytest.fixture
 def fresh_cluster(tmp_path_factory):
-    handle = start_postgres(tmp_path_factory.mktemp("pg-migrations"))
+    # Nest the data dir one level down so backups_dir_for (data_dir.parent/db-backups)
+    # is unique per test — mktemp dirs otherwise share a parent and leak snapshots.
+    base = tmp_path_factory.mktemp("pg-migrations")
+    handle = start_postgres(base / "data")
     try:
         yield handle
     finally:
@@ -47,7 +51,7 @@ def fresh_cluster(tmp_path_factory):
 def test_fresh_db_upgrades_to_head_and_matches_models(fresh_cluster):
     url = fresh_cluster.sqlalchemy_url
 
-    run_migrations(url)
+    run_migrations(fresh_cluster)
 
     engine = create_engine(url)
     try:
@@ -76,7 +80,7 @@ def test_pre_alembic_db_is_stamped_not_replayed(fresh_cluster):
     assert _alembic_version(url) is None
 
     # Must STAMP the baseline (no CREATE TABLE collision), then be at head.
-    run_migrations(url)
+    run_migrations(fresh_cluster)
 
     assert _alembic_version(url) == BASELINE_REVISION
     engine = create_engine(url)
@@ -84,3 +88,27 @@ def test_pre_alembic_db_is_stamped_not_replayed(fresh_cluster):
         assert "llms" in set(inspect(engine).get_table_names())
     finally:
         engine.dispose()
+
+
+@pytest.mark.integration
+def test_backup_database_writes_a_dump(fresh_cluster):
+    # pg_dump (custom format) of the LIVE cluster produces a non-empty snapshot.
+    engine = create_engine(fresh_cluster.sqlalchemy_url)
+    try:
+        Base.metadata.create_all(bind=engine)
+    finally:
+        engine.dispose()
+
+    dump = backup_database(fresh_cluster.psycopg_url, fresh_cluster.data_dir, label="baseline")
+
+    assert dump.exists() and dump.stat().st_size > 0
+    assert dump.parent == backups_dir_for(fresh_cluster.data_dir)
+
+
+@pytest.mark.integration
+def test_fresh_db_migration_takes_no_backup(fresh_cluster):
+    # Nothing to lose on a fresh install -> run_migrations must not snapshot.
+    run_migrations(fresh_cluster)
+
+    backups = backups_dir_for(fresh_cluster.data_dir)
+    assert not backups.exists() or not list(backups.glob("*.dump"))
