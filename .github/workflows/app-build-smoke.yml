@@ -1,0 +1,91 @@
+name: App Build Smoke
+
+# Merge gate: build the FULL shippable app on each platform — PyInstaller backend
+# + webpack renderer + electron-builder package (UNSIGNED, no publish) — then boot
+# the BUNDLED backend (Contents/Resources/backend) and assert it reaches "ready".
+# This validates that what we ship BUILDS and BOOTS (backend freeze + electron
+# packaging + backend bundling) on the real shippable artifact, without inference
+# (inference/scenarios stay in the manual draft QA). It supersedes the backend-only
+# win smoke. Heavy, so it runs only when a PR is ready (not draft) or in the merge
+# queue — never on every draft commit.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: app-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app-smoke:
+    # Skip on draft PRs: the heavy build runs once the PR is marked ready (and in
+    # the merge queue once enabled), not on every work-in-progress commit.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14 # Apple Silicon
+            reqs: mac-silicon-prod.txt
+            spec: backend-mac-silicon.spec
+            dist_script: dist:mac
+          - os: windows-latest # x64 CPU
+            reqs: win-cpu-prod.txt
+            spec: backend-cpu.spec
+            dist_script: dist:win
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUNBUFFERED: 1
+      ERUDI_FORCE_CPU: 1
+      CSC_IDENTITY_AUTO_DISCOVERY: "false" # unsigned smoke build (no notarization)
+    defaults:
+      run:
+        shell: bash # git-bash on Windows: consistent forward-slash paths
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # hard pin: pgserver ships cp312 wheels only
+          cache: pip
+          cache-dependency-path: backend/requirements/**/*.txt
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frozen backend (PyInstaller)
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          pip install -r backend/requirements/entrypoints/prod/${{ matrix.reqs }}
+          pip install pyinstaller
+          pyinstaller backend/${{ matrix.spec }} --distpath backend/dist
+
+      - name: Build packaged app (unsigned, no publish)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run ${{ matrix.dist_script }} -- --publish never
+
+      - name: Locate the bundled backend executable
+        id: locate
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            EXE=$(find frontend/dist -path "*Erudi.app/Contents/Resources/backend/backend" -type f | head -1)
+          else
+            EXE=$(find frontend/dist -path "*resources/backend/backend.exe" -type f | head -1)
+          fi
+          echo "Bundled backend: '$EXE'"
+          test -n "$EXE"
+          echo "exe=$EXE" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test the bundled backend boot (assert "ready")
+        env:
+          SMOKE_TIMEOUT: 300
+        run: python scripts/ci/smoke_boot.py "${{ steps.locate.outputs.exe }}" --port 8765
