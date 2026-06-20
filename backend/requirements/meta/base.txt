@@ -38,6 +38,9 @@ langgraph==1.2.2
 # Pinned to the versions resolved + probed on first install (P0).
 pgserver==0.1.4
 psycopg[binary]==3.3.4
+# Schema migrations (#96): forward-only Alembic revisions, auto-applied at startup
+# (lifespan) against the persistent embedded cluster. Compatible with SQLAlchemy 2.0.
+alembic==1.18.4
 langchain-postgres==0.0.17
 langgraph-checkpoint-postgres==3.1.0
 langchain-text-splitters==1.1.2
