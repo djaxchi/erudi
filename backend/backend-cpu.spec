@@ -16,6 +16,11 @@ from pathlib import Path
 # Mark the build variant (available to the template / runtime hooks if needed).
 os.environ["ERUDI_BUILD_VARIANT"] = "cpu"
 
+# CPU build: keep mac-only (mlx_vlm) and GPU-only packages out of the bundle. The
+# template merges this into its Analysis excludes before building (so it is
+# effective, not a no-op), regardless of the build OS.
+ERUDI_EXTRA_EXCLUDES = ["cuda", "cupy", "cudf", "mlx_vlm"]
+
 # SPECPATH is injected by PyInstaller and points at this spec's directory
 # (= backend/). Execute the shared template here so it inherits SPECPATH & co.
 _template = Path(SPECPATH) / "backend.spec"
