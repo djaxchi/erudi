@@ -277,6 +277,10 @@ if IS_WIN:
     excludes += _excludes_windows
 if IS_MAC:
     excludes += _excludes_macos
+# Variant-specific extras injected by a wrapper spec that exec()s this template in
+# its own namespace (e.g. backend-cpu.spec sets ERUDI_EXTRA_EXCLUDES). Empty for
+# the standalone specs. OS-independent, so a CPU build excludes mlx_vlm even off Windows.
+excludes += globals().get("ERUDI_EXTRA_EXCLUDES", [])
 
 a = Analysis(
     ["run.py"],

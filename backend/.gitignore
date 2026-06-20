@@ -40,6 +40,7 @@ MANIFEST
 *.spec
 !backend.spec
 !backend-mac-silicon.spec
+!backend-cpu.spec
 
 # Installer logs
 pip-log.txt

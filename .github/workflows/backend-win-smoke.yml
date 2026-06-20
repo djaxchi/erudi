@@ -1,0 +1,58 @@
+name: Backend Windows Smoke
+
+# Boot smoke-test for the FROZEN Windows backend (win-cpu): build it with
+# PyInstaller on a REAL Windows runner and assert it boots to "ready" (embedded
+# PostgreSQL up + FastAPI lifespan complete). This catches the freeze-class bugs
+# automatically — the same chain where the mac packaging surfaced 7 freeze bugs.
+# The risk is higher on Windows because multiprocessing uses spawn (not fork).
+# No GPU and no model needed: it is a pure boot check (inference / llama-server is
+# lazy). win-cpu so it runs on any Windows runner.
+on:
+  push:
+    paths:
+      - "backend/**"
+      - "scripts/ci/smoke_boot.py"
+      - ".github/workflows/backend-win-smoke.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "scripts/ci/smoke_boot.py"
+      - ".github/workflows/backend-win-smoke.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: win-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  win-smoke:
+    runs-on: windows-latest
+    env:
+      PYTHONUNBUFFERED: 1
+      ERUDI_FORCE_CPU: 1
+    defaults:
+      run:
+        shell: bash # git-bash: consistent paths with the release workflow
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # hard pin: pgserver ships cp312 wheels only
+          cache: pip
+          cache-dependency-path: backend/requirements/**/*.txt
+
+      - name: Install backend dependencies (win-cpu)
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          pip install -r backend/requirements/entrypoints/prod/win-cpu-prod.txt
+          pip install pyinstaller
+
+      - name: Build frozen backend (PyInstaller, backend-cpu.spec)
+        run: pyinstaller backend/backend-cpu.spec --distpath backend/dist
+
+      - name: Smoke-test boot (assert "ready")
+        env:
+          SMOKE_TIMEOUT: 300
+        run: python scripts/ci/smoke_boot.py backend/dist/backend/backend.exe --port 8765
