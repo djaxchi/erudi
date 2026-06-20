@@ -62,15 +62,33 @@ Run on the downloaded draft, **not** a local build:
 
 ## Platform coverage (assign one tester per artifact)
 
-| Artifact | Owner(s) |
-|---|---|
-| macOS Apple Silicon | Rayan |
-| Windows CUDA | (NVIDIA machine) |
-| Windows CPU | Rayan / Yolaatar |
-| Linux CUDA / CPU / ROCm | future (machines TBD) |
-| macOS Intel | future (deprecation pending) |
+| Artifact | Auto-update channel | Owner(s) |
+|---|---|---|
+| macOS Apple Silicon | `latest` (`latest-mac.yml`) | Rayan |
+| Windows CPU | `latest` (`latest.yml`) | Rayan / Yolaatar |
+| Windows CUDA | `cuda` (`cuda.yml`) | (NVIDIA machine) |
+| Linux CUDA / CPU / ROCm | future | future (machines TBD) |
+| macOS Intel | future | future (deprecation pending) |
 
 Record who tested which artifact in the release notes.
+
+### Windows is two channels — test both update paths
+
+The two Windows installers on a release are distinct assets that auto-update
+**independently**: `Erudi Setup X.Y.Z.exe` (CPU, `latest.yml`) and
+`Erudi-Setup-X.Y.Z-cuda.exe` (CUDA, `cuda.yml`). A user picks one at download and
+then stays on that channel. So QA must, per release:
+
+- [ ] CPU installer (`latest`): install the previous CPU build, then confirm this
+      RC's CPU installer is offered + applies (it must read `latest.yml`).
+- [ ] CUDA installer (`cuda`): same, on an NVIDIA machine — confirm GPU inference
+      works AND that the previous CUDA build auto-updates from `cuda.yml`.
+- [ ] Cross-channel sanity: the CUDA draft is **not** offered to a CPU install,
+      and vice versa (each follows only its own `*.yml`).
+
+> The Windows binaries are compiled in CI from the `llama.cpp` submodule and
+> **cannot be run-tested in CI** (no GPU runner, and boot is lazy) — real Windows
+> hardware QA here is the only validation of the inference path.
 
 ## Promote
 

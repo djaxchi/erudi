@@ -34,7 +34,7 @@ electronFuses:
   enableEmbeddedAsarIntegrityValidation: true
   onlyLoadAppFromAsar: true
 
-# GitHub Releases — electron-updater reads latest*.yml from here at runtime.
+# GitHub Releases — electron-updater reads <channel>.yml from here at runtime.
 # Release-candidate gate: a tag builds + signs + notarizes and publishes a DRAFT
 # release. electron-updater never offers a draft (its feed 404s while drafted), so
 # clients are not touched. A maintainer downloads the exact signed draft artifact,
@@ -42,6 +42,13 @@ electronFuses:
 # docs/dev/release-qa-checklist.md), then promotes the draft (un-draft + changelog)
 # to ship it via auto-update. Prerelease-tagged versions (e.g. 0.0.1-test.1) are
 # auto-flagged prerelease, so test tags never masquerade as a stable update.
+#
+# Windows ships TWO auto-update channels from the one release: the CPU build feeds
+# the default `latest` channel (universal — runs on every machine), the CUDA build
+# feeds a `cuda` channel. The channel + a distinct artifact name are injected per
+# leg in CI (release.yml: `-c.publish.channel=cuda -c.nsis.artifactName=…`), NOT
+# here — a `channel` set here would wrongly apply to mac + win-cpu too. Each
+# installed app follows the channel baked into its app-update.yml at build time.
 publish:
   provider: github
   owner: djaxchi
