@@ -20,7 +20,7 @@ relative paths (data/) resolve correctly at runtime.
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_data_files
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
 
 spec_root = Path(SPECPATH)  # resolves to backend/
 
@@ -54,6 +54,20 @@ datas += collect_data_files("filelock")
 # path (build_kb_context_block -> detect_language) dies with
 # FileNotFoundError: .../py3langid/data/model.plzma.
 datas += collect_data_files("py3langid")
+
+# Alembic migration scripts (#96): the startup runner resolves script_location to
+# ROOT_DIR/alembic and the config to ROOT_DIR/alembic.ini. In the frozen build
+# ROOT_DIR is the bundle root (sys._MEIPASS), so ship the whole alembic/ tree and
+# alembic.ini there. Alembic reads these from the filesystem (not as Python package
+# data), so they must be bundled as datas, structure preserved.
+_alembic_dir = spec_root / "alembic"
+for _af in _alembic_dir.rglob("*"):
+    if _af.is_file() and "__pycache__" not in _af.parts:
+        datas.append((str(_af), str(Path("alembic") / _af.relative_to(_alembic_dir).parent)))
+datas.append((str(spec_root / "alembic.ini"), "."))
+# Alembic loads its dialect ddl (alembic.ddl.postgresql) and other submodules
+# dynamically — collect them so the startup migration runs in the frozen build.
+hiddenimports += collect_submodules("alembic")
 
 # ── MLX: Apple Silicon inference framework ────────────────────────────────────
 # collect_all captures compiled .so extensions, Metal shader kernels, and
