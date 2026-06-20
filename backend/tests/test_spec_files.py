@@ -81,3 +81,16 @@ def test_cpu_spec_excludes_mlx_vlm():
     spec = _read("backend-cpu.spec")
     assert "mlx_vlm" in spec
     assert "mlx_lm" not in spec
+
+
+@pytest.mark.unit
+def test_backend_spec_bundles_variant_llama_server():
+    # The Windows llama-server bundle must follow the build variant so the cpu
+    # spec ships artifacts/llama-cpp/cpu/bin and the (default) cuda spec ships
+    # .../cuda/bin — NOT a hardcoded cuda-only path. Both flavours are compiled
+    # in CI from the llama.cpp submodule before PyInstaller runs (see release.yml).
+    spec = _read("backend.spec")
+    assert "ERUDI_BUILD_VARIANT" in spec
+    assert "_llama_flavour" in spec
+    # the previous hardcoded cuda-only data path must be gone
+    assert '"llama-cpp" / "cuda" / "bin"' not in spec

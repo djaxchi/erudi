@@ -1,8 +1,16 @@
 name: Release
 
 # Auto-release on a vX.Y.Z tag: each matrix leg builds its PyInstaller backend
-# (native runner — PyInstaller can't cross-compile) then electron-builder
-# packages, signs (macOS) and publishes to the SAME GitHub Release (draft).
+# (native runner — PyInstaller can't cross-compile), compiles the inference binary
+# it needs (Windows: llama-server from the llama.cpp submodule; macOS: none, MLX is
+# pip), then electron-builder packages, signs (macOS), and publishes to the SAME
+# GitHub Release (draft). Windows ships TWO auto-update channels on the one release:
+# `latest` (the CPU build, universal — runs on every machine) and `cuda` (the GPU
+# build). Each installed app follows the channel baked into its app-update.yml at
+# build time, so a user picks cpu-vs-cuda once at download and then auto-updates
+# within that channel. The binary can't be CI-run-tested (no GPU runner), so a tag
+# publishes a DRAFT that is QA'd on real hardware before promotion (release.yml only
+# builds + publishes the draft — see docs/dev/release-qa-checklist.md).
 on:
   push:
     tags:
@@ -22,19 +30,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14 # Apple Silicon
+          - os: macos-14 # Apple Silicon (MLX inference, no llama-server)
             variant: mac-arm
             reqs: mac-silicon-prod.txt
             spec: backend-mac-silicon.spec
             release_script: release:mac
-          # Windows (win-cuda) temporarily skipped: the frozen Windows backend
-          # chain is not yet validated (no Windows runner). Re-enable once
-          # proven. The leg config is preserved verbatim for that.
-          # - os: windows-latest # x64 (CUDA build)
-          #   variant: win-cuda
-          #   reqs: win-cuda-prod.txt
-          #   spec: backend.spec
-          #   release_script: release:win
+            eb_extra_args: ""
+          - os: windows-latest # x64 CPU — the `latest` (universal) auto-update channel
+            variant: win-cpu
+            reqs: win-cpu-prod.txt
+            spec: backend-cpu.spec
+            release_script: release:win
+            llama_build: cpu
+            eb_extra_args: ""
+          - os: windows-latest # x64 CUDA — the `cuda` auto-update channel
+            variant: win-cuda
+            reqs: win-cuda-prod.txt
+            spec: backend.spec
+            release_script: release:win
+            llama_build: cuda
+            # Distinct channel (-> cuda.yml) + distinct artifact name so the two
+            # Windows installers never clobber each other's update feed.
+            eb_extra_args: "-c.publish.channel=cuda -c.nsis.artifactName='${productName}-Setup-${version}-cuda.${ext}'"
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -42,6 +59,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive # llama.cpp source for the Windows inference build
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -57,12 +76,32 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # ── Backend: freeze with PyInstaller (native, no cross-compile) ──────────
+      # ── CUDA toolkit (win-cuda leg only) ─────────────────────────────────────
+      # Needed to COMPILE the CUDA llama-server. Compilation does NOT need a GPU
+      # (only execution does), so this runs fine on the GPU-less runner. 12.6.x
+      # satisfies the modern MSVC on windows-latest (the dev script's 12.1 path was
+      # written against an older toolchain; it resolves whatever CUDA_PATH is set).
+      - name: Install CUDA Toolkit
+        if: matrix.llama_build == 'cuda'
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: "12.6.3"
+          method: network
+
+      # ── Backend: Python deps + PyInstaller ───────────────────────────────────
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip wheel setuptools
           pip install -r backend/requirements/entrypoints/prod/${{ matrix.reqs }}
           pip install pyinstaller
+
+      # ── Windows: compile llama-server from the submodule. The variant-aware spec
+      #    then bundles artifacts/llama-cpp/<cpu|cuda>/bin into the frozen backend. ─
+      - name: Build llama-server (Windows inference binary)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/dev/backend/build-llamacpp-${{ matrix.llama_build }}-win.ps1
+
       - name: Build backend bundle
         run: pyinstaller backend/${{ matrix.spec }} --distpath backend/dist
 
@@ -82,10 +121,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS signing + notarization (electron-builder does it natively).
-          # Empty on the Windows leg so it stays unsigned for now (SignPath later).
+          # Empty on the Windows legs so they stay unsigned for now (SignPath later).
           CSC_LINK: ${{ matrix.variant == 'mac-arm' && secrets.CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ matrix.variant == 'mac-arm' && secrets.CSC_KEY_PASSWORD || '' }}
           APPLE_ID: ${{ matrix.variant == 'mac-arm' && secrets.APPLE_ID || '' }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.variant == 'mac-arm' && secrets.APPLE_ID_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ matrix.variant == 'mac-arm' && secrets.APPLE_TEAM_ID || '' }}
-        run: npm run ${{ matrix.release_script }}
+        # `-- ${{ matrix.eb_extra_args }}` forwards per-leg overrides to
+        # electron-builder (empty for mac/win-cpu; channel + artifactName for win-cuda).
+        run: npm run ${{ matrix.release_script }} -- ${{ matrix.eb_extra_args }}

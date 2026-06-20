@@ -46,6 +46,12 @@ $VenvPip    = Join-Path $BackendRoot "venv\Scripts\pip.exe"
 $VenvPython = Join-Path $BackendRoot "venv\Scripts\python.exe"
 $VenvCmake  = Join-Path $BackendRoot "venv\Scripts\cmake.exe"
 
+# Toolchain: prefer the dev venv, fall back to PATH (CI installs into the system
+# Python, there is no backend\venv). Each var ends up as an existing path or $null.
+if (-not (Test-Path $VenvPip))    { $VenvPip    = (Get-Command pip    -ErrorAction SilentlyContinue).Source }
+if (-not (Test-Path $VenvPython)) { $VenvPython = (Get-Command python -ErrorAction SilentlyContinue).Source }
+if (-not (Test-Path $VenvCmake))  { $VenvCmake  = (Get-Command cmake  -ErrorAction SilentlyContinue).Source }
+
 Write-Step "Paths resolved:"
 Write-Host "  Source  : $SrcDir"
 Write-Host "  Build   : $BuildDir"
@@ -59,9 +65,9 @@ if (-not (Test-Path (Join-Path $SrcDir "CMakeLists.txt"))) {
     Write-Fail "llama-cpp source not found at $SrcDir. Run: git submodule update --init --recursive"
 }
 
-# Python venv
-if (-not (Test-Path $VenvPython)) {
-    Write-Fail "Python venv not found at $BackendRoot\venv. Run setup-win-cuda-121.ps1 first."
+# Python (venv or PATH)
+if (-not $VenvPython) {
+    Write-Fail "Python not found (no backend\venv and none on PATH). Run setup-win-cuda-121.ps1 first, or install Python."
 }
 
 # -------- CUDA toolkit detection --------
@@ -151,13 +157,15 @@ Write-OK "Ninja: $($NinjaExe.Source)"
 # -------- cmake detection / install --------
 Write-Step "Checking cmake..."
 
-if (-not (Test-Path $VenvCmake)) {
-    Write-Step "cmake not found in venv. Installing via pip..."
+if (-not $VenvCmake) {
+    Write-Step "cmake not found. Installing via pip..."
+    if (-not $VenvPip) { Write-Fail "Neither cmake nor pip found on PATH." }
     & $VenvPip install --upgrade cmake --quiet
-    if ($LASTEXITCODE -ne 0) { Write-Fail "Failed to install cmake into venv." }
+    if ($LASTEXITCODE -ne 0) { Write-Fail "Failed to install cmake." }
+    $VenvCmake = (Get-Command cmake -ErrorAction SilentlyContinue).Source
 }
 
-if (-not (Test-Path $VenvCmake)) { Write-Fail "cmake still not found at $VenvCmake after pip install." }
+if (-not $VenvCmake) { Write-Fail "cmake still not found after pip install." }
 
 $CmakeVersion = (& $VenvCmake --version 2>&1 | Select-Object -First 1)
 Write-OK "cmake: $CmakeVersion"
