@@ -3,3 +3,12 @@
 # mlx_lm.server EOS-flush bug) and image input. Pulls Pillow/opencv/datasets/
 # mlx-audio transitively (the inference path keeps cv2/datasets/mlx_audio lazy).
 mlx-vlm==0.6.2
+
+# Pin transformers: mlx-vlm 0.6.2 only requires >=5.5.0, so an unpinned mac
+# build resolves to the newest (5.12.x), which changed AutoProcessor class
+# resolution and dies loading text-only Gemma3 with
+# "Unrecognized processing class" under mlx-vlm 0.6.2. 5.10.2 is the known-good
+# version this codebase was built against (see #84); pin it so the CI bundle
+# matches the dev venv (the previous release shipped 5.12.1 and could not load
+# any model). The Windows/CUDA build pins separately in cuda-base-specs.txt.
+transformers==5.10.2
