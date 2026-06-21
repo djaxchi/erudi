@@ -100,6 +100,34 @@ class BaseEngine(ABC, metaclass=EngineMeta):
 
     MODEL_MAPPING : dict = {}
 
+    # Stored model links that download fine but FAIL TO RUN on this engine
+    # (e.g. a quantized checkpoint the loader can't read). Overridden per engine.
+    # is_runnable() uses it to ban such models from the catalog for this hardware.
+    KNOWN_BROKEN: frozenset = frozenset()
+
+    @classmethod
+    def is_engine_format(cls, link: str) -> bool:
+        """Whether `link` points to an artifact THIS engine can load directly.
+
+        Default: a curated MODEL_MAPPING target. Engine families override to also
+        recognise community quants in their own format (so community fine-tunes are
+        NOT over-blocked) — ``mlx-community/*`` for MLX, ``*-GGUF`` for llama.cpp.
+        """
+        return link in cls.MODEL_MAPPING.values()
+
+    @classmethod
+    def is_runnable(cls, link: str) -> bool:
+        """Whether a model stored as `link` can actually run on this engine.
+
+        Capability-based, NOT an allowlist: True iff `link` is in this engine's
+        format and not on KNOWN_BROKEN. A gated first-party base id (never
+        converted to a quant) is not engine-format → not runnable; any community
+        quant in the right format is runnable.
+        """
+        if link in cls.KNOWN_BROKEN:
+            return False
+        return cls.is_engine_format(link)
+
     def __init__(self):
         """Prevent direct instantiation.
         

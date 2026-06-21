@@ -128,6 +128,18 @@ class MLX_Engine(BaseChatServerEngine):
         "google/gemma-4-31b-it":               "mlx-community/gemma-4-31b-it-4bit",
     }
 
+    # Stored links that download but crash at load on mlx-vlm 0.6.2.
+    KNOWN_BROKEN = frozenset({
+        # gemma-4 E2B: quantized checkpoint (0.4.3 quant, KV-sharing mismatch) that
+        # mlx-vlm 0.6.2 cannot load — 140-weight ValueError. Runs fine via GGUF.
+        "mlx-community/gemma-4-e2b-it-4bit",
+    })
+
+    @classmethod
+    def is_engine_format(cls, link: str) -> bool:
+        """MLX runs mlx-community 4-bit quants (and any curated MODEL_MAPPING target)."""
+        return link.startswith("mlx-community/") or link in cls.MODEL_MAPPING.values()
+
     @classmethod
     def quant_and_save_from_hf_format(
         cls,

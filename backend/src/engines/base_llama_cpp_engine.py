@@ -84,6 +84,12 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         "Qwen/Qwen2.5-VL-3B-Instruct":           "unsloth/Qwen2.5-VL-3B-Instruct-GGUF",
     }
 
+    @classmethod
+    def is_engine_format(cls, link: str) -> bool:
+        """llama.cpp runs GGUF repos (community ``*-GGUF`` or any curated target)."""
+        tail = link.split("/")[-1].lower()
+        return tail.endswith("-gguf") or "gguf" in tail or link in cls.MODEL_MAPPING.values()
+
     # ====================== Concrete shared methods ======================
     @classmethod
     def _default_install_dir(cls) -> Path:
