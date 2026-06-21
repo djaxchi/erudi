@@ -135,36 +135,6 @@ export function useConversations() {
 }
 
 /**
- * Custom hook for hardware training info
- * @returns {Object} { trainingInfo, loading, error }
- */
-export function useTrainingInfo() {
-  const [trainingInfo, setTrainingInfo] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const fetchTrainingInfo = async () => {
-      try {
-        setLoading(true);
-        const data = await apiClient.get("/hardware/training_info");
-        setTrainingInfo(data);
-        setError(null);
-      } catch (err) {
-        log.error("Failed to fetch training info", err);
-        setError(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTrainingInfo();
-  }, []);
-
-  return { trainingInfo, loading, error };
-}
-
-/**
  * Custom hook for hardware app startup info
  * @returns {Object} { startupInfo, loading, error }
  */

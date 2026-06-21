@@ -26,7 +26,6 @@ Architecture:
     │  - /erudi/llms          → Model management                  │
     │  - /erudi/conversations → Chat/streaming                    │
     │  - /erudi/knowledge_base → RAG/vectorization                │
-    │  - /erudi/training      → Fine-tuning                       │
     │  - /erudi/arena         → Model comparison                  │
     │  - /erudi/hardware      → System monitoring                 │
     │  - /erudi/health        → Health checks                     │
@@ -78,7 +77,6 @@ from src.domains.conversations.endpoints import router as conversations_router
 from src.domains.hardware.endpoints import router as hardware_router
 from src.domains.knowledge_base.endpoints import router as knowledge_base_router
 from src.domains.startup.endpoints import router as startup_router
-from src.domains.training.endpoints import router as training_router
 from src.core.health import router as health_router
 
 def register_routers(app: FastAPI) -> None :
@@ -106,7 +104,6 @@ def register_routers(app: FastAPI) -> None :
     """
     
     app.include_router(llms_router, prefix="/erudi")
-    app.include_router(training_router, prefix="/erudi")
     app.include_router(hardware_router, prefix="/erudi")
     app.include_router(arena_router, prefix="/erudi")
     app.include_router(knowledge_base_router, prefix="/erudi")

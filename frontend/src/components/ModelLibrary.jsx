@@ -113,7 +113,7 @@ export default function ModelLibrary({
       <div className="border-t border-gray-600/30 pt-4">
         <div className="mb-2">
           <h4 className="text-sm font-semibold text-white/90">New Model Name</h4>
-          <p className="text-xs text-white/60">Choose a name for your fine-tuned model</p>
+          <p className="text-xs text-white/60">Choose a name for your model</p>
         </div>
         <div className="flex gap-2">
           <input

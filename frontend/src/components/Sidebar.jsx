@@ -28,8 +28,7 @@ export default function Sidebar({
   const [isBrainHovering, setIsBrainHovering] = useState(false);
   const { isDownloading } = useDownloadModal();
   const location = useLocation();
-  const isModelsActive =
-    location.pathname === "/erudi/models" || location.pathname === "/erudi/new-training";
+  const isModelsActive = location.pathname === "/erudi/models";
   const isChatActive =
     location.pathname.startsWith("/erudi/chat") ||
     location.pathname.startsWith("/erudi/conversations");
