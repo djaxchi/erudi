@@ -8,7 +8,10 @@ safetensors. They are pure class-attribute checks — no network, CI-safe.
 
 import pytest
 
+from src.core import config
+from src.core.exceptions import UnsupportedPlatformException
 from src.database.seed import Database_Seeder
+from src.domains.llms import services
 from src.engines.base_llama_cpp_engine import BaseLlamaCppEngine
 from src.engines.cpu_engine import CPU_Engine
 from src.engines.cuda_engine import CUDA_Engine
@@ -93,3 +96,18 @@ class TestRunnabilityPredicate:
             assert MLX_Engine.is_runnable(mlx_target) or CPU_Engine.is_runnable(gguf_target), (
                 f"{link} is runnable on neither engine"
             )
+
+
+class TestDownloadRunnabilityGuard:
+    """download_llm rejects non-runnable targets up front (clear error, no 401→500)."""
+
+    def test_rejects_gated_base_with_no_quant(self, monkeypatch):
+        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
+        # unmapped gated base id → resolves to itself → not GGUF format → rejected
+        with pytest.raises(UnsupportedPlatformException):
+            services._assert_runnable("google/some-gated-model-it", "google/some-gated-model-it")
+
+    def test_allows_mapped_public_quant(self, monkeypatch):
+        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
+        # resolved GGUF quant → runnable → no raise
+        services._assert_runnable("google/gemma-3-1b-it", "unsloth/gemma-3-1b-it-GGUF")

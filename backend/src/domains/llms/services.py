@@ -59,6 +59,7 @@ from threading import Lock
 from typing import Optional, List, Tuple
 
 from huggingface_hub import HfApi, HfFileSystem
+from huggingface_hub.utils import GatedRepoError, HfHubHTTPError
 from fsspec.callbacks import Callback
 
 from src.database.core import SessionLocal
@@ -73,6 +74,7 @@ from src.core.exceptions import (
     ModelNotFoundException,
     InvalidInputException,
     StateConflictException,
+    UnsupportedPlatformException,
 )
 
 # Environment setup
@@ -326,6 +328,20 @@ async def download_files_concurrent(
     await asyncio.gather(*coros)
 
 
+def _assert_runnable(model_link: str, actual_download_link: str) -> None:
+    """Reject a download whose resolved target won't run on the active engine.
+
+    Routing always points at a public quant; if the resolved link is still a gated
+    first-party id (mapping miss) or a KNOWN_BROKEN quant, fail up front with a clear
+    message rather than letting a 401 surface as a 500 mid-transfer.
+    """
+    if not config.LLM_Engine.is_runnable(actual_download_link):
+        raise UnsupportedPlatformException(
+            feature=model_link,
+            reason=f"no runnable model format is published for {config.LLM_Engine.__name__}",
+        )
+
+
 async def download_llm(
     model_link: str,
     model_id: int,
@@ -381,7 +397,10 @@ async def download_llm(
         is_prequantized = True
     else:
         actual_download_link = model_link
-    
+
+    # Runnability gate: only ever fetch a public quant THIS engine can run.
+    _assert_runnable(model_link, actual_download_link)
+
     # Prepare local path
     os.makedirs(temp_save_dir, exist_ok=True)
     os.makedirs(final_save_dir, exist_ok=True)
@@ -484,6 +503,16 @@ async def download_llm(
 
         return temp_save_dir
 
+    except (GatedRepoError, HfHubHTTPError) as e:
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if isinstance(e, GatedRepoError) or status in (401, 403):
+            logger.error(f"Anonymous access denied for {actual_download_link}: {e}")
+            raise UnsupportedPlatformException(
+                feature=model_link,
+                reason="requires HuggingFace authentication and cannot be downloaded anonymously",
+            )
+        logger.error(f"HuggingFace error for {actual_download_link}: {e}")
+        raise
     except Exception as e:
         logger.error(f"Failed to process model: {e}")
         raise
