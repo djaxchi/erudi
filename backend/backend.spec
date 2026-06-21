@@ -76,7 +76,22 @@ datas.append((str(spec_root / "alembic.ini"), "."))
 # the libpq runtime hook used there is dyld-specific and is NOT wired here —
 # Windows DLL resolution differs and needs its own validation on a Win runner.)
 tmp_ret = collect_all("pgserver")
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+datas += tmp_ret[0]; hiddenimports += tmp_ret[2]
+if IS_LINUX:
+    # On Linux, PyInstaller's binary analysis drops/relocates postgres's loadable
+    # backend modules ($libdir/*.so, e.g. dict_snowball — they depend on the server
+    # binary, not standalone libs), so initdb fails to bootstrap ("could not access
+    # file $libdir/dict_snowball"). Bundle the whole pginstall tree verbatim as DATA
+    # (no dependency analysis): postgres runs as a subprocess, not linked into the
+    # frozen Python, so its install is opaque data and $libdir resolves relative to
+    # the bundled binary. (collect_all's pgserver BINARIES are skipped here.)
+    import pgserver as _pgsrv
+    _pginstall = Path(_pgsrv.__file__).resolve().parent / "pginstall"
+    for _pf in _pginstall.rglob("*"):
+        if _pf.is_file():
+            datas.append((str(_pf), str(Path("pgserver/pginstall") / _pf.relative_to(_pginstall).parent)))
+else:
+    binaries += tmp_ret[1]
 
 # ── llama.cpp inference artifacts (Windows + Linux — llama.cpp engines) ────────
 # Bundle the llama-server binary that matches THIS build variant: the cpu spec
@@ -312,6 +327,11 @@ if IS_MAC:
 # the standalone specs. OS-independent, so a CPU build excludes mlx_vlm even off Windows.
 excludes += globals().get("ERUDI_EXTRA_EXCLUDES", [])
 
+# Linux: preload psycopg's own (newer) libpq so it does not bind to pgserver's
+# older bundled libpq (the same @rpath/.so collision the mac spec fixes). No-op on
+# Windows (the glob patterns match no .dll), so it is wired Linux-only here.
+_runtime_hooks = [str(spec_root / "pyi_rth_libpq.py")] if IS_LINUX else []
+
 a = Analysis(
     ["run.py"],
     pathex=[str(spec_root)],
@@ -320,7 +340,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=_runtime_hooks,
     excludes=excludes,
     noarchive=False,
     optimize=0,
