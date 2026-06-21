@@ -25,7 +25,7 @@ requirements/
 │   ├── cuda-win-specs.txt    # Windows CUDA build tools (cmake)
 │   ├── linux-specs.txt
 │   ├── mac-silicon-specs.txt # MLX (mlx-vlm)
-│   └── win-specs.txt         # Windows-only (wmi)
+│   └── win-specs.txt         # Windows-only (currently none)
 └── freezes/                  # optional pinned freezes
 ```
 

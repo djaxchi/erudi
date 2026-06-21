@@ -1,1 +1,3 @@
-wmi==1.5.1
+# Windows-only runtime deps. Currently none: hardware detection is cross-platform
+# (CPU_Engine = psutil + py-cpuinfo, CUDA_Engine = pynvml), so `wmi` was unused and
+# removed. Kept as a placeholder for the entrypoints that `-r` this file.
