@@ -24,8 +24,8 @@ Erudi is a desktop application that lets you download, run, and chat with open-s
 | Windows (NVIDIA GPU) | CUDA via llama-server | ✅ |
 | Windows (no GPU) | CPU via llama-server | ✅ |
 | macOS Apple Silicon | MLX | 🚧 In progress |
-| Linux (NVIDIA GPU) | CUDA via llama-server | 🚧 Planned |
-| Linux (CPU) | CPU via llama-server | 🚧 Planned |
+| Linux (NVIDIA GPU) | CUDA via llama-server | 🚧 In progress |
+| Linux (CPU) | CPU via llama-server | 🚧 In progress |
 
 ---
 
@@ -65,7 +65,14 @@ The inference engine needs to be compiled for your platform:
 # macOS Apple Silicon
 bash scripts/dev/backend/build-llamacpp-cpu-macos-silicon.sh
 
-# Windows CUDA — run in PowerShell
+# Linux CPU
+bash scripts/dev/backend/build-llamacpp-cpu-linux.sh
+
+# Linux CUDA
+bash scripts/dev/backend/build-llamacpp-cuda-linux.sh
+
+# Windows CPU / CUDA — run in PowerShell
+.\scripts\dev\backend\build-llamacpp-cpu-win.ps1
 .\scripts\dev\backend\build-llamacpp-cuda-win.ps1
 ```
 
