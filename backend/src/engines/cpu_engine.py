@@ -105,10 +105,7 @@ class CPU_Engine(BaseLlamaCppEngine):
     _tokenizer_provider = "llama-server"
     # _port_range_start = 8080 (inherited from BaseLlamaCppEngine)
     # _use_cuda_build = False (inherited from BaseLlamaCppEngine)
-
-    MODEL_MAPPING = {
-        # Ignore for the moment, to be worked on later
-    }
+    # USES_GGUF + MODEL_MAPPING (public-GGUF catalog) inherited from BaseLlamaCppEngine.
 
     # ---------- CPU-specific spawn hooks ----------
 
