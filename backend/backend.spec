@@ -23,6 +23,7 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_sub
 
 IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform == "win32"
+IS_LINUX = sys.platform.startswith("linux")
 
 spec_root = Path(SPECPATH)  # resolves to backend/
 
@@ -77,22 +78,26 @@ datas.append((str(spec_root / "alembic.ini"), "."))
 tmp_ret = collect_all("pgserver")
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
-# ── llama.cpp inference artifacts (Windows only) ──────────────────────────────
+# ── llama.cpp inference artifacts (Windows + Linux — llama.cpp engines) ────────
 # Bundle the llama-server binary that matches THIS build variant: the cpu spec
 # (backend-cpu.spec sets ERUDI_BUILD_VARIANT=cpu) ships artifacts/llama-cpp/cpu/bin,
-# the standalone (CUDA) spec ships artifacts/llama-cpp/cuda/bin. Both flavours are
+# the standalone (CUDA) spec ships artifacts/llama-cpp/cuda/bin. The same two specs
+# serve both Windows and Linux — only the binary name differs (.exe on Windows).
+# mac is MLX (backend-mac-silicon.spec), so it never reaches here. Both flavours are
 # compiled in CI from the llama.cpp submodule before PyInstaller runs (release.yml).
 # If the binary is absent (e.g. the boot-only merge smoke does not compile it) the
 # build still succeeds — inference simply has no server until a real release bundles
 # it. The CUDA binary also runs CPU inference, so a driverless machine falls back
 # (see BaseLlamaCppEngine._find_llama_server).
-if IS_WIN:
+if IS_WIN or IS_LINUX:
     _llama_flavour = os.environ.get("ERUDI_BUILD_VARIANT", "cuda")
+    _os_tag = "win" if IS_WIN else "linux"
+    _exe_suffix = ".exe" if IS_WIN else ""
     llama_bin = spec_root / "artifacts" / "llama-cpp" / _llama_flavour / "bin"
     if llama_bin.exists():
         _dest = f"artifacts/llama-cpp/{_llama_flavour}/bin"
-        for _name in ("llama-server.exe", "llama-quantize.exe"):
-            _f = llama_bin / _name
+        for _stem in ("llama-server", "llama-quantize"):
+            _f = llama_bin / f"{_stem}{_exe_suffix}"
             if _f.exists():
                 datas.append((str(_f), _dest))
         for _f in llama_bin.glob("convert*.py"):
@@ -104,7 +109,7 @@ if IS_WIN:
         import warnings
         warnings.warn(
             f"llama-cpp {_llama_flavour} binaries not found at {llama_bin}. "
-            f"Run scripts/dev/backend/build-llamacpp-{_llama_flavour}-win.ps1 first."
+            f"Run scripts/dev/backend/build-llamacpp-{_llama_flavour}-{_os_tag}.sh first."
         )
 
 # ── Analysis ──────────────────────────────────────────────────────────────────
@@ -287,7 +292,8 @@ _excludes_common = [
     "compressed_tensors",
 ]
 
-_excludes_windows = [
+# MLX is Apple-Silicon only — exclude it on the llama.cpp platforms (Windows + Linux).
+_excludes_llamacpp = [
     "mlx",
     "mlx_vlm",
 ]
@@ -297,8 +303,8 @@ _excludes_macos = [
 ]
 
 excludes = _excludes_common
-if IS_WIN:
-    excludes += _excludes_windows
+if IS_WIN or IS_LINUX:
+    excludes += _excludes_llamacpp
 if IS_MAC:
     excludes += _excludes_macos
 # Variant-specific extras injected by a wrapper spec that exec()s this template in
