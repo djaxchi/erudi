@@ -77,6 +77,18 @@ def test_all_specs_collect_pgserver_binaries():
 
 
 @pytest.mark.unit
+def test_all_specs_bundle_alembic_migrations():
+    # The startup migration reads alembic.ini + alembic/versions from the
+    # filesystem (ROOT_DIR == bundle root when frozen), so every shipping spec must
+    # bundle the alembic tree and collect alembic's dynamically-loaded submodules.
+    for name in ("backend-mac-silicon.spec", "backend.spec"):
+        spec = _read(name)
+        assert 'spec_root / "alembic"' in spec, name
+        assert "alembic.ini" in spec, name
+        assert 'collect_submodules("alembic")' in spec, name
+
+
+@pytest.mark.unit
 def test_cpu_spec_excludes_mlx_vlm():
     spec = _read("backend-cpu.spec")
     assert "mlx_vlm" in spec

@@ -57,10 +57,12 @@ Note:
 """
 
 from fastapi import FastAPI
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from src.database.core import init_database
-from src.database.seed import create_tables, startup_populate_database
+from src.database.migrations import run_migrations
+from src.database.seed import startup_populate_database
 from src.launcher.postgres_runtime import start_postgres, stop_postgres
 from src.ingestion.vector_store import close_kb_store, init_kb_store
 
@@ -211,7 +213,7 @@ async def lifespan(app: FastAPI):
         1. Start the embedded PostgreSQL cluster (postgres_runtime)
         2. Bind the SQLAlchemy engine/session factory (init_database)
         3. Select engine via platform detection (BaseEngine.get_engine)
-        4. Create database tables if not exist (create_tables)
+        4. Migrate the schema to head (Alembic, forward-only)
         5. Seed database with default models (startup_populate_database)
         6. Open the LangGraph checkpointer (app.state.checkpointer)
         7. Start cleanup background task (300s interval)
@@ -226,10 +228,13 @@ async def lifespan(app: FastAPI):
     # Step 1: bind the SQLAlchemy engine/session factory to the live cluster.
     init_database(app.state.postgres.sqlalchemy_url)
     config.LLM_Engine = BaseEngine.get_engine()
-    await create_tables()
+    # Step 4: migrate the schema to head (forward-only). Alembic is sync, so run
+    # it off the event loop. Replaces create_all — which never altered an existing
+    # (persisted) database — and auto-adopts pre-Alembic schemas (stamp baseline).
+    await run_in_threadpool(run_migrations, app.state.postgres)
     # await delete_all_data()
     await startup_populate_database()
-    # Hybrid KB vector store (rag.kb_chunks) — AFTER create_tables: its
+    # Hybrid KB vector store (rag.kb_chunks) — AFTER the schema migration: its
     # cross-schema FKs reference the business tables.
     app.state.kb_store = init_kb_store(app.state.postgres)
     # LangGraph conversation-state checkpointer (AsyncPostgresSaver on the
