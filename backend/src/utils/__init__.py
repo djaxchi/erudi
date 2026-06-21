@@ -5,8 +5,6 @@ This package provides utility functions organized by domain:
 Modules:
     - prompt_utils: System prompt building and prompting strategy selection
     - kb_utils: Knowledge base retrieval (rebuilt on PGVectorStore)
-    - file_processor: Text processing for TRAINING datasets (KB ingestion
-      lives in src.ingestion: DocumentReader → cleaning → chunking)
     - hf_model_metadata: HuggingFace model metadata fetching and formatting
 
 Clean API Surface:
@@ -41,15 +39,6 @@ from src.utils.kb_utils import (
     retrieve_kb_excerpts,
 )
 
-# File processing utilities (training pipeline)
-from src.utils.file_processor import (
-    split_sentences,
-    extract_text_from_pdf,
-    clean_text,
-    chunk_text,
-    process_pdfs_to_causal_dataset,
-)
-
 # HuggingFace model metadata utilities
 from src.utils.hf_model_metadata import (
     get_disk_size_after_quant,
@@ -65,12 +54,6 @@ __all__ = [
     # KB utilities
     'KbExcerpt',
     'retrieve_kb_excerpts',
-    # File processing (training)
-    'split_sentences',
-    'extract_text_from_pdf',
-    'clean_text',
-    'chunk_text',
-    'process_pdfs_to_causal_dataset',
     # HF metadata
     'get_disk_size_after_quant',
     'get_model_size_estimate',

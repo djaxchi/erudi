@@ -22,7 +22,6 @@ from src.entities.KBJob import KBJobModel
 from src.entities.KnowledgeBase import KnowledgeBase
 from src.entities.Llm import Llm
 from src.entities.Message import Message
-from src.entities.TrainingJob import TrainingJob
 
 
 def _make_llm(db, name="Schema Test Model"):
@@ -224,19 +223,6 @@ class TestServerSideCascades:
             text("SELECT COUNT(*) FROM conversations WHERE id = :i"), {"i": conv_id}
         ).scalar()
         assert remaining == 0
-
-    @pytest.mark.integration
-    def test_training_job_nulled_on_sql_delete_of_llm(self, test_db_session):
-        llm = _make_llm(test_db_session)
-        job = TrainingJob(llm_id=llm.id, status="pending")
-        test_db_session.add(job)
-        test_db_session.commit()
-
-        test_db_session.execute(text("DELETE FROM llms WHERE id = :i"), {"i": llm.id})
-        value = test_db_session.execute(
-            text("SELECT llm_id FROM training_jobs WHERE id = :i"), {"i": job.id}
-        ).scalar()
-        assert value is None
 
 
 class TestServerDefaults:

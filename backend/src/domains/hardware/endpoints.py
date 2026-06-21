@@ -5,7 +5,6 @@ Provides hardware detection, scoring, and monitoring endpoints across all backen
 transparent score boosting for optimal type safety and user experience.
 
 Endpoints:
-    GET /hardware/training_info: Full backend-specific hardware profile
     GET /hardware/app_startup: Minimal UI data with boosted scores
     GET /hardware/detailed: Comprehensive diagnostics with raw/boosted scores
     POST /hardware/refresh: Force hardware re-detection
@@ -20,7 +19,6 @@ from src.database.core import get_db
 from src.domains.hardware.repository import Hardware_Repository
 from src.domains.hardware.services import Hardware_Service
 from src.domains.hardware.schemas import (
-    HardwareTrainingInfo,
     HardwareAppStartupInfo,
     DetailedHardwareInfo,
     PerformanceBreakdown,
@@ -116,61 +114,6 @@ def _build_performance_breakdown(profile: HardwareProfile) -> PerformanceBreakdo
         cpu_performance_score=pb.get("cpu_performance_score", 0.0),
         disk_score=pb.get("disk_score"),
     )
-
-
-@router.get("/training_info", response_model=HardwareTrainingInfo)
-def get_hardware_training_info(db: Session = Depends(get_db)):
-    """Get full backend-specific hardware profile for training page UI.
-    
-    Returns complete hardware information with backend-specific fields via
-    discriminated union. Frontend uses backend_type to determine available fields.
-    
-    Response structure (example for MLX):
-        {
-            "hardware": {
-                "backend_type": "mlx",
-                "mlx_chip_model": "M3 Max",
-                "mlx_gpu_cores": 40,
-                "cpu_model": "Apple M3 Max",
-                "total_memory_gb": 128.0,
-                "raw_inference_score": 85.0,
-                ...
-            },
-            "performance_breakdown": {
-                "compute_score": 95.0,
-                "memory_bandwidth_score": 90.0,
-                ...
-            }
-        }
-    
-    Raises:
-        HTTPException: 500 if hardware detection fails
-    """
-    try:
-        service = _get_service(db)
-        profile = service.get_or_create_profile()
-        scores = service.calculate_boosted_scores(profile)
-        
-        backend_schema = _build_backend_specific_schema(profile, scores)
-        perf_breakdown = _build_performance_breakdown(profile)
-        
-        response = HardwareTrainingInfo(
-            hardware=backend_schema,
-            performance_breakdown=perf_breakdown,
-        )
-        
-        db.commit()
-        logger.info(f"Hardware training info retrieved: backend={profile.backend_type}")
-        return response
-        
-    except (HardwareException, DatabaseException) as e:
-        db.rollback()
-        logger.exception(f"Failed to get hardware training info: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        db.rollback()
-        logger.exception(f"Unexpected error in get_hardware_training_info: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/app_startup", response_model=HardwareAppStartupInfo)

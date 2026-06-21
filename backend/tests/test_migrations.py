@@ -19,6 +19,7 @@ from src.database.core import Base
 from src.database.migrations import (
     BASELINE_REVISION,
     _alembic_config,
+    _head_revision,
     run_migrations,
 )
 from src.launcher.postgres_runtime import start_postgres, stop_postgres
@@ -59,7 +60,9 @@ def test_fresh_db_upgrades_to_head_and_matches_models(fresh_cluster):
     finally:
         engine.dispose()
     assert "llms" in tables and "conversations" in tables
-    assert _alembic_version(url) == BASELINE_REVISION
+    # training_jobs was dropped by revision 7bc061d58b4e (dead fine-tuning code).
+    assert "training_jobs" not in tables
+    assert _alembic_version(url) == _head_revision(_alembic_config(url))
 
     # The migration chain must equal the models: autogenerate detects no diff.
     # command.check raises CommandError if the schema drifts from Base.metadata.
@@ -70,24 +73,34 @@ def test_fresh_db_upgrades_to_head_and_matches_models(fresh_cluster):
 def test_pre_alembic_db_is_stamped_not_replayed(fresh_cluster):
     url = fresh_cluster.sqlalchemy_url
 
-    # Simulate a database created by the old create_all path: full schema, but no
-    # alembic_version table.
+    # Simulate a database created by the old create_all path: the FULL historical
+    # schema (including the since-dropped training_jobs) but no alembic_version
+    # table. Build it from the baseline revision, then strip alembic_version so it
+    # looks pre-Alembic — Base.metadata.create_all no longer carries training_jobs
+    # and so cannot stand in for the schema the drop migration expects.
+    cfg = _alembic_config(url)
+    command.upgrade(cfg, BASELINE_REVISION)
     engine = create_engine(url)
     try:
-        Base.metadata.create_all(bind=engine)
+        with engine.begin() as conn:
+            conn.execute(text("DROP TABLE alembic_version"))
+        assert inspect(engine).has_table("training_jobs")
     finally:
         engine.dispose()
     assert _alembic_version(url) is None
 
-    # Must STAMP the baseline (no CREATE TABLE collision), then be at head.
+    # Must STAMP the baseline (no CREATE TABLE collision), then apply newer
+    # revisions to head — here, dropping training_jobs.
     run_migrations(fresh_cluster)
 
-    assert _alembic_version(url) == BASELINE_REVISION
+    assert _alembic_version(url) == _head_revision(cfg)
     engine = create_engine(url)
     try:
-        assert "llms" in set(inspect(engine).get_table_names())
+        tables = set(inspect(engine).get_table_names())
     finally:
         engine.dispose()
+    assert "llms" in tables
+    assert "training_jobs" not in tables
 
 
 @pytest.mark.integration

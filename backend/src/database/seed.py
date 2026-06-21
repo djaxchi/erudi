@@ -84,7 +84,6 @@ from src.engines.tool_capability import tool_capability_from_hf_repo
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
 from src.entities.Message import Message
-from src.entities.TrainingJob import TrainingJob
 from src.entities.DownloadJob import DownloadJobModel
 from src.entities.HardwareProfile import HardwareProfile
 from src.entities.KnowledgeDocument import KnowledgeDocument
@@ -654,7 +653,7 @@ class Job_Cleanup_Service:
     """Handles cleanup of interrupted jobs and orphaned resources.
     
     Responsibilities:
-    - Mark interrupted jobs (download, training, KB) as failed
+    - Mark interrupted jobs (download, KB) as failed
     - Remove incomplete model files and temp directories
     - Cleanup orphaned model directories without database entries
     """
@@ -671,21 +670,19 @@ class Job_Cleanup_Service:
         """Mark all interrupted jobs as failed and cleanup resources.
         
         Returns:
-            Dictionary with counts: {"download": N, "training": N, "kb": N, "orphaned": N}
+            Dictionary with counts: {"download": N, "kb": N, "orphaned": N}
         """
         counts = {
             "download": self._cleanup_download_jobs(),
-            "training": self._cleanup_training_jobs(),
             "kb": self._cleanup_kb_jobs(),
             "orphaned": self._cleanup_orphaned_models()
         }
-        
+
         total = sum(counts.values())
         if total > 0:
             logger.info(
                 f"Cleaned up {total} unfinished jobs: "
                 f"download={counts['download']}, "
-                f"training={counts['training']}, "
                 f"kb={counts['kb']}, "
                 f"orphaned={counts['orphaned']}"
             )
@@ -726,42 +723,6 @@ class Job_Cleanup_Service:
                 continue
             except DatabaseException as e:
                 logger.error(f"Database error cleaning download job {job.id}: {e}")
-                continue
-        
-        if count > 0:
-            self.db.commit()
-        
-        return count
-    
-    def _cleanup_training_jobs(self) -> int:
-        """Cleanup interrupted training jobs."""
-        unfinished = self.db.query(TrainingJob).filter(
-            TrainingJob.status.in_(["running", "pending"])
-        ).all()
-        
-        count = 0
-        for job in unfinished:
-            try:
-                # Delete incomplete trained model
-                llm = self.db.query(Llm).filter(Llm.id == job.llm_id).first()
-                if llm and os.path.exists(llm.link):
-                    shutil.rmtree(llm.link, ignore_errors=True)
-                    self.db.delete(llm)
-                
-                # Mark as failed. The incomplete Llm delete above nulls
-                # llm_id server-side (FK SET NULL); updated_at is stamped
-                # by onupdate=func.now().
-                job.status = "failed"
-                job.error_message = (
-                    "Training interrupted due to application shutdown"
-                )
-
-                count += 1
-            except FileSystemException as e:
-                logger.error(f"Filesystem error cleaning training job {job.id}: {e}")
-                continue
-            except DatabaseException as e:
-                logger.error(f"Database error cleaning training job {job.id}: {e}")
                 continue
         
         if count > 0:
@@ -1222,7 +1183,6 @@ class Database_Seeder:
             db.query(KnowledgeBase).delete()
             db.query(HardwareProfile).delete()
             db.query(DownloadJobModel).delete()
-            db.query(TrainingJob).delete()
             db.query(Message).delete()
             db.query(Conversation).delete()
             db.query(Llm).delete()

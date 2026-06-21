@@ -127,18 +127,6 @@ class CPUHardwareInfo(BaseHardwareInfo):
 
 # ======================= ENDPOINT-SPECIFIC VIEWS =======================
 
-class HardwareTrainingInfo(BaseModel):
-    """Full hardware profile for training page UI.
-    
-    Returns complete backend-specific information via discriminated union.
-    Frontend uses backend_type to determine which fields are available.
-    """
-    hardware: Union[MLXHardwareInfo, CUDAHardwareInfo, CPUHardwareInfo] = Field(
-        ..., discriminator="backend_type"
-    )
-    performance_breakdown: PerformanceBreakdown
-
-
 class HardwareAppStartupInfo(BaseModel):
     """Essential performance metrics for application startup dashboard.
     

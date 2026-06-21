@@ -42,9 +42,6 @@ export function DownloadModalProvider({ children }) {
   const [status, setStatus] = useState("idle");
   const [timeLeft, setTimeLeft] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [isFineTuning, setIsFineTuning] = useState(false);
-  const [, setCurrentStep] = useState("");
-  const [llmId, setLlmId] = useState(null);
   const [jobId, setJobId] = useState(null);
 
   const intervalRef = useRef(null);
@@ -54,88 +51,57 @@ export function DownloadModalProvider({ children }) {
     setIsCollapsed((c) => !c);
   }, []);
 
-  const open = useCallback(
-    (
-      selectedModel,
-      { onComplete, onError, isFineTuning: fineTuning, llmId: trainingLlmId } = {}
-    ) => {
-      setModel(selectedModel);
-      callbacksRef.current = { onComplete, onError };
-      setErrorMessage("");
-      setIsFineTuning(fineTuning || false);
-      setLlmId(trainingLlmId || null);
-      setCurrentStep(fineTuning ? "Preparing training..." : "");
-      setIsConfirmOpen(true);
-    },
-    []
-  );
+  const open = useCallback((selectedModel, { onComplete, onError } = {}) => {
+    setModel(selectedModel);
+    callbacksRef.current = { onComplete, onError };
+    setErrorMessage("");
+    setIsConfirmOpen(true);
+  }, []);
 
   const cancelConfirm = useCallback(() => setIsConfirmOpen(false), []);
 
-  const checkDownloadStatus = useCallback(
-    async (id, llmId = null) => {
-      try {
-        const endpoint = isFineTuning
-          ? `${API_BASE_URL}/training/${llmId}/status`
-          : `${API_BASE_URL}/llms/downloads/${id}/status`;
-
-        const res = await fetch(endpoint);
-        if (!res.ok) {
-          if (res.status === 404) {
-            // Le job n'existe plus (probablement annulé et nettoyé)
-            clearInterval(intervalRef.current);
-            setIsDownloading(false);
-            setProgress(0);
-            setStatus("cancelled");
-            setIsFineTuning(false);
-            setLlmId(null);
-            return;
-          }
-          throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
-        }
-        const data = await res.json();
-        setProgress(data.progress);
-        setStatus(data.status);
-
-        if (isFineTuning) {
-          setCurrentStep(data.status === "pending" ? "Preparing..." : "Training in progress...");
-          setTimeLeft(data.time_left || 0); // Set timeLeft for fine-tuning too
-        } else {
-          setTimeLeft(data.time_left);
-        }
-
-        if (
-          data.status === "completed" ||
-          data.status === "failed" ||
-          data.status === "cancelled"
-        ) {
+  const checkDownloadStatus = useCallback(async (id) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/llms/downloads/${id}/status`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          // Le job n'existe plus (probablement annulé et nettoyé)
           clearInterval(intervalRef.current);
           setIsDownloading(false);
-          if (data.status === "completed") {
-            callbacksRef.current.onComplete?.();
-          } else if (data.status === "cancelled") {
-            callbacksRef.current.onError?.("cancelled");
-          } else {
-            const errorMsg =
-              data.error_message ||
-              (isFineTuning ? "Training failed unexpectedly" : "Download failed unexpectedly");
-            setErrorMessage(errorMsg);
-            callbacksRef.current.onError?.(errorMsg);
-          }
+          setProgress(0);
+          setStatus("cancelled");
+          return;
         }
-      } catch (err) {
-        log.error("Status check error:", err);
+        throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
+      }
+      const data = await res.json();
+      setProgress(data.progress);
+      setStatus(data.status);
+      setTimeLeft(data.time_left);
+
+      if (data.status === "completed" || data.status === "failed" || data.status === "cancelled") {
         clearInterval(intervalRef.current);
         setIsDownloading(false);
-        const errorMsg = isFineTuning
-          ? "An error occured during training. Please try again or contact the Erudi team."
-          : "An error occured during download. Please check your connection and try again. If the problem persists, please contact the Erudi team.";
-        setErrorMessage(errorMsg);
-        callbacksRef.current.onError?.(errorMsg);
+        if (data.status === "completed") {
+          callbacksRef.current.onComplete?.();
+        } else if (data.status === "cancelled") {
+          callbacksRef.current.onError?.("cancelled");
+        } else {
+          const errorMsg = data.error_message || "Download failed unexpectedly";
+          setErrorMessage(errorMsg);
+          callbacksRef.current.onError?.(errorMsg);
+        }
       }
-    },
-    [isFineTuning]
-  );
+    } catch (err) {
+      log.error("Status check error:", err);
+      clearInterval(intervalRef.current);
+      setIsDownloading(false);
+      const errorMsg =
+        "An error occured during download. Please check your connection and try again. If the problem persists, please contact the Erudi team.";
+      setErrorMessage(errorMsg);
+      callbacksRef.current.onError?.(errorMsg);
+    }
+  }, []);
 
   const handleConfirm = useCallback(async () => {
     setIsConfirmOpen(false);
@@ -147,57 +113,27 @@ export function DownloadModalProvider({ children }) {
     setTimeout(() => setIsCollapsed(false), 2000);
 
     try {
-      if (isFineTuning) {
-        // Start the fine-tuning API call
-        const response = await fetch(`${API_BASE_URL}/train`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            paths: model.trainingFiles,
-            selectedModel: model.selectedModel,
-            modelName: model.modelName,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Failed to start fine-tuning (${response.status}): ${errorText}`);
-        }
-
-        const result = await response.json();
-        const llmInTrainingId = result.llm_in_training_id;
-
-        // Update the llmId for status polling
-        setLlmId(llmInTrainingId);
-
-        intervalRef.current = setInterval(() => {
-          checkDownloadStatus(null, llmInTrainingId); // Pass llmId for training progress
-        }, 2000);
-      } else {
-        const res = await fetch(`${API_BASE_URL}/llms/${model.id}/download`, { method: "POST" });
-        if (!res.ok) {
-          const errorText = await res.text();
-          throw new Error(`Failed to start download (${res.status}): ${errorText}`);
-        }
-        const job = await res.json();
-
-        // Sauvegarder le jobId pour l'annulation
-        setJobId(job.id);
-
-        intervalRef.current = setInterval(() => {
-          checkDownloadStatus(job.id);
-        }, 2000);
+      const res = await fetch(`${API_BASE_URL}/llms/${model.id}/download`, { method: "POST" });
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Failed to start download (${res.status}): ${errorText}`);
       }
+      const job = await res.json();
+
+      // Sauvegarder le jobId pour l'annulation
+      setJobId(job.id);
+
+      intervalRef.current = setInterval(() => {
+        checkDownloadStatus(job.id);
+      }, 2000);
     } catch (err) {
-      log.error("Download/Training start error:", err);
+      log.error("Download start error:", err);
       const errorMsg = err.message || err.toString() || "An unexpected error occurred";
       setErrorMessage(errorMsg);
       setIsDownloading(false);
       callbacksRef.current.onError?.(errorMsg);
     }
-  }, [model, checkDownloadStatus, isFineTuning, llmId]);
+  }, [model, checkDownloadStatus]);
 
   const cancelDownload = useCallback(async () => {
     if (!jobId) {
@@ -206,8 +142,6 @@ export function DownloadModalProvider({ children }) {
       setIsDownloading(false);
       setProgress(0);
       setStatus("cancelled");
-      setIsFineTuning(false);
-      setLlmId(null);
       callbacksRef.current.onError?.("cancelled");
       return;
     }
@@ -235,8 +169,6 @@ export function DownloadModalProvider({ children }) {
       setIsDownloading(false);
       setProgress(0);
       setStatus("cancelled");
-      setIsFineTuning(false);
-      setLlmId(null);
       callbacksRef.current.onError?.("cancelled");
     }
   }, [jobId]);
@@ -249,7 +181,6 @@ export function DownloadModalProvider({ children }) {
     <DownloadModalContext.Provider
       value={{
         open,
-        isTraining: isFineTuning && isDownloading,
         isDownloading,
       }}
     >
@@ -264,7 +195,6 @@ export function DownloadModalProvider({ children }) {
                 onCancel={cancelConfirm}
                 onConfirm={handleConfirm}
                 text={model?.name}
-                isFineTuning={isFineTuning}
               />
             )}
             {isDownloading && (
@@ -284,8 +214,7 @@ export function DownloadModalProvider({ children }) {
                       <>
                         <div className="flex items-center justify-between w-full">
                           <p className="text-white font-semibold truncate flex-1">
-                            {errorMessage ? "Error:" : isFineTuning ? "Training:" : "Downloading:"}{" "}
-                            {model?.name}
+                            {errorMessage ? "Error:" : "Downloading:"} {model?.name}
                           </p>
                           <button
                             onClick={cancelDownload}

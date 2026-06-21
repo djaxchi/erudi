@@ -99,7 +99,6 @@ LOG_DIR = _RUNTIME_PATHS.log_dir
 
 LLM_DIR = DATA_ROOT / "models"
 CACHE_DIR = DATA_ROOT / "models_cache"
-TRAINING_DATASETS_DIR = DATA_ROOT / "training_datasets"
 
 # ============ Database Configuration ============
 
@@ -113,7 +112,6 @@ POSTGRES_DATA_DIR = DATA_ROOT / "postgres"
 
 LLM_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-TRAINING_DATASETS_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============ HuggingFace API Client ============
