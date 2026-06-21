@@ -52,6 +52,20 @@ jobs:
             # Distinct channel (-> cuda.yml) + distinct artifact name so the two
             # Windows installers never clobber each other's update feed.
             eb_extra_args: "-c.publish.channel=cuda -c.nsis.artifactName='${productName}-Setup-${version}-cuda.${ext}'"
+          - os: ubuntu-latest # x64 CPU — the `latest` (universal) Linux channel
+            variant: linux-cpu
+            reqs: linux-cpu-prod.txt
+            spec: backend-cpu.spec
+            release_script: release:linux
+            llama_build: cpu
+            eb_extra_args: ""
+          - os: ubuntu-latest # x64 CUDA — the `cuda` Linux channel (cuda-linux.yml)
+            variant: linux-cuda
+            reqs: linux-cuda-prod.txt
+            spec: backend.spec
+            release_script: release:linux
+            llama_build: cuda
+            eb_extra_args: "-c.publish.channel=cuda -c.linux.artifactName='${productName}-${version}-cuda.${ext}'"
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -95,12 +109,17 @@ jobs:
           pip install -r backend/requirements/entrypoints/prod/${{ matrix.reqs }}
           pip install pyinstaller
 
-      # ── Windows: compile llama-server from the submodule. The variant-aware spec
-      #    then bundles artifacts/llama-cpp/<cpu|cuda>/bin into the frozen backend. ─
+      # ── Windows/Linux: compile llama-server from the submodule. The variant-aware
+      #    spec then bundles artifacts/llama-cpp/<cpu|cuda>/bin into the frozen
+      #    backend. mac is MLX, so it has no llama-server step.
       - name: Build llama-server (Windows inference binary)
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/dev/backend/build-llamacpp-${{ matrix.llama_build }}-win.ps1
+
+      - name: Build llama-server (Linux inference binary)
+        if: runner.os == 'Linux'
+        run: bash scripts/dev/backend/build-llamacpp-${{ matrix.llama_build }}-linux.sh
 
       - name: Build backend bundle
         run: pyinstaller backend/${{ matrix.spec }} --distpath backend/dist

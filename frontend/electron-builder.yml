@@ -108,3 +108,16 @@ dmg:
       y: 200
       type: link
       path: /Applications
+
+# ---------- Linux ----------
+# AppImage is the auto-updating Linux artifact (electron-updater reads
+# latest-linux.yml / cuda-linux.yml; deb/rpm do not self-update). Unsigned for now.
+# Like Windows, the CUDA build ships on a separate `cuda` channel injected per leg
+# in CI (release.yml: -c.publish.channel=cuda); the CPU build feeds `latest`.
+linux:
+  target:
+    - target: AppImage
+      arch: x64
+  icon: assets/icons/icon-512.png
+  category: Utility
+  synopsis: Run open-source LLMs locally
