@@ -24,9 +24,8 @@ Erudi is a desktop application that lets you download, run, and chat with open-s
 | Windows (NVIDIA GPU) | CUDA via llama-server | ✅ |
 | Windows (no GPU) | CPU via llama-server | ✅ |
 | macOS Apple Silicon | MLX | 🚧 In progress |
-| macOS Intel | CPU via llama-server | 🚧 In progress |
-| Linux (NVIDIA GPU) | CUDA via llama-server | 🚧 Planned |
-| Linux (CPU) | CPU via llama-server | 🚧 Planned |
+| Linux (NVIDIA GPU) | CUDA via llama-server | 🚧 In progress |
+| Linux (CPU) | CPU via llama-server | 🚧 In progress |
 
 ---
 
@@ -53,7 +52,6 @@ Pick the script for your platform:
 | Platform | Script |
 |---|---|
 | macOS Apple Silicon | `bash scripts/dev/backend/setup-mac-silicon.sh` |
-| macOS Intel | `bash scripts/dev/backend/setup-mac-intel.sh` |
 | Windows CUDA 12.1 | `.\scripts\dev\backend\setup-win-cuda-121.ps1` |
 | Windows CPU | `.\scripts\dev\backend\setup-win-cpu.ps1` |
 | Linux CUDA 12.1 | `bash scripts/dev/backend/setup-linux-cuda-121.sh` |
@@ -67,10 +65,14 @@ The inference engine needs to be compiled for your platform:
 # macOS Apple Silicon
 bash scripts/dev/backend/build-llamacpp-cpu-macos-silicon.sh
 
-# macOS Intel
-bash scripts/dev/backend/build-llamacpp-cpu-macos-x86.sh
+# Linux CPU
+bash scripts/dev/backend/build-llamacpp-cpu-linux.sh
 
-# Windows CUDA — run in PowerShell
+# Linux CUDA
+bash scripts/dev/backend/build-llamacpp-cuda-linux.sh
+
+# Windows CPU / CUDA — run in PowerShell
+.\scripts\dev\backend\build-llamacpp-cpu-win.ps1
 .\scripts\dev\backend\build-llamacpp-cuda-win.ps1
 ```
 

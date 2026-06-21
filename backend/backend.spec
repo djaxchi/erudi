@@ -23,6 +23,7 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_sub
 
 IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform == "win32"
+IS_LINUX = sys.platform.startswith("linux")
 
 spec_root = Path(SPECPATH)  # resolves to backend/
 
@@ -75,24 +76,43 @@ datas.append((str(spec_root / "alembic.ini"), "."))
 # the libpq runtime hook used there is dyld-specific and is NOT wired here —
 # Windows DLL resolution differs and needs its own validation on a Win runner.)
 tmp_ret = collect_all("pgserver")
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+datas += tmp_ret[0]; hiddenimports += tmp_ret[2]
+if IS_LINUX:
+    # On Linux, PyInstaller's binary analysis drops/relocates postgres's loadable
+    # backend modules ($libdir/*.so, e.g. dict_snowball — they depend on the server
+    # binary, not standalone libs), so initdb fails to bootstrap ("could not access
+    # file $libdir/dict_snowball"). Bundle the whole pginstall tree verbatim as DATA
+    # (no dependency analysis): postgres runs as a subprocess, not linked into the
+    # frozen Python, so its install is opaque data and $libdir resolves relative to
+    # the bundled binary. (collect_all's pgserver BINARIES are skipped here.)
+    import pgserver as _pgsrv
+    _pginstall = Path(_pgsrv.__file__).resolve().parent / "pginstall"
+    for _pf in _pginstall.rglob("*"):
+        if _pf.is_file():
+            datas.append((str(_pf), str(Path("pgserver/pginstall") / _pf.relative_to(_pginstall).parent)))
+else:
+    binaries += tmp_ret[1]
 
-# ── llama.cpp inference artifacts (Windows only) ──────────────────────────────
+# ── llama.cpp inference artifacts (Windows + Linux — llama.cpp engines) ────────
 # Bundle the llama-server binary that matches THIS build variant: the cpu spec
 # (backend-cpu.spec sets ERUDI_BUILD_VARIANT=cpu) ships artifacts/llama-cpp/cpu/bin,
-# the standalone (CUDA) spec ships artifacts/llama-cpp/cuda/bin. Both flavours are
+# the standalone (CUDA) spec ships artifacts/llama-cpp/cuda/bin. The same two specs
+# serve both Windows and Linux — only the binary name differs (.exe on Windows).
+# mac is MLX (backend-mac-silicon.spec), so it never reaches here. Both flavours are
 # compiled in CI from the llama.cpp submodule before PyInstaller runs (release.yml).
 # If the binary is absent (e.g. the boot-only merge smoke does not compile it) the
 # build still succeeds — inference simply has no server until a real release bundles
 # it. The CUDA binary also runs CPU inference, so a driverless machine falls back
 # (see BaseLlamaCppEngine._find_llama_server).
-if IS_WIN:
+if IS_WIN or IS_LINUX:
     _llama_flavour = os.environ.get("ERUDI_BUILD_VARIANT", "cuda")
+    _os_tag = "win" if IS_WIN else "linux"
+    _exe_suffix = ".exe" if IS_WIN else ""
     llama_bin = spec_root / "artifacts" / "llama-cpp" / _llama_flavour / "bin"
     if llama_bin.exists():
         _dest = f"artifacts/llama-cpp/{_llama_flavour}/bin"
-        for _name in ("llama-server.exe", "llama-quantize.exe"):
-            _f = llama_bin / _name
+        for _stem in ("llama-server", "llama-quantize"):
+            _f = llama_bin / f"{_stem}{_exe_suffix}"
             if _f.exists():
                 datas.append((str(_f), _dest))
         for _f in llama_bin.glob("convert*.py"):
@@ -104,7 +124,7 @@ if IS_WIN:
         import warnings
         warnings.warn(
             f"llama-cpp {_llama_flavour} binaries not found at {llama_bin}. "
-            f"Run scripts/dev/backend/build-llamacpp-{_llama_flavour}-win.ps1 first."
+            f"Run scripts/dev/backend/build-llamacpp-{_llama_flavour}-{_os_tag}.sh first."
         )
 
 # ── Analysis ──────────────────────────────────────────────────────────────────
@@ -287,7 +307,8 @@ _excludes_common = [
     "compressed_tensors",
 ]
 
-_excludes_windows = [
+# MLX is Apple-Silicon only — exclude it on the llama.cpp platforms (Windows + Linux).
+_excludes_llamacpp = [
     "mlx",
     "mlx_vlm",
 ]
@@ -297,14 +318,19 @@ _excludes_macos = [
 ]
 
 excludes = _excludes_common
-if IS_WIN:
-    excludes += _excludes_windows
+if IS_WIN or IS_LINUX:
+    excludes += _excludes_llamacpp
 if IS_MAC:
     excludes += _excludes_macos
 # Variant-specific extras injected by a wrapper spec that exec()s this template in
 # its own namespace (e.g. backend-cpu.spec sets ERUDI_EXTRA_EXCLUDES). Empty for
 # the standalone specs. OS-independent, so a CPU build excludes mlx_vlm even off Windows.
 excludes += globals().get("ERUDI_EXTRA_EXCLUDES", [])
+
+# Linux: preload psycopg's own (newer) libpq so it does not bind to pgserver's
+# older bundled libpq (the same @rpath/.so collision the mac spec fixes). No-op on
+# Windows (the glob patterns match no .dll), so it is wired Linux-only here.
+_runtime_hooks = [str(spec_root / "pyi_rth_libpq.py")] if IS_LINUX else []
 
 a = Analysis(
     ["run.py"],
@@ -314,7 +340,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=_runtime_hooks,
     excludes=excludes,
     noarchive=False,
     optimize=0,

@@ -1,7 +1,7 @@
 # 🧠 Llama.cpp Integration Guide
 
 This document explains how **Llama.cpp** is integrated into Erudi — how it works, why it exists, and how to build it locally.  
-It focuses on the **CPU-only x86_64 build** for **macOS Intel**, which serves as the fallback backend for users who cannot run MLX (Apple Silicon only).
+It is the inference engine on **Windows** and **Linux**, in both a **CPU** and a **CUDA** build. macOS uses **MLX** (Apple Silicon only); Intel Mac is not a shipped target. The per-platform build scripts live in `scripts/dev/backend/build-llamacpp-*` (see the README).
 
 ---
 
@@ -12,7 +12,7 @@ Erudi embeds a fork of **Llama.cpp** in:
 `backend/forks/llama-cpp/`
 
 Llama.cpp provides low-level LLM inference support for CPU and GPU backends.  
-Erudi only uses the **CPU-only** version for Intel Macs and minimal CPU fallback on other systems.
+Erudi uses it for inference on Windows and Linux — a **CPU** build (universal) and a **CUDA** build (GPU acceleration, with CPU fallback for models larger than VRAM).
 
 Goals:
 - Keep Erudi **self-contained** (no Torch, no Transformers)
@@ -22,13 +22,13 @@ Goals:
 
 ---
 
-## ⚙️ Why CPU-only
+## ⚙️ Engine selection per platform
 
-- On **Apple Silicon (M1/M2)** → Erudi uses **MLX**, optimized for Metal and unified memory.
-- On **Intel Macs** → MLX doesn’t work (no unified memory, no Metal).
-- Therefore, Erudi falls back to **Llama.cpp CPU**, built for `x86_64`.
+- **Apple Silicon (M1/M2/…)** → **MLX**, optimized for Metal and unified memory.
+- **Windows / Linux with an NVIDIA GPU** → llama.cpp **CUDA** build (GPU-accelerated; CPU layers stay on for models larger than VRAM).
+- **Windows / Linux without a GPU** → llama.cpp **CPU** build.
 
-This ensures parity across all macOS systems, even those without GPU acceleration.
+The CUDA binary also runs CPU-only, so a driverless machine falls back to it (see `BaseLlamaCppEngine._find_llama_server`).
 
 ---
 
@@ -157,5 +157,5 @@ arch -x86_64 backend/artifacts/llama-cpp/cpu/bin/llama-cli -h
 ---
 
 **TL;DR**  
-Run the script to build CPU-only x86_64 binaries for macOS Intel.  
-Don’t commit builds — CI rebuilds the proper artifacts and bundles them with the correct Erudi release.
+Run the per-platform build script for your OS — `scripts/dev/backend/build-llamacpp-{cpu,cuda}-{linux,win}` (or `-cpu-macos-silicon` for a local mac CPU build); see the README.  
+Don’t commit builds — CI rebuilds the proper artifacts and bundles them with the correct Erudi release. The detailed walkthrough below is illustrative of the approach.

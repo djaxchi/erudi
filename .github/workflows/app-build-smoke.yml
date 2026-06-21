@@ -35,6 +35,10 @@ jobs:
             reqs: win-cpu-prod.txt
             spec: backend-cpu.spec
             dist_script: dist:win
+          - os: ubuntu-latest # x64 CPU
+            reqs: linux-cpu-prod.txt
+            spec: backend-cpu.spec
+            dist_script: dist:linux
     runs-on: ${{ matrix.os }}
     env:
       PYTHONUNBUFFERED: 1
@@ -78,6 +82,12 @@ jobs:
         run: |
           if [ "${{ runner.os }}" = "macOS" ]; then
             EXE=$(find frontend/dist -path "*Erudi.app/Contents/Resources/backend/backend" -type f | head -1)
+          elif [ "${{ runner.os }}" = "Linux" ]; then
+            # The backend is packed inside the AppImage; extract it (no FUSE needed).
+            APPIMAGE=$(find frontend/dist -name "*.AppImage" | head -1)
+            chmod +x "$APPIMAGE"
+            "$APPIMAGE" --appimage-extract >/dev/null
+            EXE=$(find squashfs-root -path "*resources/backend/backend" -type f | head -1)
           else
             EXE=$(find frontend/dist -path "*resources/backend/backend.exe" -type f | head -1)
           fi

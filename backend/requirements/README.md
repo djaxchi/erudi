@@ -11,7 +11,6 @@ requirements/
 ├── entrypoints/
 │   ├── dev/                  # prod + dev tools (pytest, ruff, …)
 │   │   ├── mac-silicon.txt
-│   │   ├── mac-intel.txt
 │   │   ├── linux-cpu.txt
 │   │   ├── linux-cuda.txt
 │   │   ├── win-cpu.txt
@@ -25,7 +24,6 @@ requirements/
 │   ├── cuda-specs.txt        # CUDA-only non-torch bits (pynvml). No torch+cuXXX.
 │   ├── cuda-win-specs.txt    # Windows CUDA build tools (cmake)
 │   ├── linux-specs.txt
-│   ├── mac-intel-specs.txt
 │   ├── mac-silicon-specs.txt # MLX (mlx-vlm)
 │   └── win-specs.txt         # Windows-only (wmi)
 └── freezes/                  # optional pinned freezes

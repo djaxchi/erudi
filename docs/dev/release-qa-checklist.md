@@ -67,8 +67,12 @@ Run on the downloaded draft, **not** a local build:
 | macOS Apple Silicon | `latest` (`latest-mac.yml`) | Rayan |
 | Windows CPU | `latest` (`latest.yml`) | Rayan / Yolaatar |
 | Windows CUDA | `cuda` (`cuda.yml`) | (NVIDIA machine) |
-| Linux CUDA / CPU / ROCm | future | future (machines TBD) |
-| macOS Intel | future | future (deprecation pending) |
+| Linux CPU (AppImage) | `latest` (`latest-linux.yml`) | (Linux machine) |
+| Linux CUDA (AppImage) | `cuda` (`cuda-linux.yml`) | (Linux + NVIDIA machine) |
+
+> macOS Intel is **not a shipped target**: the current `transformers`/`torch≥2.7`
+> stack has no x86-mac wheels, and the app is Apple-Silicon-first. The runtime
+> `CPU_Engine` still selects on `darwin+x86` for anyone running from source.
 
 Record who tested which artifact in the release notes.
 

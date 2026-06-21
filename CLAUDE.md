@@ -20,7 +20,6 @@ Hardware backend is selected at startup by `BaseEngine.get_engine()` (`backend/s
 ```bash
 # First-time setup (pick your platform)
 bash scripts/dev/backend/setup-mac-silicon.sh
-bash scripts/dev/backend/setup-mac-intel.sh
 bash scripts/dev/backend/setup-linux-cuda-121.sh
 .\scripts\dev\backend\setup-win-cuda-121.ps1
 
