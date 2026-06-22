@@ -27,7 +27,7 @@ Example:
     def create_llm(llm: LLMCreate):
         return db.create(llm)
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from typing import Optional
 from datetime import datetime
 
@@ -77,9 +77,31 @@ class LLMResponse(LLMBase):
     supports_tools: Optional[bool] = None
     param_size: Optional[float] = Field(default=4.0, gt=0, description="Parameter size must be positive")
 
+    @computed_field
+    @property
+    def runnable(self) -> bool:
+        """Whether this model can run on the active engine's hardware.
+
+        Computed on the fly (no DB column) because it is a property of the engine,
+        not the model: an already-downloaded model is runnable; a remote one is
+        runnable iff its link is a public quant this engine can load — gated
+        first-party ids and known-broken quants are not (see BaseEngine.is_runnable).
+        Defaults to True when the engine is unknown, so nothing is hidden by accident.
+        """
+        if self.local != 0:
+            return True
+        from src.core import config
+        engine = getattr(config, "LLM_Engine", None)
+        if engine is None:
+            return True
+        try:
+            return bool(engine.is_runnable(self.link or ""))
+        except Exception:
+            return True
+
     class Config:
         """Pydantic configuration for LLMResponse model.
-        
+
         Enables ORM mode to directly convert SQLAlchemy Llm entities to Pydantic models.
         """
         from_attributes = True

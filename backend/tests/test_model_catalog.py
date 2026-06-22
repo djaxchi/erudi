@@ -130,6 +130,30 @@ class TestHumanizedNames:
                 assert name.split()[1].replace(".", "").isdigit(), f"ambiguous: {name}"
 
 
+class TestRunnableExposedInResponse:
+    """LLMResponse surfaces a computed `runnable` so the UI can disable/tag models."""
+
+    def test_remote_quant_is_runnable(self, monkeypatch):
+        from src.domains.llms.schemas import LLMResponse
+        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
+        r = LLMResponse(id=1, name="X", local=0, link="unsloth/gemma-3-1b-it-GGUF")
+        assert r.runnable is True
+        assert r.model_dump()["runnable"] is True
+
+    def test_remote_gated_base_is_not_runnable(self, monkeypatch):
+        from src.domains.llms.schemas import LLMResponse
+        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
+        r = LLMResponse(id=2, name="Y", local=0, link="google/gemma-3-1b-it")
+        assert r.runnable is False
+
+    def test_downloaded_model_always_runnable(self, monkeypatch):
+        from src.domains.llms.schemas import LLMResponse
+        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
+        # local=1 with a filesystem path link → runnable regardless of format heuristic
+        r = LLMResponse(id=3, name="Z", local=1, link="/data/models/3")
+        assert r.runnable is True
+
+
 class TestDownloadRunnabilityGuard:
     """download_llm rejects non-runnable targets up front (clear error, no 401→500)."""
 
