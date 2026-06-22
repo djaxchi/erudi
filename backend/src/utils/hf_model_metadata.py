@@ -264,6 +264,43 @@ class ParameterExtractionError(HFMetadataError):
 
 # ============ Helper Functions ============
 
+def humanize_model_name(link: str) -> str:
+    """Turn a HuggingFace repo id into an unambiguous, readable display name.
+
+    Derived deterministically from the real slug — NEVER a hand-written label — so
+    the family/version/size/variant are always preserved. This kills ambiguous
+    labels like "Gemma-4B" that actually hid ``google/gemma-3-4b-it`` (Gemma 3).
+
+    Examples:
+        google/gemma-3-4b-it                -> "Gemma 3 4B Instruct"
+        google/gemma-2-2b-it                -> "Gemma 2 2B Instruct"
+        google/gemma-4-E2B-it               -> "Gemma 4 E2B Instruct"
+        mistralai/Mistral-7B-Instruct-v0.3  -> "Mistral 7B Instruct v0.3"
+        Qwen/Qwen2.5-VL-3B-Instruct         -> "Qwen2.5 VL 3B Instruct"
+    """
+    slug = link.split("/")[-1]
+    out = []
+    for i, tok in enumerate(slug.split("-")):
+        low = tok.lower()
+        if low in ("it", "instruct"):
+            out.append("Instruct")
+        elif re.fullmatch(r"\d+(?:\.\d+)?[bm]", low):       # 270m, 2b, 7b, 12b
+            out.append(low[:-1].upper() + low[-1].upper())  # -> 270M, 2B, 12B
+        elif re.fullmatch(r"[ea]\d+b", low):                # e2b, e4b, a4b
+            out.append(low.upper())                         # -> E2B, A4B
+        elif re.fullmatch(r"v\d+(?:\.\d+)?", low):          # v0.3
+            out.append(low)
+        elif re.fullmatch(r"\d{4}", low):                   # 2410, 2407 (date codes)
+            out.append(low)
+        elif re.fullmatch(r"\d+(?:\.\d+)?", low):           # 2, 3, 3.1, 2.5
+            out.append(low)
+        elif low == "vl":
+            out.append("VL")
+        else:                                               # family + misc tokens
+            out.append(tok[:1].upper() + tok[1:])
+    return " ".join(out)
+
+
 def parse_quantization_type(repo_id: str) -> QuantizationType:
     """Detect quantization type from repository ID.
     

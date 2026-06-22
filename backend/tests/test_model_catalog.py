@@ -12,6 +12,7 @@ from src.core import config
 from src.core.exceptions import UnsupportedPlatformException
 from src.database.seed import Database_Seeder
 from src.domains.llms import services
+from src.utils.hf_model_metadata import humanize_model_name
 from src.engines.base_llama_cpp_engine import BaseLlamaCppEngine
 from src.engines.cpu_engine import CPU_Engine
 from src.engines.cuda_engine import CUDA_Engine
@@ -96,6 +97,37 @@ class TestRunnabilityPredicate:
             assert MLX_Engine.is_runnable(mlx_target) or CPU_Engine.is_runnable(gguf_target), (
                 f"{link} is runnable on neither engine"
             )
+
+
+class TestHumanizedNames:
+    """Display names are derived from the real slug — exact, unambiguous, no
+    hand-written 'Gemma-4B' that actually hides Gemma 3 4B."""
+
+    @pytest.mark.parametrize("link,expected", [
+        ("google/gemma-3-270m-it",                "Gemma 3 270M Instruct"),
+        ("google/gemma-2-2b-it",                  "Gemma 2 2B Instruct"),     # was "Gemma-2B"
+        ("google/gemma-3-4b-it",                  "Gemma 3 4B Instruct"),     # was the ambiguous "Gemma-4B"
+        ("google/gemma-3-12b-it",                 "Gemma 3 12B Instruct"),
+        ("google/gemma-4-E2B-it",                 "Gemma 4 E2B Instruct"),
+        ("google/gemma-4-26b-a4b-it",             "Gemma 4 26B A4B Instruct"),
+        ("google/gemma-4-31b-it",                 "Gemma 4 31B Instruct"),
+        ("mistralai/Mistral-7B-Instruct-v0.3",    "Mistral 7B Instruct v0.3"),
+        ("mistralai/Ministral-8B-Instruct-2410",  "Ministral 8B Instruct 2410"),
+        ("mistralai/Mistral-Nemo-Instruct-2407",  "Mistral Nemo Instruct 2407"),
+        ("meta-llama/Llama-3.1-8B-Instruct",      "Llama 3.1 8B Instruct"),
+        ("Qwen/Qwen2.5-7B-Instruct",              "Qwen2.5 7B Instruct"),
+        ("Qwen/Qwen2.5-VL-3B-Instruct",           "Qwen2.5 VL 3B Instruct"),
+    ])
+    def test_humanize(self, link, expected):
+        assert humanize_model_name(link) == expected
+
+    def test_no_catalog_name_is_ambiguous_gemma(self):
+        # No catalogued Gemma renders as a bare "Gemma N B" without its family version.
+        for link in CATALOG_LINKS:
+            name = humanize_model_name(link)
+            if name.startswith("Gemma"):
+                # second token must be the family version (a number), never the size
+                assert name.split()[1].replace(".", "").isdigit(), f"ambiguous: {name}"
 
 
 class TestDownloadRunnabilityGuard:

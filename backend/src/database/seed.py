@@ -75,6 +75,7 @@ from src.utils.hf_model_metadata import (
     get_model_size_estimate,
     format_model_info_metadata,
     extract_parameter_pattern,
+    humanize_model_name,
     ParameterScale,
 )
 from src.domains.hardware.repository import Hardware_Repository
@@ -276,10 +277,14 @@ class Model_Seeder:
         added_count = 0
         
         for model_config in models:
-            if self._model_exists(model_config.name):
-                logger.debug(f"Skipping existing model: {model_config.name}")
+            # Dedup by the resolved (stable) link, not the display name — display
+            # names are derived from the slug and may change without re-seeding.
+            quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_config.link)
+            actual_link = quant_link or model_config.link
+            if self._link_exists(actual_link):
+                logger.debug(f"Skipping existing model: {actual_link}")
                 continue
-            
+
             try:
                 llm = self._create_base_llm(model_config)
                 self.db.add(llm)
@@ -335,9 +340,11 @@ class Model_Seeder:
         added_count = 0
         
         for model_data in fallback_models:
-            # Check if model already exists
-            if self._model_exists(model_data['name']):
-                logger.debug(f"Skipping existing model: {model_data['name']}")
+            # Dedup by resolved (stable) link, not the slug-derived display name.
+            quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_data['link'])
+            actual_link = quant_link or model_data['link']
+            if self._link_exists(actual_link):
+                logger.debug(f"Skipping existing model: {actual_link}")
                 continue
             
             try:
@@ -380,7 +387,7 @@ class Model_Seeder:
         
         # Use embedded metadata and param_size from JSON
         return Llm(
-            name=model_data['name'],
+            name=humanize_model_name(model_data['link']),
             local=0,
             link=actual_link,
             type=model_data['type'],
@@ -459,7 +466,7 @@ class Model_Seeder:
         )
         
         return Llm(
-            name=model_config.name,
+            name=humanize_model_name(model_config.link),
             local=0,
             link=actual_link,
             type=model_config.model_type,
@@ -499,7 +506,7 @@ class Model_Seeder:
         )
         
         return Llm(
-            name=model_config.name,
+            name=humanize_model_name(model_config.link),
             local=0,
             link=actual_link,
             type=model_config.model_type,
@@ -637,7 +644,7 @@ class Model_Seeder:
         )
         
         return Llm(
-            name=model_name,
+            name=humanize_model_name(model_info.modelId),
             local=0,
             link=model_info.modelId,
             type=search_config.model_type,
