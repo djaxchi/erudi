@@ -107,6 +107,9 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
   };
 
   const handleModelClick = (model) => {
+    if (model.runnable === false) {
+      return; // not offered on this hardware — the row is rendered disabled
+    }
     setErrorMessage("");
     openDownload(model, {
       onComplete: loadLocalModelsAfterDownload,
@@ -246,6 +249,17 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
+                      </div>
+                    ) : m.runnable === false ? (
+                      <div
+                        key={m.id}
+                        className="py-1.5 px-2 text-sm text-gray-600 rounded flex items-center justify-between gap-2 cursor-not-allowed"
+                        title="Unavailable on your hardware"
+                      >
+                        <span className="truncate">{m.name}</span>
+                        <span className="flex-shrink-0 text-[10px] uppercase tracking-wide text-amber-500/80 border border-amber-500/30 rounded px-1.5 py-0.5">
+                          unavailable
+                        </span>
                       </div>
                     ) : (
                       <div

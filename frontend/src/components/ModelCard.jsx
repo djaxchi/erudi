@@ -26,6 +26,7 @@ function ModelCard({
   onClick: _onClick,
 }) {
   const { open } = useDownloadModal();
+  const unavailable = model?.runnable === false;
   const handleDownload = () => {
     if (model) {
       open(model, {
@@ -57,6 +58,11 @@ function ModelCard({
       <div className="flex flex-col h-full">
         <div className="flex items-start justify-between mb-3">
           <h3 className="text-lg font-semibold text-white">{model.name}</h3>
+          {unavailable && type !== "local" && (
+            <span className="ml-2 flex-shrink-0 text-[10px] uppercase tracking-wide text-amber-500/80 border border-amber-500/30 rounded px-1.5 py-0.5">
+              Unavailable on your hardware
+            </span>
+          )}
           {type === "local" && (
             <button
               className="p-1 bg-red-500/20 hover:bg-red-500/40 rounded-lg transition-colors ml-8"
@@ -122,9 +128,10 @@ function ModelCard({
           ) : (
             <>
               <button
-                className="p-1 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
-                onClick={() => onDownload && onDownload(model)}
-                title="Download"
+                className={`p-1 rounded-lg transition-colors ${unavailable ? "bg-white/5 opacity-40 cursor-not-allowed" : "bg-white/10 hover:bg-white/20"}`}
+                onClick={() => !unavailable && onDownload && onDownload(model)}
+                disabled={unavailable}
+                title={unavailable ? "Unavailable on your hardware" : "Download"}
               >
                 <Download className="w-5 h-5 text-white" />
               </button>
@@ -154,6 +161,7 @@ ModelCard.propTypes = {
     library: PropTypes.string,
     parameters: PropTypes.string,
     lastUpdate: PropTypes.string,
+    runnable: PropTypes.bool,
   }).isRequired,
   type: PropTypes.oneOf(["base", "local", "add"]),
   onDownload: PropTypes.func,
