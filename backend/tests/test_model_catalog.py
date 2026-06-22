@@ -154,6 +154,64 @@ class TestRunnableExposedInResponse:
         assert r.runnable is True
 
 
+class TestRemoteCatalogResync:
+    """resync_remote_catalog reconciles local=0 with HF atomically: it preserves
+    downloaded (local=1) and in-progress (local=2) models, and never empties the
+    catalog if the fetch comes back empty (network failure)."""
+
+    def _llm(self, **kw):
+        from src.entities.Llm import Llm
+        kw.setdefault("type", "x")
+        kw.setdefault("quantized", False)
+        kw.setdefault("param_size", 1.0)
+        return Llm(**kw)
+
+    def test_swap_replaces_remote_keeps_downloaded(self, test_db_session):
+        from unittest.mock import MagicMock
+        from src.database.seed import Database_Seeder
+        from src.entities.Llm import Llm
+
+        db = test_db_session
+        db.add_all([
+            self._llm(name="Old Stale", local=0, link="stale/gone-GGUF"),
+            self._llm(name="My Model", local=1, link="/data/models/9"),
+            self._llm(name="Downloading", local=2, link="repo/wip-GGUF"),
+        ])
+        db.commit()
+
+        fresh = self._llm(name="Gemma 3 1B Instruct", local=0, link="unsloth/gemma-3-1b-it-GGUF", type="gemma")
+        ms = MagicMock()
+        ms.build_base_models.return_value = [fresh]
+        ms.build_derived_models.return_value = []
+
+        res = Database_Seeder().resync_remote_catalog(db, ms)
+
+        assert res["resynced"] is True
+        rows = {r.link: r.local for r in db.query(Llm).all()}
+        assert "stale/gone-GGUF" not in rows             # stale remote suggestion removed
+        assert rows["unsloth/gemma-3-1b-it-GGUF"] == 0   # fresh remote suggestion present
+        assert rows["/data/models/9"] == 1               # downloaded model preserved
+        assert rows["repo/wip-GGUF"] == 2                # in-progress download preserved
+
+    def test_empty_fetch_does_not_wipe_catalog(self, test_db_session):
+        from unittest.mock import MagicMock
+        from src.database.seed import Database_Seeder
+        from src.entities.Llm import Llm
+
+        db = test_db_session
+        db.add(self._llm(name="Keep Me", local=0, link="keep/me-GGUF"))
+        db.commit()
+
+        ms = MagicMock()
+        ms.build_base_models.return_value = []   # fetch failed → nothing built
+        ms.build_derived_models.return_value = []
+
+        res = Database_Seeder().resync_remote_catalog(db, ms)
+
+        assert res["resynced"] is False
+        assert db.query(Llm).filter(Llm.link == "keep/me-GGUF").count() == 1  # untouched
+
+
 class TestDownloadRunnabilityGuard:
     """download_llm rejects non-runnable targets up front (clear error, no 401→500)."""
 

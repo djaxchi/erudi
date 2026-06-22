@@ -262,55 +262,26 @@ class Model_Seeder:
         self.filters = quality_filters or Quality_Filters()
         self.offline_mode = offline_mode
     
-    def seed_base_models(self, models: List[Model_Config]) -> int:
-        """Seed curated base models with quantized variants.
-        
-        Args:
-            models: List of base model configurations.
-        
-        Returns:
-            Number of models successfully added.
-        
-        Raises:
-            Exception: If database commit fails.
-        """
-        added_count = 0
-        
-        for model_config in models:
-            # Dedup by the resolved (stable) link, not the display name — display
-            # names are derived from the slug and may change without re-seeding.
-            quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_config.link)
-            actual_link = quant_link or model_config.link
-            if self._link_exists(actual_link):
-                logger.debug(f"Skipping existing model: {actual_link}")
-                continue
+    def build_base_models(self, models: List[Model_Config]) -> List[Llm]:
+        """Build (do NOT persist) the base catalog Llm rows, fetching HF metadata.
 
+        Per-model HF failure falls back to default metadata so one bad model never
+        drops the rest. Returns detached Llm objects for the caller to swap in
+        atomically (see Database_Seeder.resync_remote_catalog) — no add/commit here.
+        """
+        out: List[Llm] = []
+        for model_config in models:
             try:
-                llm = self._create_base_llm(model_config)
-                self.db.add(llm)
-                self.db.flush()  # Flush to catch DB errors early
-                added_count += 1
-                logger.info(f"Added base model: {model_config.name}")
-            except DatabaseException:
-                raise
+                out.append(self._create_base_llm(model_config))
             except HuggingFaceAPIException as e:
-                logger.error(f"HF API error for {model_config.name}: {e}")
-                self.db.rollback()
-                # Try fallback with default metadata
+                logger.warning(f"HF metadata failed for {model_config.link}, using fallback: {e}")
                 try:
-                    llm = self._create_base_llm_fallback(model_config)
-                    self.db.add(llm)
-                    self.db.flush()
-                    added_count += 1
-                    logger.warning(f"Added {model_config.name} with fallback metadata")
-                except DatabaseException as db_error:
-                    raise DatabaseException(
-                        f"Failed to add model {model_config.name} even with fallback",
-                        trace=str(db_error)
-                    )
-        
-        self.db.commit()
-        return added_count
+                    out.append(self._create_base_llm_fallback(model_config))
+                except Exception as fe:
+                    logger.error(f"Fallback build failed for {model_config.link}: {fe}")
+            except Exception as e:
+                logger.error(f"Failed to build base model {model_config.link}: {e}")
+        return out
     
     def seed_base_models_offline(self) -> int:
         """Seed base models from embedded JSON fallback (offline mode).
@@ -396,38 +367,43 @@ class Model_Seeder:
             param_size=model_data['param_size']
         )
     
-    def seed_derived_models(
+    def build_derived_models(
         self,
         searches: List[Search_Config],
         top_per_search: int = 30,
-        max_checked: int = 200
-    ) -> int:
-        """Seed derived models from HuggingFace search results.
-        
-        Args:
-            searches: List of search configurations.
-            top_per_search: Maximum models to add per search.
-            max_checked: Maximum models to check per search.
-        
-        Returns:
-            Total number of models successfully added.
+        max_checked: int = 200,
+    ) -> List[Llm]:
+        """Build (do NOT persist) derived/community catalog rows from HF search.
+
+        Best-effort: a failing search is logged and skipped, never aborts the rest.
+        Returns detached Llm objects for an atomic swap (no add/commit here).
         """
-        total_added = 0
-        
+        out: List[Llm] = []
+        seen: set = set()
         for search_config in searches:
-            added = self._seed_from_search(
-                search_config,
-                top_per_search,
-                max_checked
-            )
-            total_added += added
-            self.db.commit()
-        
-        return total_added
-    
-    def _model_exists(self, name: str) -> bool:
-        """Check if model already exists by name."""
-        return self.db.query(Llm).filter(Llm.name == name).first() is not None
+            try:
+                results = self.hf_api.list_models(
+                    search=search_config.search_term, sort="downloads"
+                )
+            except Exception as e:
+                logger.warning(f"HF search '{search_config.search_term}' failed, skipping: {e}")
+                continue
+            added = checked = 0
+            for model_info in results:
+                if added >= top_per_search or checked >= max_checked:
+                    break
+                checked += 1
+                if not self._passes_quality_filters(model_info):
+                    continue
+                if model_info.modelId in seen:
+                    continue
+                try:
+                    out.append(self._create_derived_llm(model_info, search_config))
+                    seen.add(model_info.modelId)
+                    added += 1
+                except Exception as e:
+                    logger.warning(f"Failed to build derived {model_info.modelId}: {e}")
+        return out
     
     def _link_exists(self, link: str) -> bool:
         """Check if model already exists by link."""
@@ -528,66 +504,6 @@ class Model_Seeder:
         
         # Fallback to 7B if extraction fails
         return 7.0
-    
-    def _seed_from_search(
-        self,
-        search_config: Search_Config,
-        top_per_search: int,
-        max_checked: int
-    ) -> int:
-        """Seed models from a single HuggingFace search."""
-        logger.info(
-            f"Searching HF for '{search_config.search_term}' "
-            f"(top {top_per_search})..."
-        )
-        
-        added_count = 0
-        checked_count = 0
-        
-        results = self.hf_api.list_models(
-            search=search_config.search_term,
-            sort="downloads",
-        )
-        
-        for model_info in results:
-            if added_count >= top_per_search:
-                break
-            if checked_count >= max_checked:
-                break
-            
-            checked_count += 1
-            
-            # Apply filters
-            if not self._passes_quality_filters(model_info):
-                continue
-            
-            if self._link_exists(model_info.modelId):
-                continue
-            
-            # Create derived model
-            try:
-                llm = self._create_derived_llm(model_info, search_config)
-                self.db.add(llm)
-                self.db.flush()
-                added_count += 1
-                logger.info(
-                    f"  Added {model_info.modelId.split('/')[-1]} "
-                    f"({added_count}/{top_per_search}) - "
-                    f"{model_info.downloads} downloads, {model_info.likes} likes"
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Failed to add {model_info.modelId}: {e}",
-                    exc_info=True
-                )
-                continue
-        
-        logger.info(
-            f"Completed search for '{search_config.search_term}': "
-            f"added {added_count}/{checked_count} checked"
-        )
-        
-        return added_count
     
     def _passes_quality_filters(self, model_info) -> bool:
         """Check if model passes quality filters."""
@@ -1034,6 +950,38 @@ class Database_Seeder:
             logger.error(f"Failed to create tables: {e}", exc_info=True)
             raise
     
+    def resync_remote_catalog(self, db: Session, model_seeder: "Model_Seeder") -> Dict[str, Any]:
+        """Atomically replace the remote catalog (local=0) with a fresh HF fetch.
+
+        Reconciles our local catalog with HuggingFace (the source of truth): models
+        gone from HF disappear, new ones appear, names/metadata refresh. Downloaded
+        (local=1) and in-progress (local=2) models are NEVER touched. The HF fetch
+        runs BEFORE any delete, so a network failure leaves the existing catalog
+        intact (no empty-catalog window).
+        """
+        fresh_base = model_seeder.build_base_models(self.DEFAULT_BASE_MODELS)
+        fresh_derived = model_seeder.build_derived_models(
+            self.DEFAULT_SEARCH_CONFIGS, top_per_search=30, max_checked=200
+        )
+        if not fresh_base:
+            logger.warning("Resync produced no base models — keeping existing catalog")
+            return {"base_models_added": 0, "derived_models_added": 0, "resynced": False}
+
+        # Swap: drop the old remote suggestions, insert the fresh set. Downloaded
+        # (local=1) and downloading (local=2) rows are separate and left intact.
+        db.query(Llm).filter(Llm.local == 0).delete(synchronize_session=False)
+        db.add_all(fresh_base + fresh_derived)
+        db.commit()
+        logger.info(
+            f"Remote catalog resynced: {len(fresh_base)} base + {len(fresh_derived)} derived "
+            f"(downloaded/in-progress models untouched)"
+        )
+        return {
+            "base_models_added": len(fresh_base),
+            "derived_models_added": len(fresh_derived),
+            "resynced": True,
+        }
+
     async def populate_startup_data(
         self,
         db: Optional[Session] = None
@@ -1101,16 +1049,11 @@ class Database_Seeder:
                 online_status = is_online()
                 
                 if online_status:
-                    logger.info("Online mode: seeding from Hugging Face API")
+                    logger.info("Online mode: resyncing catalog from Hugging Face API")
                     model_seeder = Model_Seeder(db, get_hf_api(), offline_mode=False)
-                    results["base_models_added"] = model_seeder.seed_base_models(
-                        self.DEFAULT_BASE_MODELS
-                    )
-                    results["derived_models_added"] = model_seeder.seed_derived_models(
-                        self.DEFAULT_SEARCH_CONFIGS,
-                        top_per_search=30,
-                        max_checked=200
-                    )
+                    resync = self.resync_remote_catalog(db, model_seeder)
+                    results["base_models_added"] = resync["base_models_added"]
+                    results["derived_models_added"] = resync["derived_models_added"]
                     results["offline_mode"] = False
                 else:
                     logger.warning("Offline mode: seeding from fallback JSON (base models only)")
