@@ -90,6 +90,11 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         tail = link.split("/")[-1].lower()
         return tail.endswith("-gguf") or "gguf" in tail or link in cls.MODEL_MAPPING.values()
 
+    @classmethod
+    def community_search_kwargs(cls, term: str) -> dict:
+        """Restrict the derived search to GGUF repos (filter='gguf')."""
+        return {"filter": "gguf", "search": term}
+
     # ====================== Concrete shared methods ======================
     @classmethod
     def _default_install_dir(cls) -> Path:

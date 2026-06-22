@@ -221,14 +221,15 @@ class Quality_Filters:
         "mistral-nemo-instruct-2407",
         "gemma-4-e2b-it", "gemma-4-e4b-it",
     )
+    # NOTE: quant-format terms (gguf/4bit/q4/awq/…) are intentionally NOT skipped.
+    # The derived search now targets engine-format quants on purpose (4b), and
+    # build_derived_models additionally drops anything is_runnable() rejects — so
+    # only junk repos, adapters and unwanted content are filtered here.
     skip_terms: Tuple[str, ...] = (
-        "gguf", "gptq", "bnb", "4bit", "8bit", "f16", "awq",
-        "q4", "q5", "q6", "q8", "fp8", "fp16", "fp4", "sqft",
-        "quantized", "quant", "quantization", "lora", "knut",
-        "sft", "int4", "int8", "int16", "int32", "int64",
-        "peft", "test", "untrained", "checkpoint", "tmp", "temp",
+        "lora", "peft", "sft",
+        "test", "untrained", "checkpoint", "tmp", "temp",
         "debug", "draft", "experiment", "eval", "benchmark",
-        "pt", "onnx", "abliterated",
+        "onnx", "abliterated",
     )
 
 
@@ -383,7 +384,8 @@ class Model_Seeder:
         for search_config in searches:
             try:
                 results = self.hf_api.list_models(
-                    search=search_config.search_term, sort="downloads"
+                    **config.LLM_Engine.community_search_kwargs(search_config.search_term),
+                    sort="downloads",
                 )
             except Exception as e:
                 logger.warning(f"HF search '{search_config.search_term}' failed, skipping: {e}")
@@ -396,6 +398,11 @@ class Model_Seeder:
                 if not self._passes_quality_filters(model_info):
                     continue
                 if model_info.modelId in seen:
+                    continue
+                # Only surface what THIS engine can actually run — never store a
+                # banned entry (the search may return format-tagged-but-not-named
+                # repos that the runnability heuristic can't confirm).
+                if not config.LLM_Engine.is_runnable(model_info.modelId):
                     continue
                 try:
                     out.append(self._create_derived_llm(model_info, search_config))
@@ -564,7 +571,7 @@ class Model_Seeder:
             local=0,
             link=model_info.modelId,
             type=search_config.model_type,
-            quantized=False,
+            quantized=config.LLM_Engine.is_engine_format(model_info.modelId),
             model_metadata=metadata,
             param_size=param_size
         )
@@ -963,6 +970,10 @@ class Database_Seeder:
         fresh_derived = model_seeder.build_derived_models(
             self.DEFAULT_SEARCH_CONFIGS, top_per_search=30, max_checked=200
         )
+        # A community quant search can return the exact repo a base model already
+        # maps to — drop those derived dupes so a model appears once.
+        base_links = {m.link for m in fresh_base}
+        fresh_derived = [d for d in fresh_derived if d.link not in base_links]
         if not fresh_base:
             logger.warning("Resync produced no base models — keeping existing catalog")
             return {"base_models_added": 0, "derived_models_added": 0, "resynced": False}

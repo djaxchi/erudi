@@ -141,6 +141,11 @@ class MLX_Engine(BaseChatServerEngine):
         return link.startswith("mlx-community/") or link in cls.MODEL_MAPPING.values()
 
     @classmethod
+    def community_search_kwargs(cls, term: str) -> dict:
+        """Restrict the derived search to the mlx-community org → MLX-format quants."""
+        return {"author": "mlx-community", "search": term}
+
+    @classmethod
     def quant_and_save_from_hf_format(
         cls,
         local_hf_path: Union[str, Path],

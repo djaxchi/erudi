@@ -154,6 +154,28 @@ class TestRunnableExposedInResponse:
         assert r.runnable is True
 
 
+class TestCommunitySearchTargetsEngineFormat:
+    """The derived/community search is narrowed to the engine's quant format so
+    seeded suggestions are runnable by construction (fixes the ~84/97-banned gap
+    where the search returned gated base safetensors ids)."""
+
+    def test_mlx_searches_mlx_community(self):
+        kw = MLX_Engine.community_search_kwargs("gemma 1b")
+        assert kw["author"] == "mlx-community"
+        assert kw["search"] == "gemma 1b"
+
+    def test_llamacpp_searches_gguf(self):
+        for engine in (CPU_Engine, CUDA_Engine):
+            kw = engine.community_search_kwargs("gemma 1b")
+            assert kw["filter"] == "gguf"
+            assert kw["search"] == "gemma 1b"
+
+    def test_results_of_such_searches_are_runnable(self):
+        # The repo ids these searches return are in engine format → runnable.
+        assert MLX_Engine.is_runnable("mlx-community/gemma-3-1b-it-4bit-DWQ") is True
+        assert CPU_Engine.is_runnable("MaziyarPanahi/gemma-3-1b-it-GGUF") is True
+
+
 class TestRemoteCatalogResync:
     """resync_remote_catalog reconciles local=0 with HF atomically: it preserves
     downloaded (local=1) and in-progress (local=2) models, and never empties the

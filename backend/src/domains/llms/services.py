@@ -62,9 +62,7 @@ from huggingface_hub import HfApi, HfFileSystem
 from huggingface_hub.utils import GatedRepoError, HfHubHTTPError
 from fsspec.callbacks import Callback
 
-from src.database.core import SessionLocal
 from src.domains.llms.repository import update_db_with_progress
-from src.entities.Llm import Llm
 
 from src.core.config import HF_TOKEN
 from src.core import config
@@ -378,28 +376,22 @@ async def download_llm(
         ... )
         >>> # Progress tracked in DownloadJobModel(id=15), final model in backend/data/models/42
     """
-    # Check if model is already quantized from database
-    session = SessionLocal()
-    llm = session.query(Llm).get(model_id)
-    is_prequantized = llm.quantized if llm else False
-    session.close()
-
-    # Check if this engine uses GGUF repos (CUDA only) and has a mapping for this model.
-    # If so, download the single best GGUF directly and skip local conversion entirely.
-    # For MLX, MODEL_MAPPING points to mlx-community repos (not GGUF) — handled separately.
-    _uses_gguf = getattr(config.LLM_Engine, 'USES_GGUF', False)
+    # Resolve the repo to actually download: a curated quant for a base model,
+    # else the link itself (community/derived models are already in engine format).
     _mapped_repo = config.LLM_Engine.MODEL_MAPPING.get(model_link)
-    gguf_repo = _mapped_repo if (_uses_gguf and _mapped_repo) else None
-
+    actual_download_link = _mapped_repo if _mapped_repo else model_link
     if _mapped_repo:
         logger.info(f"Mapped repo found: {model_link} -> {_mapped_repo}")
-        actual_download_link = _mapped_repo
-        is_prequantized = True
-    else:
-        actual_download_link = model_link
 
     # Runnability gate: only ever fetch a public quant THIS engine can run.
     _assert_runnable(model_link, actual_download_link)
+
+    # Anything already in the engine's quant format (mapped base OR community quant)
+    # is pre-built → download directly, no local conversion. GGUF repos additionally
+    # need only the single best quant file picked (pick_best_gguf).
+    is_prequantized = config.LLM_Engine.is_engine_format(actual_download_link)
+    _uses_gguf = getattr(config.LLM_Engine, 'USES_GGUF', False)
+    gguf_repo = actual_download_link if (_uses_gguf and is_prequantized) else None
 
     # Prepare local path
     os.makedirs(temp_save_dir, exist_ok=True)

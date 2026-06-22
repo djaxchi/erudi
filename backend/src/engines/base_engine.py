@@ -116,6 +116,14 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         return link in cls.MODEL_MAPPING.values()
 
     @classmethod
+    def community_search_kwargs(cls, term: str) -> dict:
+        """`HfApi.list_models` kwargs to find community models in THIS engine's
+        runnable format, so derived/seeded suggestions are runnable by construction
+        (not gated base safetensors that the gate would ban). Default: plain search;
+        engine families narrow to their quant format (mlx-community / GGUF)."""
+        return {"search": term}
+
+    @classmethod
     def is_runnable(cls, link: str) -> bool:
         """Whether a model stored as `link` can actually run on this engine.
 
