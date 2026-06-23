@@ -1,0 +1,117 @@
+"""Resolve a base model id to its canonical engine-format quant — no hand table.
+
+Given a base model id (e.g. ``google/gemma-3-1b-it``) and an engine *format tag*
+(``"mlx"`` or ``"gguf"``), :func:`resolve_quant` searches Hugging Face for repos
+carrying that tag and returns the one whose name, once normalized, is an EXACT
+match of the base slug. There is intentionally **no override table**: a base that
+has no exact-format quant simply resolves to ``None`` (it won't appear on that
+engine), rather than being patched by hand.
+
+``normalize`` is the shared heart of the system: it strips a leading
+``<vendor>_`` prefix (how bartowski names repos, e.g. ``google_gemma-3-1b-it``)
+and any trailing pure-format tokens (``4bit``, ``gguf``, ``mxfp4``, ``q8_0`` …),
+so ``mlx-community/gemma-3-1b-it-4bit`` and ``bartowski/google_gemma-3-1b-it-GGUF``
+both normalize to ``gemma-3-1b-it``. The same ``normalize`` is reused to dedupe
+community finetunes against the base set (a base re-quant normalizes onto a base
+slug; a genuine finetune does not).
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Optional
+
+from src.core.logging import logger
+
+# Trailing tokens that are purely quantization / precision / format markers — they
+# are stripped from the tail. Deliberately NOT here: tokens that are part of real
+# model slugs (it, instruct, chat, mini, qat, preview, base, pt, vision, …).
+FORMAT_TOKENS: frozenset = frozenset({
+    "4bit", "8bit", "6bit", "5bit", "3bit", "2bit", "4bits", "8bits", "16bit",
+    "bf16", "fp16", "fp32", "f16", "f32", "fp8", "fp4",
+    "mxfp4", "mxfp8", "nvfp4",
+    "q2", "q3", "q4", "q5", "q6", "q8",
+    "q2_k", "q3_k_m", "q4_k_m", "q4_k", "q4_0", "q4_1", "q5_k_m", "q5_k", "q6_k", "q8_0",
+    "int2", "int4", "int8",
+    "mlx", "gguf", "ggml", "gptq", "awq", "safetensors",
+    "dwq", "imatrix", "imat", "i1", "mx", "aq4_1",
+})
+
+# Vendor prefixes some quanters bake into the repo *name* (owner_model). Matched
+# against the base owner first, then this known set (covers cross-org quanters).
+ALIAS_OWNERS: frozenset = frozenset({
+    "google", "qwen", "mistralai", "nvidia", "microsoft", "ibm-granite",
+    "thudm", "cohereforai", "coherelabs", "meta-llama", "deepseek-ai", "openai",
+    "allenai", "huggingfacetb", "openbmb", "lgai-exaone", "nousresearch", "tiiuae",
+})
+
+_VENDOR_RE = re.compile(r"^([a-z0-9.\-]+)_(.+)$")
+
+
+def normalize(name: str, owner: str = "") -> str:
+    """Canonicalize a repo *name* (last path segment) to a comparable model slug.
+
+    Steps, in order:
+      1. lowercase;
+      2. drop a leading ``<vendor>_`` if the vendor matches ``owner`` or a known
+         quanter alias (so ``google_gemma-3-1b-it`` → ``gemma-3-1b-it``);
+      3. unify ``_`` → ``-`` (so ``internlm2_5-20b-chat_8bit`` tokenizes cleanly);
+      4. pop trailing pure-format tokens (``-4bit``, ``-gguf``, ``-mxfp4-q8`` …).
+    """
+    n = name.lower()
+    m = _VENDOR_RE.match(n)
+    if m and (m.group(1) == owner.lower() or m.group(1) in ALIAS_OWNERS):
+        n = m.group(2)
+    n = n.replace("_", "-")
+    toks = n.split("-")
+    while toks and toks[-1] in FORMAT_TOKENS:
+        toks.pop()
+    return "-".join(toks)
+
+
+def base_key(base_id: str) -> str:
+    """Normalized key of a base model id, used for resolution + dedup comparison."""
+    owner, _, slug = base_id.partition("/")
+    return normalize(slug or owner, owner)
+
+
+# Quant preference for picking among several EXACT matches (MLX mostly; for GGUF
+# the single best .gguf file is chosen later by pick_best_gguf, so repo choice
+# falls back to download count).
+_QUANT_PREF = ("-4bit", "4bit", "-8bit", "8bit", "-6bit", "mxfp4", "bf16", "fp16")
+
+
+def _quant_rank(repo_id: str) -> int:
+    low = repo_id.lower()
+    for i, marker in enumerate(_QUANT_PREF):
+        if marker in low:
+            return i
+    return len(_QUANT_PREF)
+
+
+def resolve_quant(base_id: str, format_tag: str, hf_api, *, limit: int = 40,
+                  trace: bool = False) -> Optional[str]:
+    """Return the canonical ``format_tag`` quant repo id for ``base_id``, or None.
+
+    Searches ``list_models(filter=format_tag, search=<slug>)`` and keeps only
+    candidates whose normalized name EQUALS the base key. Among those, prefers the
+    canonical 4-bit quant, breaking ties by download count. No exact match → None.
+    """
+    owner, _, slug = base_id.partition("/")
+    key = base_key(base_id)
+    try:
+        cands = list(hf_api.list_models(
+            filter=format_tag, search=slug, sort="downloads", limit=limit,
+        ))
+    except Exception as e:  # network/HF hiccup → treat as "not found", never crash seed
+        logger.warning(f"resolve_quant({base_id}, {format_tag}) search failed: {e}")
+        return None
+
+    exact = [m for m in cands if normalize(m.id.split("/")[-1], owner) == key]
+    if trace:
+        logger.info(f"[resolve {format_tag}] {base_id} key='{key}' "
+                    f"{len(cands)} cands, {len(exact)} exact")
+    if not exact:
+        return None
+    best = min(exact, key=lambda m: (_quant_rank(m.id), -(getattr(m, "downloads", 0) or 0)))
+    return best.id
