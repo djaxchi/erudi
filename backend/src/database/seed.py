@@ -54,7 +54,7 @@ import os
 import shutil
 import json
 from datetime import datetime
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -203,38 +203,14 @@ class Search_Config:
 
 @dataclass(frozen=True)
 class Quality_Filters:
-    """Quality thresholds for model filtering."""
-    
+    """Popularity floor for derived/community models. Deliberately just a
+    downloads/likes threshold — NO content or keyword filtering: the catalog is
+    open to all community models (distilled, RL, uncensored…), and the format tag
+    already guarantees runnability. The floor keeps it from being all of HF, and
+    doubles as a safeguard against a mistagged repo."""
+
     min_downloads: int = 50
     min_likes: int = 5
-    interesting_tags: Tuple[str, ...] = (
-        "instruction-tuned", "chat", "conversational", "assistant",
-        "code", "math", "reasoning", "multilingual", "translation",
-        "summarization", "question-answering", "creative-writing",
-        "roleplay", "medical", "legal", "science", "education",
-        "storytelling", "dialogue", "text-generation"
-    )
-    quality_keywords: Tuple[str, ...] = (
-        "instruct", "chat", "assistant", "tuned", "fine-tuned",
-        "trained", "optimized", "enhanced", "improved"
-    )
-    skip_ids: Tuple[str, ...] = (
-        "mistral-7b-instruct-v0.3", "mistral-7b-v0.3",
-        "gemma-3-1b-it", "gemma-2-2b-it", "gemma-3-4b-it",
-        "ministral-8b-instruct-2410", "gemma-3-12b-it",
-        "mistral-nemo-instruct-2407",
-        "gemma-4-e2b-it", "gemma-4-e4b-it",
-    )
-    # NOTE: quant-format terms (gguf/4bit/q4/awq/…) are intentionally NOT skipped.
-    # The derived search now targets engine-format quants on purpose (4b), and
-    # build_derived_models additionally drops anything is_runnable() rejects — so
-    # only junk repos, adapters and unwanted content are filtered here.
-    skip_terms: Tuple[str, ...] = (
-        "lora", "peft", "sft",
-        "test", "untrained", "checkpoint", "tmp", "temp",
-        "debug", "draft", "experiment", "eval", "benchmark",
-        "onnx", "abliterated",
-    )
 
 
 # ============ Model Seeding Service ============
@@ -534,32 +510,14 @@ class Model_Seeder:
         return 7.0
     
     def _passes_quality_filters(self, model_info) -> bool:
-        """Check if model passes quality filters."""
-        # Download/like thresholds
-        if (model_info.downloads < self.filters.min_downloads or
-            model_info.likes < self.filters.min_likes):
-            return False
-        
-        # Skip IDs and terms
-        model_id_lower = model_info.modelId.lower()
-        model_name_lower = model_id_lower.split("/")[-1]
-        
-        if model_name_lower in self.filters.skip_ids:
-            return False
-        
-        if any(term in model_id_lower for term in self.filters.skip_terms):
-            return False
-        
-        # Interesting tags
-        if model_info.tags:
-            if any(tag in self.filters.interesting_tags for tag in model_info.tags):
-                return True
-        
-        # Quality keywords
-        if any(kw in model_id_lower for kw in self.filters.quality_keywords):
-            return True
-        
-        return False
+        """Keep any model above the popularity floor — nothing else.
+
+        No content/keyword/id filtering: the catalog is open to all community models
+        (distilled, RL, uncensored…), and the format tag already guarantees the model
+        is runnable. The floor just keeps the catalog from being all of HF.
+        """
+        return (model_info.downloads >= self.filters.min_downloads
+                and model_info.likes >= self.filters.min_likes)
     
     def _create_derived_llm(self, model_info, search_config: Search_Config) -> Llm:
         """Create derived LLM entity from search result."""
