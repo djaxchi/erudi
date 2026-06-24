@@ -115,8 +115,13 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         format across ALL of HF (any author), so community fine-tunes surface and
         are runnable by construction. Searches by the format TAG, not by org —
         e.g. ``filter="mlx"`` catches non-mlx-community quants the org never holds.
+        An empty ``term`` is the global pass: filter by format only, ranked by
+        downloads.
         """
-        return {"filter": cls.FORMAT_TAG, "search": term}
+        kwargs = {"filter": cls.FORMAT_TAG}
+        if term:
+            kwargs["search"] = term
+        return kwargs
 
     @classmethod
     def is_runnable(cls, link: str) -> bool:

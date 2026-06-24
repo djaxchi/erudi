@@ -20,7 +20,12 @@ from src.engines.cpu_engine import CPU_Engine
 from src.engines.cuda_engine import CUDA_Engine
 from src.engines.mlx_engine import MLX_Engine
 
-CATALOG_LINKS = [m.link for m in Database_Seeder.DEFAULT_BASE_MODELS]
+# Representative base ids (the live catalog is org-discovered, not a static list).
+CATALOG_LINKS = [
+    "google/gemma-3-270m-it", "google/gemma-2-2b-it", "google/gemma-3-4b-it",
+    "google/gemma-3-12b-it", "google/gemma-4-E2B-it", "google/gemma-4-26b-a4b-it",
+    "google/gemma-4-31b-it",
+]
 
 
 class TestEngineFormatTag:
@@ -44,6 +49,51 @@ class TestEngineFormatTag:
         for engine in (CPU_Engine, CUDA_Engine):
             kw = engine.community_search_kwargs("gemma 1b")
             assert kw["filter"] == "gguf" and kw["search"] == "gemma 1b"
+
+
+class TestOrgDiscovery:
+    """discover_instruct_models is permissive but drops quant/adapter/non-final
+    noise, applies a downloads floor, dedups by normalized slug, and caps the count."""
+
+    def _seeder(self, ids):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        from src.database.seed import Model_Seeder
+        api = MagicMock()
+        api.list_models.return_value = [SimpleNamespace(id=i, downloads=d) for i, d in ids]
+        return Model_Seeder(db=None, hf_api=api)
+
+    def test_filters_quants_and_floor(self):
+        seeder = self._seeder([
+            ("Qwen/Qwen3-8B", 100000),                  # keep
+            ("Qwen/Qwen3-8B-GGUF", 50000),              # skip: quant
+            ("Qwen/Qwen3-4B", 30000),                   # keep
+            ("Qwen/Qwen2.5-7B-Instruct-AWQ", 9000),     # skip: quant
+            ("Qwen/tiny-thing", 10),                    # skip: below floor
+        ])
+        links = [c.link for c in seeder.discover_instruct_models("Qwen", "qwen", min_downloads=1000)]
+        assert "Qwen/Qwen3-8B" in links and "Qwen/Qwen3-4B" in links
+        assert all(x not in " ".join(links) for x in ("GGUF", "AWQ"))
+        assert "Qwen/tiny-thing" not in links
+
+    def test_dedups_by_normalized_slug(self):
+        seeder = self._seeder([
+            ("Qwen/Qwen3-8B", 100000),
+            ("Qwen/Qwen3-8B-bf16", 90000),  # same normalized slug → dropped
+        ])
+        configs = seeder.discover_instruct_models("Qwen", "qwen", min_downloads=1)
+        assert len(configs) == 1
+
+    def test_caps_top_n(self):
+        seeder = self._seeder([(f"Org/Model-{i}-Instruct", 100000 - i) for i in range(20)])
+        assert len(seeder.discover_instruct_models("Org", "x", top_n=5, min_downloads=1)) == 5
+
+    def test_search_failure_returns_empty(self):
+        from unittest.mock import MagicMock
+        from src.database.seed import Model_Seeder
+        api = MagicMock()
+        api.list_models.side_effect = RuntimeError("boom")
+        assert Model_Seeder(db=None, hf_api=api).discover_instruct_models("Org", "x") == []
 
 
 class TestRunnabilityPredicate:

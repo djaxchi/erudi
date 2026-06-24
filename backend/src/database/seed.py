@@ -191,8 +191,11 @@ class Search_Config:
     default_param_size: float
     
     def __post_init__(self) -> None:
-        """Validate search configuration."""
-        if not self.search_term or not self.model_type:
+        """Validate search configuration.
+
+        An empty ``search_term`` is allowed and means the *global pass*: search the
+        whole format-tagged space by downloads (no text filter)."""
+        if not self.model_type:
             raise ValueError(f"Invalid search config: {self}")
         if self.default_param_size <= 0:
             raise ValueError(f"Invalid param size: {self.default_param_size}")
@@ -264,36 +267,76 @@ class Model_Seeder:
         self.filters = quality_filters or Quality_Filters()
         self.offline_mode = offline_mode
     
-    def build_base_models(self, models: List[Model_Config]) -> List[Llm]:
-        """Build (do NOT persist) the base catalog Llm rows, fetching HF metadata.
+    # Names that mark a non-final / non-LLM artifact, excluded from org discovery.
+    _DISCOVERY_SKIP = (
+        "gguf", "-mlx", "4bit", "8bit", "gptq", "awq", "-bnb", "lora", "adapter",
+        "onnx", "-pt", "-pretrain", "draft", "embedding", "reranker", "guard",
+        "reward", "-rm", "prm", "-base",
+    )
 
-        Per-model HF failure falls back to default metadata so one bad model never
-        drops the rest. Returns detached Llm objects for the caller to swap in
-        atomically (see Database_Seeder.resync_remote_catalog) — no add/commit here.
+    def discover_instruct_models(self, org: str, model_type: str,
+                                 top_n: int = 12, min_downloads: int = 2000) -> List[Model_Config]:
+        """Discover an org's top text-generation models as base-catalog candidates.
+
+        Permissive by design: filters to the ``text-generation`` pipeline (drops the
+        org's CLIP / Whisper / BERT / etc.), skips quants/adapters/non-final repos,
+        dedupes by normalized slug, and caps to the most-downloaded. Anything without
+        an engine-format quant is later pruned by the resolver, so noise self-corrects.
+        """
+        try:
+            models = list(self.hf_api.list_models(
+                author=org, filter="text-generation", sort="downloads", limit=80,
+            ))
+        except Exception as e:
+            logger.warning(f"Org discovery failed for {org}: {e}")
+            return []
+        out: List[Model_Config] = []
+        seen: set = set()
+        for m in models:
+            if (getattr(m, "downloads", 0) or 0) < min_downloads:
+                continue
+            name = m.id.split("/")[-1]
+            if any(b in name.lower() for b in self._DISCOVERY_SKIP):
+                continue
+            key = base_key(m.id)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(Model_Config(name, m.id, model_type))
+            if len(out) >= top_n:
+                break
+        return out
+
+    def build_base_models(self, orgs) -> List[Llm]:
+        """Discover each foundation org's instruct models and build (don't persist)
+        the base catalog rows, each resolved to its engine-format quant.
+
+        Per candidate: discover → resolve_quant → build. A base with no quant for the
+        active engine is skipped (simply not offered here). HF metadata failure falls
+        back to default metadata so one bad model never drops the rest. `orgs` is the
+        FOUNDATION_ORGS list of (org, family_type, search_term).
         """
         out: List[Llm] = []
         tag = getattr(config.LLM_Engine, "FORMAT_TAG", None)
-        for model_config in models:
-            # Resolve the base id to its public engine-format quant (no hand mapping).
-            # No quant for this engine → the model simply isn't offered here.
-            try:
-                quant_link = resolve_quant(model_config.link, tag, self.hf_api)
-            except Exception as e:
-                logger.warning(f"resolve_quant failed for {model_config.link}: {e}")
-                quant_link = None
-            if not quant_link:
-                logger.info(f"No {tag} quant for {model_config.link} — skipping on this engine")
-                continue
-            try:
-                out.append(self._create_base_llm(model_config, quant_link))
-            except HuggingFaceAPIException as e:
-                logger.warning(f"HF metadata failed for {model_config.link}, using fallback: {e}")
+        for org, model_type, _term in orgs:
+            for model_config in self.discover_instruct_models(org, model_type):
                 try:
-                    out.append(self._create_base_llm_fallback(model_config, quant_link))
-                except Exception as fe:
-                    logger.error(f"Fallback build failed for {model_config.link}: {fe}")
-            except Exception as e:
-                logger.error(f"Failed to build base model {model_config.link}: {e}")
+                    quant_link = resolve_quant(model_config.link, tag, self.hf_api)
+                except Exception as e:
+                    logger.warning(f"resolve_quant failed for {model_config.link}: {e}")
+                    quant_link = None
+                if not quant_link:
+                    continue
+                try:
+                    out.append(self._create_base_llm(model_config, quant_link))
+                except HuggingFaceAPIException as e:
+                    logger.warning(f"HF metadata failed for {model_config.link}, fallback: {e}")
+                    try:
+                        out.append(self._create_base_llm_fallback(model_config, quant_link))
+                    except Exception as fe:
+                        logger.error(f"Fallback build failed for {model_config.link}: {fe}")
+                except Exception as e:
+                    logger.error(f"Failed to build base model {model_config.link}: {e}")
         return out
     
     def seed_base_models_offline(self) -> int:
@@ -882,35 +925,30 @@ class Database_Seeder:
             await seeder.populate_startup_data()
     """
     
-    # Default base models
-    DEFAULT_BASE_MODELS = [
-        Model_Config("Gemma-270M", "google/gemma-3-270m-it", "gemma"),
-        Model_Config("Gemma-1B", "google/gemma-3-1b-it", "gemma"),
-        Model_Config("Gemma-2B", "google/gemma-2-2b-it", "gemma"),
-        Model_Config("Gemma-4B", "google/gemma-3-4b-it", "gemma"),
-        Model_Config("Gemma-4-E2B", "google/gemma-4-E2B-it", "gemma"),
-        Model_Config("Gemma-4-E4B", "google/gemma-4-E4B-it", "gemma"),
-        Model_Config("Gemma-4-26B", "google/gemma-4-26b-a4b-it", "gemma"),
-        Model_Config("Gemma-4-31B", "google/gemma-4-31b-it", "gemma"),
-        Model_Config("Mistral-7B", "mistralai/Mistral-7B-Instruct-v0.3", "mistral"),
-        Model_Config("Ministral-8B", "mistralai/Ministral-8B-Instruct-2410", "mistral"),
-        Model_Config("Gemma-12B", "google/gemma-3-12b-it", "gemma"),
-        Model_Config("Mistral-Nemo-12B", "mistralai/Mistral-Nemo-Instruct-2407", "mistral"),
-    ]
-
-    # Default derived model searches
-    DEFAULT_SEARCH_CONFIGS = [
-        Search_Config("Mistral-7B v0.3", "mistral", 7.0),
-        Search_Config("Gemma 1B", "gemma", 1.0),
-        Search_Config("Gemma 2B", "gemma", 2.0),
-        Search_Config("Gemma 4B", "gemma", 4.0),
-        Search_Config("gemma-4-e2b", "gemma", 2.0),
-        Search_Config("gemma-4-e4b", "gemma", 4.0),
-        Search_Config("gemma-4-26b-a4b", "gemma", 4.0),
-        Search_Config("gemma-4-31b", "gemma", 31.0),
-        Search_Config("Ministral-8B", "mistral", 8.0),
-        Search_Config("Gemma 12B", "gemma", 12.0),
-        Search_Config("Mistral-Nemo-12B", "mistral", 12.0),
+    # Foundation publishers we watch: (HF org, family type, derived-search term).
+    # The base catalog auto-discovers each org's instruct/chat models (no hand list
+    # of model ids); the resolver maps each to its engine-format quant. A new model
+    # from a known org appears automatically; a new publisher is just one line here.
+    FOUNDATION_ORGS = [
+        ("meta-llama", "llama", "Llama"),
+        ("Qwen", "qwen", "Qwen"),
+        ("mistralai", "mistral", "Mistral"),
+        ("google", "gemma", "Gemma"),
+        ("deepseek-ai", "deepseek", "DeepSeek"),
+        ("microsoft", "phi", "Phi"),
+        ("openai", "gpt-oss", "gpt-oss"),
+        ("ibm-granite", "granite", "Granite"),
+        ("zai-org", "glm", "GLM"),
+        ("CohereLabs", "cohere", "Command"),
+        ("nvidia", "nemotron", "Nemotron"),
+        ("01-ai", "yi", "Yi"),
+        ("internlm", "internlm", "InternLM"),
+        ("tiiuae", "falcon", "Falcon"),
+        ("allenai", "olmo", "OLMo"),
+        ("HuggingFaceTB", "smollm", "SmolLM"),
+        ("openbmb", "minicpm", "MiniCPM"),
+        ("NousResearch", "hermes", "Hermes"),
+        ("OpenLLM-France", "lucie", "Lucie"),
     ]
     
     async def create_tables(self) -> None:
@@ -945,12 +983,15 @@ class Database_Seeder:
         runs BEFORE any delete, so a network failure leaves the existing catalog
         intact (no empty-catalog window).
         """
-        fresh_base = model_seeder.build_base_models(self.DEFAULT_BASE_MODELS)
+        fresh_base = model_seeder.build_base_models(self.FOUNDATION_ORGS)
+        # Derived: one engine-format search per foundation family + a global
+        # top-downloads pass (empty term), so popular community fine-tunes surface
+        # whether or not they carry a family name. All runnable by construction.
+        searches = [Search_Config(term, ftype, 7.0) for _org, ftype, term in self.FOUNDATION_ORGS]
+        searches.append(Search_Config("", "community", 7.0))
         fresh_derived = model_seeder.build_derived_models(
-            self.DEFAULT_SEARCH_CONFIGS, top_per_search=30, max_checked=200
+            searches, top_per_search=30, max_checked=200
         )
-        # A community quant search can return the exact repo a base model already
-        # maps to — drop those derived dupes so a model appears once.
         # Drop derived rows that are just another quant of a base model (same
         # normalized slug), so each base appears once (as the curated ⭐ entry).
         base_keys = {base_key(m.link) for m in fresh_base}
