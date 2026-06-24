@@ -1,9 +1,11 @@
-"""Catalog ↔ engine quant-mapping invariants (#95).
+"""Catalog ↔ engine invariants (#95), post auto-catalog refactor.
 
-These guard the token-free-by-construction design: every catalogued base model
-must resolve to a public quant in the active engine's format (MLX on Apple
-Silicon, GGUF on CPU/CUDA), so a download never hits the gated first-party
-safetensors. They are pure class-attribute checks — no network, CI-safe.
+The catalog is built ONLY from repos carrying the engine's format tag (filter="mlx"
+/ filter="gguf"), and base ids are resolved to their public quant by the resolver
+(see test_model_resolver). So there is no hand-maintained MODEL_MAPPING and no
+name-based allowlist: everything in the catalog is runnable by construction, and
+the lone exclusion is KNOWN_BROKEN (quants that load-crash). These are pure
+class-attribute / schema checks — no network, CI-safe.
 """
 
 import pytest
@@ -21,92 +23,54 @@ from src.engines.mlx_engine import MLX_Engine
 CATALOG_LINKS = [m.link for m in Database_Seeder.DEFAULT_BASE_MODELS]
 
 
-class TestGgufMappingSharedAcrossLlamaCppEngines:
-    """The GGUF catalog lives once on BaseLlamaCppEngine; CPU and CUDA inherit it."""
+class TestEngineFormatTag:
+    """Each engine declares its HF format tag; the community/base search filters on
+    it (across all of HF, any author) instead of a hand-maintained mapping/org."""
+
+    def test_format_tag_per_engine(self):
+        assert MLX_Engine.FORMAT_TAG == "mlx"
+        assert BaseLlamaCppEngine.FORMAT_TAG == "gguf"
+        assert CPU_Engine.FORMAT_TAG == "gguf"
+        assert CUDA_Engine.FORMAT_TAG == "gguf"
 
     def test_uses_gguf_is_inherited_true(self):
-        # Was CUDA-only, leaving CPU downloads broken (no GGUF routing).
         assert BaseLlamaCppEngine.USES_GGUF is True
         assert CPU_Engine.USES_GGUF is True
         assert CUDA_Engine.USES_GGUF is True
 
-    def test_cpu_and_cuda_share_the_base_mapping(self):
-        assert CPU_Engine.MODEL_MAPPING is BaseLlamaCppEngine.MODEL_MAPPING
-        assert CUDA_Engine.MODEL_MAPPING is BaseLlamaCppEngine.MODEL_MAPPING
-        assert len(BaseLlamaCppEngine.MODEL_MAPPING) > 0
-
-    def test_gguf_values_are_repo_ids(self):
-        for link, repo in BaseLlamaCppEngine.MODEL_MAPPING.items():
-            assert repo.count("/") == 1, f"{link} → {repo} is not a 'owner/name' repo id"
-            assert repo.endswith("-GGUF") or "GGUF" in repo, f"{link} → {repo} is not a GGUF repo"
-
-
-class TestEveryCatalogModelHasRunnableQuant:
-    """No catalogued model may be orphaned on an engine — else it would 401 (gated)
-    or download the wrong format. This is the regression lock for the CPU gap."""
-
-    @pytest.mark.parametrize("link", CATALOG_LINKS)
-    def test_gguf_covers_catalog(self, link):
-        assert link in BaseLlamaCppEngine.MODEL_MAPPING, (
-            f"{link} has no public GGUF quant → would hit the gated safetensors on CPU/CUDA"
-        )
-
-    @pytest.mark.parametrize("link", CATALOG_LINKS)
-    def test_mlx_covers_catalog(self, link):
-        assert link in MLX_Engine.MODEL_MAPPING, (
-            f"{link} has no MLX quant → would hit the gated safetensors on Apple Silicon"
-        )
-
-    def test_mlx_targets_are_public_community_quants(self):
-        for link, repo in MLX_Engine.MODEL_MAPPING.items():
-            assert repo.startswith("mlx-community/"), f"{link} → {repo} is not a public mlx-community quant"
+    def test_community_search_filters_on_format_tag(self):
+        kw = MLX_Engine.community_search_kwargs("gemma 1b")
+        assert kw["filter"] == "mlx" and kw["search"] == "gemma 1b"
+        for engine in (CPU_Engine, CUDA_Engine):
+            kw = engine.community_search_kwargs("gemma 1b")
+            assert kw["filter"] == "gguf" and kw["search"] == "gemma 1b"
 
 
 class TestRunnabilityPredicate:
-    """is_runnable is capability-based (engine format minus KNOWN_BROKEN), never an
-    allowlist — so community fine-tunes in the right format are not over-blocked."""
+    """is_runnable is now KNOWN_BROKEN-only: catalog entries are engine-format by
+    construction (they came from a filter=FORMAT_TAG search), so the only thing to
+    exclude is a quant that downloads but crashes at load."""
 
-    def test_mlx_runs_community_quants_and_curated(self):
+    def test_format_quants_are_runnable(self):
         assert MLX_Engine.is_runnable("mlx-community/gemma-3-1b-it-4bit") is True
-        # a community fine-tune nobody curated, but in MLX format → runnable
-        assert MLX_Engine.is_runnable("mlx-community/some-cool-distill-4bit") is True
+        assert MLX_Engine.is_runnable("lmstudio-community/Hermes-4-70B-MLX-4bit") is True  # non-org
+        assert CPU_Engine.is_runnable("unsloth/gemma-3-1b-it-GGUF") is True
+        assert CUDA_Engine.is_runnable("mradermacher/Some-Cool-Distill-GGUF") is True  # community
 
-    def test_mlx_bans_gated_base_and_known_broken(self):
-        # gated first-party safetensors id (never converted) → not MLX format
-        assert MLX_Engine.is_runnable("google/gemma-3-1b-it") is False
-        # downloads but crashes at load on mlx-vlm 0.6.2
+    def test_known_broken_is_not_runnable(self):
         assert MLX_Engine.is_runnable("mlx-community/gemma-4-e2b-it-4bit") is False
         assert "mlx-community/gemma-4-e2b-it-4bit" in MLX_Engine.KNOWN_BROKEN
-
-    def test_llamacpp_runs_gguf_community_and_curated(self):
-        assert CPU_Engine.is_runnable("unsloth/gemma-3-1b-it-GGUF") is True
-        assert CUDA_Engine.is_runnable("bartowski/Qwen2.5-7B-Instruct-GGUF") is True
-        # community fine-tune GGUF nobody curated → still runnable (not over-blocked)
-        assert CPU_Engine.is_runnable("someuser/My-Cool-Finetune-GGUF") is True
-
-    def test_llamacpp_bans_gated_base_safetensors(self):
-        assert CPU_Engine.is_runnable("google/gemma-3-1b-it") is False
-        assert CPU_Engine.is_runnable("meta-llama/Llama-3.1-8B-Instruct") is False
-
-    def test_every_catalog_model_is_runnable_on_some_engine(self):
-        # Each curated base resolves to a runnable quant on BOTH engines (its mapped
-        # target), except KNOWN_BROKEN exclusions which must still run on the other.
-        for link in CATALOG_LINKS:
-            mlx_target = MLX_Engine.MODEL_MAPPING[link]
-            gguf_target = CPU_Engine.MODEL_MAPPING[link]
-            assert MLX_Engine.is_runnable(mlx_target) or CPU_Engine.is_runnable(gguf_target), (
-                f"{link} is runnable on neither engine"
-            )
+        # llama.cpp has no known-broken quants → everything format-tagged runs
+        assert CPU_Engine.KNOWN_BROKEN == frozenset()
 
 
 class TestHumanizedNames:
-    """Display names are derived from the real slug — exact, unambiguous, no
-    hand-written 'Gemma-4B' that actually hides Gemma 3 4B."""
+    """Display names are derived from the real slug — exact, unambiguous."""
 
     @pytest.mark.parametrize("link,expected", [
         ("google/gemma-3-270m-it",                "Gemma 3 270M Instruct"),
-        ("google/gemma-2-2b-it",                  "Gemma 2 2B Instruct"),     # was "Gemma-2B"
-        ("google/gemma-3-4b-it",                  "Gemma 3 4B Instruct"),     # was the ambiguous "Gemma-4B"
+        ("google/gemma-2-2b-it",                  "Gemma 2 2B Instruct"),
+        ("google/gemma-3-4b-it",                  "Gemma 3 4B Instruct"),
         ("google/gemma-3-12b-it",                 "Gemma 3 12B Instruct"),
         ("google/gemma-4-E2B-it",                 "Gemma 4 E2B Instruct"),
         ("google/gemma-4-26b-a4b-it",             "Gemma 4 26B A4B Instruct"),
@@ -116,17 +80,14 @@ class TestHumanizedNames:
         ("mistralai/Mistral-Nemo-Instruct-2407",  "Mistral Nemo Instruct 2407"),
         ("meta-llama/Llama-3.1-8B-Instruct",      "Llama 3.1 8B Instruct"),
         ("Qwen/Qwen2.5-7B-Instruct",              "Qwen2.5 7B Instruct"),
-        ("Qwen/Qwen2.5-VL-3B-Instruct",           "Qwen2.5 VL 3B Instruct"),
     ])
     def test_humanize(self, link, expected):
         assert humanize_model_name(link) == expected
 
     def test_no_catalog_name_is_ambiguous_gemma(self):
-        # No catalogued Gemma renders as a bare "Gemma N B" without its family version.
         for link in CATALOG_LINKS:
             name = humanize_model_name(link)
             if name.startswith("Gemma"):
-                # second token must be the family version (a number), never the size
                 assert name.split()[1].replace(".", "").isdigit(), f"ambiguous: {name}"
 
 
@@ -140,40 +101,18 @@ class TestRunnableExposedInResponse:
         assert r.runnable is True
         assert r.model_dump()["runnable"] is True
 
-    def test_remote_gated_base_is_not_runnable(self, monkeypatch):
+    def test_remote_known_broken_is_not_runnable(self, monkeypatch):
         from src.domains.llms.schemas import LLMResponse
-        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
-        r = LLMResponse(id=2, name="Y", local=0, link="google/gemma-3-1b-it")
+        monkeypatch.setattr(config, "LLM_Engine", MLX_Engine)
+        r = LLMResponse(id=2, name="Y", local=0, link="mlx-community/gemma-4-e2b-it-4bit")
         assert r.runnable is False
 
     def test_downloaded_model_always_runnable(self, monkeypatch):
         from src.domains.llms.schemas import LLMResponse
-        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
-        # local=1 with a filesystem path link → runnable regardless of format heuristic
+        monkeypatch.setattr(config, "LLM_Engine", MLX_Engine)
+        # local=1 (downloaded) → runnable even if its link were KNOWN_BROKEN
         r = LLMResponse(id=3, name="Z", local=1, link="/data/models/3")
         assert r.runnable is True
-
-
-class TestCommunitySearchTargetsEngineFormat:
-    """The derived/community search is narrowed to the engine's quant format so
-    seeded suggestions are runnable by construction (fixes the ~84/97-banned gap
-    where the search returned gated base safetensors ids)."""
-
-    def test_mlx_searches_mlx_community(self):
-        kw = MLX_Engine.community_search_kwargs("gemma 1b")
-        assert kw["author"] == "mlx-community"
-        assert kw["search"] == "gemma 1b"
-
-    def test_llamacpp_searches_gguf(self):
-        for engine in (CPU_Engine, CUDA_Engine):
-            kw = engine.community_search_kwargs("gemma 1b")
-            assert kw["filter"] == "gguf"
-            assert kw["search"] == "gemma 1b"
-
-    def test_results_of_such_searches_are_runnable(self):
-        # The repo ids these searches return are in engine format → runnable.
-        assert MLX_Engine.is_runnable("mlx-community/gemma-3-1b-it-4bit-DWQ") is True
-        assert CPU_Engine.is_runnable("MaziyarPanahi/gemma-3-1b-it-GGUF") is True
 
 
 class TestRemoteCatalogResync:
@@ -190,7 +129,6 @@ class TestRemoteCatalogResync:
 
     def test_swap_replaces_remote_keeps_downloaded(self, test_db_session):
         from unittest.mock import MagicMock
-        from src.database.seed import Database_Seeder
         from src.entities.Llm import Llm
 
         db = test_db_session
@@ -210,14 +148,33 @@ class TestRemoteCatalogResync:
 
         assert res["resynced"] is True
         rows = {r.link: r.local for r in db.query(Llm).all()}
-        assert "stale/gone-GGUF" not in rows             # stale remote suggestion removed
-        assert rows["unsloth/gemma-3-1b-it-GGUF"] == 0   # fresh remote suggestion present
-        assert rows["/data/models/9"] == 1               # downloaded model preserved
-        assert rows["repo/wip-GGUF"] == 2                # in-progress download preserved
+        assert "stale/gone-GGUF" not in rows
+        assert rows["unsloth/gemma-3-1b-it-GGUF"] == 0
+        assert rows["/data/models/9"] == 1
+        assert rows["repo/wip-GGUF"] == 2
+
+    def test_derived_requant_of_base_is_deduped(self, test_db_session):
+        from unittest.mock import MagicMock
+        from src.entities.Llm import Llm
+
+        db = test_db_session
+        base = self._llm(name="Gemma 3 1B Instruct", local=0, link="unsloth/gemma-3-1b-it-GGUF", type="gemma")
+        # another quant of the SAME base (normalizes to gemma-3-1b-it) → must drop
+        requant = self._llm(name="dup", local=0, link="bartowski/google_gemma-3-1b-it-GGUF", type="gemma")
+        # a genuine finetune (different slug) → must stay
+        finetune = self._llm(name="Dolphin", local=0, link="cognitivecomputations/dolphin-gemma-3-1b-GGUF", type="gemma")
+        ms = MagicMock()
+        ms.build_base_models.return_value = [base]
+        ms.build_derived_models.return_value = [requant, finetune]
+
+        Database_Seeder().resync_remote_catalog(db, ms)
+        links = {r.link for r in db.query(Llm).filter(Llm.local == 0).all()}
+        assert "unsloth/gemma-3-1b-it-GGUF" in links          # base kept
+        assert "bartowski/google_gemma-3-1b-it-GGUF" not in links  # re-quant of base dropped
+        assert "cognitivecomputations/dolphin-gemma-3-1b-GGUF" in links  # finetune kept
 
     def test_empty_fetch_does_not_wipe_catalog(self, test_db_session):
         from unittest.mock import MagicMock
-        from src.database.seed import Database_Seeder
         from src.entities.Llm import Llm
 
         db = test_db_session
@@ -225,25 +182,22 @@ class TestRemoteCatalogResync:
         db.commit()
 
         ms = MagicMock()
-        ms.build_base_models.return_value = []   # fetch failed → nothing built
+        ms.build_base_models.return_value = []
         ms.build_derived_models.return_value = []
 
         res = Database_Seeder().resync_remote_catalog(db, ms)
-
         assert res["resynced"] is False
-        assert db.query(Llm).filter(Llm.link == "keep/me-GGUF").count() == 1  # untouched
+        assert db.query(Llm).filter(Llm.link == "keep/me-GGUF").count() == 1
 
 
 class TestDownloadRunnabilityGuard:
-    """download_llm rejects non-runnable targets up front (clear error, no 401→500)."""
+    """download_llm rejects a KNOWN_BROKEN target up front (clear error, no crash)."""
 
-    def test_rejects_gated_base_with_no_quant(self, monkeypatch):
-        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
-        # unmapped gated base id → resolves to itself → not GGUF format → rejected
+    def test_rejects_known_broken(self, monkeypatch):
+        monkeypatch.setattr(config, "LLM_Engine", MLX_Engine)
         with pytest.raises(UnsupportedPlatformException):
-            services._assert_runnable("google/some-gated-model-it", "google/some-gated-model-it")
+            services._assert_runnable("mlx-community/gemma-4-e2b-it-4bit")
 
-    def test_allows_mapped_public_quant(self, monkeypatch):
-        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
-        # resolved GGUF quant → runnable → no raise
-        services._assert_runnable("google/gemma-3-1b-it", "unsloth/gemma-3-1b-it-GGUF")
+    def test_allows_normal_quant(self, monkeypatch):
+        monkeypatch.setattr(config, "LLM_Engine", MLX_Engine)
+        services._assert_runnable("mlx-community/gemma-3-1b-it-4bit")  # no raise

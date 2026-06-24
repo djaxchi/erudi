@@ -81,6 +81,7 @@ from src.utils.hf_model_metadata import (
 from src.domains.hardware.repository import Hardware_Repository
 from src.domains.hardware.services import Hardware_Service
 from src.engines.tool_capability import tool_capability_from_hf_repo
+from src.engines.model_resolver import resolve_quant, base_key
 
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
@@ -271,13 +272,24 @@ class Model_Seeder:
         atomically (see Database_Seeder.resync_remote_catalog) — no add/commit here.
         """
         out: List[Llm] = []
+        tag = getattr(config.LLM_Engine, "FORMAT_TAG", None)
         for model_config in models:
+            # Resolve the base id to its public engine-format quant (no hand mapping).
+            # No quant for this engine → the model simply isn't offered here.
             try:
-                out.append(self._create_base_llm(model_config))
+                quant_link = resolve_quant(model_config.link, tag, self.hf_api)
+            except Exception as e:
+                logger.warning(f"resolve_quant failed for {model_config.link}: {e}")
+                quant_link = None
+            if not quant_link:
+                logger.info(f"No {tag} quant for {model_config.link} — skipping on this engine")
+                continue
+            try:
+                out.append(self._create_base_llm(model_config, quant_link))
             except HuggingFaceAPIException as e:
                 logger.warning(f"HF metadata failed for {model_config.link}, using fallback: {e}")
                 try:
-                    out.append(self._create_base_llm_fallback(model_config))
+                    out.append(self._create_base_llm_fallback(model_config, quant_link))
                 except Exception as fe:
                     logger.error(f"Fallback build failed for {model_config.link}: {fe}")
             except Exception as e:
@@ -312,9 +324,9 @@ class Model_Seeder:
         added_count = 0
         
         for model_data in fallback_models:
-            # Dedup by resolved (stable) link, not the slug-derived display name.
-            quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_data['link'])
-            actual_link = quant_link or model_data['link']
+            # Offline: there is no HF to resolve a quant, so seed the bundled link
+            # as-is (the offline JSON should already carry resolved quant links).
+            actual_link = model_data['link']
             if self._link_exists(actual_link):
                 logger.debug(f"Skipping existing model: {actual_link}")
                 continue
@@ -352,10 +364,9 @@ class Model_Seeder:
         Returns:
             Llm: Entity ready to be added to database.
         """
-        # Determine quantization
-        quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_data['link'])
-        is_quantized = quant_link is not None
-        actual_link = quant_link if is_quantized else model_data['link']
+        # Offline: use the bundled link + flag as-is (no HF resolution available).
+        actual_link = model_data['link']
+        is_quantized = bool(model_data.get('quantized', False))
         
         # Use embedded metadata and param_size from JSON
         return Llm(
@@ -397,16 +408,18 @@ class Model_Seeder:
                 checked += 1
                 if not self._passes_quality_filters(model_info):
                     continue
-                if model_info.modelId in seen:
+                # Dedup by normalized key so the same finetune from two quanters
+                # (bartowski/Foo-GGUF vs mradermacher/Foo-GGUF) appears once.
+                mkey = base_key(model_info.modelId)
+                if mkey in seen:
                     continue
-                # Only surface what THIS engine can actually run — never store a
-                # banned entry (the search may return format-tagged-but-not-named
-                # repos that the runnability heuristic can't confirm).
+                # Runnable by construction (came from filter=FORMAT_TAG); only drop
+                # the rare KNOWN_BROKEN load-crashers.
                 if not config.LLM_Engine.is_runnable(model_info.modelId):
                     continue
                 try:
                     out.append(self._create_derived_llm(model_info, search_config))
-                    seen.add(model_info.modelId)
+                    seen.add(mkey)
                     added += 1
                 except Exception as e:
                     logger.warning(f"Failed to build derived {model_info.modelId}: {e}")
@@ -416,87 +429,52 @@ class Model_Seeder:
         """Check if model already exists by link."""
         return self.db.query(Llm).filter(Llm.link == link).first() is not None
     
-    def _create_base_llm(self, model_config: Model_Config) -> Llm:
-        """Create base LLM entity with full metadata."""
-        # Determine quantization
-        quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_config.link)
-        is_quantized = quant_link is not None
-        actual_link = quant_link if is_quantized else model_config.link
-        
-        # Fetch metadata
+    def _create_base_llm(self, model_config: Model_Config, quant_link: str) -> Llm:
+        """Create a base LLM entity (full metadata) for a resolved engine-format quant.
+
+        `quant_link` is the public quant the resolver found for `model_config.link`;
+        the display name stays derived from the clean base id.
+        """
         model_info = self.hf_api.model_info(model_config.link)
-        
-        # Calculate size
-        if is_quantized:
-            size_estimate = get_disk_size_after_quant(quant_link)
-        else:
-            size_estimate = get_model_size_estimate(
-                model_config.name,
-                model_config.link
-            )
-        
-        # Extract parameters
-        param_size = self._extract_param_size(
-            model_config.name,
-            model_config.link
-        )
-        
-        # Format metadata
-        metadata = format_model_info_metadata(
-            model_info,
-            size_estimate,
-            is_quantized
-        )
-        
+        size_estimate = get_disk_size_after_quant(quant_link)
+        param_size = self._extract_param_size(model_config.name, model_config.link)
+        metadata = format_model_info_metadata(model_info, size_estimate, True)
+
         return Llm(
             name=humanize_model_name(model_config.link),
             local=0,
-            link=actual_link,
+            link=quant_link,
             type=model_config.model_type,
-            quantized=is_quantized,
+            quantized=True,
             model_metadata=metadata,
             param_size=param_size,
             # Pre-download tool-calling detection from the HF chat template (#86):
             # lets the catalog recommend agentic models before they are downloaded.
-            supports_tools=tool_capability_from_hf_repo(actual_link),
+            supports_tools=tool_capability_from_hf_repo(quant_link),
         )
     
-    def _create_base_llm_fallback(self, model_config: Model_Config) -> Llm:
-        """Create base LLM with fallback metadata (no HF API call)."""
-        quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_config.link)
-        is_quantized = quant_link is not None
-        actual_link = quant_link if is_quantized else model_config.link
-        
-        if is_quantized:
-            size_estimate = get_disk_size_after_quant(quant_link)
-        else:
-            size_estimate = get_model_size_estimate(
-                model_config.name,
-                model_config.link
-            )
-        
-        param_size = self._extract_param_size(
-            model_config.name,
-            model_config.link
-        )
-        
+    def _create_base_llm_fallback(self, model_config: Model_Config, quant_link: str) -> Llm:
+        """Create a base LLM with fallback metadata when base HF metadata is missing."""
+        size_estimate = get_disk_size_after_quant(quant_link)
+        param_size = self._extract_param_size(model_config.name, model_config.link)
+
         fallback_metadata = (
             f"Size: {size_estimate.to_string()}\n"
             f"Model ID: {model_config.link}\n"
-            f"Quantized: {is_quantized}\n"
+            f"Quantized: True\n"
             f"Author: Unknown\n"
             f"Library: Unknown"
         )
-        
+
         return Llm(
             name=humanize_model_name(model_config.link),
             local=0,
-            link=actual_link,
+            link=quant_link,
             type=model_config.model_type,
-            quantized=is_quantized,
+            quantized=True,
             model_metadata=fallback_metadata,
             param_size=param_size,
-            supports_tools=tool_capability_from_hf_repo(actual_link),
+            supports_tools=tool_capability_from_hf_repo(quant_link),
         )
     
     def _extract_param_size(self, name: str, link: str) -> float:
@@ -571,7 +549,8 @@ class Model_Seeder:
             local=0,
             link=model_info.modelId,
             type=search_config.model_type,
-            quantized=config.LLM_Engine.is_engine_format(model_info.modelId),
+            # Came from a filter=FORMAT_TAG search → it IS an engine-format quant.
+            quantized=True,
             model_metadata=metadata,
             param_size=param_size
         )
@@ -972,8 +951,10 @@ class Database_Seeder:
         )
         # A community quant search can return the exact repo a base model already
         # maps to — drop those derived dupes so a model appears once.
-        base_links = {m.link for m in fresh_base}
-        fresh_derived = [d for d in fresh_derived if d.link not in base_links]
+        # Drop derived rows that are just another quant of a base model (same
+        # normalized slug), so each base appears once (as the curated ⭐ entry).
+        base_keys = {base_key(m.link) for m in fresh_base}
+        fresh_derived = [d for d in fresh_derived if base_key(d.link) not in base_keys]
         if not fresh_base:
             logger.warning("Resync produced no base models — keeping existing catalog")
             return {"base_models_added": 0, "derived_models_added": 0, "resynced": False}

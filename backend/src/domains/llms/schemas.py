@@ -82,11 +82,11 @@ class LLMResponse(LLMBase):
     def runnable(self) -> bool:
         """Whether this model can run on the active engine's hardware.
 
-        Computed on the fly (no DB column) because it is a property of the engine,
-        not the model: an already-downloaded model is runnable; a remote one is
-        runnable iff its link is a public quant this engine can load — gated
-        first-party ids and known-broken quants are not (see BaseEngine.is_runnable).
-        Defaults to True when the engine is unknown, so nothing is hidden by accident.
+        Computed on the fly (no DB column). The catalog is built only from repos in
+        the engine's format (filter=FORMAT_TAG), so every entry is runnable by
+        construction; the lone exception is a KNOWN_BROKEN quant that load-crashes
+        on this engine (see BaseEngine.is_runnable). Defaults to True when the engine
+        is unknown, so nothing is hidden by accident.
         """
         if self.local != 0:
             return True

@@ -47,53 +47,11 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
     _use_cuda_build: ClassVar[bool] = False
 
     # Every llama-cpp engine (CPU + CUDA) consumes pre-built **public** GGUF repos.
-    # download_llm() resolves MODEL_MAPPING[link] → GGUF repo, picks the best quant
-    # (pick_best_gguf, Q4_K_M priority) and skips local safetensors conversion. This
-    # keeps downloads token-free by construction: the gated first-party safetensors
-    # are never fetched — the equivalent community GGUF (anonymously downloadable) is.
-    # Shared here so CPU inherits it (it was defined on CUDA only, leaving CPU broken).
+    # The catalog is built by searching filter="gguf" (any author) and resolving each
+    # base id to its public GGUF repo — no hand-maintained mapping, token-free by
+    # construction (the gated first-party safetensors is never a GGUF, so never seen).
     USES_GGUF: ClassVar[bool] = True
-
-    # base HF model id → public GGUF repo (trusted quanters: bartowski / unsloth /
-    # ggml-org). Keys must match the model `link` seeded in seed.py (case-sensitive).
-    # The .gguf file is auto-selected at download time by pick_best_gguf(). All repos
-    # verified to exist, expose a Q4_K_M, and be anonymously downloadable (no token).
-    MODEL_MAPPING: ClassVar[dict] = {
-        # Gemma 3 — unsloth (bartowski has no Gemma 3 repos)
-        "google/gemma-3-270m-it":                "unsloth/gemma-3-270m-it-GGUF",
-        "google/gemma-3-1b-it":                  "unsloth/gemma-3-1b-it-GGUF",
-        "google/gemma-3-4b-it":                  "unsloth/gemma-3-4b-it-GGUF",
-        "google/gemma-3-12b-it":                 "unsloth/gemma-3-12b-it-GGUF",
-        # Gemma 2 — bartowski
-        "google/gemma-2-2b-it":                  "bartowski/gemma-2-2b-it-GGUF",
-        # Gemma 4 (arch=gemma4; ggml-org/unsloth ship GGUF → llama.cpp runs it)
-        "google/gemma-4-E2B-it":                 "unsloth/gemma-4-E2B-it-GGUF",
-        "google/gemma-4-E4B-it":                 "unsloth/gemma-4-E4B-it-GGUF",
-        "google/gemma-4-26b-a4b-it":             "bartowski/google_gemma-4-26B-A4B-it-GGUF",
-        "google/gemma-4-31b-it":                 "ggml-org/gemma-4-31B-it-GGUF",
-        # Mistral — bartowski
-        "mistralai/Mistral-7B-Instruct-v0.3":    "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
-        "mistralai/Ministral-8B-Instruct-2410":  "bartowski/Ministral-8B-Instruct-2410-GGUF",
-        "mistralai/Mistral-Nemo-Instruct-2407":  "bartowski/Mistral-Nemo-Instruct-2407-GGUF",
-        # Llama — bartowski
-        "meta-llama/Llama-3.2-3B-Instruct":      "bartowski/Llama-3.2-3B-Instruct-GGUF",
-        "meta-llama/Llama-3.1-8B-Instruct":      "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
-        "meta-llama/Llama-3-8B-Instruct":        "bartowski/Meta-Llama-3-8B-Instruct-GGUF",
-        # Qwen — bartowski text; VL runs text-only under llama.cpp
-        "Qwen/Qwen2.5-7B-Instruct":              "bartowski/Qwen2.5-7B-Instruct-GGUF",
-        "Qwen/Qwen2.5-VL-3B-Instruct":           "unsloth/Qwen2.5-VL-3B-Instruct-GGUF",
-    }
-
-    @classmethod
-    def is_engine_format(cls, link: str) -> bool:
-        """llama.cpp runs GGUF repos (community ``*-GGUF`` or any curated target)."""
-        tail = link.split("/")[-1].lower()
-        return tail.endswith("-gguf") or "gguf" in tail or link in cls.MODEL_MAPPING.values()
-
-    @classmethod
-    def community_search_kwargs(cls, term: str) -> dict:
-        """Restrict the derived search to GGUF repos (filter='gguf')."""
-        return {"filter": "gguf", "search": term}
+    FORMAT_TAG = "gguf"
 
     # ====================== Concrete shared methods ======================
     @classmethod

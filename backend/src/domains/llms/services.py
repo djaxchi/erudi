@@ -132,29 +132,6 @@ def pick_best_gguf(filenames: list[str]) -> str | None:
     return chosen
 
 
-def get_quantized_model_link(original_link: str) -> str:
-    """Resolve engine-specific quantized model link from MODEL_MAPPING if available.
-
-    Checks config.LLM_Engine.MODEL_MAPPING for a pre-quantized variant (e.g., MLX 4-bit
-    version). If found, returns the quantized link; otherwise returns original unchanged.
-
-    Args:
-        original_link: HuggingFace model ID (e.g., "meta-llama/Llama-3-8B-Instruct").
-
-    Returns:
-        Quantized model link if mapping exists, otherwise original_link.
-
-    Example:
-        >>> link = get_quantized_model_link("meta-llama/Llama-3-8B-Instruct")
-        >>> print(link)
-        "mlx-community/Meta-Llama-3-8B-Instruct-4bit"  # or original if not mapped
-    """
-    quantized_link = config.LLM_Engine.MODEL_MAPPING.get(original_link, original_link)
-    if quantized_link != original_link:
-        logger.info(f"Using quantized model: {original_link} -> {quantized_link}")
-    return quantized_link
-
-
 class DownloadTracker:
     """Thread-safe progress tracker for multi-file downloads with ETA estimation.
 
@@ -326,17 +303,17 @@ async def download_files_concurrent(
     await asyncio.gather(*coros)
 
 
-def _assert_runnable(model_link: str, actual_download_link: str) -> None:
-    """Reject a download whose resolved target won't run on the active engine.
+def _assert_runnable(model_link: str) -> None:
+    """Reject a download for a KNOWN_BROKEN quant up front.
 
-    Routing always points at a public quant; if the resolved link is still a gated
-    first-party id (mapping miss) or a KNOWN_BROKEN quant, fail up front with a clear
-    message rather than letting a 401 surface as a 500 mid-transfer.
+    Every catalog link is already a public engine-format quant (built from a
+    filter=FORMAT_TAG search), so the only thing to reject is a quant flagged as
+    crash-on-load for this engine — fail fast with a clear message.
     """
-    if not config.LLM_Engine.is_runnable(actual_download_link):
+    if not config.LLM_Engine.is_runnable(model_link):
         raise UnsupportedPlatformException(
             feature=model_link,
-            reason=f"no runnable model format is published for {config.LLM_Engine.__name__}",
+            reason=f"this model is known not to run on {config.LLM_Engine.__name__}",
         )
 
 
@@ -376,22 +353,16 @@ async def download_llm(
         ... )
         >>> # Progress tracked in DownloadJobModel(id=15), final model in backend/data/models/42
     """
-    # Resolve the repo to actually download: a curated quant for a base model,
-    # else the link itself (community/derived models are already in engine format).
-    _mapped_repo = config.LLM_Engine.MODEL_MAPPING.get(model_link)
-    actual_download_link = _mapped_repo if _mapped_repo else model_link
-    if _mapped_repo:
-        logger.info(f"Mapped repo found: {model_link} -> {_mapped_repo}")
+    # The catalog link IS already a public engine-format quant (resolved at seed
+    # time from a filter=FORMAT_TAG search), so we download it directly — no mapping.
+    actual_download_link = model_link
+    _assert_runnable(model_link)
 
-    # Runnability gate: only ever fetch a public quant THIS engine can run.
-    _assert_runnable(model_link, actual_download_link)
-
-    # Anything already in the engine's quant format (mapped base OR community quant)
-    # is pre-built → download directly, no local conversion. GGUF repos additionally
-    # need only the single best quant file picked (pick_best_gguf).
-    is_prequantized = config.LLM_Engine.is_engine_format(actual_download_link)
+    # Everything we download is a pre-built quant → no local conversion. GGUF repos
+    # additionally need only the single best quant file picked (pick_best_gguf).
+    is_prequantized = True
     _uses_gguf = getattr(config.LLM_Engine, 'USES_GGUF', False)
-    gguf_repo = actual_download_link if (_uses_gguf and is_prequantized) else None
+    gguf_repo = actual_download_link if _uses_gguf else None
 
     # Prepare local path
     os.makedirs(temp_save_dir, exist_ok=True)
