@@ -58,6 +58,7 @@ from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
+from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
 from src.core.config import get_hf_api
@@ -973,6 +974,42 @@ class Database_Seeder:
             "resynced": True,
         }
 
+    async def refresh_remote_catalog(self) -> Dict[str, Any]:
+        """Resync the remote catalog from HF in the BACKGROUND (#109).
+
+        Scheduled by the lifespan AFTER the app is ready, so boot never blocks on org
+        discovery / quant resolution (hundreds of HF calls). The resync is synchronous
+        and network-bound, so it runs in a threadpool to keep the event loop free for
+        request handling. Reconciles ``local=0`` atomically (downloaded/in-progress
+        untouched) and stamps ``last_seeded_at`` on success. Never raises into the loop.
+        """
+        return await run_in_threadpool(self._refresh_remote_catalog_sync)
+
+    def _refresh_remote_catalog_sync(self) -> Dict[str, Any]:
+        """Blocking body of refresh_remote_catalog (runs off the event loop)."""
+        db = SessionLocal()
+        try:
+            if not is_online():
+                logger.info("Background catalog refresh skipped (offline)")
+                return {"resynced": False}
+            logger.info("Background catalog refresh: resyncing from Hugging Face…")
+            model_seeder = Model_Seeder(db, get_hf_api(), offline_mode=False)
+            res = self.resync_remote_catalog(db, model_seeder)
+            if res.get("resynced"):
+                startup_vars = db.query(StartupVariables).first()
+                if startup_vars:
+                    startup_vars.models_seeded = True
+                    startup_vars.last_seeded_at = datetime.now()
+                    startup_vars.offline_mode = False
+                    db.commit()
+            logger.info(f"Background catalog refresh complete: {res}")
+            return res
+        except Exception as e:
+            logger.error(f"Background catalog refresh failed: {e}", exc_info=True)
+            return {"resynced": False, "error": str(e)}
+        finally:
+            db.close()
+
     async def populate_startup_data(
         self,
         db: Optional[Session] = None
@@ -1000,7 +1037,10 @@ class Database_Seeder:
                 "hardware_initialized": False,
                 "startup_vars_initialized": False,
                 "offline_mode": False,
-                "models_seeded": False
+                "models_seeded": False,
+                # True → the caller should schedule refresh_remote_catalog() as a
+                # background task (boot must NOT block on the HF resync, #109).
+                "needs_background_refresh": False,
             }
             
             # Initialize startup variables first
@@ -1034,31 +1074,34 @@ class Database_Seeder:
                 else:
                     logger.info(f"Skipping seed (last seeded {days_since_last_seed} days ago, threshold=3)")
             
-            # Seed models if needed
+            # Seed models if needed. The full HF resync (org discovery + quant
+            # resolution) is SLOW, so it must never block boot: online, we serve
+            # what's already in the DB (or a fast offline placeholder on first boot)
+            # and defer the resync to a background task scheduled by the caller (#109).
             if needs_seeding:
-                logger.info("Starting model seeding...")
                 online_status = is_online()
-                
+                catalog_empty = db.query(Llm).filter(Llm.local == 0).count() == 0
+
                 if online_status:
-                    logger.info("Online mode: resyncing catalog from Hugging Face API")
-                    model_seeder = Model_Seeder(db, get_hf_api(), offline_mode=False)
-                    resync = self.resync_remote_catalog(db, model_seeder)
-                    results["base_models_added"] = resync["base_models_added"]
-                    results["derived_models_added"] = resync["derived_models_added"]
+                    if catalog_empty:
+                        logger.info("Empty catalog — seeding offline placeholder before background refresh")
+                        placeholder = Model_Seeder(db, offline_mode=True)
+                        results["base_models_added"] = placeholder.seed_base_models_offline()
+                    logger.info("Online: deferring catalog resync to a background task (non-blocking boot)")
                     results["offline_mode"] = False
+                    results["needs_background_refresh"] = True
+                    # last_seeded_at is stamped by the background refresh on success.
                 else:
                     logger.warning("Offline mode: seeding from fallback JSON (base models only)")
-                    model_seeder = Model_Seeder(db, offline_mode=True)
-                    results["base_models_added"] = model_seeder.seed_base_models_offline()
-                    results["derived_models_added"] = 0  # Skip derived in offline mode
+                    if catalog_empty:
+                        model_seeder = Model_Seeder(db, offline_mode=True)
+                        results["base_models_added"] = model_seeder.seed_base_models_offline()
                     results["offline_mode"] = True
-                
-                # Update startup variables after successful seeding
-                startup_vars.models_seeded = True
-                startup_vars.last_seeded_at = datetime.now()
-                startup_vars.offline_mode = results["offline_mode"]
-                db.commit()
-                results["models_seeded"] = True
+                    startup_vars.models_seeded = True
+                    startup_vars.last_seeded_at = datetime.now()
+                    startup_vars.offline_mode = True
+                    db.commit()
+                    results["models_seeded"] = True
             else:
                 logger.info("Skipping model seeding (already seeded recently)")
                 results["offline_mode"] = startup_vars.offline_mode
@@ -1160,13 +1203,14 @@ async def create_tables() -> None:
     await seeder.create_tables()
 
 
-async def startup_populate_database() -> None:
-    """Legacy API: Populate startup data.
-    
-    Deprecated: Use Database_Seeder().populate_startup_data() instead.
+async def startup_populate_database() -> Dict[str, Any]:
+    """Populate startup data and return the result dict.
+
+    ``needs_background_refresh=True`` means the caller (lifespan) should schedule
+    ``Database_Seeder().refresh_remote_catalog()`` as a background task (#109).
     """
     seeder = Database_Seeder()
-    await seeder.populate_startup_data()
+    return await seeder.populate_startup_data()
 
 
 async def delete_all_data() -> None:

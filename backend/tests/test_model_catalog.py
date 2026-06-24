@@ -240,6 +240,58 @@ class TestRemoteCatalogResync:
         assert db.query(Llm).filter(Llm.link == "keep/me-GGUF").count() == 1
 
 
+class TestNonBlockingCatalogRefresh:
+    """refresh_remote_catalog runs the slow HF resync in the BACKGROUND (#109): it
+    never blocks boot, stamps last_seeded_at on success, and swallows errors."""
+
+    def _run(self):
+        import asyncio
+        return asyncio.run(Database_Seeder().refresh_remote_catalog())
+
+    def test_skips_when_offline(self, monkeypatch):
+        from unittest.mock import MagicMock
+        from src.database import seed as seed_mod
+        fake_db = MagicMock()
+        monkeypatch.setattr(seed_mod, "is_online", lambda: False)
+        monkeypatch.setattr(seed_mod, "SessionLocal", lambda: fake_db)
+        assert self._run() == {"resynced": False}
+        fake_db.close.assert_called_once()
+
+    def test_resyncs_and_stamps_when_online(self, monkeypatch):
+        from unittest.mock import MagicMock
+        from src.database import seed as seed_mod
+        fake_db = MagicMock()
+        sv = MagicMock()
+        fake_db.query.return_value.first.return_value = sv
+        monkeypatch.setattr(seed_mod, "is_online", lambda: True)
+        monkeypatch.setattr(seed_mod, "get_hf_api", lambda: object())
+        monkeypatch.setattr(seed_mod, "SessionLocal", lambda: fake_db)
+        monkeypatch.setattr(seed_mod, "Model_Seeder", lambda *a, **k: MagicMock())
+        monkeypatch.setattr(Database_Seeder, "resync_remote_catalog",
+                            lambda self, d, ms: {"resynced": True, "base_models_added": 5, "derived_models_added": 9})
+        res = self._run()
+        assert res["resynced"] is True
+        assert sv.models_seeded is True       # stamped on success
+        fake_db.commit.assert_called()
+        fake_db.close.assert_called_once()
+
+    def test_swallows_errors(self, monkeypatch):
+        from unittest.mock import MagicMock
+        from src.database import seed as seed_mod
+
+        def _boom(self, d, ms):
+            raise RuntimeError("boom")
+        fake_db = MagicMock()
+        monkeypatch.setattr(seed_mod, "is_online", lambda: True)
+        monkeypatch.setattr(seed_mod, "get_hf_api", lambda: object())
+        monkeypatch.setattr(seed_mod, "SessionLocal", lambda: fake_db)
+        monkeypatch.setattr(seed_mod, "Model_Seeder", lambda *a, **k: MagicMock())
+        monkeypatch.setattr(Database_Seeder, "resync_remote_catalog", _boom)
+        res = self._run()
+        assert res["resynced"] is False and "error" in res
+        fake_db.close.assert_called_once()
+
+
 class TestDownloadRunnabilityGuard:
     """download_llm rejects a KNOWN_BROKEN target up front (clear error, no crash)."""
 
