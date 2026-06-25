@@ -301,7 +301,6 @@ class TestPlaceholderSeedIsBestEffort:
         import asyncio
         from src.database import seed as seed_mod
         from src.database.seed import Llm
-        from src.core.exceptions import FileSystemException
 
         # Force the empty-catalog first-boot path.
         test_db_session.query(Llm).filter(Llm.local == 0).delete()
@@ -309,12 +308,14 @@ class TestPlaceholderSeedIsBestEffort:
 
         monkeypatch.setattr(seed_mod, "is_online", lambda: True)
 
-        class _BoomSeeder:                     # the bundled fallback JSON is "missing"
+        # No snapshot and no fallback JSON → seed_initial_catalog returns 0 (its
+        # internal best-effort, tested in test_catalog_snapshot). Boot must not crash.
+        class _EmptySeeder:
             def __init__(self, *a, **k):
                 pass
-            def seed_base_models_offline(self):
-                raise FileSystemException("Base models fallback file not found", trace="x")
-        monkeypatch.setattr(seed_mod, "Model_Seeder", _BoomSeeder)
+            def seed_initial_catalog(self):
+                return 0
+        monkeypatch.setattr(seed_mod, "Model_Seeder", _EmptySeeder)
 
         # Keep the unrelated startup steps cheap + DB-only.
         class _NoCleanup:

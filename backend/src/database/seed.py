@@ -54,7 +54,7 @@ import os
 import shutil
 import json
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -315,6 +315,40 @@ class Model_Seeder:
                     logger.error(f"Failed to build base model {model_config.link}: {e}")
         return out
     
+    def seed_from_snapshot(self) -> int:
+        """Seed the remote catalog (local=0) from the bundled build-time snapshot
+        for the active engine format (#112). Instant, zero HF calls — this is the
+        first-boot catalog. Returns the number of rows added (0 if no snapshot)."""
+        from src.database.catalog_snapshot import load_catalog_snapshot, dict_to_llm
+
+        tag = getattr(config.LLM_Engine, "FORMAT_TAG", None)
+        if not tag:
+            return 0
+        entries = load_catalog_snapshot(tag)
+        if not entries:
+            return 0
+        self.db.add_all([dict_to_llm(e) for e in entries])
+        self.db.commit()
+        logger.info(f"Seeded {len(entries)} catalog entries from the {tag} snapshot")
+        return len(entries)
+
+    def seed_initial_catalog(self) -> int:
+        """First-boot catalog: the bundled build-time snapshot if present (instant,
+        full, zero HF calls — #112), else the minimal offline fallback JSON.
+        Best-effort: returns 0 rather than raising if neither is available, so boot
+        never crashes on a missing artifact."""
+        try:
+            count = self.seed_from_snapshot()
+            if count:
+                return count
+        except Exception as e:
+            logger.warning(f"Snapshot seed skipped: {e}")
+        try:
+            return self.seed_base_models_offline()
+        except Exception as e:
+            logger.warning(f"Offline fallback seed skipped (catalog stays empty): {e}")
+            return 0
+
     def seed_base_models_offline(self) -> int:
         """Seed base models from embedded JSON fallback (offline mode).
         
@@ -939,14 +973,13 @@ class Database_Seeder:
             logger.error(f"Failed to create tables: {e}", exc_info=True)
             raise
     
-    def resync_remote_catalog(self, db: Session, model_seeder: "Model_Seeder") -> Dict[str, Any]:
-        """Atomically replace the remote catalog (local=0) with a fresh HF fetch.
+    def build_fresh_catalog(self, model_seeder: "Model_Seeder") -> Tuple[List[Llm], List[Llm]]:
+        """Fetch + build the fresh remote catalog (base + derived, deduped) from HF
+        for the active engine format. NO DB writes — returns detached Llm objects.
 
-        Reconciles our local catalog with HuggingFace (the source of truth): models
-        gone from HF disappear, new ones appear, names/metadata refresh. Downloaded
-        (local=1) and in-progress (local=2) models are NEVER touched. The HF fetch
-        runs BEFORE any delete, so a network failure leaves the existing catalog
-        intact (no empty-catalog window).
+        Shared by the runtime resync (atomic swap) and the build-time snapshot
+        generator (src/database/catalog_snapshot.py), so both produce an identical
+        catalog from the same discovery + resolver + dedup path.
         """
         fresh_base = model_seeder.build_base_models(self.FOUNDATION_ORGS)
         # Derived: one engine-format search per foundation family + a global
@@ -961,6 +994,18 @@ class Database_Seeder:
         # normalized slug), so each base appears once (as the curated ⭐ entry).
         base_keys = {base_key(m.link) for m in fresh_base}
         fresh_derived = [d for d in fresh_derived if base_key(d.link) not in base_keys]
+        return fresh_base, fresh_derived
+
+    def resync_remote_catalog(self, db: Session, model_seeder: "Model_Seeder") -> Dict[str, Any]:
+        """Atomically replace the remote catalog (local=0) with a fresh HF fetch.
+
+        Reconciles our local catalog with HuggingFace (the source of truth): models
+        gone from HF disappear, new ones appear, names/metadata refresh. Downloaded
+        (local=1) and in-progress (local=2) models are NEVER touched. The HF fetch
+        runs BEFORE any delete, so a network failure leaves the existing catalog
+        intact (no empty-catalog window).
+        """
+        fresh_base, fresh_derived = self.build_fresh_catalog(model_seeder)
         if not fresh_base:
             logger.warning("Resync produced no base models — keeping existing catalog")
             return {"base_models_added": 0, "derived_models_added": 0, "resynced": False}
@@ -1090,28 +1135,18 @@ class Database_Seeder:
 
                 if online_status:
                     if catalog_empty:
-                        # Best-effort placeholder so the UI isn't empty while the
-                        # background refresh runs. NEVER fatal: if the bundled fallback
-                        # JSON is absent the catalog just stays empty until the refresh
-                        # populates it (boot must not crash on a missing placeholder).
-                        try:
-                            placeholder = Model_Seeder(db, offline_mode=True)
-                            results["base_models_added"] = placeholder.seed_base_models_offline()
-                            logger.info("Seeded offline placeholder catalog before background refresh")
-                        except Exception as e:
-                            logger.warning(f"Placeholder catalog seed skipped: {e}")
+                        # Instant first-boot catalog from the bundled snapshot (full,
+                        # zero HF calls — #112); falls back to the minimal offline JSON.
+                        # The background refresh then reconciles with live HF.
+                        results["base_models_added"] = Model_Seeder(db, offline_mode=True).seed_initial_catalog()
                     logger.info("Online: deferring catalog resync to a background task (non-blocking boot)")
                     results["offline_mode"] = False
                     results["needs_background_refresh"] = True
                     # last_seeded_at is stamped by the background refresh on success.
                 else:
-                    logger.warning("Offline mode: seeding from fallback JSON (base models only)")
+                    logger.warning("Offline mode: seeding the bundled catalog snapshot / fallback JSON")
                     if catalog_empty:
-                        try:
-                            model_seeder = Model_Seeder(db, offline_mode=True)
-                            results["base_models_added"] = model_seeder.seed_base_models_offline()
-                        except Exception as e:
-                            logger.warning(f"Offline fallback seed skipped (catalog stays empty): {e}")
+                        results["base_models_added"] = Model_Seeder(db, offline_mode=True).seed_initial_catalog()
                     results["offline_mode"] = True
                     startup_vars.models_seeded = True
                     startup_vars.last_seeded_at = datetime.now()
