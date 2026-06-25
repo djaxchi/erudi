@@ -13,6 +13,11 @@ on:
   workflow_dispatch: {}
   schedule:
     - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+  # TEMPORARY: lets this run on the feature branch before it lands on the default
+  # branch (workflow_dispatch requires the latter). Remove before merge.
+  push:
+    branches: ["feat/catalog-build-time-snapshot"]
+    paths: [".github/workflows/catalog-snapshot.yml"]
 
 permissions:
   contents: write
