@@ -81,7 +81,6 @@ from src.utils.hf_model_metadata import (
 )
 from src.domains.hardware.repository import Hardware_Repository
 from src.domains.hardware.services import Hardware_Service
-from src.engines.tool_capability import tool_capability_from_hf_repo
 from src.engines.model_resolver import resolve_quant, base_key
 
 from src.entities.Conversation import Conversation
@@ -472,11 +471,13 @@ class Model_Seeder:
             quantized=True,
             model_metadata=metadata,
             param_size=param_size,
-            # Pre-download tool-calling detection from the HF chat template (#86):
-            # lets the catalog recommend agentic models before they are downloaded.
-            supports_tools=tool_capability_from_hf_repo(quant_link),
+            # Pre-download tool detection is intentionally NOT done here: it required
+            # downloading a tokenizer per catalog model, which is not viable at catalog
+            # scale (#113). supports_tools stays null and is computed post-download
+            # (where the tokenizer is already on disk).
+            supports_tools=None,
         )
-    
+
     def _create_base_llm_fallback(self, model_config: Model_Config, quant_link: str) -> Llm:
         """Create a base LLM with fallback metadata when base HF metadata is missing."""
         size_estimate = get_disk_size_after_quant(quant_link)
@@ -498,7 +499,8 @@ class Model_Seeder:
             quantized=True,
             model_metadata=fallback_metadata,
             param_size=param_size,
-            supports_tools=tool_capability_from_hf_repo(quant_link),
+            # Deferred to post-download (see _create_base_llm / #113).
+            supports_tools=None,
         )
     
     def _extract_param_size(self, name: str, link: str) -> float:
