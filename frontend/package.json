@@ -20,7 +20,9 @@
     "lint": "eslint src --ext .js,.jsx --fix",
     "lint:check": "eslint src --ext .js,.jsx",
     "format": "prettier --write \"src/**/*.{js,jsx,css,md}\"",
-    "format:check": "prettier --check \"src/**/*.{js,jsx,css,md}\""
+    "format:check": "prettier --check \"src/**/*.{js,jsx,css,md}\"",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "keywords": [],
   "author": "Djalil Chikhi, Rayan Hanader, Sami Taider, Youssef Chaouki, Youssef Laatar",
@@ -49,6 +51,7 @@
     "prettier": "^3.1.1",
     "style-loader": "^3.3.4",
     "tailwindcss": "^3.4.17",
+    "vitest": "^4.1.9",
     "wait-on": "^8.0.3",
     "webpack": "^5.99.9",
     "webpack-cli": "^5.1.4",

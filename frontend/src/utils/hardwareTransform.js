@@ -26,6 +26,8 @@ export function transformAppStartupInfo(data) {
       global_inference_label: "Unknown",
       raw_finetuning_score: 0,
       raw_inference_score: 0,
+      recommended_param_min: null,
+      recommended_param_max: null,
     };
   }
 
@@ -39,5 +41,8 @@ export function transformAppStartupInfo(data) {
     // Raw scores for transparency
     raw_finetuning_score: data.raw_finetuning_score,
     raw_inference_score: data.raw_inference_score,
+    // Hardware-fit model size window (billions of params) for "Models For You" (#86)
+    recommended_param_min: data.recommended_param_min,
+    recommended_param_max: data.recommended_param_max,
   };
 }
