@@ -23,11 +23,10 @@ class _Size:
 
 
 class _Engine:
-    MODEL_MAPPING: dict = {}
+    FORMAT_TAG = "gguf"
 
 
 def _stub_metadata_helpers(monkeypatch):
-    # No engine is initialized in a unit context; seed reads MODEL_MAPPING off it.
     monkeypatch.setattr(seed_mod.config, "LLM_Engine", _Engine)
     monkeypatch.setattr(seed_mod, "format_model_info_metadata", lambda *a, **k: "meta")
     monkeypatch.setattr(seed_mod, "get_model_size_estimate", lambda *a, **k: _Size())
@@ -46,11 +45,12 @@ def test_base_model_seed_sets_supports_tools_from_hf(monkeypatch):
     _stub_metadata_helpers(monkeypatch)
 
     seeder = Model_Seeder(db=None, hf_api=_FakeHF())
-    llm = seeder._create_base_llm(Model_Config("Test-7B", "org/test-7b", "test"))
+    llm = seeder._create_base_llm(Model_Config("Test-7B", "org/test-7b", "test"),
+                                  "quanter/test-7b-GGUF")
 
     assert llm.supports_tools is True
-    # Probes the actual link that would be downloaded (here unquantized == link).
-    assert captured["link"] == "org/test-7b"
+    # Probes the resolved quant repo that would actually be downloaded.
+    assert captured["link"] == "quanter/test-7b-GGUF"
 
 
 @pytest.mark.unit
@@ -61,6 +61,7 @@ def test_base_model_seed_leaves_supports_tools_none_when_unknown(monkeypatch):
     _stub_metadata_helpers(monkeypatch)
 
     seeder = Model_Seeder(db=None, hf_api=_FakeHF())
-    llm = seeder._create_base_llm(Model_Config("Test-7B", "org/test-7b", "test"))
+    llm = seeder._create_base_llm(Model_Config("Test-7B", "org/test-7b", "test"),
+                                  "quanter/test-7b-GGUF")
 
     assert llm.supports_tools is None

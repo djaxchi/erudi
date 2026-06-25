@@ -168,43 +168,8 @@ class CUDA_Engine(BaseLlamaCppEngine):
         "pcie": 32,            # Gen3 x16
     }
 
-    # Maps model alias → HuggingFace repo with pre-quantized GGUF files.
-    # All repos use bartowski's high-quality GGUF quantizations.
-    # Maps exact HuggingFace model ID → bartowski pre-quantized GGUF repo.
-    # When a model has an entry here, download_llm() will fetch the GGUF
-    # directly instead of downloading safetensors and converting locally.
-    # Keys must match the model link stored in seed.py exactly (case-sensitive).
-    # Maps exact HuggingFace model ID → pre-quantized GGUF repo.
-    # CUDA uses pre-built GGUF repos: download_llm() will call pick_best_gguf()
-    # and skip local safetensors conversion entirely.
-    USES_GGUF: bool = True
-
-    # When a model has an entry here, download_llm() fetches the GGUF directly
-    # instead of downloading safetensors and converting locally.
-    # Keys must match the model link stored in seed.py exactly (case-sensitive).
-    # All repos verified to have Q4_K_M available.
-    MODEL_MAPPING = {
-        # Gemma 3 — unsloth (bartowski has no Gemma 3 repos)
-        "google/gemma-3-270m-it":               "unsloth/gemma-3-270m-it-GGUF",
-        "google/gemma-3-1b-it":                 "unsloth/gemma-3-1b-it-GGUF",
-        "google/gemma-3-4b-it":                 "unsloth/gemma-3-4b-it-GGUF",
-        "google/gemma-3-12b-it":                "unsloth/gemma-3-12b-it-GGUF",
-        # Gemma 2 — bartowski
-        "google/gemma-2-2b-it":                 "bartowski/gemma-2-2b-it-GGUF",
-        # Gemma 4 (Gemma3n / MoE architecture) — unsloth published same day as release
-        "google/gemma-4-E2B-it":                "unsloth/gemma-4-E2B-it-GGUF",
-        "google/gemma-4-E4B-it":                "unsloth/gemma-4-E4B-it-GGUF",
-        # Mistral — bartowski
-        "mistralai/Mistral-7B-Instruct-v0.3":   "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
-        "mistralai/Ministral-8B-Instruct-2410":  "bartowski/Ministral-8B-Instruct-2410-GGUF",
-        "mistralai/Mistral-Nemo-Instruct-2407":  "bartowski/Mistral-Nemo-Instruct-2407-GGUF",
-        # Llama — bartowski
-        "meta-llama/Llama-3.2-3B-Instruct":     "bartowski/Llama-3.2-3B-Instruct-GGUF",
-        "meta-llama/Llama-3.1-8B-Instruct":     "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
-        "meta-llama/Llama-3-8B-Instruct":       "bartowski/Meta-Llama-3-8B-Instruct-GGUF",
-        # Qwen — bartowski
-        "Qwen/Qwen2.5-7B-Instruct":             "bartowski/Qwen2.5-7B-Instruct-GGUF",
-    }
+    # USES_GGUF and MODEL_MAPPING (the public-GGUF catalog) are inherited from
+    # BaseLlamaCppEngine — shared with CPU_Engine so both stay in sync.
 
     # ---------- CUDA-specific spawn hooks (BaseLlamaCppEngine contract) ----------
 

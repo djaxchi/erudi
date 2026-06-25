@@ -18,7 +18,6 @@ from src.domains.llms.repository import Llm_Repository, Download_Job_Repository
 from src.domains.llms.services import (
     DownloadTracker,
     make_callback,
-    get_quantized_model_link
 )
 from src.entities.Llm import Llm
 from src.entities.DownloadJob import DownloadJobModel
@@ -482,30 +481,6 @@ class TestDownloadCallbacks:
             
             hook(size=100, value=300)
             assert tracker.downloaded_bytes == 300
-
-
-class TestGetQuantizedModelLink:
-    """Test suite for MODEL_MAPPING resolution."""
-
-    @patch('src.domains.llms.services.config')
-    def test_returns_quantized_link_when_available(self, mock_config):
-        """Test returns quantized link from MODEL_MAPPING if available."""
-        mock_config.LLM_Engine.MODEL_MAPPING = {
-            "meta-llama/Llama-3-8B": "mlx-community/Llama-3-8B-4bit"
-        }
-        
-        result = get_quantized_model_link("meta-llama/Llama-3-8B")
-        
-        assert result == "mlx-community/Llama-3-8B-4bit"
-
-    @patch('src.domains.llms.services.config')
-    def test_returns_original_when_no_mapping(self, mock_config):
-        """Test returns original link when no mapping exists."""
-        mock_config.LLM_Engine.MODEL_MAPPING = {}
-        
-        result = get_quantized_model_link("unmapped/model")
-        
-        assert result == "unmapped/model"
 
 
 # ============ Endpoint Tests - LLM CRUD ============

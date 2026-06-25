@@ -55,13 +55,15 @@ Note:
     application crashes or is forcefully terminated.
 """
 
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from src.database.core import init_database
 from src.database.migrations import run_migrations
-from src.database.seed import startup_populate_database
+from src.database.seed import startup_populate_database, Database_Seeder
 from src.launcher.postgres_runtime import start_postgres, stop_postgres
 from src.ingestion.vector_store import close_kb_store, init_kb_store
 
@@ -230,7 +232,15 @@ async def lifespan(app: FastAPI):
     # (persisted) database — and auto-adopts pre-Alembic schemas (stamp baseline).
     await run_in_threadpool(run_migrations, app.state.postgres)
     # await delete_all_data()
-    await startup_populate_database()
+    # Fast startup data (vars, cleanup, hardware, + an offline placeholder catalog
+    # on first boot). The heavy HF catalog resync is deferred to a background task
+    # below so boot reaches `ready` immediately (#109).
+    startup_results = await startup_populate_database()
+    app.state.catalog_refresh_task = None
+    if startup_results.get("needs_background_refresh"):
+        app.state.catalog_refresh_task = asyncio.create_task(
+            Database_Seeder().refresh_remote_catalog()
+        )
     # Hybrid KB vector store (rag.kb_chunks) — AFTER the schema migration: its
     # cross-schema FKs reference the business tables.
     app.state.kb_store = init_kb_store(app.state.postgres)
@@ -242,6 +252,14 @@ async def lifespan(app: FastAPI):
     config.LLM_Engine.start_cleanup_task()
     yield
     logger.info("==== Shutting down... ====")
+    # Stop the background catalog refresh if it's still running.
+    refresh_task = getattr(app.state, "catalog_refresh_task", None)
+    if refresh_task is not None and not refresh_task.done():
+        refresh_task.cancel()
+        try:
+            await refresh_task
+        except (asyncio.CancelledError, Exception):
+            pass
     config.LLM_Engine.stop_cleanup_task()
     config.LLM_Engine.cleanup()
     await checkpointer_cm.__aexit__(None, None, None)

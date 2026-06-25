@@ -46,6 +46,13 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
     # False → `artifacts/llama-cpp/cpu/bin`, True → `artifacts/llama-cpp/cuda/bin`.
     _use_cuda_build: ClassVar[bool] = False
 
+    # Every llama-cpp engine (CPU + CUDA) consumes pre-built **public** GGUF repos.
+    # The catalog is built by searching filter="gguf" (any author) and resolving each
+    # base id to its public GGUF repo — no hand-maintained mapping, token-free by
+    # construction (the gated first-party safetensors is never a GGUF, so never seen).
+    USES_GGUF: ClassVar[bool] = True
+    FORMAT_TAG = "gguf"
+
     # ====================== Concrete shared methods ======================
     @classmethod
     def _default_install_dir(cls) -> Path:

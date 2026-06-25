@@ -98,7 +98,37 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     _cleanup_task = None
     _max_idle_time = 300  # 5 min
 
-    MODEL_MAPPING : dict = {}
+    # HF library tag identifying THIS engine's runnable format ("mlx" / "gguf").
+    # The catalog is built ONLY from repos carrying this tag (searched via
+    # filter=FORMAT_TAG), so every catalog entry is runnable by construction —
+    # no hand-maintained allowlist. Set per engine family.
+    FORMAT_TAG = None
+
+    # Stored model links that download fine but FAIL TO RUN on this engine
+    # (e.g. a quantized checkpoint the loader can't read). Overridden per engine.
+    # is_runnable() uses it to ban such models from the catalog for this hardware.
+    KNOWN_BROKEN: frozenset = frozenset()
+
+    @classmethod
+    def community_search_kwargs(cls, term: str) -> dict:
+        """`HfApi.list_models` kwargs to find models in THIS engine's runnable
+        format across ALL of HF (any author), so community fine-tunes surface and
+        are runnable by construction. Searches by the format TAG, not by org —
+        e.g. ``filter="mlx"`` catches non-mlx-community quants the org never holds.
+        An empty ``term`` is the global pass: filter by format only, ranked by
+        downloads.
+        """
+        kwargs = {"filter": cls.FORMAT_TAG}
+        if term:
+            kwargs["search"] = term
+        return kwargs
+
+    @classmethod
+    def is_runnable(cls, link: str) -> bool:
+        """Whether a catalog model (already engine-format by construction, since it
+        came from a filter=FORMAT_TAG search) can actually run. The only exclusion
+        is KNOWN_BROKEN — quants that load-crash on this engine."""
+        return link not in cls.KNOWN_BROKEN
 
     def __init__(self):
         """Prevent direct instantiation.

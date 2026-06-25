@@ -59,11 +59,10 @@ from threading import Lock
 from typing import Optional, List, Tuple
 
 from huggingface_hub import HfApi, HfFileSystem
+from huggingface_hub.utils import GatedRepoError, HfHubHTTPError
 from fsspec.callbacks import Callback
 
-from src.database.core import SessionLocal
 from src.domains.llms.repository import update_db_with_progress
-from src.entities.Llm import Llm
 
 from src.core.config import HF_TOKEN
 from src.core import config
@@ -73,6 +72,7 @@ from src.core.exceptions import (
     ModelNotFoundException,
     InvalidInputException,
     StateConflictException,
+    UnsupportedPlatformException,
 )
 
 # Environment setup
@@ -130,29 +130,6 @@ def pick_best_gguf(filenames: list[str]) -> str | None:
     chosen = sorted(ggufs)[0]
     logger.warning(f"No preferred quant found; falling back to {chosen}")
     return chosen
-
-
-def get_quantized_model_link(original_link: str) -> str:
-    """Resolve engine-specific quantized model link from MODEL_MAPPING if available.
-
-    Checks config.LLM_Engine.MODEL_MAPPING for a pre-quantized variant (e.g., MLX 4-bit
-    version). If found, returns the quantized link; otherwise returns original unchanged.
-
-    Args:
-        original_link: HuggingFace model ID (e.g., "meta-llama/Llama-3-8B-Instruct").
-
-    Returns:
-        Quantized model link if mapping exists, otherwise original_link.
-
-    Example:
-        >>> link = get_quantized_model_link("meta-llama/Llama-3-8B-Instruct")
-        >>> print(link)
-        "mlx-community/Meta-Llama-3-8B-Instruct-4bit"  # or original if not mapped
-    """
-    quantized_link = config.LLM_Engine.MODEL_MAPPING.get(original_link, original_link)
-    if quantized_link != original_link:
-        logger.info(f"Using quantized model: {original_link} -> {quantized_link}")
-    return quantized_link
 
 
 class DownloadTracker:
@@ -326,6 +303,20 @@ async def download_files_concurrent(
     await asyncio.gather(*coros)
 
 
+def _assert_runnable(model_link: str) -> None:
+    """Reject a download for a KNOWN_BROKEN quant up front.
+
+    Every catalog link is already a public engine-format quant (built from a
+    filter=FORMAT_TAG search), so the only thing to reject is a quant flagged as
+    crash-on-load for this engine — fail fast with a clear message.
+    """
+    if not config.LLM_Engine.is_runnable(model_link):
+        raise UnsupportedPlatformException(
+            feature=model_link,
+            reason=f"this model is known not to run on {config.LLM_Engine.__name__}",
+        )
+
+
 async def download_llm(
     model_link: str,
     model_id: int,
@@ -362,26 +353,17 @@ async def download_llm(
         ... )
         >>> # Progress tracked in DownloadJobModel(id=15), final model in backend/data/models/42
     """
-    # Check if model is already quantized from database
-    session = SessionLocal()
-    llm = session.query(Llm).get(model_id)
-    is_prequantized = llm.quantized if llm else False
-    session.close()
+    # The catalog link IS already a public engine-format quant (resolved at seed
+    # time from a filter=FORMAT_TAG search), so we download it directly — no mapping.
+    actual_download_link = model_link
+    _assert_runnable(model_link)
 
-    # Check if this engine uses GGUF repos (CUDA only) and has a mapping for this model.
-    # If so, download the single best GGUF directly and skip local conversion entirely.
-    # For MLX, MODEL_MAPPING points to mlx-community repos (not GGUF) — handled separately.
+    # Everything we download is a pre-built quant → no local conversion. GGUF repos
+    # additionally need only the single best quant file picked (pick_best_gguf).
+    is_prequantized = True
     _uses_gguf = getattr(config.LLM_Engine, 'USES_GGUF', False)
-    _mapped_repo = config.LLM_Engine.MODEL_MAPPING.get(model_link)
-    gguf_repo = _mapped_repo if (_uses_gguf and _mapped_repo) else None
+    gguf_repo = actual_download_link if _uses_gguf else None
 
-    if _mapped_repo:
-        logger.info(f"Mapped repo found: {model_link} -> {_mapped_repo}")
-        actual_download_link = _mapped_repo
-        is_prequantized = True
-    else:
-        actual_download_link = model_link
-    
     # Prepare local path
     os.makedirs(temp_save_dir, exist_ok=True)
     os.makedirs(final_save_dir, exist_ok=True)
@@ -484,6 +466,16 @@ async def download_llm(
 
         return temp_save_dir
 
+    except (GatedRepoError, HfHubHTTPError) as e:
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if isinstance(e, GatedRepoError) or status in (401, 403):
+            logger.error(f"Anonymous access denied for {actual_download_link}: {e}")
+            raise UnsupportedPlatformException(
+                feature=model_link,
+                reason="requires HuggingFace authentication and cannot be downloaded anonymously",
+            )
+        logger.error(f"HuggingFace error for {actual_download_link}: {e}")
+        raise
     except Exception as e:
         logger.error(f"Failed to process model: {e}")
         raise

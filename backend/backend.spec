@@ -68,6 +68,11 @@ for _af in _alembic_dir.rglob("*"):
         datas.append((str(_af), str(Path("alembic") / _af.relative_to(_alembic_dir).parent)))
 datas.append((str(spec_root / "alembic.ini"), "."))
 
+# Offline base-model fallback catalog: seed.load_base_models_fallback() reads it at
+# ROOT_DIR/src/database/base_models_fallback.json on first boot (placeholder before
+# the background HF refresh). Bundle it preserving that path, else boot can't seed.
+datas.append((str(spec_root / "src" / "database" / "base_models_fallback.json"), "src/database"))
+
 # pgserver: bundle the embedded PostgreSQL binaries (pginstall/bin). The
 # hiddenimport alone ships the Python module but NOT the postgres binaries it
 # spawns; without this the frozen backend dies at startup with a missing

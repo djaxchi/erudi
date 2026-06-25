@@ -54,10 +54,11 @@ import os
 import shutil
 import json
 from datetime import datetime
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
+from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
 from src.core.config import get_hf_api
@@ -75,11 +76,13 @@ from src.utils.hf_model_metadata import (
     get_model_size_estimate,
     format_model_info_metadata,
     extract_parameter_pattern,
+    humanize_model_name,
     ParameterScale,
 )
 from src.domains.hardware.repository import Hardware_Repository
 from src.domains.hardware.services import Hardware_Service
 from src.engines.tool_capability import tool_capability_from_hf_repo
+from src.engines.model_resolver import resolve_quant, base_key
 
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
@@ -189,8 +192,11 @@ class Search_Config:
     default_param_size: float
     
     def __post_init__(self) -> None:
-        """Validate search configuration."""
-        if not self.search_term or not self.model_type:
+        """Validate search configuration.
+
+        An empty ``search_term`` is allowed and means the *global pass*: search the
+        whole format-tagged space by downloads (no text filter)."""
+        if not self.model_type:
             raise ValueError(f"Invalid search config: {self}")
         if self.default_param_size <= 0:
             raise ValueError(f"Invalid param size: {self.default_param_size}")
@@ -198,37 +204,14 @@ class Search_Config:
 
 @dataclass(frozen=True)
 class Quality_Filters:
-    """Quality thresholds for model filtering."""
-    
+    """Popularity floor for derived/community models. Deliberately just a
+    downloads/likes threshold — NO content or keyword filtering: the catalog is
+    open to all community models (distilled, RL, uncensored…), and the format tag
+    already guarantees runnability. The floor keeps it from being all of HF, and
+    doubles as a safeguard against a mistagged repo."""
+
     min_downloads: int = 50
     min_likes: int = 5
-    interesting_tags: Tuple[str, ...] = (
-        "instruction-tuned", "chat", "conversational", "assistant",
-        "code", "math", "reasoning", "multilingual", "translation",
-        "summarization", "question-answering", "creative-writing",
-        "roleplay", "medical", "legal", "science", "education",
-        "storytelling", "dialogue", "text-generation"
-    )
-    quality_keywords: Tuple[str, ...] = (
-        "instruct", "chat", "assistant", "tuned", "fine-tuned",
-        "trained", "optimized", "enhanced", "improved"
-    )
-    skip_ids: Tuple[str, ...] = (
-        "mistral-7b-instruct-v0.3", "mistral-7b-v0.3",
-        "gemma-3-1b-it", "gemma-2-2b-it", "gemma-3-4b-it",
-        "ministral-8b-instruct-2410", "gemma-3-12b-it",
-        "mistral-nemo-instruct-2407",
-        "gemma-4-e2b-it", "gemma-4-e4b-it",
-    )
-    skip_terms: Tuple[str, ...] = (
-        "gguf", "gptq", "bnb", "4bit", "8bit", "f16", "awq",
-        "q4", "q5", "q6", "q8", "fp8", "fp16", "fp4", "sqft",
-        "quantized", "quant", "quantization", "lora", "knut",
-        "sft", "int4", "int8", "int16", "int32", "int64",
-        "peft", "test", "untrained", "checkpoint", "tmp", "temp",
-        "debug", "draft", "experiment", "eval", "benchmark",
-        "pt", "onnx", "abliterated",
-    )
 
 
 # ============ Model Seeding Service ============
@@ -261,51 +244,77 @@ class Model_Seeder:
         self.filters = quality_filters or Quality_Filters()
         self.offline_mode = offline_mode
     
-    def seed_base_models(self, models: List[Model_Config]) -> int:
-        """Seed curated base models with quantized variants.
-        
-        Args:
-            models: List of base model configurations.
-        
-        Returns:
-            Number of models successfully added.
-        
-        Raises:
-            Exception: If database commit fails.
+    # Names that mark a non-final / non-LLM artifact, excluded from org discovery.
+    _DISCOVERY_SKIP = (
+        "gguf", "-mlx", "4bit", "8bit", "gptq", "awq", "-bnb", "lora", "adapter",
+        "onnx", "-pt", "-pretrain", "draft", "embedding", "reranker", "guard",
+        "reward", "-rm", "prm", "-base",
+    )
+
+    def discover_instruct_models(self, org: str, model_type: str,
+                                 top_n: int = 12, min_downloads: int = 2000) -> List[Model_Config]:
+        """Discover an org's top text-generation models as base-catalog candidates.
+
+        Permissive by design: filters to the ``text-generation`` pipeline (drops the
+        org's CLIP / Whisper / BERT / etc.), skips quants/adapters/non-final repos,
+        dedupes by normalized slug, and caps to the most-downloaded. Anything without
+        an engine-format quant is later pruned by the resolver, so noise self-corrects.
         """
-        added_count = 0
-        
-        for model_config in models:
-            if self._model_exists(model_config.name):
-                logger.debug(f"Skipping existing model: {model_config.name}")
+        try:
+            models = list(self.hf_api.list_models(
+                author=org, filter="text-generation", sort="downloads", limit=80,
+            ))
+        except Exception as e:
+            logger.warning(f"Org discovery failed for {org}: {e}")
+            return []
+        out: List[Model_Config] = []
+        seen: set = set()
+        for m in models:
+            if (getattr(m, "downloads", 0) or 0) < min_downloads:
                 continue
-            
-            try:
-                llm = self._create_base_llm(model_config)
-                self.db.add(llm)
-                self.db.flush()  # Flush to catch DB errors early
-                added_count += 1
-                logger.info(f"Added base model: {model_config.name}")
-            except DatabaseException:
-                raise
-            except HuggingFaceAPIException as e:
-                logger.error(f"HF API error for {model_config.name}: {e}")
-                self.db.rollback()
-                # Try fallback with default metadata
+            name = m.id.split("/")[-1]
+            if any(b in name.lower() for b in self._DISCOVERY_SKIP):
+                continue
+            key = base_key(m.id)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(Model_Config(name, m.id, model_type))
+            if len(out) >= top_n:
+                break
+        return out
+
+    def build_base_models(self, orgs) -> List[Llm]:
+        """Discover each foundation org's instruct models and build (don't persist)
+        the base catalog rows, each resolved to its engine-format quant.
+
+        Per candidate: discover → resolve_quant → build. A base with no quant for the
+        active engine is skipped (simply not offered here). HF metadata failure falls
+        back to default metadata so one bad model never drops the rest. `orgs` is the
+        FOUNDATION_ORGS list of (org, family_type, search_term).
+        """
+        out: List[Llm] = []
+        tag = getattr(config.LLM_Engine, "FORMAT_TAG", None)
+        for org, model_type, _term in orgs:
+            for model_config in self.discover_instruct_models(org, model_type):
                 try:
-                    llm = self._create_base_llm_fallback(model_config)
-                    self.db.add(llm)
-                    self.db.flush()
-                    added_count += 1
-                    logger.warning(f"Added {model_config.name} with fallback metadata")
-                except DatabaseException as db_error:
-                    raise DatabaseException(
-                        f"Failed to add model {model_config.name} even with fallback",
-                        trace=str(db_error)
-                    )
-        
-        self.db.commit()
-        return added_count
+                    quant_link = resolve_quant(model_config.link, tag, self.hf_api)
+                except Exception as e:
+                    logger.warning(f"resolve_quant failed for {model_config.link}: {e}")
+                    quant_link = None
+                if not quant_link:
+                    continue
+                try:
+                    out.append(self._create_base_llm(model_config, quant_link))
+                except HuggingFaceAPIException as e:
+                    logger.warning(f"HF metadata failed for {model_config.link}, fallback: {e}")
+                    try:
+                        out.append(self._create_base_llm_fallback(model_config, quant_link))
+                    except Exception as fe:
+                        logger.error(f"Fallback build failed for {model_config.link}: {fe}")
+                except Exception as e:
+                    logger.error(f"Failed to build base model {model_config.link}: {e}")
+        return out
     
     def seed_base_models_offline(self) -> int:
         """Seed base models from embedded JSON fallback (offline mode).
@@ -335,9 +344,11 @@ class Model_Seeder:
         added_count = 0
         
         for model_data in fallback_models:
-            # Check if model already exists
-            if self._model_exists(model_data['name']):
-                logger.debug(f"Skipping existing model: {model_data['name']}")
+            # Offline: there is no HF to resolve a quant, so seed the bundled link
+            # as-is (the offline JSON should already carry resolved quant links).
+            actual_link = model_data['link']
+            if self._link_exists(actual_link):
+                logger.debug(f"Skipping existing model: {actual_link}")
                 continue
             
             try:
@@ -373,14 +384,13 @@ class Model_Seeder:
         Returns:
             Llm: Entity ready to be added to database.
         """
-        # Determine quantization
-        quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_data['link'])
-        is_quantized = quant_link is not None
-        actual_link = quant_link if is_quantized else model_data['link']
+        # Offline: use the bundled link + flag as-is (no HF resolution available).
+        actual_link = model_data['link']
+        is_quantized = bool(model_data.get('quantized', False))
         
         # Use embedded metadata and param_size from JSON
         return Llm(
-            name=model_data['name'],
+            name=humanize_model_name(model_data['link']),
             local=0,
             link=actual_link,
             type=model_data['type'],
@@ -389,124 +399,102 @@ class Model_Seeder:
             param_size=model_data['param_size']
         )
     
-    def seed_derived_models(
+    def build_derived_models(
         self,
         searches: List[Search_Config],
         top_per_search: int = 30,
-        max_checked: int = 200
-    ) -> int:
-        """Seed derived models from HuggingFace search results.
-        
-        Args:
-            searches: List of search configurations.
-            top_per_search: Maximum models to add per search.
-            max_checked: Maximum models to check per search.
-        
-        Returns:
-            Total number of models successfully added.
+        max_checked: int = 200,
+    ) -> List[Llm]:
+        """Build (do NOT persist) derived/community catalog rows from HF search.
+
+        Best-effort: a failing search is logged and skipped, never aborts the rest.
+        Returns detached Llm objects for an atomic swap (no add/commit here).
         """
-        total_added = 0
-        
+        out: List[Llm] = []
+        seen: set = set()
         for search_config in searches:
-            added = self._seed_from_search(
-                search_config,
-                top_per_search,
-                max_checked
-            )
-            total_added += added
-            self.db.commit()
-        
-        return total_added
-    
-    def _model_exists(self, name: str) -> bool:
-        """Check if model already exists by name."""
-        return self.db.query(Llm).filter(Llm.name == name).first() is not None
+            try:
+                results = self.hf_api.list_models(
+                    **config.LLM_Engine.community_search_kwargs(search_config.search_term),
+                    sort="downloads",
+                )
+            except Exception as e:
+                logger.warning(f"HF search '{search_config.search_term}' failed, skipping: {e}")
+                continue
+            added = checked = 0
+            for model_info in results:
+                if added >= top_per_search or checked >= max_checked:
+                    break
+                checked += 1
+                if not self._passes_quality_filters(model_info):
+                    continue
+                # Dedup by normalized key so the same finetune from two quanters
+                # (bartowski/Foo-GGUF vs mradermacher/Foo-GGUF) appears once.
+                mkey = base_key(model_info.modelId)
+                if mkey in seen:
+                    continue
+                # Runnable by construction (came from filter=FORMAT_TAG); only drop
+                # the rare KNOWN_BROKEN load-crashers.
+                if not config.LLM_Engine.is_runnable(model_info.modelId):
+                    continue
+                try:
+                    out.append(self._create_derived_llm(model_info, search_config))
+                    seen.add(mkey)
+                    added += 1
+                except Exception as e:
+                    logger.warning(f"Failed to build derived {model_info.modelId}: {e}")
+        return out
     
     def _link_exists(self, link: str) -> bool:
         """Check if model already exists by link."""
         return self.db.query(Llm).filter(Llm.link == link).first() is not None
     
-    def _create_base_llm(self, model_config: Model_Config) -> Llm:
-        """Create base LLM entity with full metadata."""
-        # Determine quantization
-        quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_config.link)
-        is_quantized = quant_link is not None
-        actual_link = quant_link if is_quantized else model_config.link
-        
-        # Fetch metadata
+    def _create_base_llm(self, model_config: Model_Config, quant_link: str) -> Llm:
+        """Create a base LLM entity (full metadata) for a resolved engine-format quant.
+
+        `quant_link` is the public quant the resolver found for `model_config.link`;
+        the display name stays derived from the clean base id.
+        """
         model_info = self.hf_api.model_info(model_config.link)
-        
-        # Calculate size
-        if is_quantized:
-            size_estimate = get_disk_size_after_quant(quant_link)
-        else:
-            size_estimate = get_model_size_estimate(
-                model_config.name,
-                model_config.link
-            )
-        
-        # Extract parameters
-        param_size = self._extract_param_size(
-            model_config.name,
-            model_config.link
-        )
-        
-        # Format metadata
-        metadata = format_model_info_metadata(
-            model_info,
-            size_estimate,
-            is_quantized
-        )
-        
+        size_estimate = get_disk_size_after_quant(quant_link)
+        param_size = self._extract_param_size(model_config.name, model_config.link)
+        metadata = format_model_info_metadata(model_info, size_estimate, True)
+
         return Llm(
-            name=model_config.name,
+            name=humanize_model_name(model_config.link),
             local=0,
-            link=actual_link,
+            link=quant_link,
             type=model_config.model_type,
-            quantized=is_quantized,
+            quantized=True,
             model_metadata=metadata,
             param_size=param_size,
             # Pre-download tool-calling detection from the HF chat template (#86):
             # lets the catalog recommend agentic models before they are downloaded.
-            supports_tools=tool_capability_from_hf_repo(actual_link),
+            supports_tools=tool_capability_from_hf_repo(quant_link),
         )
     
-    def _create_base_llm_fallback(self, model_config: Model_Config) -> Llm:
-        """Create base LLM with fallback metadata (no HF API call)."""
-        quant_link = config.LLM_Engine.MODEL_MAPPING.get(model_config.link)
-        is_quantized = quant_link is not None
-        actual_link = quant_link if is_quantized else model_config.link
-        
-        if is_quantized:
-            size_estimate = get_disk_size_after_quant(quant_link)
-        else:
-            size_estimate = get_model_size_estimate(
-                model_config.name,
-                model_config.link
-            )
-        
-        param_size = self._extract_param_size(
-            model_config.name,
-            model_config.link
-        )
-        
+    def _create_base_llm_fallback(self, model_config: Model_Config, quant_link: str) -> Llm:
+        """Create a base LLM with fallback metadata when base HF metadata is missing."""
+        size_estimate = get_disk_size_after_quant(quant_link)
+        param_size = self._extract_param_size(model_config.name, model_config.link)
+
         fallback_metadata = (
             f"Size: {size_estimate.to_string()}\n"
             f"Model ID: {model_config.link}\n"
-            f"Quantized: {is_quantized}\n"
+            f"Quantized: True\n"
             f"Author: Unknown\n"
             f"Library: Unknown"
         )
-        
+
         return Llm(
-            name=model_config.name,
+            name=humanize_model_name(model_config.link),
             local=0,
-            link=actual_link,
+            link=quant_link,
             type=model_config.model_type,
-            quantized=is_quantized,
+            quantized=True,
             model_metadata=fallback_metadata,
             param_size=param_size,
-            supports_tools=tool_capability_from_hf_repo(actual_link),
+            supports_tools=tool_capability_from_hf_repo(quant_link),
         )
     
     def _extract_param_size(self, name: str, link: str) -> float:
@@ -522,93 +510,15 @@ class Model_Seeder:
         # Fallback to 7B if extraction fails
         return 7.0
     
-    def _seed_from_search(
-        self,
-        search_config: Search_Config,
-        top_per_search: int,
-        max_checked: int
-    ) -> int:
-        """Seed models from a single HuggingFace search."""
-        logger.info(
-            f"Searching HF for '{search_config.search_term}' "
-            f"(top {top_per_search})..."
-        )
-        
-        added_count = 0
-        checked_count = 0
-        
-        results = self.hf_api.list_models(
-            search=search_config.search_term,
-            sort="downloads",
-        )
-        
-        for model_info in results:
-            if added_count >= top_per_search:
-                break
-            if checked_count >= max_checked:
-                break
-            
-            checked_count += 1
-            
-            # Apply filters
-            if not self._passes_quality_filters(model_info):
-                continue
-            
-            if self._link_exists(model_info.modelId):
-                continue
-            
-            # Create derived model
-            try:
-                llm = self._create_derived_llm(model_info, search_config)
-                self.db.add(llm)
-                self.db.flush()
-                added_count += 1
-                logger.info(
-                    f"  Added {model_info.modelId.split('/')[-1]} "
-                    f"({added_count}/{top_per_search}) - "
-                    f"{model_info.downloads} downloads, {model_info.likes} likes"
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Failed to add {model_info.modelId}: {e}",
-                    exc_info=True
-                )
-                continue
-        
-        logger.info(
-            f"Completed search for '{search_config.search_term}': "
-            f"added {added_count}/{checked_count} checked"
-        )
-        
-        return added_count
-    
     def _passes_quality_filters(self, model_info) -> bool:
-        """Check if model passes quality filters."""
-        # Download/like thresholds
-        if (model_info.downloads < self.filters.min_downloads or
-            model_info.likes < self.filters.min_likes):
-            return False
-        
-        # Skip IDs and terms
-        model_id_lower = model_info.modelId.lower()
-        model_name_lower = model_id_lower.split("/")[-1]
-        
-        if model_name_lower in self.filters.skip_ids:
-            return False
-        
-        if any(term in model_id_lower for term in self.filters.skip_terms):
-            return False
-        
-        # Interesting tags
-        if model_info.tags:
-            if any(tag in self.filters.interesting_tags for tag in model_info.tags):
-                return True
-        
-        # Quality keywords
-        if any(kw in model_id_lower for kw in self.filters.quality_keywords):
-            return True
-        
-        return False
+        """Keep any model above the popularity floor — nothing else.
+
+        No content/keyword/id filtering: the catalog is open to all community models
+        (distilled, RL, uncensored…), and the format tag already guarantees the model
+        is runnable. The floor just keeps the catalog from being all of HF.
+        """
+        return (model_info.downloads >= self.filters.min_downloads
+                and model_info.likes >= self.filters.min_likes)
     
     def _create_derived_llm(self, model_info, search_config: Search_Config) -> Llm:
         """Create derived LLM entity from search result."""
@@ -637,11 +547,12 @@ class Model_Seeder:
         )
         
         return Llm(
-            name=model_name,
+            name=humanize_model_name(model_info.modelId),
             local=0,
             link=model_info.modelId,
             type=search_config.model_type,
-            quantized=False,
+            # Came from a filter=FORMAT_TAG search → it IS an engine-format quant.
+            quantized=True,
             model_metadata=metadata,
             param_size=param_size
         )
@@ -973,35 +884,30 @@ class Database_Seeder:
             await seeder.populate_startup_data()
     """
     
-    # Default base models
-    DEFAULT_BASE_MODELS = [
-        Model_Config("Gemma-270M", "google/gemma-3-270m-it", "gemma"),
-        Model_Config("Gemma-1B", "google/gemma-3-1b-it", "gemma"),
-        Model_Config("Gemma-2B", "google/gemma-2-2b-it", "gemma"),
-        Model_Config("Gemma-4B", "google/gemma-3-4b-it", "gemma"),
-        Model_Config("Gemma-4-E2B", "google/gemma-4-E2B-it", "gemma"),
-        Model_Config("Gemma-4-E4B", "google/gemma-4-E4B-it", "gemma"),
-        Model_Config("Gemma-4-26B", "google/gemma-4-26b-a4b-it", "gemma"),
-        Model_Config("Gemma-4-31B", "google/gemma-4-31b-it", "gemma"),
-        Model_Config("Mistral-7B", "mistralai/Mistral-7B-Instruct-v0.3", "mistral"),
-        Model_Config("Ministral-8B", "mistralai/Ministral-8B-Instruct-2410", "mistral"),
-        Model_Config("Gemma-12B", "google/gemma-3-12b-it", "gemma"),
-        Model_Config("Mistral-Nemo-12B", "mistralai/Mistral-Nemo-Instruct-2407", "mistral"),
-    ]
-
-    # Default derived model searches
-    DEFAULT_SEARCH_CONFIGS = [
-        Search_Config("Mistral-7B v0.3", "mistral", 7.0),
-        Search_Config("Gemma 1B", "gemma", 1.0),
-        Search_Config("Gemma 2B", "gemma", 2.0),
-        Search_Config("Gemma 4B", "gemma", 4.0),
-        Search_Config("gemma-4-e2b", "gemma", 2.0),
-        Search_Config("gemma-4-e4b", "gemma", 4.0),
-        Search_Config("gemma-4-26b-a4b", "gemma", 4.0),
-        Search_Config("gemma-4-31b", "gemma", 31.0),
-        Search_Config("Ministral-8B", "mistral", 8.0),
-        Search_Config("Gemma 12B", "gemma", 12.0),
-        Search_Config("Mistral-Nemo-12B", "mistral", 12.0),
+    # Foundation publishers we watch: (HF org, family type, derived-search term).
+    # The base catalog auto-discovers each org's instruct/chat models (no hand list
+    # of model ids); the resolver maps each to its engine-format quant. A new model
+    # from a known org appears automatically; a new publisher is just one line here.
+    FOUNDATION_ORGS = [
+        ("meta-llama", "llama", "Llama"),
+        ("Qwen", "qwen", "Qwen"),
+        ("mistralai", "mistral", "Mistral"),
+        ("google", "gemma", "Gemma"),
+        ("deepseek-ai", "deepseek", "DeepSeek"),
+        ("microsoft", "phi", "Phi"),
+        ("openai", "gpt-oss", "gpt-oss"),
+        ("ibm-granite", "granite", "Granite"),
+        ("zai-org", "glm", "GLM"),
+        ("CohereLabs", "cohere", "Command"),
+        ("nvidia", "nemotron", "Nemotron"),
+        ("01-ai", "yi", "Yi"),
+        ("internlm", "internlm", "InternLM"),
+        ("tiiuae", "falcon", "Falcon"),
+        ("allenai", "olmo", "OLMo"),
+        ("HuggingFaceTB", "smollm", "SmolLM"),
+        ("openbmb", "minicpm", "MiniCPM"),
+        ("NousResearch", "hermes", "Hermes"),
+        ("OpenLLM-France", "lucie", "Lucie"),
     ]
     
     async def create_tables(self) -> None:
@@ -1027,6 +933,83 @@ class Database_Seeder:
             logger.error(f"Failed to create tables: {e}", exc_info=True)
             raise
     
+    def resync_remote_catalog(self, db: Session, model_seeder: "Model_Seeder") -> Dict[str, Any]:
+        """Atomically replace the remote catalog (local=0) with a fresh HF fetch.
+
+        Reconciles our local catalog with HuggingFace (the source of truth): models
+        gone from HF disappear, new ones appear, names/metadata refresh. Downloaded
+        (local=1) and in-progress (local=2) models are NEVER touched. The HF fetch
+        runs BEFORE any delete, so a network failure leaves the existing catalog
+        intact (no empty-catalog window).
+        """
+        fresh_base = model_seeder.build_base_models(self.FOUNDATION_ORGS)
+        # Derived: one engine-format search per foundation family + a global
+        # top-downloads pass (empty term), so popular community fine-tunes surface
+        # whether or not they carry a family name. All runnable by construction.
+        searches = [Search_Config(term, ftype, 7.0) for _org, ftype, term in self.FOUNDATION_ORGS]
+        searches.append(Search_Config("", "community", 7.0))
+        fresh_derived = model_seeder.build_derived_models(
+            searches, top_per_search=30, max_checked=200
+        )
+        # Drop derived rows that are just another quant of a base model (same
+        # normalized slug), so each base appears once (as the curated ⭐ entry).
+        base_keys = {base_key(m.link) for m in fresh_base}
+        fresh_derived = [d for d in fresh_derived if base_key(d.link) not in base_keys]
+        if not fresh_base:
+            logger.warning("Resync produced no base models — keeping existing catalog")
+            return {"base_models_added": 0, "derived_models_added": 0, "resynced": False}
+
+        # Swap: drop the old remote suggestions, insert the fresh set. Downloaded
+        # (local=1) and downloading (local=2) rows are separate and left intact.
+        db.query(Llm).filter(Llm.local == 0).delete(synchronize_session=False)
+        db.add_all(fresh_base + fresh_derived)
+        db.commit()
+        logger.info(
+            f"Remote catalog resynced: {len(fresh_base)} base + {len(fresh_derived)} derived "
+            f"(downloaded/in-progress models untouched)"
+        )
+        return {
+            "base_models_added": len(fresh_base),
+            "derived_models_added": len(fresh_derived),
+            "resynced": True,
+        }
+
+    async def refresh_remote_catalog(self) -> Dict[str, Any]:
+        """Resync the remote catalog from HF in the BACKGROUND (#109).
+
+        Scheduled by the lifespan AFTER the app is ready, so boot never blocks on org
+        discovery / quant resolution (hundreds of HF calls). The resync is synchronous
+        and network-bound, so it runs in a threadpool to keep the event loop free for
+        request handling. Reconciles ``local=0`` atomically (downloaded/in-progress
+        untouched) and stamps ``last_seeded_at`` on success. Never raises into the loop.
+        """
+        return await run_in_threadpool(self._refresh_remote_catalog_sync)
+
+    def _refresh_remote_catalog_sync(self) -> Dict[str, Any]:
+        """Blocking body of refresh_remote_catalog (runs off the event loop)."""
+        db = SessionLocal()
+        try:
+            if not is_online():
+                logger.info("Background catalog refresh skipped (offline)")
+                return {"resynced": False}
+            logger.info("Background catalog refresh: resyncing from Hugging Face…")
+            model_seeder = Model_Seeder(db, get_hf_api(), offline_mode=False)
+            res = self.resync_remote_catalog(db, model_seeder)
+            if res.get("resynced"):
+                startup_vars = db.query(StartupVariables).first()
+                if startup_vars:
+                    startup_vars.models_seeded = True
+                    startup_vars.last_seeded_at = datetime.now()
+                    startup_vars.offline_mode = False
+                    db.commit()
+            logger.info(f"Background catalog refresh complete: {res}")
+            return res
+        except Exception as e:
+            logger.error(f"Background catalog refresh failed: {e}", exc_info=True)
+            return {"resynced": False, "error": str(e)}
+        finally:
+            db.close()
+
     async def populate_startup_data(
         self,
         db: Optional[Session] = None
@@ -1054,7 +1037,10 @@ class Database_Seeder:
                 "hardware_initialized": False,
                 "startup_vars_initialized": False,
                 "offline_mode": False,
-                "models_seeded": False
+                "models_seeded": False,
+                # True → the caller should schedule refresh_remote_catalog() as a
+                # background task (boot must NOT block on the HF resync, #109).
+                "needs_background_refresh": False,
             }
             
             # Initialize startup variables first
@@ -1088,36 +1074,44 @@ class Database_Seeder:
                 else:
                     logger.info(f"Skipping seed (last seeded {days_since_last_seed} days ago, threshold=3)")
             
-            # Seed models if needed
+            # Seed models if needed. The full HF resync (org discovery + quant
+            # resolution) is SLOW, so it must never block boot: online, we serve
+            # what's already in the DB (or a fast offline placeholder on first boot)
+            # and defer the resync to a background task scheduled by the caller (#109).
             if needs_seeding:
-                logger.info("Starting model seeding...")
                 online_status = is_online()
-                
+                catalog_empty = db.query(Llm).filter(Llm.local == 0).count() == 0
+
                 if online_status:
-                    logger.info("Online mode: seeding from Hugging Face API")
-                    model_seeder = Model_Seeder(db, get_hf_api(), offline_mode=False)
-                    results["base_models_added"] = model_seeder.seed_base_models(
-                        self.DEFAULT_BASE_MODELS
-                    )
-                    results["derived_models_added"] = model_seeder.seed_derived_models(
-                        self.DEFAULT_SEARCH_CONFIGS,
-                        top_per_search=30,
-                        max_checked=200
-                    )
+                    if catalog_empty:
+                        # Best-effort placeholder so the UI isn't empty while the
+                        # background refresh runs. NEVER fatal: if the bundled fallback
+                        # JSON is absent the catalog just stays empty until the refresh
+                        # populates it (boot must not crash on a missing placeholder).
+                        try:
+                            placeholder = Model_Seeder(db, offline_mode=True)
+                            results["base_models_added"] = placeholder.seed_base_models_offline()
+                            logger.info("Seeded offline placeholder catalog before background refresh")
+                        except Exception as e:
+                            logger.warning(f"Placeholder catalog seed skipped: {e}")
+                    logger.info("Online: deferring catalog resync to a background task (non-blocking boot)")
                     results["offline_mode"] = False
+                    results["needs_background_refresh"] = True
+                    # last_seeded_at is stamped by the background refresh on success.
                 else:
                     logger.warning("Offline mode: seeding from fallback JSON (base models only)")
-                    model_seeder = Model_Seeder(db, offline_mode=True)
-                    results["base_models_added"] = model_seeder.seed_base_models_offline()
-                    results["derived_models_added"] = 0  # Skip derived in offline mode
+                    if catalog_empty:
+                        try:
+                            model_seeder = Model_Seeder(db, offline_mode=True)
+                            results["base_models_added"] = model_seeder.seed_base_models_offline()
+                        except Exception as e:
+                            logger.warning(f"Offline fallback seed skipped (catalog stays empty): {e}")
                     results["offline_mode"] = True
-                
-                # Update startup variables after successful seeding
-                startup_vars.models_seeded = True
-                startup_vars.last_seeded_at = datetime.now()
-                startup_vars.offline_mode = results["offline_mode"]
-                db.commit()
-                results["models_seeded"] = True
+                    startup_vars.models_seeded = True
+                    startup_vars.last_seeded_at = datetime.now()
+                    startup_vars.offline_mode = True
+                    db.commit()
+                    results["models_seeded"] = True
             else:
                 logger.info("Skipping model seeding (already seeded recently)")
                 results["offline_mode"] = startup_vars.offline_mode
@@ -1219,13 +1213,14 @@ async def create_tables() -> None:
     await seeder.create_tables()
 
 
-async def startup_populate_database() -> None:
-    """Legacy API: Populate startup data.
-    
-    Deprecated: Use Database_Seeder().populate_startup_data() instead.
+async def startup_populate_database() -> Dict[str, Any]:
+    """Populate startup data and return the result dict.
+
+    ``needs_background_refresh=True`` means the caller (lifespan) should schedule
+    ``Database_Seeder().refresh_remote_catalog()`` as a background task (#109).
     """
     seeder = Database_Seeder()
-    await seeder.populate_startup_data()
+    return await seeder.populate_startup_data()
 
 
 async def delete_all_data() -> None:

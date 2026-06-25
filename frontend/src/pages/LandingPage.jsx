@@ -145,6 +145,7 @@ export default function LandingPage() {
               pipeline: metadata.pipeline || "Unknown",
               likes: metadata.likes || "Unknown",
               description: model.description,
+              runnable: model.runnable !== false,
               metadata: metadata,
               rawMetadata: model.model_metadata,
             };

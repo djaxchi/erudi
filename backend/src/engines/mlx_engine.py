@@ -106,27 +106,16 @@ class MLX_Engine(BaseChatServerEngine):
     """Singleton Engine for MLX models and tokenizers runtimes.
     Built for Apple Silicon Backends.
     """
-    # Mapping of original model links to MLX-quantized versions (same as in llm_downloader.py)
-    MODEL_MAPPING : dict = {
-        "google/gemma-3-270m-it":              "mlx-community/gemma-3-270m-it-4bit",
-        "google/gemma-3-1b-it":                "mlx-community/gemma-3-1b-it-4bit",
-        "google/gemma-3-4b-it":                "mlx-community/gemma-3-4b-it-4bit",
-        "google/gemma-3-12b-it":               "mlx-community/gemma-3-12b-it-4bit",
-        "google/gemma-2-2b-it":                "mlx-community/gemma-2-2b-it-4bit",
-        "google/gemma-4-E2B-it":               "mlx-community/gemma-4-e2b-it-4bit",
-        "google/gemma-4-E4B-it":               "mlx-community/gemma-4-e4b-it-4bit",
-        "mistralai/Mistral-7B-Instruct-v0.3":  "mlx-community/Mistral-7B-Instruct-v0.3-4bit",
-        "mistralai/Mistral-7B-v0.3":           "mlx-community/Mistral-7B-v0.3-4bit",
-        "mistralai/Ministral-8B-Instruct-2410": "mlx-community/Ministral-8B-Instruct-2410-4bit",
-        "mistralai/Mistral-Nemo-Instruct-2407": "mlx-community/Mistral-Nemo-Instruct-2407-4bit",
-        "meta-llama/Llama-3.2-3B-Instruct":    "mlx-community/Llama-3.2-3B-Instruct-4bit",
-        "meta-llama/Llama-3.1-8B-Instruct":    "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit",
-        "meta-llama/Llama-3-8B-Instruct":      "mlx-community/Meta-Llama-3-8B-Instruct-4bit",
-        "Qwen/Qwen2.5-7B-Instruct":            "mlx-community/Qwen2.5-7B-Instruct-4bit",
-        "Qwen/Qwen2.5-VL-3B-Instruct":         "mlx-community/Qwen2.5-VL-3B-Instruct-4bit",
-        "google/gemma-4-26b-a4b-it":           "mlx-community/gemma-4-26b-a4b-it-4bit",
-        "google/gemma-4-31b-it":               "mlx-community/gemma-4-31b-it-4bit",
-    }
+    # MLX models on HF carry the "mlx" library tag; the catalog is built by
+    # searching filter="mlx" (any author), so no hand-maintained mapping is needed.
+    FORMAT_TAG = "mlx"
+
+    # Stored links that download but crash at load on mlx-vlm 0.6.2.
+    KNOWN_BROKEN = frozenset({
+        # gemma-4 E2B: quantized checkpoint (0.4.3 quant, KV-sharing mismatch) that
+        # mlx-vlm 0.6.2 cannot load — 140-weight ValueError. Runs fine via GGUF.
+        "mlx-community/gemma-4-e2b-it-4bit",
+    })
 
     @classmethod
     def quant_and_save_from_hf_format(
