@@ -145,6 +145,11 @@ class HardwareAppStartupInfo(BaseModel):
     raw_finetuning_score: float = Field(..., description="Actual hardware score without boost")
     raw_inference_score: float = Field(..., description="Actual hardware score without boost")
 
+    # Hardware-fit model size window (billions of params) — drives the UI's
+    # "Models For You" recommendations (#86).
+    recommended_param_min: float = Field(..., description="Smallest recommended model size (B params)")
+    recommended_param_max: float = Field(..., description="Largest recommended model size (B params)")
+
 
 class DetailedHardwareInfo(BaseModel):
     """Comprehensive hardware profile for debugging and diagnostics.
