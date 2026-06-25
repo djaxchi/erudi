@@ -414,9 +414,13 @@ class Model_Seeder:
         seen: set = set()
         for search_config in searches:
             try:
+                # Bounded limit: get_hf_api() returns a retrying client that
+                # materializes list_models (to retry 429s that surface during lazy
+                # pagination), so an unbounded search must not be requested here.
                 results = self.hf_api.list_models(
                     **config.LLM_Engine.community_search_kwargs(search_config.search_term),
                     sort="downloads",
+                    limit=max_checked,
                 )
             except Exception as e:
                 logger.warning(f"HF search '{search_config.search_term}' failed, skipping: {e}")
