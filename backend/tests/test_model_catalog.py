@@ -292,6 +292,51 @@ class TestNonBlockingCatalogRefresh:
         fake_db.close.assert_called_once()
 
 
+class TestPlaceholderSeedIsBestEffort:
+    """A missing/broken offline fallback JSON must NOT crash boot (#109). The
+    first-boot placeholder is best-effort; online, the background refresh fills the
+    catalog. Regression: the packaged backend lacked the JSON and boot crashed."""
+
+    def test_online_first_boot_tolerates_missing_fallback(self, test_db_session, monkeypatch):
+        import asyncio
+        from src.database import seed as seed_mod
+        from src.database.seed import Llm
+        from src.core.exceptions import FileSystemException
+
+        # Force the empty-catalog first-boot path.
+        test_db_session.query(Llm).filter(Llm.local == 0).delete()
+        test_db_session.commit()
+
+        monkeypatch.setattr(seed_mod, "is_online", lambda: True)
+
+        class _BoomSeeder:                     # the bundled fallback JSON is "missing"
+            def __init__(self, *a, **k):
+                pass
+            def seed_base_models_offline(self):
+                raise FileSystemException("Base models fallback file not found", trace="x")
+        monkeypatch.setattr(seed_mod, "Model_Seeder", _BoomSeeder)
+
+        # Keep the unrelated startup steps cheap + DB-only.
+        class _NoCleanup:
+            def __init__(self, *a, **k):
+                pass
+            def cleanup_all_unfinished_jobs(self):
+                return {}
+
+        class _NoHw:
+            def __init__(self, *a, **k):
+                pass
+            def initialize_if_needed(self):
+                return False
+        monkeypatch.setattr(seed_mod, "Job_Cleanup_Service", _NoCleanup)
+        monkeypatch.setattr(seed_mod, "Hardware_Initializer", _NoHw)
+
+        # Must NOT raise — the placeholder failure is swallowed, refresh deferred.
+        res = asyncio.run(Database_Seeder().populate_startup_data(db=test_db_session))
+        assert res["needs_background_refresh"] is True
+        assert res["base_models_added"] == 0
+
+
 class TestDownloadRunnabilityGuard:
     """download_llm rejects a KNOWN_BROKEN target up front (clear error, no crash)."""
 

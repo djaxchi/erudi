@@ -1084,9 +1084,16 @@ class Database_Seeder:
 
                 if online_status:
                     if catalog_empty:
-                        logger.info("Empty catalog — seeding offline placeholder before background refresh")
-                        placeholder = Model_Seeder(db, offline_mode=True)
-                        results["base_models_added"] = placeholder.seed_base_models_offline()
+                        # Best-effort placeholder so the UI isn't empty while the
+                        # background refresh runs. NEVER fatal: if the bundled fallback
+                        # JSON is absent the catalog just stays empty until the refresh
+                        # populates it (boot must not crash on a missing placeholder).
+                        try:
+                            placeholder = Model_Seeder(db, offline_mode=True)
+                            results["base_models_added"] = placeholder.seed_base_models_offline()
+                            logger.info("Seeded offline placeholder catalog before background refresh")
+                        except Exception as e:
+                            logger.warning(f"Placeholder catalog seed skipped: {e}")
                     logger.info("Online: deferring catalog resync to a background task (non-blocking boot)")
                     results["offline_mode"] = False
                     results["needs_background_refresh"] = True
@@ -1094,8 +1101,11 @@ class Database_Seeder:
                 else:
                     logger.warning("Offline mode: seeding from fallback JSON (base models only)")
                     if catalog_empty:
-                        model_seeder = Model_Seeder(db, offline_mode=True)
-                        results["base_models_added"] = model_seeder.seed_base_models_offline()
+                        try:
+                            model_seeder = Model_Seeder(db, offline_mode=True)
+                            results["base_models_added"] = model_seeder.seed_base_models_offline()
+                        except Exception as e:
+                            logger.warning(f"Offline fallback seed skipped (catalog stays empty): {e}")
                     results["offline_mode"] = True
                     startup_vars.models_seeded = True
                     startup_vars.last_seeded_at = datetime.now()

@@ -65,6 +65,10 @@ for _af in _alembic_dir.rglob("*"):
     if _af.is_file() and "__pycache__" not in _af.parts:
         datas.append((str(_af), str(Path("alembic") / _af.relative_to(_alembic_dir).parent)))
 datas.append((str(spec_root / "alembic.ini"), "."))
+# Offline base-model fallback catalog: seed.load_base_models_fallback() reads it at
+# ROOT_DIR/src/database/base_models_fallback.json on first boot (placeholder before
+# the background HF refresh). Bundle it preserving that path, else boot can't seed.
+datas.append((str(spec_root / "src" / "database" / "base_models_fallback.json"), "src/database"))
 # Alembic loads its dialect ddl (alembic.ddl.postgresql) and other submodules
 # dynamically — collect them so the startup migration runs in the frozen build.
 hiddenimports += collect_submodules("alembic")
