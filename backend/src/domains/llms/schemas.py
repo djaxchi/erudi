@@ -76,6 +76,7 @@ class LLMResponse(LLMBase):
     quantized: Optional[bool] = False
     supports_tools: Optional[bool] = None
     param_size: Optional[float] = Field(default=4.0, gt=0, description="Parameter size must be positive")
+    is_base: bool = Field(default=False, description="True=curated foundation/base model, False=derived/community quant")
 
     @computed_field
     @property

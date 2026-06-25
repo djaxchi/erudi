@@ -34,6 +34,27 @@ from src.core.exceptions import HardwareException
 from src.core import config
 
 
+# Recommended model size window (billions of params) per UI inference tier (#86).
+# The UI shows base models whose param_size falls in [min, max] as "Models For You".
+# Thresholds apply to the boosted inference score and match the windows the frontend
+# used to hardcode — now a single, data-driven source of truth.
+_PARAM_RANGE_TIERS = (
+    (75.0, (7.0, 12.0)),
+    (50.0, (4.0, 8.0)),
+    (25.0, (2.0, 7.0)),
+)
+_PARAM_RANGE_FLOOR = (1.0, 4.0)
+
+
+def recommended_param_range(inference_score: float) -> tuple[float, float]:
+    """Recommended model size window (billions of params) for a boosted inference
+    score — drives the hardware-fit "Models For You" filter in the UI (#86)."""
+    for threshold, window in _PARAM_RANGE_TIERS:
+        if inference_score >= threshold:
+            return window
+    return _PARAM_RANGE_FLOOR
+
+
 class Hardware_Service:
     """Service layer for hardware domain business logic.
 
@@ -255,6 +276,12 @@ class Hardware_Service:
             "memory_score": profile.memory_score,
             "gpu_score": profile.gpu_score if profile.gpu_score is not None else 0.0,
         }
+
+        # Hardware-fit model size window (billions of params) for the UI's
+        # "Models For You" recommendations (#86), derived from the boosted score.
+        param_min, param_max = recommended_param_range(boosted_inf)
+        result["recommended_param_min"] = param_min
+        result["recommended_param_max"] = param_max
         
         logger.debug(
             f"Scores calculated: raw_inf={raw_inf:.1f}, boosted_inf={boosted_inf:.1f}, "

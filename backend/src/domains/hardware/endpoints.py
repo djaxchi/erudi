@@ -151,6 +151,8 @@ def get_app_startup_info(db: Session = Depends(get_db)):
             global_inference_label=scores["global_inference_label"],
             raw_finetuning_score=scores["raw_finetuning_score"],
             raw_inference_score=scores["raw_inference_score"],
+            recommended_param_min=scores["recommended_param_min"],
+            recommended_param_max=scores["recommended_param_max"],
         )
         
         db.commit()

@@ -26,6 +26,7 @@ from src.entities.Llm import Llm
 # Fields persisted per entry. ``local`` is always 0 (a remote suggestion).
 _SNAPSHOT_FIELDS = (
     "name", "link", "type", "quantized", "model_metadata", "param_size", "supports_tools",
+    "is_base",
 )
 
 
@@ -49,6 +50,8 @@ def dict_to_llm(entry: Dict[str, Any]) -> Llm:
         # Llm validates param_size > 0; snapshots always carry it, but stay defensive.
         param_size=entry.get("param_size") or 7.0,
         supports_tools=entry.get("supports_tools"),
+        # Pre-#86 snapshots predate the flag → default to derived/community.
+        is_base=entry.get("is_base", False),
     )
 
 

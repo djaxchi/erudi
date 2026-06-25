@@ -14,6 +14,7 @@ import logoErudi from "../assets/images/logos/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api";
 import { transformAppStartupInfo } from "../utils/hardwareTransform";
 import { createLogger } from "../utils/logger";
+import { splitByBase, recommendModels } from "../utils/modelCatalog";
 
 export default function LandingPage() {
   const log = createLogger("LandingPage");
@@ -146,6 +147,10 @@ export default function LandingPage() {
               likes: metadata.likes || "Unknown",
               description: model.description,
               runnable: model.runnable !== false,
+              // Backend classification + true param size drive the Base/Community
+              // split and the hardware-fit "Models For You" recommendations (#86).
+              is_base: model.is_base === true,
+              param_size: model.param_size,
               metadata: metadata,
               rawMetadata: model.model_metadata,
             };
@@ -231,83 +236,15 @@ export default function LandingPage() {
     }
   };
 
-  // Derived data from fetched models
-  const baseModelNames = [
-    "Gemma-270M",
-    "Gemma-1B",
-    "Gemma-2B",
-    "Gemma-4B",
-    "Gemma-4-E2B",
-    "Gemma-4-E4B",
-    "Mistral-7B",
-    "Ministral-8B",
-    "Gemma-12B",
-    "Mistral-Nemo-12B",
-  ];
+  // Derived data from fetched models. Base vs Community comes from the backend
+  // is_base flag, and "Models For You" from the hardware-fit param window the
+  // backend computes — no hand-maintained name list, no name-regex parsing (#86).
+  const { base: baseModels, community: communityModels } = splitByBase(remoteModels);
 
-  const baseModels = remoteModels.filter((model) => baseModelNames.includes(model.name));
-
-  const communityModels = remoteModels.filter((model) => !baseModelNames.includes(model.name));
-
-  // Filter models based on hardware inference score
-  const getRecommendedModels = () => {
-    if (!hardwareInfo) {
-      return baseModels.slice(0, 3);
-    }
-
-    const inferenceScore = hardwareInfo.global_inference_score || 0;
-
-    // Helper function to extract parameter size from model name (e.g., "7B" -> 7)
-    const getParamSize = (modelName) => {
-      const match = modelName.match(/(\d+)B/i);
-      return match ? parseInt(match[1]) : 0;
-    };
-
-    let recommendedModels = [];
-
-    if (inferenceScore >= 75) {
-      // Very Good: Show the best large models (12B, 8B, 7B)
-      recommendedModels = baseModels
-        .filter((model) => {
-          const size = getParamSize(model.name);
-          return size >= 7 && size <= 12;
-        })
-        .sort((a, b) => getParamSize(b.name) - getParamSize(a.name)) // Largest first
-        .slice(0, 3);
-    } else if (inferenceScore >= 50) {
-      // Good: Show medium-large models (8B, 7B, 4B)
-      recommendedModels = baseModels
-        .filter((model) => {
-          const size = getParamSize(model.name);
-          return size >= 4 && size <= 8;
-        })
-        .sort((a, b) => getParamSize(b.name) - getParamSize(a.name)) // Largest first
-        .slice(0, 3);
-    } else if (inferenceScore >= 25) {
-      // Medium: Show small-medium models (7B, 4B, 2B)
-      recommendedModels = baseModels
-        .filter((model) => {
-          const size = getParamSize(model.name);
-          return size >= 2 && size <= 7;
-        })
-        .sort((a, b) => getParamSize(b.name) - getParamSize(a.name)) // Largest first
-        .slice(0, 3);
-    } else {
-      // Poor: Show only the smallest models (4B, 2B, 1B)
-      recommendedModels = baseModels
-        .filter((model) => {
-          const size = getParamSize(model.name);
-          return size >= 1 && size <= 4;
-        })
-        .sort((a, b) => getParamSize(b.name) - getParamSize(a.name)) // Largest first
-        .slice(0, 3);
-    }
-
-    // Ensure we have some models, fallback to first 3 base models
-    return recommendedModels.length > 0 ? recommendedModels : baseModels.slice(0, 3);
-  };
-
-  const modelsForYou = getRecommendedModels();
+  const recommendedRange = hardwareInfo
+    ? { min: hardwareInfo.recommended_param_min, max: hardwareInfo.recommended_param_max }
+    : null;
+  const modelsForYou = recommendModels(baseModels, recommendedRange, 3);
 
   // Search functionality
   const filterModels = (models, query) => {
@@ -537,8 +474,53 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Explore Models Section */}
+          {/* Explore Models — recommendations first (#86): Models For You */}
           <section id="explore-models">
+            <div className="flex items-center gap-2 mb-4 pt-3">
+              <Star className="w-5 h-5 text-white" />
+              <h3 className="text-xl font-semibold text-white">
+                Models For You
+                {searchQuery && (
+                  <span className="text-sm text-gray-400 ml-2">
+                    ({filteredModelsForYou.length} results)
+                  </span>
+                )}
+              </h3>
+            </div>
+            <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
+              {modelsLoading ? (
+                <div className="col-span-3 text-center py-8">
+                  <div className="flex items-center justify-center">
+                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
+                    <p className="text-gray-400">Loading recommended models...</p>
+                  </div>
+                </div>
+              ) : filteredModelsForYou.length > 0 ? (
+                filteredModelsForYou.map((model) => (
+                  <ModelCard
+                    key={`foryou-${model.id}`}
+                    model={model}
+                    type="base"
+                    onDownload={handleDownload}
+                    onInfo={handleInfo}
+                  />
+                ))
+              ) : searchQuery ? (
+                <div className="col-span-3 text-center py-8">
+                  <p className="text-gray-400">
+                    No recommended models found for &quot;{searchQuery}&quot;
+                  </p>
+                </div>
+              ) : (
+                <div className="col-span-3 text-center py-8">
+                  <p className="text-gray-400">No recommended models available</p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Base Models Section */}
+          <section>
             {/* Base Models Subsection */}
             <div className="mb-6 pt-3">
               <div className="flex items-center gap-2 mb-4">
@@ -582,51 +564,6 @@ export default function LandingPage() {
                   </div>
                 )}
               </div>
-            </div>
-          </section>
-
-          {/* Models For You Section */}
-          <section>
-            <div className="flex items-center gap-2 mb-4">
-              <Star className="w-5 h-5 text-white" />
-              <h3 className="text-xl font-semibold text-white">
-                Models For You
-                {searchQuery && (
-                  <span className="text-sm text-gray-400 ml-2">
-                    ({filteredModelsForYou.length} results)
-                  </span>
-                )}
-              </h3>
-            </div>
-            <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
-              {modelsLoading ? (
-                <div className="col-span-3 text-center py-8">
-                  <div className="flex items-center justify-center">
-                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
-                    <p className="text-gray-400">Loading recommended models...</p>
-                  </div>
-                </div>
-              ) : filteredModelsForYou.length > 0 ? (
-                filteredModelsForYou.map((model) => (
-                  <ModelCard
-                    key={`foryou-${model.id}`}
-                    model={model}
-                    type="base"
-                    onDownload={handleDownload}
-                    onInfo={handleInfo}
-                  />
-                ))
-              ) : searchQuery ? (
-                <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">
-                    No recommended models found for &quot;{searchQuery}&quot;
-                  </p>
-                </div>
-              ) : (
-                <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">No recommended models available</p>
-                </div>
-              )}
             </div>
           </section>
 

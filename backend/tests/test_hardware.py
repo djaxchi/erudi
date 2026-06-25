@@ -175,6 +175,35 @@ class TestHardwareService:
         mock_profile.gpu_score = 70.0
         
         result = service.calculate_boosted_scores(mock_profile)
-        
+
         assert result["boosted_inference_score"] == 100.0  # min(85 + 20, 100)
         assert result["boosted_finetuning_score"] == 100.0  # min(90 + 20, 100)
+
+    def test_calculate_boosted_scores_includes_recommended_param_range(self, service):
+        """Boosted scores carry the hardware-fit model size window (#86)."""
+        mock_profile = Mock(spec=HardwareProfile)
+        mock_profile.global_inference_score = 65.0   # boosted 85 -> top tier (>= 75)
+        mock_profile.global_finetuning_score = 55.0
+        mock_profile.cpu_score = 40.0
+        mock_profile.memory_score = 60.0
+        mock_profile.gpu_score = 70.0
+
+        result = service.calculate_boosted_scores(mock_profile)
+
+        assert result["recommended_param_min"] == 7.0
+        assert result["recommended_param_max"] == 12.0
+
+
+@pytest.mark.parametrize("score,expected", [
+    (100.0, (7.0, 12.0)),
+    (75.0, (7.0, 12.0)),   # tier boundary
+    (74.9, (4.0, 8.0)),
+    (50.0, (4.0, 8.0)),
+    (25.0, (2.0, 7.0)),
+    (24.9, (1.0, 4.0)),
+    (0.0, (1.0, 4.0)),
+])
+def test_recommended_param_range_tiers(score, expected):
+    """The hardware-fit model size window per boosted inference score (#86)."""
+    from src.domains.hardware.services import recommended_param_range
+    assert recommended_param_range(score) == expected
