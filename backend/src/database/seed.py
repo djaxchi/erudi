@@ -429,7 +429,9 @@ class Model_Seeder:
             type=model_data['type'],
             quantized=is_quantized,
             model_metadata=model_data['model_metadata'],
-            param_size=model_data['param_size']
+            param_size=model_data['param_size'],
+            # The offline fallback seeds base models only (#86).
+            is_base=True,
         )
     
     def build_derived_models(
@@ -505,6 +507,9 @@ class Model_Seeder:
             quantized=True,
             model_metadata=metadata,
             param_size=param_size,
+            # Curated foundation model (discovered from a FOUNDATION_ORG) — drives the
+            # Base/Community split and "Models For You" recommendations in the UI (#86).
+            is_base=True,
             # Pre-download tool detection is intentionally NOT done here: it required
             # downloading a tokenizer per catalog model, which is not viable at catalog
             # scale (#113). supports_tools stays null and is computed post-download
@@ -533,6 +538,8 @@ class Model_Seeder:
             quantized=True,
             model_metadata=fallback_metadata,
             param_size=param_size,
+            # Curated foundation model — see _create_base_llm (#86).
+            is_base=True,
             # Deferred to post-download (see _create_base_llm / #113).
             supports_tools=None,
         )
@@ -594,7 +601,9 @@ class Model_Seeder:
             # Came from a filter=FORMAT_TAG search → it IS an engine-format quant.
             quantized=True,
             model_metadata=metadata,
-            param_size=param_size
+            param_size=param_size,
+            # Derived/community quant (not a curated foundation model) (#86).
+            is_base=False,
         )
 
 

@@ -71,6 +71,11 @@ class Llm(Base):
     # chat template (#84). NULL = unknown (remote/not-yet-downloaded); the
     # agent treats NULL/False as "not tool-capable" -> systematic KB path.
     supports_tools = Column(Boolean, nullable=True)
+    # Catalog classification (#86): True = curated foundation/base model (discovered
+    # from a FOUNDATION_ORG, built via _create_base_llm), False = derived/community
+    # quant. Drives the Base vs Community split and the "Models For You" hardware-fit
+    # recommendations in the UI. Remote rows only; downloaded models (local=1) ignore it.
+    is_base = Column(Boolean, default=False, nullable=False)
     param_size = Column(Float, default=4.0, nullable=False)
     is_attached_to_kb = Column(Boolean, default=False, nullable=False)
     kb_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="SET NULL"), nullable=True)
