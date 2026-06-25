@@ -4,7 +4,7 @@
   "link": "mlx-community/Llama-3.1-8B-Instruct-4bit",
   "type": "llama",
   "quantized": true,
-  "model_metadata": "Model ID: meta-llama/Llama-3.1-8B-Instruct\nAuthor: meta-llama\nCreated: 2024-07-18 08:56:00+00:00\nDownloads: 10015713 \nLikes: 6146\nLibrary: transformers\nPipeline: text-generation\nSize: ~4.2 GB\nParameters: 8B\nQuantized: True\nPrivate: False\nGated: manual\nTags: transformers, safetensors, llama, text-generation, facebook, meta, pytorch, llama-3, conversational, en...\nSHA: 0e9e39f249a16976918f6564b8830bc894c89659\nLast Modified: 2024-09-25 17:00:57+00:00",
+  "model_metadata": "Model ID: meta-llama/Llama-3.1-8B-Instruct\nAuthor: meta-llama\nCreated: 2024-07-18 08:56:00+00:00\nDownloads: 10015713 \nLikes: 6147\nLibrary: transformers\nPipeline: text-generation\nSize: ~4.2 GB\nParameters: 8B\nQuantized: True\nPrivate: False\nGated: manual\nTags: transformers, safetensors, llama, text-generation, facebook, meta, pytorch, llama-3, conversational, en...\nSHA: 0e9e39f249a16976918f6564b8830bc894c89659\nLast Modified: 2024-09-25 17:00:57+00:00",
   "param_size": 8.0,
   "supports_tools": null
  },
@@ -337,7 +337,7 @@
   "link": "mlx-community/DeepSeek-V4-Pro-4bit",
   "type": "deepseek",
   "quantized": true,
-  "model_metadata": "Model ID: deepseek-ai/DeepSeek-V4-Pro\nAuthor: deepseek-ai\nCreated: 2026-04-22 06:04:45+00:00\nDownloads: 1878217 \nLikes: 5057\nLibrary: transformers\nPipeline: text-generation\nSize: ~779.5 GB\nParameters: Unknown\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, deepseek_v4, text-generation, conversational, arxiv:2606.19348, license:mit, eval-results, endpoints_compatible, 8-bit...\nSHA: b5968e9190ef611bbf34a7229255be88a0e937c1\nLast Modified: 2026-06-22 12:12:50+00:00",
+  "model_metadata": "Model ID: deepseek-ai/DeepSeek-V4-Pro\nAuthor: deepseek-ai\nCreated: 2026-04-22 06:04:45+00:00\nDownloads: 1878217 \nLikes: 5058\nLibrary: transformers\nPipeline: text-generation\nSize: ~779.5 GB\nParameters: Unknown\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, deepseek_v4, text-generation, conversational, arxiv:2606.19348, license:mit, eval-results, endpoints_compatible, 8-bit...\nSHA: b5968e9190ef611bbf34a7229255be88a0e937c1\nLast Modified: 2026-06-22 12:12:50+00:00",
   "param_size": 7.0,
   "supports_tools": null
  },
@@ -1251,6 +1251,366 @@
   "supports_tools": null
  },
  {
+  "name": "Llama 2 7B Chat Mlx",
+  "link": "mlx-community/Llama-2-7b-chat-mlx",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Llama-2-7b-chat-mlx\nAuthor: Unknown\nCreated: 2023-12-06 15:21:20+00:00\nDownloads: 3777 \nLikes: 85\nLibrary: mlx\nPipeline: text-generation\nSize: ~14.2-17.3 GB\nParameters: 7B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, llama, facebook, meta, llama-2, text-generation, license:llama2, region:us\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 7.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Llama 4 Scout 17B 16E Instruct 4bit",
+  "link": "mlx-community/Llama-4-Scout-17B-16E-Instruct-4bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Llama-4-Scout-17B-16E-Instruct-4bit\nAuthor: Unknown\nCreated: 2025-04-06 17:48:42+00:00\nDownloads: 3348 \nLikes: 10\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~34.4-42.1 GB\nParameters: 17B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, llama4, image-text-to-text, facebook, meta, pytorch, llama, llama-4, mlx...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 17.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Llama3.3 8B Instruct Thinking Heretic Uncensored Claude 4.5 Opus High Reasoning Mlx 8Bit",
+  "link": "coderavi/Llama3.3-8B-Instruct-Thinking-Heretic-Uncensored-Claude-4.5-Opus-High-Reasoning-mlx-8Bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: coderavi/Llama3.3-8B-Instruct-Thinking-Heretic-Uncensored-Claude-4.5-Opus-High-Reasoning-mlx-8Bit\nAuthor: Unknown\nCreated: 2026-02-01 15:36:08+00:00\nDownloads: 2655 \nLikes: 10\nLibrary: transformers\nPipeline: text-generation\nSize: ~16.2-19.8 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, llama, text-generation, thinking, reasoning, instruct, heretic, uncensored, abliterated...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 8.0,
+  "supports_tools": null
+ },
+ {
+  "name": "DeepSeek R1 Distill Llama 8B 4bit",
+  "link": "mlx-community/DeepSeek-R1-Distill-Llama-8B-4bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/DeepSeek-R1-Distill-Llama-8B-4bit\nAuthor: Unknown\nCreated: 2025-01-20 22:59:59+00:00\nDownloads: 1950 \nLikes: 10\nLibrary: mlx\nPipeline: Unknown\nSize: ~16.2-19.8 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, llama, base_model:deepseek-ai/DeepSeek-R1-Distill-Llama-8B, base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Llama-8B, 4-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 8.0,
+  "supports_tools": null
+ },
+ {
+  "name": "DeepSeek R1 Distill Llama 70B 8bit",
+  "link": "mlx-community/DeepSeek-R1-Distill-Llama-70B-8bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/DeepSeek-R1-Distill-Llama-70B-8bit\nAuthor: Unknown\nCreated: 2025-01-20 18:37:02+00:00\nDownloads: 1842 \nLikes: 11\nLibrary: mlx\nPipeline: Unknown\nSize: ~141.8-173.2 GB\nParameters: 70B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, llama, base_model:deepseek-ai/DeepSeek-R1-Distill-Llama-70B, base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Llama-70B, 8-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 70.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Llama 3.2 11B Vision Instruct 8bit",
+  "link": "mlx-community/Llama-3.2-11B-Vision-Instruct-8bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Llama-3.2-11B-Vision-Instruct-8bit\nAuthor: Unknown\nCreated: 2024-10-18 08:59:57+00:00\nDownloads: 1423 \nLikes: 9\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~22.3-27.2 GB\nParameters: 11B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, mllama, image-text-to-text, llama-3, llama, meta, facebook, unsloth, mlx...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 11.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Nvidia_Llama 3.1 Nemotron 70B Instruct HF_4bit",
+  "link": "mlx-community/nvidia_Llama-3.1-Nemotron-70B-Instruct-HF_4bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/nvidia_Llama-3.1-Nemotron-70B-Instruct-HF_4bit\nAuthor: Unknown\nCreated: 2024-10-16 07:11:18+00:00\nDownloads: 943 \nLikes: 12\nLibrary: transformers\nPipeline: text-generation\nSize: ~141.8-173.2 GB\nParameters: 70B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, llama, text-generation, nvidia, llama3.1, mlx, conversational, en, dataset:nvidia/HelpSteer2...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 70.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Llama 3.2 11B Vision Instruct Abliterated",
+  "link": "mlx-community/Llama-3.2-11B-Vision-Instruct-abliterated",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Llama-3.2-11B-Vision-Instruct-abliterated\nAuthor: Unknown\nCreated: 2024-12-16 16:19:25+00:00\nDownloads: 672 \nLikes: 7\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~22.3-27.2 GB\nParameters: 11B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, mllama, image-text-to-text, facebook, meta, pytorch, llama, llama-3, abliterated...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 11.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Llama 4 Maverick 17B 16E Instruct 4bit",
+  "link": "mlx-community/Llama-4-Maverick-17B-16E-Instruct-4bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Llama-4-Maverick-17B-16E-Instruct-4bit\nAuthor: Unknown\nCreated: 2025-04-06 06:38:12+00:00\nDownloads: 598 \nLikes: 7\nLibrary: mlx\nPipeline: text-generation\nSize: ~34.4-42.1 GB\nParameters: 17B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, llama4, facebook, meta, pytorch, llama, llama-4, text-generation, conversational...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 17.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Llama 3 8B Instruct 1048k 4bit",
+  "link": "mlx-community/Llama-3-8B-Instruct-1048k-4bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Llama-3-8B-Instruct-1048k-4bit\nAuthor: Unknown\nCreated: 2024-04-29 20:13:32+00:00\nDownloads: 539 \nLikes: 25\nLibrary: mlx\nPipeline: text-generation\nSize: ~16.2-19.8 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, llama, meta, llama-3, text-generation, conversational, en, license:llama3, region:us\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 8.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Dolphin 2.9 Llama3 70B 4bit",
+  "link": "mlx-community/dolphin-2.9-llama3-70b-4bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/dolphin-2.9-llama3-70b-4bit\nAuthor: Unknown\nCreated: 2024-04-25 06:03:05+00:00\nDownloads: 518 \nLikes: 5\nLibrary: mlx\nPipeline: Unknown\nSize: ~141.8-173.2 GB\nParameters: 70B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, llama, en, dataset:cognitivecomputations/Dolphin-2.9, dataset:teknium/OpenHermes-2.5, dataset:m-a-p/CodeFeedback-Filtered-Instruction, dataset:cognitivecomputations/dolphin-coder, dataset:cognitivecomputations/samantha-data, dataset:HuggingFaceH4/ultrachat_200k...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 70.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Meta Llama Llama 4 Scout 17B 16E 4bit",
+  "link": "mlx-community/meta-llama-Llama-4-Scout-17B-16E-4bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/meta-llama-Llama-4-Scout-17B-16E-4bit\nAuthor: Unknown\nCreated: 2025-04-06 05:08:43+00:00\nDownloads: 402 \nLikes: 8\nLibrary: mlx\nPipeline: text-generation\nSize: ~34.4-42.1 GB\nParameters: 17B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, llama4, facebook, meta, pytorch, llama, llama-4, text-generation, conversational...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 17.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Llama 3.2 1B Instruct MLXTuned",
+  "link": "mlx-community/Llama-3.2-1B-Instruct-MLXTuned",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Llama-3.2-1B-Instruct-MLXTuned\nAuthor: Unknown\nCreated: 2025-01-02 16:58:18+00:00\nDownloads: 392 \nLikes: 5\nLibrary: transformers\nPipeline: text-generation\nSize: ~2.0-2.5 GB\nParameters: 1B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, llama, text-generation, facebook, meta, pytorch, llama-3, mlx, conversational...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 1.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Meta Llama 3 70B Instruct 4bit",
+  "link": "mlx-community/Meta-Llama-3-70B-Instruct-4bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Meta-Llama-3-70B-Instruct-4bit\nAuthor: Unknown\nCreated: 2024-04-18 16:16:53+00:00\nDownloads: 309 \nLikes: 7\nLibrary: mlx\nPipeline: text-generation\nSize: ~141.8-173.2 GB\nParameters: 70B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, llama, facebook, meta, pytorch, llama-3, text-generation, conversational, en...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 70.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Llama 3 Groq 8B Tool Use 4bit",
+  "link": "mlx-community/Llama-3-Groq-8B-Tool-Use-4bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Llama-3-Groq-8B-Tool-Use-4bit\nAuthor: Unknown\nCreated: 2024-07-17 18:04:02+00:00\nDownloads: 254 \nLikes: 5\nLibrary: mlx\nPipeline: text-generation\nSize: ~16.2-19.8 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, llama, facebook, meta, pytorch, llama-3, groq, tool-use, function-calling...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 8.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Meta Llama 3 70B 4bit",
+  "link": "mlx-community/Meta-Llama-3-70B-4bit",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Meta-Llama-3-70B-4bit\nAuthor: Unknown\nCreated: 2024-04-18 16:17:09+00:00\nDownloads: 171 \nLikes: 9\nLibrary: mlx\nPipeline: text-generation\nSize: ~141.8-173.2 GB\nParameters: 70B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, llama, facebook, meta, pytorch, llama-3, text-generation, en, license:other...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 70.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Llama 2 7B Mlx",
+  "link": "mlx-community/Llama-2-7b-mlx",
+  "type": "llama",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Llama-2-7b-mlx\nAuthor: Unknown\nCreated: 2023-12-06 15:58:44+00:00\nDownloads: 112 \nLikes: 13\nLibrary: mlx\nPipeline: text-generation\nSize: ~14.2-17.3 GB\nParameters: 7B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, llama, facebook, meta, llama-2, text-generation, license:llama2, region:us\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 7.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3.6 27B MLX 4bit",
+  "link": "lmstudio-community/Qwen3.6-27B-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: lmstudio-community/Qwen3.6-27B-MLX-4bit\nAuthor: Unknown\nCreated: 2026-04-22 14:24:41+00:00\nDownloads: 917628 \nLikes: 5\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~54.7-66.8 GB\nParameters: 27B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen3_5, image-text-to-text, mlx, conversational, base_model:Qwen/Qwen3.6-27B, base_model:quantized:Qwen/Qwen3.6-27B, license:apache-2.0, endpoints_compatible...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 27.0,
+  "supports_tools": null
+ },
+ {
+  "name": "DeepSeek R1 0528 Qwen3 8B MLX 4bit",
+  "link": "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-MLX-4bit\nAuthor: Unknown\nCreated: 2025-05-29 14:07:38+00:00\nDownloads: 349844 \nLikes: 12\nLibrary: mlx\nPipeline: text-generation\nSize: ~14.0-15.0 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3, text-generation, conversational, base_model:deepseek-ai/DeepSeek-R1-0528-Qwen3-8B, base_model:quantized:deepseek-ai/DeepSeek-R1-0528-Qwen3-8B, license:mit, 4-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 8.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3 Coder Next MLX 8bit",
+  "link": "lmstudio-community/Qwen3-Coder-Next-MLX-8bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: lmstudio-community/Qwen3-Coder-Next-MLX-8bit\nAuthor: Unknown\nCreated: 2026-02-02 23:59:28+00:00\nDownloads: 206038 \nLikes: 14\nLibrary: mlx\nPipeline: Unknown\nSize: ~14.0-15.0 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_next, base_model:Qwen/Qwen3-Coder-Next, base_model:quantized:Qwen/Qwen3-Coder-Next, license:apache-2.0, 8-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 8.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3 Coder 30B A3B Instruct MLX 4bit",
+  "link": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit\nAuthor: Unknown\nCreated: 2025-07-31 14:36:18+00:00\nDownloads: 191169 \nLikes: 32\nLibrary: transformers\nPipeline: text-generation\nSize: ~60.8-74.2 GB\nParameters: 30B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen3_moe, text-generation, mlx, conversational, base_model:Qwen/Qwen3-Coder-30B-A3B-Instruct, base_model:quantized:Qwen/Qwen3-Coder-30B-A3B-Instruct, license:apache-2.0, endpoints_compatible...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 30.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen2.5 14B Instruct 4bit",
+  "link": "mlx-community/Qwen2.5-14B-Instruct-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Qwen2.5-14B-Instruct-4bit\nAuthor: Unknown\nCreated: 2024-09-18 20:00:34+00:00\nDownloads: 147160 \nLikes: 11\nLibrary: mlx\nPipeline: text-generation\nSize: ~28.4-34.7 GB\nParameters: 14B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen2, chat, text-generation, conversational, en, base_model:Qwen/Qwen2.5-14B, base_model:finetune:Qwen/Qwen2.5-14B, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 14.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3 VL 4B Instruct MLX 4bit",
+  "link": "lmstudio-community/Qwen3-VL-4B-Instruct-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: lmstudio-community/Qwen3-VL-4B-Instruct-MLX-4bit\nAuthor: Unknown\nCreated: 2025-10-14 16:30:00+00:00\nDownloads: 122063 \nLikes: 7\nLibrary: mlx\nPipeline: image-text-to-text\nSize: ~8.1-9.9 GB\nParameters: 4B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_vl, image-text-to-text, conversational, base_model:Qwen/Qwen3-VL-4B-Instruct, base_model:quantized:Qwen/Qwen3-VL-4B-Instruct, license:apache-2.0, 4-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 4.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3 VL 8B Instruct MLX 8bit",
+  "link": "lmstudio-community/Qwen3-VL-8B-Instruct-MLX-8bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: lmstudio-community/Qwen3-VL-8B-Instruct-MLX-8bit\nAuthor: Unknown\nCreated: 2025-10-14 17:46:01+00:00\nDownloads: 90891 \nLikes: 5\nLibrary: mlx\nPipeline: image-text-to-text\nSize: ~14.0-15.0 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_vl, image-text-to-text, conversational, base_model:Qwen/Qwen3-VL-8B-Instruct, base_model:quantized:Qwen/Qwen3-VL-8B-Instruct, license:apache-2.0, 8-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 8.0,
+  "supports_tools": null
+ },
+ {
+  "name": "DeepSeek R1 Distill Qwen 14B 4bit",
+  "link": "mlx-community/DeepSeek-R1-Distill-Qwen-14B-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/DeepSeek-R1-Distill-Qwen-14B-4bit\nAuthor: Unknown\nCreated: 2025-01-20 17:04:09+00:00\nDownloads: 84285 \nLikes: 10\nLibrary: mlx\nPipeline: Unknown\nSize: ~28.4-34.7 GB\nParameters: 14B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen2, base_model:deepseek-ai/DeepSeek-R1-Distill-Qwen-14B, base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Qwen-14B, 4-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 14.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3 4B Thinking 2507 MLX 4bit",
+  "link": "lmstudio-community/Qwen3-4B-Thinking-2507-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: lmstudio-community/Qwen3-4B-Thinking-2507-MLX-4bit\nAuthor: Unknown\nCreated: 2025-08-06 15:21:28+00:00\nDownloads: 53492 \nLikes: 14\nLibrary: transformers\nPipeline: text-generation\nSize: ~8.1-9.9 GB\nParameters: 4B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen3, text-generation, mlx, conversational, base_model:Qwen/Qwen3-4B-Thinking-2507, base_model:quantized:Qwen/Qwen3-4B-Thinking-2507, license:apache-2.0, text-generation-inference...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 4.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3 14B MLX 4bit",
+  "link": "lmstudio-community/Qwen3-14B-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: lmstudio-community/Qwen3-14B-MLX-4bit\nAuthor: Unknown\nCreated: 2025-04-28 18:25:55+00:00\nDownloads: 52341 \nLikes: 6\nLibrary: mlx\nPipeline: text-generation\nSize: ~28.4-34.7 GB\nParameters: 14B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3, text-generation, conversational, base_model:Qwen/Qwen3-14B, base_model:quantized:Qwen/Qwen3-14B, license:apache-2.0, 4-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 14.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen2.5 Coder 32B Instruct MLX 4bit",
+  "link": "lmstudio-community/Qwen2.5-Coder-32B-Instruct-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: lmstudio-community/Qwen2.5-Coder-32B-Instruct-MLX-4bit\nAuthor: Unknown\nCreated: 2024-11-11 21:54:08+00:00\nDownloads: 48759 \nLikes: 6\nLibrary: mlx\nPipeline: text-generation\nSize: ~64.8-79.2 GB\nParameters: 32B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen2, code, codeqwen, chat, qwen, qwen-coder, text-generation, conversational...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 32.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3.5 9B 4bit",
+  "link": "mlx-community/Qwen3.5-9B-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Qwen3.5-9B-4bit\nAuthor: Unknown\nCreated: 2026-03-02 14:48:09+00:00\nDownloads: 37895 \nLikes: 11\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~18.2-22.3 GB\nParameters: 9B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen3_5, image-text-to-text, mlx, conversational, base_model:Qwen/Qwen3.5-9B-Base, base_model:quantized:Qwen/Qwen3.5-9B-Base, license:apache-2.0, endpoints_compatible...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 9.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3.5 9B PARO",
+  "link": "z-lab/Qwen3.5-9B-PARO",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: z-lab/Qwen3.5-9B-PARO\nAuthor: Unknown\nCreated: 2026-03-05 18:38:25+00:00\nDownloads: 37079 \nLikes: 52\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~18.2-22.3 GB\nParameters: 9B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen3_5, image-text-to-text, mlx, conversational, arxiv:2511.10645, base_model:Qwen/Qwen3.5-9B, base_model:quantized:Qwen/Qwen3.5-9B, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 9.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3.6 27B UD MLX NVFP4",
+  "link": "unsloth/Qwen3.6-27B-UD-MLX-NVFP4",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: unsloth/Qwen3.6-27B-UD-MLX-NVFP4\nAuthor: Unknown\nCreated: 2026-04-23 07:32:32+00:00\nDownloads: 34228 \nLikes: 10\nLibrary: mlx\nPipeline: image-text-to-text\nSize: ~54.7-66.8 GB\nParameters: 27B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_5, unsloth, qwen, image-text-to-text, conversational, base_model:Qwen/Qwen3.6-27B, base_model:quantized:Qwen/Qwen3.6-27B, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 27.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3.6 35B A3B UD MLX 4bit",
+  "link": "unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit\nAuthor: Unknown\nCreated: 2026-04-17 00:18:26+00:00\nDownloads: 33283 \nLikes: 94\nLibrary: mlx\nPipeline: image-text-to-text\nSize: ~70.9-86.6 GB\nParameters: 35B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_5_moe, unsloth, qwen, image-text-to-text, conversational, base_model:Qwen/Qwen3.6-35B-A3B, base_model:quantized:Qwen/Qwen3.6-35B-A3B, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 35.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3.5 4B MLX 4bit",
+  "link": "mlx-community/Qwen3.5-4B-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Qwen3.5-4B-MLX-4bit\nAuthor: Unknown\nCreated: 2026-03-02 14:58:24+00:00\nDownloads: 28729 \nLikes: 28\nLibrary: mlx\nPipeline: Unknown\nSize: ~8.1-9.9 GB\nParameters: 4B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_5, qwen3.5, vision-language-model, quantized, 4bit, base_model:Qwen/Qwen3.5-4B, base_model:quantized:Qwen/Qwen3.5-4B, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 4.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3.6 27B MTPLX Optimized Speed",
+  "link": "Youssofal/Qwen3.6-27B-MTPLX-Optimized-Speed",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: Youssofal/Qwen3.6-27B-MTPLX-Optimized-Speed\nAuthor: Unknown\nCreated: 2026-05-03 16:59:40+00:00\nDownloads: 28151 \nLikes: 49\nLibrary: mlx\nPipeline: text-generation\nSize: ~54.7-66.8 GB\nParameters: 27B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_5, apple-silicon, speculative-decoding, qwen, qwen3, qwen3-next, mtp, mtplx...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 27.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3 30B A3B Instruct 2507 MLX 4bit",
+  "link": "lmstudio-community/Qwen3-30B-A3B-Instruct-2507-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: lmstudio-community/Qwen3-30B-A3B-Instruct-2507-MLX-4bit\nAuthor: Unknown\nCreated: 2025-07-29 13:51:11+00:00\nDownloads: 27387 \nLikes: 8\nLibrary: transformers\nPipeline: text-generation\nSize: ~60.8-74.2 GB\nParameters: 30B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen3_moe, text-generation, mlx, conversational, base_model:Qwen/Qwen3-30B-A3B-Instruct-2507, base_model:quantized:Qwen/Qwen3-30B-A3B-Instruct-2507, license:apache-2.0, endpoints_compatible...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 30.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3.5 27B Claude 4.6 Opus Distilled MLX 4bit",
+  "link": "mlx-community/Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Qwen3.5-27B-Claude-4.6-Opus-Distilled-MLX-4bit\nAuthor: Unknown\nCreated: 2026-03-04 02:02:20+00:00\nDownloads: 23825 \nLikes: 223\nLibrary: mlx\nPipeline: Unknown\nSize: ~54.7-66.8 GB\nParameters: 27B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_5, reasoning, distilled, qwen, qwen3.5, apple-silicon, chain-of-thought, claude-4.6-opus...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 27.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3 Next 80B A3B Instruct MLX 4bit",
+  "link": "lmstudio-community/Qwen3-Next-80B-A3B-Instruct-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: lmstudio-community/Qwen3-Next-80B-A3B-Instruct-MLX-4bit\nAuthor: Unknown\nCreated: 2025-09-15 21:22:16+00:00\nDownloads: 21620 \nLikes: 7\nLibrary: transformers\nPipeline: text-generation\nSize: ~162.0-198.0 GB\nParameters: 80B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen3_next, text-generation, mlx, conversational, base_model:Qwen/Qwen3-Next-80B-A3B-Instruct, base_model:quantized:Qwen/Qwen3-Next-80B-A3B-Instruct, license:apache-2.0, endpoints_compatible...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 80.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3.5 9B OptiQ 4bit",
+  "link": "mlx-community/Qwen3.5-9B-OptiQ-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Qwen3.5-9B-OptiQ-4bit\nAuthor: Unknown\nCreated: 2026-03-05 12:04:40+00:00\nDownloads: 21531 \nLikes: 67\nLibrary: mlx\nPipeline: text-generation\nSize: ~18.2-22.3 GB\nParameters: 9B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_5, quantized, mixed-precision, 4bit, 8bit, optiq, apple-silicon, text-generation...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 9.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen3.6 40B Claude 4.6 Opus Deckard Heretic Uncensored Thinking 8bit",
+  "link": "mlx-community/Qwen3.6-40B-Claude-4.6-Opus-Deckard-Heretic-Uncensored-Thinking-8bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: mlx-community/Qwen3.6-40B-Claude-4.6-Opus-Deckard-Heretic-Uncensored-Thinking-8bit\nAuthor: Unknown\nCreated: 2026-05-02 22:17:41+00:00\nDownloads: 18990 \nLikes: 40\nLibrary: mlx\nPipeline: text-generation\nSize: ~81.0-99.0 GB\nParameters: 40B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_5, unsloth, fine tune, heretic, uncensored, abliterated, multi-stage tuned., all use cases...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 40.0,
+  "supports_tools": null
+ },
+ {
+  "name": "Qwen2.5 Coder 7B Instruct MLX 4bit",
+  "link": "lmstudio-community/Qwen2.5-Coder-7B-Instruct-MLX-4bit",
+  "type": "qwen",
+  "quantized": true,
+  "model_metadata": "Model ID: lmstudio-community/Qwen2.5-Coder-7B-Instruct-MLX-4bit\nAuthor: Unknown\nCreated: 2024-11-11 23:13:04+00:00\nDownloads: 18888 \nLikes: 6\nLibrary: mlx\nPipeline: text-generation\nSize: ~14.0-15.0 GB\nParameters: 7B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen2, code, codeqwen, chat, qwen, qwen-coder, text-generation, conversational...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 7.0,
+  "supports_tools": null
+ },
+ {
   "name": "Mistral Small 3.1 24B Instruct 2503 4bit",
   "link": "mlx-community/Mistral-Small-3.1-24B-Instruct-2503-4bit",
   "type": "mistral",
@@ -1656,24 +2016,6 @@
   "supports_tools": null
  },
  {
-  "name": "DeepSeek R1 0528 Qwen3 8B MLX 4bit",
-  "link": "lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-MLX-4bit",
-  "type": "deepseek",
-  "quantized": true,
-  "model_metadata": "Model ID: lmstudio-community/DeepSeek-R1-0528-Qwen3-8B-MLX-4bit\nAuthor: Unknown\nCreated: 2025-05-29 14:07:38+00:00\nDownloads: 349844 \nLikes: 12\nLibrary: mlx\nPipeline: text-generation\nSize: ~14.0-15.0 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3, text-generation, conversational, base_model:deepseek-ai/DeepSeek-R1-0528-Qwen3-8B, base_model:quantized:deepseek-ai/DeepSeek-R1-0528-Qwen3-8B, license:mit, 4-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 8.0,
-  "supports_tools": null
- },
- {
-  "name": "DeepSeek R1 Distill Qwen 14B 4bit",
-  "link": "mlx-community/DeepSeek-R1-Distill-Qwen-14B-4bit",
-  "type": "deepseek",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/DeepSeek-R1-Distill-Qwen-14B-4bit\nAuthor: Unknown\nCreated: 2025-01-20 17:04:09+00:00\nDownloads: 84285 \nLikes: 10\nLibrary: mlx\nPipeline: Unknown\nSize: ~28.4-34.7 GB\nParameters: 14B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen2, base_model:deepseek-ai/DeepSeek-R1-Distill-Qwen-14B, base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Qwen-14B, 4-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 14.0,
-  "supports_tools": null
- },
- {
   "name": "DeepSeek v4 Flash 2bit DQ",
   "link": "mlx-community/DeepSeek-V4-Flash-2bit-DQ",
   "type": "deepseek",
@@ -1755,30 +2097,12 @@
   "supports_tools": null
  },
  {
-  "name": "DeepSeek R1 Distill Llama 8B 4bit",
-  "link": "mlx-community/DeepSeek-R1-Distill-Llama-8B-4bit",
-  "type": "deepseek",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/DeepSeek-R1-Distill-Llama-8B-4bit\nAuthor: Unknown\nCreated: 2025-01-20 22:59:59+00:00\nDownloads: 1950 \nLikes: 10\nLibrary: mlx\nPipeline: Unknown\nSize: ~16.2-19.8 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, llama, base_model:deepseek-ai/DeepSeek-R1-Distill-Llama-8B, base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Llama-8B, 4-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 8.0,
-  "supports_tools": null
- },
- {
   "name": "DeepSeek OCR 8bit",
   "link": "mlx-community/DeepSeek-OCR-8bit",
   "type": "deepseek",
   "quantized": true,
   "model_metadata": "Model ID: mlx-community/DeepSeek-OCR-8bit\nAuthor: Unknown\nCreated: 2025-10-27 11:24:22+00:00\nDownloads: 1866 \nLikes: 36\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~16.2-19.8 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, deepseekocr, image-feature-extraction, deepseek, vision-language, ocr, custom_code, mlx, image-text-to-text...\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 8.0,
-  "supports_tools": null
- },
- {
-  "name": "DeepSeek R1 Distill Llama 70B 8bit",
-  "link": "mlx-community/DeepSeek-R1-Distill-Llama-70B-8bit",
-  "type": "deepseek",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/DeepSeek-R1-Distill-Llama-70B-8bit\nAuthor: Unknown\nCreated: 2025-01-20 18:37:02+00:00\nDownloads: 1842 \nLikes: 11\nLibrary: mlx\nPipeline: Unknown\nSize: ~141.8-173.2 GB\nParameters: 70B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, llama, base_model:deepseek-ai/DeepSeek-R1-Distill-Llama-70B, base_model:quantized:deepseek-ai/DeepSeek-R1-Distill-Llama-70B, 8-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 70.0,
   "supports_tools": null
  },
  {
@@ -2124,15 +2448,6 @@
   "supports_tools": null
  },
  {
-  "name": "Nvidia_Llama 3.1 Nemotron 70B Instruct HF_4bit",
-  "link": "mlx-community/nvidia_Llama-3.1-Nemotron-70B-Instruct-HF_4bit",
-  "type": "nemotron",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/nvidia_Llama-3.1-Nemotron-70B-Instruct-HF_4bit\nAuthor: Unknown\nCreated: 2024-10-16 07:11:18+00:00\nDownloads: 943 \nLikes: 12\nLibrary: transformers\nPipeline: text-generation\nSize: ~141.8-173.2 GB\nParameters: 70B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, llama, text-generation, nvidia, llama3.1, mlx, conversational, en, dataset:nvidia/HelpSteer2...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 70.0,
-  "supports_tools": null
- },
- {
   "name": "Nemotron Cascade 2 30B A3B 4bit",
   "link": "mlx-community/Nemotron-Cascade-2-30B-A3B-4bit",
   "type": "nemotron",
@@ -2268,15 +2583,6 @@
   "supports_tools": null
  },
  {
-  "name": "Qwen3.6 27B MLX 4bit",
-  "link": "lmstudio-community/Qwen3.6-27B-MLX-4bit",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: lmstudio-community/Qwen3.6-27B-MLX-4bit\nAuthor: Unknown\nCreated: 2026-04-22 14:24:41+00:00\nDownloads: 917628 \nLikes: 5\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~54.7-66.8 GB\nParameters: 27B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen3_5, image-text-to-text, mlx, conversational, base_model:Qwen/Qwen3.6-27B, base_model:quantized:Qwen/Qwen3.6-27B, license:apache-2.0, endpoints_compatible...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 27.0,
-  "supports_tools": null
- },
- {
   "name": "Kimi K2.5",
   "link": "mlx-community/Kimi-K2.5",
   "type": "community",
@@ -2295,57 +2601,12 @@
   "supports_tools": null
  },
  {
-  "name": "Qwen3 Coder Next MLX 8bit",
-  "link": "lmstudio-community/Qwen3-Coder-Next-MLX-8bit",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: lmstudio-community/Qwen3-Coder-Next-MLX-8bit\nAuthor: Unknown\nCreated: 2026-02-02 23:59:28+00:00\nDownloads: 206038 \nLikes: 14\nLibrary: mlx\nPipeline: Unknown\nSize: ~14.0-15.0 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_next, base_model:Qwen/Qwen3-Coder-Next, base_model:quantized:Qwen/Qwen3-Coder-Next, license:apache-2.0, 8-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 8.0,
-  "supports_tools": null
- },
- {
-  "name": "Qwen3 Coder 30B A3B Instruct MLX 4bit",
-  "link": "lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit\nAuthor: Unknown\nCreated: 2025-07-31 14:36:18+00:00\nDownloads: 191169 \nLikes: 32\nLibrary: transformers\nPipeline: text-generation\nSize: ~60.8-74.2 GB\nParameters: 30B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen3_moe, text-generation, mlx, conversational, base_model:Qwen/Qwen3-Coder-30B-A3B-Instruct, base_model:quantized:Qwen/Qwen3-Coder-30B-A3B-Instruct, license:apache-2.0, endpoints_compatible...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 30.0,
-  "supports_tools": null
- },
- {
-  "name": "Qwen2.5 14B Instruct 4bit",
-  "link": "mlx-community/Qwen2.5-14B-Instruct-4bit",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/Qwen2.5-14B-Instruct-4bit\nAuthor: Unknown\nCreated: 2024-09-18 20:00:34+00:00\nDownloads: 147160 \nLikes: 11\nLibrary: mlx\nPipeline: text-generation\nSize: ~28.4-34.7 GB\nParameters: 14B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen2, chat, text-generation, conversational, en, base_model:Qwen/Qwen2.5-14B, base_model:finetune:Qwen/Qwen2.5-14B, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 14.0,
-  "supports_tools": null
- },
- {
-  "name": "Qwen3 VL 4B Instruct MLX 4bit",
-  "link": "lmstudio-community/Qwen3-VL-4B-Instruct-MLX-4bit",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: lmstudio-community/Qwen3-VL-4B-Instruct-MLX-4bit\nAuthor: Unknown\nCreated: 2025-10-14 16:30:00+00:00\nDownloads: 122063 \nLikes: 7\nLibrary: mlx\nPipeline: image-text-to-text\nSize: ~8.1-9.9 GB\nParameters: 4B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_vl, image-text-to-text, conversational, base_model:Qwen/Qwen3-VL-4B-Instruct, base_model:quantized:Qwen/Qwen3-VL-4B-Instruct, license:apache-2.0, 4-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 4.0,
-  "supports_tools": null
- },
- {
   "name": "Whisper Large v3 Mlx",
   "link": "mlx-community/whisper-large-v3-mlx",
   "type": "community",
   "quantized": true,
   "model_metadata": "Model ID: mlx-community/whisper-large-v3-mlx\nAuthor: Unknown\nCreated: 2024-01-07 19:22:56+00:00\nDownloads: 112030 \nLikes: 92\nLibrary: mlx\nPipeline: automatic-speech-recognition\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, whisper, automatic-speech-recognition, license:mit, region:us\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 7.0,
-  "supports_tools": null
- },
- {
-  "name": "Qwen3 VL 8B Instruct MLX 8bit",
-  "link": "lmstudio-community/Qwen3-VL-8B-Instruct-MLX-8bit",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: lmstudio-community/Qwen3-VL-8B-Instruct-MLX-8bit\nAuthor: Unknown\nCreated: 2025-10-14 17:46:01+00:00\nDownloads: 90891 \nLikes: 5\nLibrary: mlx\nPipeline: image-text-to-text\nSize: ~14.0-15.0 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_vl, image-text-to-text, conversational, base_model:Qwen/Qwen3-VL-8B-Instruct, base_model:quantized:Qwen/Qwen3-VL-8B-Instruct, license:apache-2.0, 8-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 8.0,
   "supports_tools": null
  },
  {
@@ -2358,57 +2619,12 @@
   "supports_tools": null
  },
  {
-  "name": "Qwen3 4B Thinking 2507 MLX 4bit",
-  "link": "lmstudio-community/Qwen3-4B-Thinking-2507-MLX-4bit",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: lmstudio-community/Qwen3-4B-Thinking-2507-MLX-4bit\nAuthor: Unknown\nCreated: 2025-08-06 15:21:28+00:00\nDownloads: 53492 \nLikes: 14\nLibrary: transformers\nPipeline: text-generation\nSize: ~8.1-9.9 GB\nParameters: 4B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen3, text-generation, mlx, conversational, base_model:Qwen/Qwen3-4B-Thinking-2507, base_model:quantized:Qwen/Qwen3-4B-Thinking-2507, license:apache-2.0, text-generation-inference...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 4.0,
-  "supports_tools": null
- },
- {
-  "name": "Qwen3 14B MLX 4bit",
-  "link": "lmstudio-community/Qwen3-14B-MLX-4bit",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: lmstudio-community/Qwen3-14B-MLX-4bit\nAuthor: Unknown\nCreated: 2025-04-28 18:25:55+00:00\nDownloads: 52341 \nLikes: 6\nLibrary: mlx\nPipeline: text-generation\nSize: ~28.4-34.7 GB\nParameters: 14B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3, text-generation, conversational, base_model:Qwen/Qwen3-14B, base_model:quantized:Qwen/Qwen3-14B, license:apache-2.0, 4-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 14.0,
-  "supports_tools": null
- },
- {
-  "name": "Qwen2.5 Coder 32B Instruct MLX 4bit",
-  "link": "lmstudio-community/Qwen2.5-Coder-32B-Instruct-MLX-4bit",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: lmstudio-community/Qwen2.5-Coder-32B-Instruct-MLX-4bit\nAuthor: Unknown\nCreated: 2024-11-11 21:54:08+00:00\nDownloads: 48759 \nLikes: 6\nLibrary: mlx\nPipeline: text-generation\nSize: ~64.8-79.2 GB\nParameters: 32B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen2, code, codeqwen, chat, qwen, qwen-coder, text-generation, conversational...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 32.0,
-  "supports_tools": null
- },
- {
   "name": "Whisper Large v3 Turbo",
   "link": "mlx-community/whisper-large-v3-turbo",
   "type": "community",
   "quantized": true,
   "model_metadata": "Model ID: mlx-community/whisper-large-v3-turbo\nAuthor: Unknown\nCreated: 2024-10-01 11:47:42+00:00\nDownloads: 47120 \nLikes: 93\nLibrary: mlx\nPipeline: automatic-speech-recognition\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, whisper, automatic-speech-recognition, region:us\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 7.0,
-  "supports_tools": null
- },
- {
-  "name": "Qwen3.5 9B 4bit",
-  "link": "mlx-community/Qwen3.5-9B-4bit",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/Qwen3.5-9B-4bit\nAuthor: Unknown\nCreated: 2026-03-02 14:48:09+00:00\nDownloads: 37895 \nLikes: 11\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~18.2-22.3 GB\nParameters: 9B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen3_5, image-text-to-text, mlx, conversational, base_model:Qwen/Qwen3.5-9B-Base, base_model:quantized:Qwen/Qwen3.5-9B-Base, license:apache-2.0, endpoints_compatible...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 9.0,
-  "supports_tools": null
- },
- {
-  "name": "Qwen3.5 9B PARO",
-  "link": "z-lab/Qwen3.5-9B-PARO",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: z-lab/Qwen3.5-9B-PARO\nAuthor: Unknown\nCreated: 2026-03-05 18:38:25+00:00\nDownloads: 37079 \nLikes: 52\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~18.2-22.3 GB\nParameters: 9B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen3_5, image-text-to-text, mlx, conversational, arxiv:2511.10645, base_model:Qwen/Qwen3.5-9B, base_model:quantized:Qwen/Qwen3.5-9B, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 9.0,
   "supports_tools": null
  },
  {
@@ -2421,39 +2637,39 @@
   "supports_tools": null
  },
  {
-  "name": "Qwen3.6 27B UD MLX NVFP4",
-  "link": "unsloth/Qwen3.6-27B-UD-MLX-NVFP4",
+  "name": "Ministral 3 3B Instruct 2512 4bit",
+  "link": "mlx-community/Ministral-3-3B-Instruct-2512-4bit",
   "type": "community",
   "quantized": true,
-  "model_metadata": "Model ID: unsloth/Qwen3.6-27B-UD-MLX-NVFP4\nAuthor: Unknown\nCreated: 2026-04-23 07:32:32+00:00\nDownloads: 34228 \nLikes: 10\nLibrary: mlx\nPipeline: image-text-to-text\nSize: ~54.7-66.8 GB\nParameters: 27B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_5, unsloth, qwen, image-text-to-text, conversational, base_model:Qwen/Qwen3.6-27B, base_model:quantized:Qwen/Qwen3.6-27B, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 27.0,
+  "model_metadata": "Model ID: mlx-community/Ministral-3-3B-Instruct-2512-4bit\nAuthor: Unknown\nCreated: 2025-12-03 20:57:52+00:00\nDownloads: 24687 \nLikes: 5\nLibrary: vllm\nPipeline: Unknown\nSize: ~6.1-7.4 GB\nParameters: 3B\nQuantized: False\nPrivate: False\nGated: None\nTags: vllm, safetensors, mistral3, mistral-common, mlx, en, fr, es, de, it...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 3.0,
   "supports_tools": null
  },
  {
-  "name": "Qwen3.6 35B A3B UD MLX 4bit",
-  "link": "unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit",
+  "name": "LFM2 1.2B MLX Bf16",
+  "link": "lmstudio-community/LFM2-1.2B-MLX-bf16",
   "type": "community",
   "quantized": true,
-  "model_metadata": "Model ID: unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit\nAuthor: Unknown\nCreated: 2026-04-17 00:18:26+00:00\nDownloads: 33283 \nLikes: 94\nLibrary: mlx\nPipeline: image-text-to-text\nSize: ~70.9-86.6 GB\nParameters: 35B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_5_moe, unsloth, qwen, image-text-to-text, conversational, base_model:Qwen/Qwen3.6-35B-A3B, base_model:quantized:Qwen/Qwen3.6-35B-A3B, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 35.0,
+  "model_metadata": "Model ID: lmstudio-community/LFM2-1.2B-MLX-bf16\nAuthor: Unknown\nCreated: 2025-07-14 15:34:55+00:00\nDownloads: 22931 \nLikes: 6\nLibrary: transformers\nPipeline: text-generation\nSize: ~2.4-3.0 GB\nParameters: 1.2B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, lfm2, text-generation, liquid, edge, mlx, conversational, en, ar...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 1.2,
   "supports_tools": null
  },
  {
-  "name": "Qwen3.5 4B MLX 4bit",
-  "link": "mlx-community/Qwen3.5-4B-MLX-4bit",
+  "name": "Supergemma4 26B Uncensored Mlx 4bit v2",
+  "link": "Jiunsong/supergemma4-26b-uncensored-mlx-4bit-v2",
   "type": "community",
   "quantized": true,
-  "model_metadata": "Model ID: mlx-community/Qwen3.5-4B-MLX-4bit\nAuthor: Unknown\nCreated: 2026-03-02 14:58:24+00:00\nDownloads: 28729 \nLikes: 28\nLibrary: mlx\nPipeline: Unknown\nSize: ~8.1-9.9 GB\nParameters: 4B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_5, qwen3.5, vision-language-model, quantized, 4bit, base_model:Qwen/Qwen3.5-4B, base_model:quantized:Qwen/Qwen3.5-4B, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 4.0,
+  "model_metadata": "Model ID: Jiunsong/supergemma4-26b-uncensored-mlx-4bit-v2\nAuthor: Unknown\nCreated: 2026-04-10 07:52:18+00:00\nDownloads: 18886 \nLikes: 265\nLibrary: mlx\nPipeline: text-generation\nSize: ~52.6-64.4 GB\nParameters: 26B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, gemma4, uncensored, apple-silicon, 4bit, quantized, reasoning, tool-use, coding...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 26.0,
   "supports_tools": null
  },
  {
-  "name": "Qwen3.6 27B MTPLX Optimized Speed",
-  "link": "Youssofal/Qwen3.6-27B-MTPLX-Optimized-Speed",
+  "name": "Qwen3 Embedding 0.6B 4bit DWQ",
+  "link": "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ",
   "type": "community",
   "quantized": true,
-  "model_metadata": "Model ID: Youssofal/Qwen3.6-27B-MTPLX-Optimized-Speed\nAuthor: Unknown\nCreated: 2026-05-03 16:59:40+00:00\nDownloads: 28151 \nLikes: 49\nLibrary: mlx\nPipeline: text-generation\nSize: ~54.7-66.8 GB\nParameters: 27B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3_5, apple-silicon, speculative-decoding, qwen, qwen3, qwen3-next, mtp, mtplx...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 27.0,
+  "model_metadata": "Model ID: mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ\nAuthor: Unknown\nCreated: 2025-06-06 08:09:46+00:00\nDownloads: 16737 \nLikes: 9\nLibrary: mlx\nPipeline: text-generation\nSize: ~0.8-1.2 GB\nParameters: 0.6B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3, text-generation, transformers, sentence-transformers, sentence-similarity, feature-extraction, conversational, base_model:Qwen/Qwen3-Embedding-0.6B...\nSHA: Unknown\nLast Modified: Unknown",
+  "param_size": 0.6,
   "supports_tools": null
  }
 ]

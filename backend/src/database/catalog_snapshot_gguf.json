@@ -4,7 +4,7 @@
   "link": "unsloth/Llama-3.1-8B-Instruct-GGUF",
   "type": "llama",
   "quantized": true,
-  "model_metadata": "Model ID: meta-llama/Llama-3.1-8B-Instruct\nAuthor: meta-llama\nCreated: 2024-07-18 08:56:00+00:00\nDownloads: 10015713 \nLikes: 6146\nLibrary: transformers\nPipeline: text-generation\nSize: ~117.6 GB\nParameters: 8B\nQuantized: True\nPrivate: False\nGated: manual\nTags: transformers, safetensors, llama, text-generation, facebook, meta, pytorch, llama-3, conversational, en...\nSHA: 0e9e39f249a16976918f6564b8830bc894c89659\nLast Modified: 2024-09-25 17:00:57+00:00",
+  "model_metadata": "Model ID: meta-llama/Llama-3.1-8B-Instruct\nAuthor: meta-llama\nCreated: 2024-07-18 08:56:00+00:00\nDownloads: 10015713 \nLikes: 6147\nLibrary: transformers\nPipeline: text-generation\nSize: ~117.6 GB\nParameters: 8B\nQuantized: True\nPrivate: False\nGated: manual\nTags: transformers, safetensors, llama, text-generation, facebook, meta, pytorch, llama-3, conversational, en...\nSHA: 0e9e39f249a16976918f6564b8830bc894c89659\nLast Modified: 2024-09-25 17:00:57+00:00",
   "param_size": 8.0,
   "supports_tools": null
  },
@@ -1318,8 +1318,26 @@
   "link": "openbmb/MiniCPM5-1B-GGUF",
   "type": "minicpm",
   "quantized": true,
-  "model_metadata": "Model ID: openbmb/MiniCPM5-1B\nAuthor: openbmb\nCreated: 2026-05-21 07:27:59+00:00\nDownloads: 315657 \nLikes: 820\nLibrary: transformers\nPipeline: text-generation\nSize: ~1.0-1.2 GB\nParameters: 1B\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, llama, text-generation, minicpm, minicpm5, long-context, tool-calling, on-device, edge-ai...\nSHA: 4e9de7a0778dc1c362e983e6858f0e77542cbdca\nLast Modified: 2026-05-26 04:24:04+00:00",
+  "model_metadata": "Model ID: openbmb/MiniCPM5-1B\nAuthor: openbmb\nCreated: 2026-05-21 07:27:59+00:00\nDownloads: 315657 \nLikes: 820\nLibrary: transformers\nPipeline: text-generation\nSize: ~3.7 GB\nParameters: 1B\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, llama, text-generation, minicpm, minicpm5, long-context, tool-calling, on-device, edge-ai...\nSHA: 4e9de7a0778dc1c362e983e6858f0e77542cbdca\nLast Modified: 2026-05-26 04:24:04+00:00",
   "param_size": 1.0,
+  "supports_tools": null
+ },
+ {
+  "name": "MiniCPM 2B Sft Bf16",
+  "link": "tensorblock/MiniCPM-2B-sft-bf16-GGUF",
+  "type": "minicpm",
+  "quantized": true,
+  "model_metadata": "Model ID: openbmb/MiniCPM-2B-sft-bf16\nAuthor: openbmb\nCreated: 2024-01-29 11:50:39+00:00\nDownloads: 74867 \nLikes: 126\nLibrary: transformers\nPipeline: text-generation\nSize: ~2.5 GB\nParameters: 2B\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, pytorch, text-generation, MiniCPM, ModelBest, THUNLP, conversational, custom_code, en, zh...\nSHA: 4ec16344ac13e6ef5010aeecaa533369ac8eb53c\nLast Modified: 2024-09-07 05:28:42+00:00",
+  "param_size": 2.0,
+  "supports_tools": null
+ },
+ {
+  "name": "MiniCPM3 4B",
+  "link": "openbmb/MiniCPM3-4B-GGUF",
+  "type": "minicpm",
+  "quantized": true,
+  "model_metadata": "Model ID: openbmb/MiniCPM3-4B\nAuthor: openbmb\nCreated: 2024-09-03 12:47:22+00:00\nDownloads: 56172 \nLikes: 419\nLibrary: transformers\nPipeline: text-generation\nSize: ~9.9 GB\nParameters: 4B\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, pytorch, minicpm3, text-generation, conversational, custom_code, zh, en, arxiv:2404.06395, license:apache-2.0...\nSHA: d6b14ddaefdb11c624dd75c3c779549bc90b08cb\nLast Modified: 2025-02-27 12:09:50+00:00",
+  "param_size": 4.0,
   "supports_tools": null
  },
  {
@@ -1948,7 +1966,7 @@
   "link": "unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF",
   "type": "mistral",
   "quantized": true,
-  "model_metadata": "Model ID: unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF\nAuthor: Unknown\nCreated: 2025-06-20 22:27:21+00:00\nDownloads: 31068 \nLikes: 175\nLibrary: vllm\nPipeline: image-text-to-text\nSize: ~48.6-59.4 GB\nParameters: 24B\nQuantized: False\nPrivate: False\nGated: None\nTags: vllm, gguf, image-text-to-text, en, fr, de, es, pt, it, ja...\nSHA: Unknown\nLast Modified: Unknown",
+  "model_metadata": "Model ID: unsloth/Mistral-Small-3.2-24B-Instruct-2506-GGUF\nAuthor: Unknown\nCreated: 2025-06-20 22:27:21+00:00\nDownloads: 31068 \nLikes: 176\nLibrary: vllm\nPipeline: image-text-to-text\nSize: ~48.6-59.4 GB\nParameters: 24B\nQuantized: False\nPrivate: False\nGated: None\nTags: vllm, gguf, image-text-to-text, en, fr, de, es, pt, it, ja...\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 24.0,
   "supports_tools": null
  },
@@ -2335,7 +2353,7 @@
   "link": "yuxinlu1/gemma-4-12B-agentic-fable5-composer2.5-v2-3.5x-tau2-GGUF",
   "type": "gemma",
   "quantized": true,
-  "model_metadata": "Model ID: yuxinlu1/gemma-4-12B-agentic-fable5-composer2.5-v2-3.5x-tau2-GGUF\nAuthor: Unknown\nCreated: 2026-06-19 00:06:07+00:00\nDownloads: 165187 \nLikes: 585\nLibrary: gguf\nPipeline: text-generation\nSize: ~24.3-29.7 GB\nParameters: 12B\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, gemma4, coding, agentic, terminal, tool-use, reasoning, thinking, llama.cpp, local-llm...\nSHA: Unknown\nLast Modified: Unknown",
+  "model_metadata": "Model ID: yuxinlu1/gemma-4-12B-agentic-fable5-composer2.5-v2-3.5x-tau2-GGUF\nAuthor: Unknown\nCreated: 2026-06-19 00:06:07+00:00\nDownloads: 165187 \nLikes: 586\nLibrary: gguf\nPipeline: text-generation\nSize: ~24.3-29.7 GB\nParameters: 12B\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, gemma4, coding, agentic, terminal, tool-use, reasoning, thinking, llama.cpp, local-llm...\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 12.0,
   "supports_tools": null
  },
@@ -4455,15 +4473,6 @@
   "supports_tools": null
  },
  {
-  "name": "MiniCPM3 4B GGUF",
-  "link": "openbmb/MiniCPM3-4B-GGUF",
-  "type": "minicpm",
-  "quantized": true,
-  "model_metadata": "Model ID: openbmb/MiniCPM3-4B-GGUF\nAuthor: Unknown\nCreated: 2024-09-18 12:03:14+00:00\nDownloads: 1288 \nLikes: 10\nLibrary: Unknown\nPipeline: Unknown\nSize: ~8.1-9.9 GB\nParameters: 4B\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, en, zh, base_model:openbmb/MiniCPM3-4B, base_model:quantized:openbmb/MiniCPM3-4B, endpoints_compatible, region:us, conversational\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 4.0,
-  "supports_tools": null
- },
- {
   "name": "MiniCPM O 2_6 GGUF",
   "link": "bartowski/MiniCPM-o-2_6-GGUF",
   "type": "minicpm",
@@ -4918,7 +4927,7 @@
   "link": "Jackrong/Qwopus3.6-35B-A3B-v1-GGUF",
   "type": "community",
   "quantized": true,
-  "model_metadata": "Model ID: Jackrong/Qwopus3.6-35B-A3B-v1-GGUF\nAuthor: Unknown\nCreated: 2026-05-06 10:02:17+00:00\nDownloads: 244270 \nLikes: 208\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~70.9-86.6 GB\nParameters: 35B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, gguf, llama.cpp, image-text-to-text, vision, multimodal, text-generation-inference, unsloth, conversational, qwen3_6...\nSHA: Unknown\nLast Modified: Unknown",
+  "model_metadata": "Model ID: Jackrong/Qwopus3.6-35B-A3B-v1-GGUF\nAuthor: Unknown\nCreated: 2026-05-06 10:02:17+00:00\nDownloads: 244270 \nLikes: 209\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~70.9-86.6 GB\nParameters: 35B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, gguf, llama.cpp, image-text-to-text, vision, multimodal, text-generation-inference, unsloth, conversational, qwen3_6...\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 35.0,
   "supports_tools": null
  },
