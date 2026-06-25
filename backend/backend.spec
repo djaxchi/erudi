@@ -73,6 +73,14 @@ datas.append((str(spec_root / "alembic.ini"), "."))
 # the background HF refresh). Bundle it preserving that path, else boot can't seed.
 datas.append((str(spec_root / "src" / "database" / "base_models_fallback.json"), "src/database"))
 
+# Build-time catalog snapshot (#112): the full resolved remote catalog for this
+# engine format, so first boot loads it instantly (zero HF calls). Windows/Linux
+# bundles use the GGUF snapshot. Guarded: a missing snapshot just falls back to the
+# offline JSON instead of breaking the build.
+_gguf_snapshot = spec_root / "src" / "database" / "catalog_snapshot_gguf.json"
+if _gguf_snapshot.exists():
+    datas.append((str(_gguf_snapshot), "src/database"))
+
 # pgserver: bundle the embedded PostgreSQL binaries (pginstall/bin). The
 # hiddenimport alone ships the Python module but NOT the postgres binaries it
 # spawns; without this the frozen backend dies at startup with a missing

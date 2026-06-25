@@ -1,10 +1,9 @@
-"""Seed wires pre-download tool-calling detection onto catalog base models (#86).
+"""The catalog build path does NOT do pre-download tool detection (#113).
 
-The detection itself (HF chat-template differential render) is covered in
-``test_tool_capability.py``; here we only assert the *wiring*: a seeded base
-model carries the detected ``supports_tools`` so the catalog can recommend
-agentic models before download. No network: the detector and metadata helpers
-are stubbed.
+Downloading a tokenizer per catalog model to render the chat template was not
+viable at catalog scale (~150 downloads dominating the resync). It is dropped:
+remote catalog entries keep ``supports_tools = null`` and detection happens
+post-download (where the tokenizer is already on disk). No network here.
 """
 import pytest
 
@@ -34,34 +33,23 @@ def _stub_metadata_helpers(monkeypatch):
 
 
 @pytest.mark.unit
-def test_base_model_seed_sets_supports_tools_from_hf(monkeypatch):
-    captured = {}
-
-    def fake_detect(link):
-        captured["link"] = link
-        return True
-
-    monkeypatch.setattr(seed_mod, "tool_capability_from_hf_repo", fake_detect)
+def test_base_model_seed_does_not_pre_detect_tools(monkeypatch):
     _stub_metadata_helpers(monkeypatch)
-
     seeder = Model_Seeder(db=None, hf_api=_FakeHF())
-    llm = seeder._create_base_llm(Model_Config("Test-7B", "org/test-7b", "test"),
-                                  "quanter/test-7b-GGUF")
 
-    assert llm.supports_tools is True
-    # Probes the resolved quant repo that would actually be downloaded.
-    assert captured["link"] == "quanter/test-7b-GGUF"
+    base = seeder._create_base_llm(
+        Model_Config("Test-7B", "org/test-7b", "test"), "quanter/test-7b-GGUF"
+    )
+    fallback = seeder._create_base_llm_fallback(
+        Model_Config("Test-7B", "org/test-7b", "test"), "quanter/test-7b-GGUF"
+    )
+
+    # Pre-download detection dropped (#113): no tokenizer download, column stays null.
+    assert base.supports_tools is None
+    assert fallback.supports_tools is None
 
 
 @pytest.mark.unit
-def test_base_model_seed_leaves_supports_tools_none_when_unknown(monkeypatch):
-    # Unreachable/gated repo -> detector returns None -> column stays unset
-    # (never wrongly pinned to False before download).
-    monkeypatch.setattr(seed_mod, "tool_capability_from_hf_repo", lambda link: None)
-    _stub_metadata_helpers(monkeypatch)
-
-    seeder = Model_Seeder(db=None, hf_api=_FakeHF())
-    llm = seeder._create_base_llm(Model_Config("Test-7B", "org/test-7b", "test"),
-                                  "quanter/test-7b-GGUF")
-
-    assert llm.supports_tools is None
+def test_seed_module_no_longer_imports_the_tokenizer_detector():
+    # The catalog build path must not pull the tokenizer-download detector at all.
+    assert not hasattr(seed_mod, "tool_capability_from_hf_repo")

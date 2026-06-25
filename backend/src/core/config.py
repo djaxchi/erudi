@@ -72,9 +72,11 @@ Warning:
 
 from dotenv import load_dotenv
 import os
+import time
 from typing import Optional, Type
 
 from huggingface_hub import HfApi
+from huggingface_hub.errors import HfHubHTTPError
 
 from src.engines.base_engine import BaseEngine
 from src.launcher import ensure_runtime_paths_initialized
@@ -120,6 +122,60 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 _HF_API: Optional[HfApi] = None
 
 
+def _retry_after_seconds(err: HfHubHTTPError) -> Optional[float]:
+    """Read the Retry-After header off a 429, if HF sent one."""
+    try:
+        value = err.response.headers.get("Retry-After")
+        return float(value) if value else None
+    except Exception:
+        return None
+
+
+def _call_with_429_retry(fn, *args, _max_retries: int = 5, **kwargs):
+    """Call ``fn`` and retry on HTTP 429 with exponential backoff (honoring
+    Retry-After). The catalog resync fires hundreds of anonymous HF metadata
+    calls in a burst; without this a 429 either aborts the whole resync or is
+    silently swallowed as "no result" (dropping models). Runs inside the resync's
+    threadpool, so the blocking sleep stays off the event loop."""
+    for attempt in range(_max_retries + 1):
+        try:
+            return fn(*args, **kwargs)
+        except HfHubHTTPError as err:
+            status = getattr(getattr(err, "response", None), "status_code", None)
+            if status == 429 and attempt < _max_retries:
+                delay = _retry_after_seconds(err)
+                if delay is None:
+                    delay = min(2 ** attempt, 30)
+                from src.core.logging import logger
+                logger.warning(
+                    f"HF rate-limited (429); backing off {delay:.0f}s "
+                    f"(attempt {attempt + 1}/{_max_retries})"
+                )
+                time.sleep(delay)
+                continue
+            raise
+
+
+class _RetryingHfApi(HfApi):
+    """HfApi that survives anonymous rate limiting during the catalog resync:
+    paces metadata calls and retries them on 429. ``list_models`` is materialized
+    inside the retry because it paginates lazily — a 429 otherwise surfaces during
+    iteration (uncaught), not at call time. Callers therefore MUST pass a bounded
+    ``limit`` (they do). Downloads (hf_hub_download / AutoTokenizer) already retry
+    on their own path."""
+
+    _PACE_SECONDS = 0.1
+
+    def list_models(self, *args, **kwargs):
+        time.sleep(self._PACE_SECONDS)
+        _super_list_models = super().list_models
+        return _call_with_429_retry(lambda: list(_super_list_models(*args, **kwargs)))
+
+    def model_info(self, *args, **kwargs):
+        time.sleep(self._PACE_SECONDS)
+        return _call_with_429_retry(super().model_info, *args, **kwargs)
+
+
 def get_hf_api() -> HfApi:
     """Get or initialize HuggingFace API client (lazy-loaded singleton).
 
@@ -141,7 +197,7 @@ def get_hf_api() -> HfApi:
     """
     global _HF_API
     if _HF_API is None:
-        _HF_API = HfApi(token=HF_TOKEN)
+        _HF_API = _RetryingHfApi(token=HF_TOKEN)
     return _HF_API
 
 
