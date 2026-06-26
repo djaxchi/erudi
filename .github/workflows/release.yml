@@ -36,14 +36,14 @@ jobs:
             spec: backend-mac-silicon.spec
             release_script: release:mac
             eb_extra_args: ""
-          - os: windows-latest # x64 CPU — the `latest` (universal) auto-update channel
+          - os: windows-2022 # x64 CPU — the `latest` (universal) auto-update channel
             variant: win-cpu
             reqs: win-cpu-prod.txt
             spec: backend-cpu.spec
             release_script: release:win
             llama_build: cpu
             eb_extra_args: ""
-          - os: windows-latest # x64 CUDA — the `cuda` auto-update channel
+          - os: windows-2022 # x64 CUDA — the `cuda` auto-update channel
             variant: win-cuda
             reqs: win-cuda-prod.txt
             spec: backend.spec
@@ -52,14 +52,14 @@ jobs:
             # Distinct channel (-> cuda.yml) + distinct artifact name so the two
             # Windows installers never clobber each other's update feed.
             eb_extra_args: "-c.publish.channel=cuda -c.nsis.artifactName='${productName}-Setup-${version}-cuda.${ext}'"
-          - os: ubuntu-latest # x64 CPU — the `latest` (universal) Linux channel
+          - os: ubuntu-22.04 # x64 CPU — the `latest` (universal) Linux channel
             variant: linux-cpu
             reqs: linux-cpu-prod.txt
             spec: backend-cpu.spec
             release_script: release:linux
             llama_build: cpu
             eb_extra_args: ""
-          - os: ubuntu-latest # x64 CUDA — the `cuda` Linux channel (cuda-linux.yml)
+          - os: ubuntu-22.04 # x64 CUDA — the `cuda` Linux channel (cuda-linux.yml)
             variant: linux-cuda
             reqs: linux-cuda-prod.txt
             spec: backend.spec
@@ -90,17 +90,31 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # ── CUDA toolkit (win-cuda leg only) ─────────────────────────────────────
+      # ── CUDA toolkit (cuda legs only) ────────────────────────────────────────
       # Needed to COMPILE the CUDA llama-server. Compilation does NOT need a GPU
-      # (only execution does), so this runs fine on the GPU-less runner. 12.6.x
-      # satisfies the modern MSVC on windows-latest (the dev script's 12.1 path was
-      # written against an older toolchain; it resolves whatever CUDA_PATH is set).
-      - name: Install CUDA Toolkit
-        if: matrix.llama_build == 'cuda'
+      # (only execution does), so this runs fine on the GPU-less runner. The pinned
+      # runners keep the host toolchain in CUDA 12.6.3's supported range — notably
+      # Windows = VS 2022 / MSVC 14.4x (windows-latest drifted to VS 2026 / MSVC
+      # 14.51, which nvcc cannot parse → CMake CUDA compiler-id fails). The install
+      # differs per OS:
+      #   Windows → network install (works as-is).
+      #   Linux   → the apt `cuda` meta-package drags in the NVIDIA driver
+      #             (nvidia-driver-560-open + dkms) which cannot configure on a
+      #             GPU-less runner (dpkg exit 1). The runfile `--toolkit` installs
+      #             the compiler + libs WITHOUT the driver — all we need to compile.
+      - name: Install CUDA Toolkit (Windows — network)
+        if: matrix.llama_build == 'cuda' && runner.os == 'Windows'
         uses: Jimver/cuda-toolkit@v0.2.35
         with:
           cuda: "12.6.3"
           method: network
+      - name: Install CUDA Toolkit (Linux — toolkit-only, no driver)
+        if: matrix.llama_build == 'cuda' && runner.os == 'Linux'
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: "12.6.3"
+          method: local
+          linux-local-args: '["--toolkit"]'
 
       # ── Backend: Python deps + PyInstaller ───────────────────────────────────
       - name: Install backend dependencies
