@@ -98,10 +98,10 @@ jobs:
       # 14.51, which nvcc cannot parse → CMake CUDA compiler-id fails). The install
       # differs per OS:
       #   Windows → network install (works as-is).
-      #   Linux   → the apt `cuda` meta-package drags in the NVIDIA driver
-      #             (nvidia-driver-560-open + dkms) which cannot configure on a
-      #             GPU-less runner (dpkg exit 1). The runfile `--toolkit` installs
-      #             the compiler + libs WITHOUT the driver — all we need to compile.
+      #   Linux   → toolkit-only via apt sub-packages — no driver (the `cuda` meta-
+      #             package's nvidia-driver-560-open/dkms can't configure on a GPU-
+      #             less runner) and, unlike the local `--toolkit` runfile, no multi-
+      #             GB transient extraction that filled the small ubuntu / mid-build.
       - name: Install CUDA Toolkit (Windows — network)
         if: matrix.llama_build == 'cuda' && runner.os == 'Windows'
         uses: Jimver/cuda-toolkit@v0.2.35
@@ -113,8 +113,20 @@ jobs:
         uses: Jimver/cuda-toolkit@v0.2.35
         with:
           cuda: "12.6.3"
-          method: local
-          linux-local-args: '["--toolkit"]'
+          method: network
+          # cuda-* compiler + headers, plus the libcublas that ggml-cuda links.
+          sub-packages: '["nvcc", "cudart-dev", "cccl", "nvtx", "nvrtc-dev"]'
+          non-cuda-sub-packages: '["libcublas-dev"]'
+
+      # Headroom insurance for the heavy 7-arch CUDA compile: drop preinstalled
+      # bloat we never use (~20 GB) so a thin-disk runner can't run out mid-build.
+      - name: Free disk space (Linux CUDA build)
+        if: matrix.llama_build == 'cuda' && runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force || true
+          df -h /
 
       # ── Backend: Python deps + PyInstaller ───────────────────────────────────
       - name: Install backend dependencies
