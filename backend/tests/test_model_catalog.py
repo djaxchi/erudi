@@ -60,7 +60,15 @@ class TestOrgDiscovery:
         from unittest.mock import MagicMock
         from src.database.seed import Model_Seeder
         api = MagicMock()
-        api.list_models.return_value = [SimpleNamespace(id=i, downloads=d) for i, d in ids]
+        models = [SimpleNamespace(id=i, downloads=d) for i, d in ids]
+
+        # Discovery now queries per pipeline_tag (text + vision passes). These fixtures
+        # are plain text models, so only the text-generation pass returns them; the
+        # vision passes return nothing.
+        def _list(**kwargs):
+            return models if kwargs.get("pipeline_tag") == "text-generation" else []
+
+        api.list_models.side_effect = _list
         return Model_Seeder(db=None, hf_api=api)
 
     def test_filters_quants_and_floor(self):

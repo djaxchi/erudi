@@ -13,17 +13,18 @@ from src.entities.Llm import Llm
 def test_llm_dict_roundtrip():
     llm = Llm(local=0, name="Qwen3 8B", link="lmstudio/Qwen3-8B-MLX-4bit", type="qwen",
               quantized=True, model_metadata="meta", param_size=8.0, supports_tools=None,
-              is_base=True)
+              is_base=True, category="general")
     d = snap.llm_to_dict(llm)
     assert d == {
         "name": "Qwen3 8B", "link": "lmstudio/Qwen3-8B-MLX-4bit", "type": "qwen",
         "quantized": True, "model_metadata": "meta", "param_size": 8.0, "supports_tools": None,
-        "is_base": True,
+        "is_base": True, "category": "general",
     }
     back = snap.dict_to_llm(d)
     assert (back.local, back.name, back.link, back.type, back.param_size) == (
         0, "Qwen3 8B", "lmstudio/Qwen3-8B-MLX-4bit", "qwen", 8.0)
     assert back.is_base is True
+    assert back.category == "general"
 
 
 def test_dict_to_llm_defaults_is_base_false_when_missing():

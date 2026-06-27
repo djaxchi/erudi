@@ -80,6 +80,12 @@ def base_key(base_id: str) -> str:
 # falls back to download count).
 _QUANT_PREF = ("-4bit", "4bit", "-8bit", "8bit", "-6bit", "mxfp4", "bf16", "fp16")
 
+# Quanters we trust to faithfully repackage a base model. Preferred over random
+# uploaders when several exact-format quants of the same base exist, so a base's
+# display name never binds to an unvetted reupload when a canonical one exists
+# (#122). The base's own org is trusted implicitly (an official quant).
+TRUSTED_QUANTERS: frozenset = frozenset({"mlx-community", "lmstudio-community"})
+
 
 def _quant_rank(repo_id: str) -> int:
     low = repo_id.lower()
@@ -89,13 +95,25 @@ def _quant_rank(repo_id: str) -> int:
     return len(_QUANT_PREF)
 
 
+def _trust_rank(repo_id: str, base_owner: str = "") -> int:
+    """0 = base's own org (official), 1 = a trusted quanter, 2 = anyone else."""
+    owner = repo_id.split("/")[0].lower()
+    if base_owner and owner == base_owner.lower():
+        return 0
+    if owner in TRUSTED_QUANTERS:
+        return 1
+    return 2
+
+
 def resolve_quant(base_id: str, format_tag: str, hf_api, *, limit: int = 40,
                   trace: bool = False) -> Optional[str]:
     """Return the canonical ``format_tag`` quant repo id for ``base_id``, or None.
 
     Searches ``list_models(filter=format_tag, search=<slug>)`` and keeps only
-    candidates whose normalized name EQUALS the base key. Among those, prefers the
-    canonical 4-bit quant, breaking ties by download count. No exact match → None.
+    candidates whose normalized name EQUALS the base key. Among those, prefers a
+    trusted source (official org > mlx-community/lmstudio-community > anyone), then
+    the canonical 4-bit quant, breaking ties by download count (#122). No exact
+    match → None.
     """
     owner, _, slug = base_id.partition("/")
     key = base_key(base_id)
@@ -113,5 +131,6 @@ def resolve_quant(base_id: str, format_tag: str, hf_api, *, limit: int = 40,
                     f"{len(cands)} cands, {len(exact)} exact")
     if not exact:
         return None
-    best = min(exact, key=lambda m: (_quant_rank(m.id), -(getattr(m, "downloads", 0) or 0)))
+    best = min(exact, key=lambda m: (_trust_rank(m.id, owner), _quant_rank(m.id),
+                                     -(getattr(m, "downloads", 0) or 0)))
     return best.id

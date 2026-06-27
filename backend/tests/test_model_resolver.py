@@ -99,6 +99,24 @@ class TestResolveQuant:
         api = _FakeApi([("bartowski/google_gemma-3-1b-it-GGUF", 12345)])
         assert resolve_quant("google/gemma-3-1b-it", "gguf", api) == "bartowski/google_gemma-3-1b-it-GGUF"
 
+    def test_prefers_trusted_quanter_over_higher_download_random(self):
+        # A random uploader has more downloads, but mlx-community is trusted and wins
+        # so a base's name never binds to an unvetted reupload when a canonical one
+        # exists (#122). Both are exact 4bit matches → only trust differs.
+        api = _FakeApi([
+            ("randomuser/Yi-34B-mlx-4bit", 99999),
+            ("mlx-community/Yi-34B-4bit", 120),
+        ])
+        assert resolve_quant("01-ai/Yi-34B", "mlx", api) == "mlx-community/Yi-34B-4bit"
+
+    def test_prefers_official_org_quant_first(self):
+        # The base's own org outranks even a trusted community quanter.
+        api = _FakeApi([
+            ("mlx-community/Qwen3-8B-4bit", 5000),
+            ("Qwen/Qwen3-8B-4bit", 50),
+        ])
+        assert resolve_quant("Qwen/Qwen3-8B", "mlx", api) == "Qwen/Qwen3-8B-4bit"
+
     def test_network_failure_returns_none(self):
         assert resolve_quant("google/gemma-3-1b-it", "mlx", _BoomApi()) is None
 

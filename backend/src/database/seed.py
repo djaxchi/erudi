@@ -51,6 +51,7 @@ Note:
 """
 
 import os
+import re
 import shutil
 import json
 from datetime import datetime
@@ -82,6 +83,12 @@ from src.utils.hf_model_metadata import (
 from src.domains.hardware.repository import Hardware_Repository
 from src.domains.hardware.services import Hardware_Service
 from src.engines.model_resolver import resolve_quant, base_key
+from src.database.catalog_classify import (
+    categorize,
+    is_derivative,
+    is_instruct,
+    param_size_billions,
+)
 
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
@@ -166,16 +173,39 @@ def load_base_models_fallback() -> List[Dict[str, Any]]:
         )
 
 
+def _safetensors_total(model_info) -> Optional[int]:
+    """Extract the total parameter count from a ModelInfo's safetensors field.
+
+    HF returns it either as an object with a ``.total`` attribute or a plain dict
+    ``{"total": N}`` depending on version; tolerate both and return None otherwise.
+    """
+    st = getattr(model_info, "safetensors", None)
+    if st is None:
+        return None
+    total = getattr(st, "total", None)
+    if total is None and isinstance(st, dict):
+        total = st.get("total")
+    return int(total) if total else None
+
+
 # ============ Configuration Data Classes ============
 
 @dataclass(frozen=True)
 class Model_Config:
-    """Configuration for a base model to seed."""
-    
+    """Configuration for a base model to seed.
+
+    The optional fields carry the signals captured at discovery time (one
+    ``list_models(expand=[...])`` call) so classification doesn't need extra HF
+    round-trips: ``safetensors_total`` → real param size, ``category`` → capability
+    bucket (#122).
+    """
+
     name: str
     link: str
     model_type: str
-    
+    safetensors_total: Optional[int] = None
+    category: str = "general"
+
     def __post_init__(self) -> None:
         """Validate model configuration."""
         if not self.name or not self.link or not self.model_type:
@@ -243,72 +273,142 @@ class Model_Seeder:
         self.filters = quality_filters or Quality_Filters()
         self.offline_mode = offline_mode
     
-    # Names that mark a non-final / non-LLM artifact, excluded from org discovery.
-    _DISCOVERY_SKIP = (
-        "gguf", "-mlx", "4bit", "8bit", "gptq", "awq", "-bnb", "lora", "adapter",
-        "onnx", "-pt", "-pretrain", "draft", "embedding", "reranker", "guard",
-        "reward", "-rm", "prm", "-base",
+    # Slug tokens marking a non-final / intermediate / non-LLM artifact, excluded
+    # from org discovery (token-matched, so 'pt' won't hit 'gpt'). '-assistant'
+    # distillates and '-qat-…-unquantized' intermediates are the #122 offenders.
+    ARTIFACT_TOKENS: frozenset = frozenset({
+        "gguf", "mlx", "4bit", "8bit", "6bit", "gptq", "awq", "bnb", "lora",
+        "adapter", "onnx", "pt", "pretrain", "draft", "mtp", "qat", "unquantized",
+        "embedding", "reranker", "reward", "rm", "prm", "assistant", "fp8", "nvfp4",
+    })
+    # Non-chat task families published under foundation orgs (TTS / OCR / encoder).
+    NONCHAT_FAMILIES: tuple = (
+        "docling", "vibevoice", "whisper", "clip", "reformer", "rerank",
+        "siglip", "t5gemma", "biogpt", "dialogpt", "embed",
     )
+    # Pipelines we draw the Base catalog from: plain text chat + (per #122) the
+    # multimodal VLMs whose primary pipeline is image-text-to-text / any-to-any.
+    TEXT_PIPELINES: tuple = ("text-generation",)
+    VISION_PIPELINES: tuple = ("image-text-to-text", "any-to-any")
 
-    def discover_instruct_models(self, org: str, model_type: str,
-                                 top_n: int = 12, min_downloads: int = 2000) -> List[Model_Config]:
-        """Discover an org's top text-generation models as base-catalog candidates.
+    def discover_instruct_models(self, org: str, model_type: str, top_n: int = 14,
+                                 vision_top_n: int = 8, min_downloads: int = 2000) -> List[Model_Config]:
+        """Discover an org's chat-capable models (text + multimodal) as base candidates.
 
-        Permissive by design: filters to the ``text-generation`` pipeline (drops the
-        org's CLIP / Whisper / BERT / etc.), skips quants/adapters/non-final repos,
-        dedupes by normalized slug, and caps to the most-downloaded. Anything without
-        an engine-format quant is later pruned by the resolver, so noise self-corrects.
+        Text and vision get SEPARATE quotas (``top_n`` / ``vision_top_n``) so a busy
+        text family never starves the multimodal pass — the real VLMs must reach Base
+        (#122). For each relevant ``pipeline_tag`` (drops the org's CLIP / Whisper /
+        BERT, and keeps VLMs out of the text bucket) it pulls the top repos with
+        ``expand`` so safetensors/tags/pipeline come back in ONE call, then rejects
+        quant/merge/adapter derivatives (``base_model`` relation tags), intermediate
+        artifacts, and raw pretrains, deduping by normalized slug. Anything without an
+        engine-format quant self-corrects later (the resolver returns None).
         """
-        try:
-            models = list(self.hf_api.list_models(
-                author=org, filter="text-generation", sort="downloads", limit=80,
-            ))
-        except Exception as e:
-            logger.warning(f"Org discovery failed for {org}: {e}")
-            return []
         out: List[Model_Config] = []
         seen: set = set()
-        for m in models:
-            if (getattr(m, "downloads", 0) or 0) < min_downloads:
-                continue
-            name = m.id.split("/")[-1]
-            if any(b in name.lower() for b in self._DISCOVERY_SKIP):
-                continue
-            key = base_key(m.id)
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(Model_Config(name, m.id, model_type))
-            if len(out) >= top_n:
-                break
+        for pipelines, cap in ((self.TEXT_PIPELINES, top_n), (self.VISION_PIPELINES, vision_top_n)):
+            added = 0
+            for pipeline in pipelines:
+                if added >= cap:
+                    break
+                try:
+                    models = list(self.hf_api.list_models(
+                        author=org, pipeline_tag=pipeline, sort="downloads", limit=80,
+                        expand=["safetensors", "cardData", "tags", "pipeline_tag",
+                                "gated", "downloads"],
+                    ))
+                except Exception as e:
+                    logger.warning(f"Org discovery failed for {org}/{pipeline}: {e}")
+                    continue
+                for m in models:
+                    if added >= cap:
+                        break
+                    if (getattr(m, "downloads", 0) or 0) < min_downloads:
+                        continue
+                    name = m.id.split("/")[-1]
+                    low = name.lower()
+                    if set(re.split(r"[-_.]", low)) & self.ARTIFACT_TOKENS:
+                        continue
+                    if any(fam in low for fam in self.NONCHAT_FAMILIES):
+                        continue
+                    tags = list(getattr(m, "tags", None) or [])
+                    if is_derivative(tags):
+                        continue
+                    if not is_instruct(name):
+                        continue
+                    key = base_key(m.id)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    out.append(Model_Config(
+                        name, m.id, model_type,
+                        safetensors_total=_safetensors_total(m),
+                        category=categorize(name, tags, getattr(m, "pipeline_tag", None)),
+                    ))
+                    added += 1
+        return out
+
+    # Suffix tokens that mark a chat-tuned release (vs its raw pretrain sibling).
+    _INSTRUCT_SUFFIX: frozenset = frozenset({"it", "instruct", "chat"})
+
+    def _prefer_instruct_siblings(self, candidates: List[Model_Config]) -> List[Model_Config]:
+        """Drop a bare pretrain when its instruct sibling is also present (#122).
+
+        Groups by family slug (normalized, minus trailing it/instruct/chat). If any
+        member of a family carries an instruct suffix, the non-suffixed bare pretrains
+        in that family are dropped — keeping ``gemma-2-9b-it`` over ``gemma-2-9b``,
+        while a suffix-less lone release (``DeepSeek-V3``) is untouched.
+        """
+        def family(mc: Model_Config) -> str:
+            toks = base_key(mc.link).split("-")
+            while toks and toks[-1] in self._INSTRUCT_SUFFIX:
+                toks.pop()
+            return "-".join(toks)
+
+        def has_instruct(mc: Model_Config) -> bool:
+            return any(t in self._INSTRUCT_SUFFIX for t in base_key(mc.link).split("-"))
+
+        groups: Dict[str, List[Model_Config]] = {}
+        for mc in candidates:
+            groups.setdefault(family(mc), []).append(mc)
+        out: List[Model_Config] = []
+        for members in groups.values():
+            instruct = [m for m in members if has_instruct(m)]
+            out.extend(instruct if instruct else members)
         return out
 
     def build_base_models(self, orgs) -> List[Llm]:
-        """Discover each foundation org's instruct models and build (don't persist)
-        the base catalog rows, each resolved to its engine-format quant.
+        """Discover each foundation org's chat models and build (don't persist) the
+        base catalog rows, each resolved to its engine-format quant.
 
-        Per candidate: discover → resolve_quant → build. A base with no quant for the
-        active engine is skipped (simply not offered here). HF metadata failure falls
-        back to default metadata so one bad model never drops the rest. `orgs` is the
+        Per candidate: discover → prefer-instruct → resolve_quant → build. A base
+        with no quant for the active engine is skipped. Resolved quants are deduped
+        (same repo never seeded twice — #122). HF metadata failure falls back to
+        default metadata so one bad model never drops the rest. `orgs` is the
         FOUNDATION_ORGS list of (org, family_type, search_term).
         """
         out: List[Llm] = []
+        seen_quant: set = set()
         tag = getattr(config.LLM_Engine, "FORMAT_TAG", None)
         for org, model_type, _term in orgs:
-            for model_config in self.discover_instruct_models(org, model_type):
+            candidates = self._prefer_instruct_siblings(
+                self.discover_instruct_models(org, model_type))
+            for model_config in candidates:
                 try:
                     quant_link = resolve_quant(model_config.link, tag, self.hf_api)
                 except Exception as e:
                     logger.warning(f"resolve_quant failed for {model_config.link}: {e}")
                     quant_link = None
-                if not quant_link:
+                if not quant_link or quant_link in seen_quant:
                     continue
                 try:
                     out.append(self._create_base_llm(model_config, quant_link))
+                    seen_quant.add(quant_link)
                 except HuggingFaceAPIException as e:
                     logger.warning(f"HF metadata failed for {model_config.link}, fallback: {e}")
                     try:
                         out.append(self._create_base_llm_fallback(model_config, quant_link))
+                        seen_quant.add(quant_link)
                     except Exception as fe:
                         logger.error(f"Fallback build failed for {model_config.link}: {fe}")
                 except Exception as e:
@@ -496,7 +596,10 @@ class Model_Seeder:
         """
         model_info = self.hf_api.model_info(model_config.link)
         size_estimate = get_disk_size_after_quant(quant_link)
-        param_size = self._extract_param_size(model_config.name, model_config.link)
+        # Real param count from the base's safetensors.total (captured at discovery),
+        # slug as sanity-checked fallback — no more blanket 7.0 (#122).
+        param_size = param_size_billions(
+            model_config.safetensors_total, model_config.link.split("/")[-1])
         metadata = format_model_info_metadata(model_info, size_estimate, True)
 
         return Llm(
@@ -510,6 +613,7 @@ class Model_Seeder:
             # Curated foundation model (discovered from a FOUNDATION_ORG) — drives the
             # Base/Community split and "Models For You" recommendations in the UI (#86).
             is_base=True,
+            category=model_config.category,
             # Pre-download tool detection is intentionally NOT done here: it required
             # downloading a tokenizer per catalog model, which is not viable at catalog
             # scale (#113). supports_tools stays null and is computed post-download
@@ -520,7 +624,8 @@ class Model_Seeder:
     def _create_base_llm_fallback(self, model_config: Model_Config, quant_link: str) -> Llm:
         """Create a base LLM with fallback metadata when base HF metadata is missing."""
         size_estimate = get_disk_size_after_quant(quant_link)
-        param_size = self._extract_param_size(model_config.name, model_config.link)
+        param_size = param_size_billions(
+            model_config.safetensors_total, model_config.link.split("/")[-1])
 
         fallback_metadata = (
             f"Size: {size_estimate.to_string()}\n"
@@ -540,22 +645,10 @@ class Model_Seeder:
             param_size=param_size,
             # Curated foundation model — see _create_base_llm (#86).
             is_base=True,
+            category=model_config.category,
             # Deferred to post-download (see _create_base_llm / #113).
             supports_tools=None,
         )
-    
-    def _extract_param_size(self, name: str, link: str) -> float:
-        """Extract parameter size from model name/link."""
-        param_count = extract_parameter_pattern(f"{name} {link}")
-        
-        if param_count:
-            if param_count.scale == ParameterScale.BILLION:
-                return param_count.count
-            elif param_count.scale == ParameterScale.MILLION:
-                return param_count.count / 1000.0
-        
-        # Fallback to 7B if extraction fails
-        return 7.0
     
     def _passes_quality_filters(self, model_info) -> bool:
         """Keep any model above the popularity floor — nothing else.
@@ -604,6 +697,8 @@ class Model_Seeder:
             param_size=param_size,
             # Derived/community quant (not a curated foundation model) (#86).
             is_base=False,
+            category=categorize(model_name, list(getattr(model_info, "tags", None) or []),
+                                getattr(model_info, "pipeline_tag", None)),
         )
 
 
@@ -1005,32 +1100,57 @@ class Database_Seeder:
         fresh_derived = [d for d in fresh_derived if base_key(d.link) not in base_keys]
         return fresh_base, fresh_derived
 
-    def resync_remote_catalog(self, db: Session, model_seeder: "Model_Seeder") -> Dict[str, Any]:
-        """Atomically replace the remote catalog (local=0) with a fresh HF fetch.
+    # Mutable catalog fields refreshed in place on a resync. supports_tools is
+    # excluded on purpose: it is detected post-download and must not be clobbered.
+    _RESYNC_FIELDS = ("name", "type", "param_size", "model_metadata", "quantized",
+                      "is_base", "category", "description")
 
-        Reconciles our local catalog with HuggingFace (the source of truth): models
-        gone from HF disappear, new ones appear, names/metadata refresh. Downloaded
+    def resync_remote_catalog(self, db: Session, model_seeder: "Model_Seeder") -> Dict[str, Any]:
+        """Reconcile the remote catalog (local=0) with a fresh HF fetch IN PLACE (#123).
+
+        Matches existing rows by ``link`` (the HF repo id): existing models are
+        updated in place, genuinely new ones inserted, and models that vanished from
+        HF deleted. Rows are no longer dropped-and-reinserted, so catalog IDs stay
+        stable across restarts (the frontend's fetched IDs never go stale). Downloaded
         (local=1) and in-progress (local=2) models are NEVER touched. The HF fetch
-        runs BEFORE any delete, so a network failure leaves the existing catalog
-        intact (no empty-catalog window).
+        runs BEFORE any write, so a network failure leaves the existing catalog intact.
         """
         fresh_base, fresh_derived = self.build_fresh_catalog(model_seeder)
         if not fresh_base:
             logger.warning("Resync produced no base models — keeping existing catalog")
             return {"base_models_added": 0, "derived_models_added": 0, "resynced": False}
 
-        # Swap: drop the old remote suggestions, insert the fresh set. Downloaded
-        # (local=1) and downloading (local=2) rows are separate and left intact.
-        db.query(Llm).filter(Llm.local == 0).delete(synchronize_session=False)
-        db.add_all(fresh_base + fresh_derived)
+        existing = {row.link: row for row in db.query(Llm).filter(Llm.local == 0).all()}
+        added = updated = 0
+        seen_links: set = set()
+        for fresh in fresh_base + fresh_derived:
+            if fresh.link in seen_links:        # guard against dup links in the fresh set
+                continue
+            seen_links.add(fresh.link)
+            current = existing.get(fresh.link)
+            if current is None:
+                db.add(fresh)                   # genuinely new → insert (new id)
+                added += 1
+            else:
+                for field in self._RESYNC_FIELDS:   # refresh in place → id preserved
+                    setattr(current, field, getattr(fresh, field))
+                updated += 1
+
+        removed = 0
+        for link, row in existing.items():
+            if link not in seen_links:          # gone from HF → drop the suggestion
+                db.delete(row)
+                removed += 1
         db.commit()
         logger.info(
-            f"Remote catalog resynced: {len(fresh_base)} base + {len(fresh_derived)} derived "
-            f"(downloaded/in-progress models untouched)"
+            f"Remote catalog resynced in place: {added} added, {updated} updated, "
+            f"{removed} removed ({len(fresh_base)} base + {len(fresh_derived)} derived; "
+            f"downloaded/in-progress untouched)"
         )
         return {
-            "base_models_added": len(fresh_base),
-            "derived_models_added": len(fresh_derived),
+            "base_models_added": added,
+            "derived_models_added": updated,
+            "base_models_removed": removed,
             "resynced": True,
         }
 
