@@ -247,38 +247,52 @@ class Model_Seeder:
     _DISCOVERY_SKIP = (
         "gguf", "-mlx", "4bit", "8bit", "gptq", "awq", "-bnb", "lora", "adapter",
         "onnx", "-pt", "-pretrain", "draft", "embedding", "reranker", "guard",
-        "reward", "-rm", "prm", "-base",
+        "reward", "-rm", "prm", "-base", "assistant", "qat", "diffusion",
     )
+
+    # Foundation models span modalities: modern flagships (Gemma 4, Qwen-VL, Pixtral)
+    # carry a multimodal pipeline tag, not text-generation — so the text-generation
+    # filter alone misses them and surfaces their text-only `-assistant` distillates
+    # instead (#122). Discover across all three so the real foundation model wins.
+    _DISCOVERY_PIPELINES = ("text-generation", "image-text-to-text", "any-to-any")
 
     def discover_instruct_models(self, org: str, model_type: str,
                                  top_n: int = 12, min_downloads: int = 2000) -> List[Model_Config]:
-        """Discover an org's top text-generation models as base-catalog candidates.
+        """Discover an org's top instruct models as base-catalog candidates.
 
-        Permissive by design: filters to the ``text-generation`` pipeline (drops the
-        org's CLIP / Whisper / BERT / etc.), skips quants/adapters/non-final repos,
-        dedupes by normalized slug, and caps to the most-downloaded. Anything without
-        an engine-format quant is later pruned by the resolver, so noise self-corrects.
+        Permissive by design: scans the text + multimodal generation pipelines (drops
+        the org's CLIP / Whisper / BERT / etc.), skips quants/adapters/distillates/non-
+        final repos, dedupes by normalized slug, and caps to the most-downloaded.
+        Anything without an engine-format quant is later pruned by the resolver, so
+        noise self-corrects.
         """
-        try:
-            models = list(self.hf_api.list_models(
-                author=org, filter="text-generation", sort="downloads", limit=80,
-            ))
-        except Exception as e:
-            logger.warning(f"Org discovery failed for {org}: {e}")
-            return []
+        # Merge candidates across pipelines, keeping each repo's highest download count;
+        # one bad pipeline call never drops the others.
+        downloads_by_id: Dict[str, int] = {}
+        for pipeline in self._DISCOVERY_PIPELINES:
+            try:
+                for m in self.hf_api.list_models(
+                    author=org, filter=pipeline, sort="downloads", limit=80,
+                ):
+                    dl = getattr(m, "downloads", 0) or 0
+                    if dl > downloads_by_id.get(m.id, -1):
+                        downloads_by_id[m.id] = dl
+            except Exception as e:
+                logger.warning(f"Org discovery failed for {org} [{pipeline}]: {e}")
         out: List[Model_Config] = []
         seen: set = set()
-        for m in models:
-            if (getattr(m, "downloads", 0) or 0) < min_downloads:
+        # Most-downloaded first, so a family's representative is its real flagship.
+        for model_id, downloads in sorted(downloads_by_id.items(), key=lambda kv: kv[1], reverse=True):
+            if downloads < min_downloads:
                 continue
-            name = m.id.split("/")[-1]
+            name = model_id.split("/")[-1]
             if any(b in name.lower() for b in self._DISCOVERY_SKIP):
                 continue
-            key = base_key(m.id)
+            key = base_key(model_id)
             if key in seen:
                 continue
             seen.add(key)
-            out.append(Model_Config(name, m.id, model_type))
+            out.append(Model_Config(name, model_id, model_type))
             if len(out) >= top_n:
                 break
         return out

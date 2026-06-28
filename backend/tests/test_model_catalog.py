@@ -69,11 +69,13 @@ class TestOrgDiscovery:
             ("Qwen/Qwen3-8B-GGUF", 50000),              # skip: quant
             ("Qwen/Qwen3-4B", 30000),                   # keep
             ("Qwen/Qwen2.5-7B-Instruct-AWQ", 9000),     # skip: quant
+            ("google/gemma-4-12B-it-qat-w4a16-ct", 80000),  # skip: QAT quant, not the base
+            ("google/diffusiongemma-26B-A4B-it", 70000),    # skip: diffusion (image-gen), not a chat LLM
             ("Qwen/tiny-thing", 10),                    # skip: below floor
         ])
         links = [c.link for c in seeder.discover_instruct_models("Qwen", "qwen", min_downloads=1000)]
         assert "Qwen/Qwen3-8B" in links and "Qwen/Qwen3-4B" in links
-        assert all(x not in " ".join(links) for x in ("GGUF", "AWQ"))
+        assert all(x not in " ".join(links) for x in ("GGUF", "AWQ", "qat", "diffusion"))
         assert "Qwen/tiny-thing" not in links
 
     def test_dedups_by_normalized_slug(self):
@@ -94,6 +96,43 @@ class TestOrgDiscovery:
         api = MagicMock()
         api.list_models.side_effect = RuntimeError("boom")
         assert Model_Seeder(db=None, hf_api=api).discover_instruct_models("Org", "x") == []
+
+    def _seeder_by_pipeline(self, mapping):
+        """Mock list_models to return a different list per `filter` (pipeline tag)."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        from src.database.seed import Model_Seeder
+        api = MagicMock()
+
+        def fake_list(**kw):
+            return [SimpleNamespace(id=i, downloads=d) for i, d in mapping.get(kw.get("filter"), [])]
+
+        api.list_models.side_effect = fake_list
+        return Model_Seeder(db=None, hf_api=api)
+
+    def test_skips_assistant_distillates(self):
+        # #122: the real foundation model is the multimodal -it VLM (discovered under a
+        # vision pipeline); the text-only -assistant distillate must NOT be a base model.
+        seeder = self._seeder_by_pipeline({
+            "text-generation": [("google/gemma-4-E4B-it-assistant", 352943)],
+            "image-text-to-text": [("google/gemma-4-E4B-it", 5677536)],
+            "any-to-any": [],
+        })
+        links = [c.link for c in seeder.discover_instruct_models("google", "gemma", min_downloads=1000)]
+        assert "google/gemma-4-E4B-it" in links              # real foundation VLM surfaces
+        assert "google/gemma-4-E4B-it-assistant" not in links  # text-only distillate skipped
+
+    def test_discovers_across_pipelines_deduped(self):
+        # #122: foundation models span modalities — discover across pipelines, count a
+        # repo once (highest downloads kept) even when it lists under several tags.
+        seeder = self._seeder_by_pipeline({
+            "text-generation": [("Qwen/Qwen3-8B", 100000)],
+            "image-text-to-text": [("Qwen/Qwen3-VL-8B", 80000), ("Qwen/Qwen3-8B", 100000)],
+            "any-to-any": [],
+        })
+        links = [c.link for c in seeder.discover_instruct_models("Qwen", "qwen", min_downloads=1000)]
+        assert links.count("Qwen/Qwen3-8B") == 1   # same repo across pipelines → once
+        assert "Qwen/Qwen3-VL-8B" in links          # multimodal foundation included
 
 
 class TestRunnabilityPredicate:
