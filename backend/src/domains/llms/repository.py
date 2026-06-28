@@ -122,6 +122,7 @@ class Llm_Repository:
         quantized: bool = False,
         param_size: float = 4.0,
         link: Optional[str] = None,
+        category: str = "general",
     ) -> Llm:
         """Create a new LLM catalog entry.
 
@@ -148,6 +149,7 @@ class Llm_Repository:
             quantized=quantized,
             param_size=param_size,
             link=link,
+            category=category,
         )
         self.db.add(llm)
         self.db.flush()

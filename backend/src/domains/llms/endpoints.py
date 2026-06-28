@@ -102,9 +102,13 @@ from sqlalchemy.orm import Session
 from src.database.core import get_db, SessionLocal
 
 from src.entities.DownloadJob import DownloadJobModel
-from src.domains.llms.schemas import LLMCreate, LLMResponse, DownloadJobResponse
+from src.domains.llms.schemas import (
+    LLMCreate, LLMResponse, DownloadJobResponse, HFSearchResult, HFDownloadRequest,
+)
 from src.domains.llms.services import download_llm, cancel_download_job
+from src.domains.llms.hf_search import search_huggingface
 from src.domains.llms.repository import Llm_Repository, Download_Job_Repository
+from src.utils.hf_model_metadata import humanize_model_name
 
 from src.core.logging import logger
 from src.core import config
@@ -146,7 +150,74 @@ def get_download_job_repository(db: Session = Depends(get_db)) -> Download_Job_R
     return Download_Job_Repository(db)
 
 
-# ============ LLM CRUD Endpoints ============
+# ============ Download Helpers (shared by id-based and link-based downloads) ============
+
+def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save_dir,
+                       job_id: int) -> None:
+    """Background body of a download: flip the job to running, run the download
+    (which spawns its own progress updater), and mark failed on error. Module-level
+    so both the by-id and by-link download routes share one implementation."""
+    session = SessionLocal()
+    try:
+        job_obj = session.query(DownloadJobModel).get(job_id)
+        job_obj.status = "running"
+        job_obj.updated_at = datetime.utcnow()
+        session.commit()
+        logger.info(f"Started download job {job_id}")
+        asyncio.run(download_llm(
+            model_link=model_link, model_id=model_id,
+            temp_save_dir=temp_save_dir, final_save_dir=final_save_dir, job_id=job_id,
+        ))
+        logger.info(f"Download job {job_id} completed successfully")
+    except Exception as e:
+        logger.exception(f"Download job {job_id} failed: {e}")
+        job_obj = session.query(DownloadJobModel).get(job_id)
+        job_obj.status = "failed"
+        job_obj.error_message = str(e)
+        job_obj.updated_at = datetime.utcnow()
+        session.commit()
+    finally:
+        session.close()
+
+
+def _start_download(*, remote_model_id: str, remote_link: str, name: str, type: str,
+                    description, model_metadata, quantized: bool, param_size: float,
+                    category: str, llm_repo: Llm_Repository,
+                    job_repo: Download_Job_Repository, db: Session,
+                    background_tasks: BackgroundTasks) -> DownloadJobModel:
+    """Create the local=2 placeholder + DownloadJob and enqueue the download.
+
+    Shared by the catalog (by-id) and HF-search (by-link) download routes so the
+    placeholder/job/enqueue logic lives in exactly one place. ``remote_link`` is the
+    HF repo id actually fetched; ``remote_model_id`` is the catalog id (by-id) or the
+    repo id (by-link), for traceability on the job.
+    """
+    local_llm = llm_repo.create(
+        name=name, local=2, type=type, description=description,
+        model_metadata=model_metadata, quantized=quantized, param_size=param_size,
+        category=category,
+    )
+    temp_path = config.LLM_DIR / f"temp_{local_llm.id}"
+    final_path = config.LLM_DIR / str(local_llm.id)
+    if temp_path.exists() or final_path.exists():
+        llm_repo.delete(local_llm)
+        db.rollback()
+        raise FileSystemException("Model path already exists - delete existing files first")
+    llm_repo.update(local_llm, link=str(final_path))
+    db.commit()
+    logger.info(f"Created local LLM entry {local_llm.id}: {local_llm.name} -> {final_path}")
+
+    job = job_repo.create(
+        remote_model_id=remote_model_id, local_model_id=local_llm.id,
+        remote_model_link=remote_link, temp_local_model_link=str(temp_path),
+        final_local_model_link=str(final_path), status="pending",
+    )
+    db.commit()
+    logger.info(f"Created download job {job.id} for model {local_llm.name}")
+    background_tasks.add_task(_run_download_task, remote_link, local_llm.id,
+                             temp_path, final_path, job.id)
+    return job
+
 
 # ============ LLM CRUD Endpoints ============
 
@@ -209,6 +280,25 @@ async def search_llms(name: str, llm_repo: Llm_Repository = Depends(get_llm_repo
     # Read-only operation, no commit needed
     llms = llm_repo.search_by_name(name)
     return llms
+
+
+@router.get("/search/huggingface", response_model=List[HFSearchResult])
+async def search_huggingface_route(q: str, limit: int = 30):
+    """Live HuggingFace search beyond the curated catalog (#122 follow-up).
+
+    Searches HF directly for runnable models matching ``q`` in the active engine's
+    format, filtered to chat/vision LLMs (so a query like "french" doesn't return
+    token-classification repos). Results are ephemeral — they are NOT added to the
+    catalog; download a chosen one via POST /download/huggingface.
+
+    Args:
+        q: Free-text query (model name, family, trait like "uncensored").
+        limit: Max results to return (default 30).
+
+    Returns:
+        List[HFSearchResult]: Downloadable matches with metadata + category.
+    """
+    return search_huggingface(q, limit=limit)
 
 
 @router.get("/{llm_id}", response_model=LLMResponse)
@@ -399,98 +489,15 @@ async def download_llm_route(
         if not remote_llm:
             raise ModelNotFoundException(f"LLM {llm_id}")
 
-        # Create temp LLM entry (local=2 means "downloading")
-        local_llm = llm_repo.create(
-            name=remote_llm.name,
-            local=2,
-            type=remote_llm.type,
-            description=remote_llm.description,
-            model_metadata=remote_llm.model_metadata,
-            quantized=remote_llm.quantized,
-            param_size=remote_llm.param_size,
-        )
-        
-        # Define paths and check availability
-        temp_path = config.LLM_DIR / f"temp_{local_llm.id}"
-        final_path = config.LLM_DIR / str(local_llm.id)
-        
-        if temp_path.exists() or final_path.exists():
-            llm_repo.delete(local_llm)
-            db.rollback()
-            raise FileSystemException(
-                "Model path already exists - delete existing files first"
-            )
-        
-        # Update local LLM with final path
-        llm_repo.update(local_llm, link=str(final_path))
-        db.commit()
-        logger.info(f"Created local LLM entry {local_llm.id}: {local_llm.name} -> {final_path}")
-
-        # Create download job
-        job = job_repo.create(
-            remote_model_id=str(llm_id),
-            local_model_id=local_llm.id,
-            remote_model_link=remote_llm.link,
-            temp_local_model_link=str(temp_path),
-            final_local_model_link=str(final_path),
-            status="pending",
-        )
-        db.commit()
-        logger.info(f"Created download job {job.id} for model {local_llm.name}")
-
-        # Background task function
-        def _download_task(
-            model_link: str,
-            model_id: int,
-            temp_save_dir: str,
-            final_save_dir: str,
-            job_id: int
-        ):
-            """Background download task with error handling."""
-            session = SessionLocal()
-            try:
-                # Mark job as running
-                job_obj = session.query(DownloadJobModel).get(job_id)
-                job_obj.status = "running"
-                job_obj.updated_at = datetime.utcnow()
-                session.commit()
-                logger.info(f"Started download job {job_id}")
-
-                # Run download (spawns its own progress updater thread)
-                asyncio.run(
-                    download_llm(
-                        model_link=model_link,
-                        model_id=model_id,
-                        temp_save_dir=temp_save_dir,
-                        final_save_dir=final_save_dir,
-                        job_id=job_id,
-                    )
-                )
-                logger.info(f"Download job {job_id} completed successfully")
-                
-            except Exception as e:
-                logger.exception(f"Download job {job_id} failed: {e}")
-                job_obj = session.query(DownloadJobModel).get(job_id)
-                job_obj.status = "failed"
-                job_obj.error_message = str(e)
-                job_obj.updated_at = datetime.utcnow()
-                session.commit()
-            finally:
-                session.close()
-
-        # Enqueue background task
-        background_tasks.add_task(
-            _download_task,
-            remote_llm.link,
-            local_llm.id,
-            temp_path,
-            final_path,
-            job.id,
+        return _start_download(
+            remote_model_id=str(llm_id), remote_link=remote_llm.link,
+            name=remote_llm.name, type=remote_llm.type, description=remote_llm.description,
+            model_metadata=remote_llm.model_metadata, quantized=remote_llm.quantized,
+            param_size=remote_llm.param_size, category=getattr(remote_llm, "category", "general"),
+            llm_repo=llm_repo, job_repo=job_repo, db=db, background_tasks=background_tasks,
         )
 
-        return job
-
-    except (ModelNotFoundException, InvalidInputException):
+    except (ModelNotFoundException, InvalidInputException, FileSystemException):
         raise
     except Exception as e:
         db.rollback()
@@ -499,6 +506,49 @@ async def download_llm_route(
             "Failed to start download",
             trace=str(e)
         )
+
+
+@router.post(
+    "/download/huggingface",
+    response_model=DownloadJobResponse,
+    status_code=http_status.HTTP_200_OK,
+)
+async def download_huggingface_route(
+    payload: HFDownloadRequest,
+    background_tasks: BackgroundTasks,
+    llm_repo: Llm_Repository = Depends(get_llm_repository),
+    job_repo: Download_Job_Repository = Depends(get_download_job_repository),
+    db: Session = Depends(get_db),
+):
+    """Download a model chosen from HF search by its repo id (not via the catalog).
+
+    Mirrors POST /{llm_id}/download but takes the HF repo id directly, so search
+    results never need to be persisted into the catalog. Creates the local=2
+    placeholder + DownloadJob and runs the download in the background.
+
+    Args:
+        payload: The chosen HF repo id plus display metadata from the search hit.
+
+    Returns:
+        DownloadJobResponse: Job record to poll via GET /downloads/{job_id}/status.
+    """
+    try:
+        name = payload.name or humanize_model_name(payload.link)
+        # Family type is metadata-only for a local row; fall back to the category.
+        type_ = payload.type or payload.category or "community"
+        return _start_download(
+            remote_model_id=payload.link, remote_link=payload.link,
+            name=name, type=type_, description=None, model_metadata=None,
+            quantized=payload.quantized, param_size=payload.param_size,
+            category=payload.category, llm_repo=llm_repo, job_repo=job_repo,
+            db=db, background_tasks=background_tasks,
+        )
+    except (FileSystemException, InvalidInputException):
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to start HF download for {payload.link}: {e}")
+        raise DatabaseException("Failed to start download", trace=str(e))
 
 
 @router.post(

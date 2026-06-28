@@ -60,7 +60,15 @@ class TestOrgDiscovery:
         from unittest.mock import MagicMock
         from src.database.seed import Model_Seeder
         api = MagicMock()
-        api.list_models.return_value = [SimpleNamespace(id=i, downloads=d) for i, d in ids]
+        models = [SimpleNamespace(id=i, downloads=d) for i, d in ids]
+
+        # Discovery now queries per pipeline_tag (text + vision passes). These fixtures
+        # are plain text models, so only the text-generation pass returns them; the
+        # vision passes return nothing.
+        def _list(**kwargs):
+            return models if kwargs.get("pipeline_tag") == "text-generation" else []
+
+        api.list_models.side_effect = _list
         return Model_Seeder(db=None, hf_api=api)
 
     def test_filters_quants_and_floor(self):
@@ -98,14 +106,17 @@ class TestOrgDiscovery:
         assert Model_Seeder(db=None, hf_api=api).discover_instruct_models("Org", "x") == []
 
     def _seeder_by_pipeline(self, mapping):
-        """Mock list_models to return a different list per `filter` (pipeline tag)."""
+        """Mock list_models to return a different list per pipeline_tag (text/vision)."""
         from types import SimpleNamespace
         from unittest.mock import MagicMock
         from src.database.seed import Model_Seeder
         api = MagicMock()
 
         def fake_list(**kw):
-            return [SimpleNamespace(id=i, downloads=d) for i, d in mapping.get(kw.get("filter"), [])]
+            return [
+                SimpleNamespace(id=i, downloads=d)
+                for i, d in mapping.get(kw.get("pipeline_tag"), [])
+            ]
 
         api.list_models.side_effect = fake_list
         return Model_Seeder(db=None, hf_api=api)

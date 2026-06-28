@@ -58,6 +58,7 @@
     "webpack-dev-server": "^4.15.2"
   },
   "dependencies": {
+    "@fontsource/montserrat": "^5.2.8",
     "@tailwindcss/aspect-ratio": "^0.4.2",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/typography": "^0.5.16",

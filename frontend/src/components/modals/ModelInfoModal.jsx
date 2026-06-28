@@ -200,7 +200,7 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                                 duration: 0.3,
                                 ease: [0.16, 1, 0.3, 1],
                               }}
-                              className="bg-black/40 border border-white/10 p-4 rounded-2xl text-xs text-gray-300 font-mono whitespace-pre-wrap max-h-60 overflow-auto"
+                              className="bg-black/40 border border-white/10 p-4 rounded-2xl text-xs text-gray-300 whitespace-pre-wrap max-h-60 overflow-auto"
                             >
                               {modelInfo.rawMetadata}
                             </motion.div>

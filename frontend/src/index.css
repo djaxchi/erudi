@@ -2,12 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Erudi explore-panel design tokens (#122 redesign) ──────────────────────
+   The catalog is organized around one question: "what fits my machine?" The
+   palette evolves the existing pine/emerald brand; the three fit colors are
+   functional — they encode the hardware benchmark, not decoration. */
+:root {
+  --canvas: #061a16;
+  --surface: #0c2722;
+  --surface-2: #11302a;
+  --surface-3: #16382f;
+  --line: rgba(233, 245, 240, 0.08);
+  --line-strong: rgba(233, 245, 240, 0.16);
+  --ink: #eaf3ef;
+  --ink-dim: #84a096;
+  --ink-faint: #5c7a71;
+  --fit-good: #34d6a5; /* fits comfortably */
+  --fit-tight: #e8b14c; /* runs, but tight */
+  --fit-heavy: #cf7d72; /* needs more memory */
+}
+
 html,
 body,
 #root {
   height: 100%;
   overflow: hidden; /* prevent page scroll */
   overscroll-behavior: contain;
+  font-family: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Numeric/metric runs: tabular figures so columns line up, in the app's font. */
+.mono {
+  font-variant-numeric: tabular-nums;
+}
+/* Small section labels: uppercase, tracked, semibold Montserrat. */
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--ink-dim);
+}
+
+/* Restrained entrance: a single staggered fade-up, reduced-motion respected. */
+@keyframes erudi-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise {
+  animation: erudi-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
 }
 
 /* macOS-style overlay scrollbar: thin, no arrows, visible only on hover/scroll */
