@@ -37,7 +37,7 @@ export default function Sidebar({
 
   return (
     <div
-      className={`w-[4.8%] bg-[#121212] mt-0 flex flex-col items-center transition-opacity duration-200 ${
+      className={`w-14 bg-[#121212] mt-0 flex flex-col items-center transition-opacity duration-200 ${
         disabled ? "opacity-50 pointer-events-none select-none" : ""
       }`}
     >
@@ -46,41 +46,33 @@ export default function Sidebar({
           onClick={onToggleBrainSidebar}
           onMouseEnter={() => setIsBrainHovering(true)}
           onMouseLeave={() => setIsBrainHovering(false)}
-          className={`w-full flex justify-center items-center py-6 border-l-4 ${
+          className={`w-full flex justify-center items-center py-5 border-l-4 ${
             isModelsActive ? "border-green-500" : "border-transparent"
           }`}
         >
           {isBrainHovering ? (
             brainCollapsed ? (
               <PanelLeftOpen
-                className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
-                  isModelsActive ? "text-green-400" : "text-gray-400"
-                }`}
+                className={`w-5 h-5 ${isModelsActive ? "text-green-400" : "text-gray-400"}`}
               />
             ) : (
               <PanelLeftClose
-                className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
-                  isModelsActive ? "text-green-400" : "text-gray-400"
-                }`}
+                className={`w-5 h-5 ${isModelsActive ? "text-green-400" : "text-gray-400"}`}
               />
             )
           ) : (
-            <Brain
-              className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
-                isModelsActive ? "text-green-400" : "text-gray-400"
-              }`}
-            />
+            <Brain className={`w-5 h-5 ${isModelsActive ? "text-green-400" : "text-gray-400"}`} />
           )}
         </button>
       ) : (
         <Link
           to="/erudi/models"
-          className={`w-full flex justify-center items-center py-6 border-l-4 ${
+          className={`w-full flex justify-center items-center py-5 border-l-4 ${
             isModelsActive ? "border-green-500" : "border-transparent"
           }`}
         >
           <Brain
-            className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 ${
+            className={`w-5 h-5 transition-colors duration-200 ${
               isModelsActive ? "text-green-400" : "text-gray-400 hover:text-green-400"
             }`}
           />
@@ -92,41 +84,35 @@ export default function Sidebar({
           onClick={onToggleSidebar}
           onMouseEnter={() => setIsHovering(true)}
           onMouseLeave={() => setIsHovering(false)}
-          className={`w-full flex justify-center items-center py-6 border-l-4 ${
+          className={`w-full flex justify-center items-center py-5 border-l-4 ${
             isChatActive ? "border-green-500" : "border-transparent"
           }`}
         >
           {isHovering ? (
             collapsed ? (
               <PanelLeftOpen
-                className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
-                  isChatActive ? "text-green-400" : "text-gray-400"
-                }`}
+                className={`w-5 h-5 ${isChatActive ? "text-green-400" : "text-gray-400"}`}
               />
             ) : (
               <PanelLeftClose
-                className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
-                  isChatActive ? "text-green-400" : "text-gray-400"
-                }`}
+                className={`w-5 h-5 ${isChatActive ? "text-green-400" : "text-gray-400"}`}
               />
             )
           ) : (
             <MessageSquare
-              className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square ${
-                isChatActive ? "text-green-400" : "text-gray-400"
-              }`}
+              className={`w-5 h-5 ${isChatActive ? "text-green-400" : "text-gray-400"}`}
             />
           )}
         </button>
       ) : (
         <Link
           to="/erudi/chat"
-          className={`w-full flex justify-center items-center py-6 border-l-4 ${
+          className={`w-full flex justify-center items-center py-5 border-l-4 ${
             isChatActive ? "border-green-500" : "border-transparent"
           }`}
         >
           <MessageSquare
-            className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 ${
+            className={`w-5 h-5 transition-colors duration-200 ${
               isChatActive ? "text-green-400" : "text-gray-400 hover:text-green-400"
             }`}
           />
@@ -134,24 +120,24 @@ export default function Sidebar({
       )}
       <Link
         to="/erudi/arena"
-        className={`w-full flex justify-center items-center py-6 border-l-4 ${
+        className={`w-full flex justify-center items-center py-5 border-l-4 ${
           isArenaActive ? "border-green-500" : "border-transparent"
         }`}
       >
         <Swords
-          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 ${
+          className={`w-5 h-5 transition-colors duration-200 ${
             isArenaActive ? "text-green-400" : "text-gray-400 hover:text-green-400"
           }`}
         />
       </Link>
       <Link
         to="/erudi/attach_knowledge_base"
-        className={`w-full flex justify-center items-center py-6 border-l-4 ${
+        className={`w-full flex justify-center items-center py-5 border-l-4 ${
           isKnowledgeBaseActive ? "border-green-500" : "border-transparent"
         }`}
       >
         <BookOpen
-          className={`w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 ${
+          className={`w-5 h-5 transition-colors duration-200 ${
             isKnowledgeBaseActive ? "text-green-400" : "text-gray-400 hover:text-green-400"
           }`}
         />
@@ -162,9 +148,9 @@ export default function Sidebar({
       {!isDownloading && (
         <button
           onClick={() => window.open("https://erudi.app/contact", "_blank")}
-          className="w-full flex justify-center items-center py-4 border-l-4 border-transparent mb-4"
+          className="w-full flex justify-center items-center py-5 border-l-4 border-transparent mb-4"
         >
-          <Bug className="w-[60%] sm:w-[50%] xl:w-[35%] h-auto aspect-square transition-colors duration-200 text-gray-400 hover:text-red-400" />
+          <Bug className="w-5 h-5 transition-colors duration-200 text-gray-400 hover:text-red-400" />
         </button>
       )}
     </div>

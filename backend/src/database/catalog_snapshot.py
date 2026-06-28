@@ -26,7 +26,7 @@ from src.entities.Llm import Llm
 # Fields persisted per entry. ``local`` is always 0 (a remote suggestion).
 _SNAPSHOT_FIELDS = (
     "name", "link", "type", "quantized", "model_metadata", "param_size", "supports_tools",
-    "is_base",
+    "is_base", "category",
 )
 
 
@@ -52,6 +52,8 @@ def dict_to_llm(entry: Dict[str, Any]) -> Llm:
         supports_tools=entry.get("supports_tools"),
         # Pre-#86 snapshots predate the flag → default to derived/community.
         is_base=entry.get("is_base", False),
+        # Pre-#122 snapshots predate categories → default to general.
+        category=entry.get("category", "general"),
     )
 
 

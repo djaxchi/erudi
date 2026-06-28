@@ -15,7 +15,8 @@ on:
     - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
 
 permissions:
-  contents: write
+  contents: write # push the refresh branch
+  pull-requests: write # open/update the snapshot-refresh PR
 
 jobs:
   generate:
@@ -56,7 +57,7 @@ jobs:
           if-no-files-found: error
 
   commit:
-    name: Commit refreshed snapshots
+    name: Open snapshot-refresh PR
     needs: generate
     runs-on: ubuntu-latest
     steps:
@@ -70,14 +71,24 @@ jobs:
         run: |
           cp /tmp/snapshots/catalog_snapshot_mlx/catalog_snapshot_mlx.json backend/src/database/
           cp /tmp/snapshots/catalog_snapshot_gguf/catalog_snapshot_gguf.json backend/src/database/
-      - name: Commit if changed
+      - name: Open a PR if snapshots changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add backend/src/database/catalog_snapshot_mlx.json backend/src/database/catalog_snapshot_gguf.json
           if git diff --cached --quiet; then
             echo "Snapshots unchanged — nothing to commit."
-          else
-            git commit -m "chore(catalog): refresh build-time snapshots from CI (#112)"
-            git push origin HEAD:${{ github.ref_name }}
+            exit 0
           fi
+          # main is a protected branch: the bot can't push to it directly, so land the
+          # refresh through a PR (a human re-runs its checks and merges). Reuse one
+          # branch so repeated runs update the same PR instead of piling new ones up.
+          BRANCH="chore/catalog-snapshot-refresh"
+          git commit -m "chore(catalog): refresh build-time snapshots from CI (#112)"
+          git push -f origin "HEAD:$BRANCH"
+          gh pr create --base "${{ github.ref_name }}" --head "$BRANCH" \
+            --title "chore(catalog): refresh build-time snapshots" \
+            --body "Automated per-engine catalog snapshot refresh, resolved from HuggingFace on clean runners. Re-run the checks before merging." \
+            2>/dev/null || echo "PR already open for $BRANCH — updated via force-push."

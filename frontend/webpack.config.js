@@ -49,6 +49,12 @@ const rendererRules = [
     test: /\.(png|jpe?g|gif|svg)$/i,
     type: "asset/resource",
   },
+  {
+    // Self-hosted fonts (Montserrat via @fontsource). Inlined as data URIs so they
+    // load offline and over file:// in the packaged app, with no extra fetch.
+    test: /\.woff2?$/i,
+    type: "asset/inline",
+  },
 ];
 
 const resolve = { extensions: [".js", ".jsx", ".json"] };
@@ -107,8 +113,8 @@ const renderer = {
           "http-equiv": "Content-Security-Policy",
           content:
             "default-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:*; " +
-            "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-            "img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com;",
+            "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+            "img-src 'self' data: https:; font-src 'self' data:;",
         },
       },
     }),

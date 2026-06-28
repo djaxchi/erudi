@@ -1,0 +1,49 @@
+name: Promote release
+
+# Atomic platform-parity promote (#115). A maintainer runs this AFTER the manual QA
+# (docs/dev/release-qa-checklist.md) to flip the DRAFT release to published — but ONLY
+# if ALL 5 platform legs of release.yml went green for the tag. This refuses a partial
+# promote, so prod never gets version skew or a missing latest-*.yml auto-update feed.
+# It replaces the raw `gh release edit <tag> --draft=false` with a gated one-click step;
+# the human QA gate stays (you choose when to dispatch), the atomicity is enforced here.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to promote (e.g. v1.2.3)"
+        required: true
+
+permissions:
+  contents: write # un-draft (publish) the GitHub Release
+
+jobs:
+  promote:
+    name: Require all legs green, then publish
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Require all 5 release legs green
+        run: |
+          set -euo pipefail
+          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow=release.yml \
+            --branch "$TAG" --limit 1 --json databaseId -q '.[0].databaseId')
+          [ -n "$RUN_ID" ] || { echo "::error::No release.yml run found for tag $TAG"; exit 1; }
+          # Count the build-matrix legs (job names start with "build ") and how many
+          # concluded success. All 5 must be green — re-run any failed leg first.
+          TOTAL=$(gh run view "$RUN_ID" --json jobs \
+            -q '[.jobs[]|select(.name|startswith("build "))]|length')
+          GREEN=$(gh run view "$RUN_ID" --json jobs \
+            -q '[.jobs[]|select(.name|startswith("build "))|select(.conclusion=="success")]|length')
+          echo "Release $TAG (run $RUN_ID): $GREEN/$TOTAL platform legs green."
+          if [ "$TOTAL" -ne 5 ] || [ "$GREEN" -ne 5 ]; then
+            echo "::error::Refusing to promote $TAG — need all 5 platform legs green (got $GREEN/$TOTAL). Re-run the failed leg(s), then dispatch again."
+            exit 1
+          fi
+
+      - name: Promote — un-draft the release
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          echo "✅ Promoted $TAG — latest*.yml feeds are live; clients auto-update within their channel."
