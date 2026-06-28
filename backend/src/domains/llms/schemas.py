@@ -108,6 +108,35 @@ class LLMResponse(LLMBase):
         """
         from_attributes = True
 
+class HFSearchResult(BaseModel):
+    """A live HuggingFace search hit (not a persisted catalog row).
+
+    Returned by GET /search/huggingface. The frontend renders these and POSTs the
+    chosen one to POST /download/huggingface (by link), so results never pollute the
+    curated catalog.
+    """
+    link: str = Field(..., description="HuggingFace repo id, e.g. mlx-community/Foo-4bit")
+    name: str
+    param_size: float = Field(default=7.0, gt=0)
+    category: str = "general"
+    downloads: int = 0
+    likes: int = 0
+    gated: bool = False
+    pipeline_tag: Optional[str] = None
+    quantized: bool = True
+
+
+class HFDownloadRequest(BaseModel):
+    """Body for POST /download/huggingface — download a model picked from HF search
+    by its repo id, without it having to exist in the catalog first."""
+    link: str = Field(..., min_length=1, description="HuggingFace repo id to download")
+    name: Optional[str] = None
+    type: Optional[str] = None
+    param_size: float = Field(default=7.0, gt=0)
+    quantized: bool = True
+    category: str = "general"
+
+
 class DownloadJobResponse(BaseModel):
     """Response schema for download job status with progress tracking.
 

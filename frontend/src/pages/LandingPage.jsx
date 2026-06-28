@@ -8,8 +8,9 @@ import DeleteModelModal from "../components/modals/DeleteModelModal";
 import MessageModal from "../components/modals/MessageModal";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import HardwareLoadingPopup from "../components/LoadingPopup";
-import { RefreshCcw, Search, MonitorCheck, SearchCode, Blocks, Star, Users } from "lucide-react";
+import { RefreshCcw, Search, MonitorCheck, SearchCode, Star, Users, Globe } from "lucide-react";
 import WelcomeModal from "../components/modals/WelcomeModal";
+import CategorySections from "../components/CategorySections";
 import logoErudi from "../assets/images/logos/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api";
 import { transformAppStartupInfo } from "../utils/hardwareTransform";
@@ -34,6 +35,10 @@ export default function LandingPage() {
   const [successMessage, setSuccessMessage] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
   const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
+  // Live HuggingFace search (#122): query HF directly, beyond the curated catalog.
+  const [hfResults, setHfResults] = useState(null); // null = not searched yet
+  const [hfLoading, setHfLoading] = useState(false);
+  const [hfError, setHfError] = useState("");
   const localModelsRef = useRef(null);
 
   // Helper function to parse model metadata
@@ -150,7 +155,11 @@ export default function LandingPage() {
               // Backend classification + true param size drive the Base/Community
               // split and the hardware-fit "Models For You" recommendations (#86).
               is_base: model.is_base === true,
+              // Capability category drives the grouped Base sections (#122).
+              category: model.category || "general",
               param_size: model.param_size,
+              link: model.link,
+              quantized: model.quantized,
               metadata: metadata,
               rawMetadata: model.model_metadata,
             };
@@ -258,6 +267,48 @@ export default function LandingPage() {
         (model.parameters && model.parameters.toLowerCase().includes(query.toLowerCase())) ||
         (model.size && model.size.toLowerCase().includes(query.toLowerCase()))
     );
+  };
+
+  // Live HuggingFace search: hit the backend live-search endpoint and shape the
+  // hits like catalog cards (no id → they download by repo link, #122).
+  const runHuggingFaceSearch = async () => {
+    const q = searchQuery.trim();
+    if (!q) {
+      return;
+    }
+    setHfLoading(true);
+    setHfError("");
+    try {
+      const res = await fetch(`${API_BASE_URL}/llms/search/huggingface?q=${encodeURIComponent(q)}`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setHfResults(
+        data.map((m) => ({
+          name: m.name,
+          link: m.link,
+          category: m.category,
+          param_size: m.param_size,
+          quantized: m.quantized,
+          size: m.param_size ? `~${m.param_size}B params` : "Unknown",
+          downloads: m.downloads ? String(m.downloads) : undefined,
+          likes: m.likes ? String(m.likes) : undefined,
+          runnable: true,
+        }))
+      );
+    } catch (err) {
+      log.error("HF search failed:", err);
+      setHfError("HuggingFace search failed. Check your connection and try again.");
+      setHfResults([]);
+    } finally {
+      setHfLoading(false);
+    }
+  };
+
+  const clearHuggingFaceSearch = () => {
+    setHfResults(null);
+    setHfError("");
   };
 
   // Filtered models based on search query
@@ -457,12 +508,26 @@ export default function LandingPage() {
                   <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Looking for a model?"
+                    placeholder="Filter catalog, or Enter to search HuggingFace"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="bg-[#1a1a1a]/60 border border-white/10 rounded-2xl px-3 py-1 pl-8 pr-8 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-white/30"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        runHuggingFaceSearch();
+                      }
+                    }}
+                    className="bg-[#1a1a1a]/60 border border-white/10 rounded-2xl px-3 py-1 pl-8 pr-8 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-white/30 w-72"
                   />
                 </div>
+                <button
+                  onClick={runHuggingFaceSearch}
+                  disabled={!searchQuery.trim() || hfLoading}
+                  title="Search HuggingFace directly"
+                  className="flex items-center gap-1.5 px-3 py-1 text-sm rounded-2xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Globe className="w-4 h-4" />
+                  {hfLoading ? "Searching…" : "HuggingFace"}
+                </button>
                 <RefreshCcw
                   className="w-4 h-4 hover:opacity-70 text-white cursor-pointer"
                   onClick={(e) => {
@@ -473,6 +538,57 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
+
+          {/* Live HuggingFace search results (#122) — shown only after a search */}
+          {(hfResults !== null || hfLoading) && (
+            <section>
+              <div className="flex items-center justify-between mb-4 pt-3">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-5 h-5 text-emerald-300" />
+                  <h3 className="text-xl font-semibold text-white">
+                    HuggingFace Results
+                    {hfResults && (
+                      <span className="text-sm text-gray-400 ml-2">
+                        ({hfResults.length} for &quot;{searchQuery}&quot;)
+                      </span>
+                    )}
+                  </h3>
+                </div>
+                <button
+                  onClick={clearHuggingFaceSearch}
+                  className="text-sm text-gray-400 hover:text-white transition-colors"
+                >
+                  Clear
+                </button>
+              </div>
+              {hfLoading ? (
+                <div className="text-center py-8">
+                  <div className="flex items-center justify-center">
+                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
+                    <p className="text-gray-400">Searching HuggingFace…</p>
+                  </div>
+                </div>
+              ) : hfError ? (
+                <p className="text-amber-400/80 py-4">{hfError}</p>
+              ) : hfResults && hfResults.length > 0 ? (
+                <div className="grid grid-cols-3 gap-4 max-h-[600px] overflow-y-auto pr-2">
+                  {hfResults.map((model) => (
+                    <ModelCard
+                      key={`hf-${model.link}`}
+                      model={model}
+                      type="base"
+                      onDownload={handleDownload}
+                      onInfo={handleInfo}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-400 py-4">
+                  No runnable models on HuggingFace matched &quot;{searchQuery}&quot;.
+                </p>
+              )}
+            </section>
+          )}
 
           {/* Explore Models — recommendations first (#86): Models For You */}
           <section id="explore-models">
@@ -519,52 +635,15 @@ export default function LandingPage() {
             </div>
           </section>
 
-          {/* Base Models Section */}
-          <section>
-            {/* Base Models Subsection */}
-            <div className="mb-6 pt-3">
-              <div className="flex items-center gap-2 mb-4">
-                <Blocks className="w-5 h-5 text-white" />
-                <h3 className="text-lg font-semibold text-white">
-                  Base Models
-                  {searchQuery && (
-                    <span className="text-xs text-gray-400 ml-2">
-                      ({filteredBaseModels.length} results)
-                    </span>
-                  )}
-                </h3>
-              </div>
-              <div className="grid grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-2">
-                {modelsLoading ? (
-                  <div className="col-span-3 text-center py-8">
-                    <div className="flex items-center justify-center">
-                      <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
-                      <p className="text-gray-400">Loading base models...</p>
-                    </div>
-                  </div>
-                ) : filteredBaseModels.length > 0 ? (
-                  filteredBaseModels.map((model) => (
-                    <ModelCard
-                      key={model.id}
-                      model={model}
-                      type="base"
-                      onDownload={handleDownload}
-                      onInfo={handleInfo}
-                    />
-                  ))
-                ) : searchQuery ? (
-                  <div className="col-span-3 text-center py-8">
-                    <p className="text-gray-400">
-                      No base models found for &quot;{searchQuery}&quot;
-                    </p>
-                  </div>
-                ) : (
-                  <div className="col-span-3 text-center py-8">
-                    <p className="text-gray-400">No base models available</p>
-                  </div>
-                )}
-              </div>
-            </div>
+          {/* Base Models — grouped by capability category (#122) */}
+          <section className="pt-3">
+            <CategorySections
+              models={filteredBaseModels}
+              loading={modelsLoading}
+              searchQuery={searchQuery}
+              onDownload={handleDownload}
+              onInfo={handleInfo}
+            />
           </section>
 
           {/* Community Models Section */}

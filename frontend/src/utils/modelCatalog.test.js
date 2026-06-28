@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitByBase, recommendModels } from "./modelCatalog";
+import { splitByBase, recommendModels, groupByCategory } from "./modelCatalog";
 
 const m = (name, is_base, param_size) => ({ name, is_base, param_size });
 
@@ -40,5 +40,33 @@ describe("recommendModels", () => {
 
   it("falls back to the first N base models when the range is missing", () => {
     expect(recommendModels(base, null, 2).map((x) => x.name)).toEqual(["S", "M"]);
+  });
+});
+
+describe("groupByCategory", () => {
+  const c = (name, category) => ({ name, category });
+
+  it("groups by category in defined order, omitting empties", () => {
+    const groups = groupByCategory([
+      c("A", "code"),
+      c("B", "general"),
+      c("C", "vision"),
+      c("D", "code"),
+    ]);
+    expect(groups.map((g) => g.category)).toEqual(["general", "code", "vision"]);
+    expect(groups.find((g) => g.category === "code").models.map((x) => x.name)).toEqual(["A", "D"]);
+  });
+
+  it("falls back unknown/missing category to general", () => {
+    const groups = groupByCategory([c("A", "bogus"), c("B", undefined)]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].category).toBe("general");
+    expect(groups[0].models.map((x) => x.name)).toEqual(["A", "B"]);
+  });
+
+  it("marks safety as collapsed by default", () => {
+    const groups = groupByCategory([c("Guard", "safety"), c("Chat", "general")]);
+    expect(groups.find((g) => g.category === "safety").collapsed).toBe(true);
+    expect(groups.find((g) => g.category === "general").collapsed).toBe(false);
   });
 });

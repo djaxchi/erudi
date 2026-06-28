@@ -113,7 +113,24 @@ export function DownloadModalProvider({ children }) {
     setTimeout(() => setIsCollapsed(false), 2000);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/llms/${model.id}/download`, { method: "POST" });
+      // Catalog models download by id; HF live-search hits have no id, so they
+      // download by repo link via the dedicated endpoint (#122). Either way the
+      // backend returns a DownloadJob we poll identically.
+      const res =
+        typeof model.id === "number"
+          ? await fetch(`${API_BASE_URL}/llms/${model.id}/download`, { method: "POST" })
+          : await fetch(`${API_BASE_URL}/llms/download/huggingface`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                link: model.link,
+                name: model.name,
+                type: model.type || null,
+                param_size: model.param_size || 7.0,
+                quantized: model.quantized !== false,
+                category: model.category || "general",
+              }),
+            });
       if (!res.ok) {
         const errorText = await res.text();
         throw new Error(`Failed to start download (${res.status}): ${errorText}`);
