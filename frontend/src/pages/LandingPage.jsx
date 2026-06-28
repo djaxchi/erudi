@@ -309,7 +309,7 @@ export default function LandingPage() {
       />
 
       <aside
-        className={`${brainSidebarCollapsed ? "w-0 opacity-0 overflow-hidden" : "w-80 opacity-100 p-6 overflow-visible"} bg-[#272727] text-white flex flex-col transition-all duration-300`}
+        className={`${brainSidebarCollapsed ? "w-0 opacity-0 overflow-hidden" : "w-64 opacity-100 p-6 overflow-visible"} bg-[#272727] text-white flex flex-col transition-all duration-300`}
       >
         <div className="flex items-center justify-start mb-6 flex-shrink-0">
           <img
