@@ -53,23 +53,15 @@ export default function Sidebar({
           {isBrainHovering ? (
             brainCollapsed ? (
               <PanelLeftOpen
-                className={`w-5 h-5 ${
-                  isModelsActive ? "text-green-400" : "text-gray-400"
-                }`}
+                className={`w-5 h-5 ${isModelsActive ? "text-green-400" : "text-gray-400"}`}
               />
             ) : (
               <PanelLeftClose
-                className={`w-5 h-5 ${
-                  isModelsActive ? "text-green-400" : "text-gray-400"
-                }`}
+                className={`w-5 h-5 ${isModelsActive ? "text-green-400" : "text-gray-400"}`}
               />
             )
           ) : (
-            <Brain
-              className={`w-5 h-5 ${
-                isModelsActive ? "text-green-400" : "text-gray-400"
-              }`}
-            />
+            <Brain className={`w-5 h-5 ${isModelsActive ? "text-green-400" : "text-gray-400"}`} />
           )}
         </button>
       ) : (
@@ -99,22 +91,16 @@ export default function Sidebar({
           {isHovering ? (
             collapsed ? (
               <PanelLeftOpen
-                className={`w-5 h-5 ${
-                  isChatActive ? "text-green-400" : "text-gray-400"
-                }`}
+                className={`w-5 h-5 ${isChatActive ? "text-green-400" : "text-gray-400"}`}
               />
             ) : (
               <PanelLeftClose
-                className={`w-5 h-5 ${
-                  isChatActive ? "text-green-400" : "text-gray-400"
-                }`}
+                className={`w-5 h-5 ${isChatActive ? "text-green-400" : "text-gray-400"}`}
               />
             )
           ) : (
             <MessageSquare
-              className={`w-5 h-5 ${
-                isChatActive ? "text-green-400" : "text-gray-400"
-              }`}
+              className={`w-5 h-5 ${isChatActive ? "text-green-400" : "text-gray-400"}`}
             />
           )}
         </button>
