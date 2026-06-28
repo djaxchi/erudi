@@ -3,19 +3,26 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
 import ModelCard from "../components/ModelCard";
+import ExploreModelCard from "../components/ExploreModelCard";
+import MachineReadout from "../components/MachineReadout";
+import HuggingFaceSearchPanel from "../components/HuggingFaceSearchPanel";
+import CategorySections from "../components/CategorySections";
+import CatalogFilters from "../components/CatalogFilters";
+import ExploreIndex from "../components/ExploreIndex";
+import ConnectionStatus from "../components/ConnectionStatus";
 import ModelInfoModal from "../components/modals/ModelInfoModal";
 import DeleteModelModal from "../components/modals/DeleteModelModal";
 import MessageModal from "../components/modals/MessageModal";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import HardwareLoadingPopup from "../components/LoadingPopup";
-import { RefreshCcw, Search, MonitorCheck, SearchCode, Star, Users, Globe } from "lucide-react";
+import { RefreshCcw } from "lucide-react";
 import WelcomeModal from "../components/modals/WelcomeModal";
-import CategorySections from "../components/CategorySections";
 import logoErudi from "../assets/images/logos/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api";
 import { transformAppStartupInfo } from "../utils/hardwareTransform";
 import { createLogger } from "../utils/logger";
-import { splitByBase, recommendModels } from "../utils/modelCatalog";
+import { splitByBase } from "../utils/modelCatalog";
+import { rankByFit, pickFlagships, applyCatalogFilters } from "../utils/hardwareFit";
 
 export default function LandingPage() {
   const log = createLogger("LandingPage");
@@ -25,8 +32,8 @@ export default function LandingPage() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [showLoadingPopup, setShowLoadingPopup] = useState(false);
   const [hardwareInfo, setHardwareInfo] = useState(null);
+  const [machineDetail, setMachineDetail] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
   const [localModels, setLocalModels] = useState([]);
   const [remoteModels, setRemoteModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
@@ -35,10 +42,8 @@ export default function LandingPage() {
   const [successMessage, setSuccessMessage] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
   const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
-  // Live HuggingFace search (#122): query HF directly, beyond the curated catalog.
-  const [hfResults, setHfResults] = useState(null); // null = not searched yet
-  const [hfLoading, setHfLoading] = useState(false);
-  const [hfError, setHfError] = useState("");
+  const [communityOpen, setCommunityOpen] = useState(false);
+  const [filters, setFilters] = useState({ size: "any", fitOnly: false });
   const localModelsRef = useRef(null);
 
   // Helper function to parse model metadata
@@ -46,31 +51,67 @@ export default function LandingPage() {
     if (!metadataString) {
       return {};
     }
-
     try {
       const lines = metadataString.split("\n");
       const metadata = {};
-
       lines.forEach((line) => {
         const trimmedLine = line.trim();
         if (trimmedLine.includes(":")) {
           const [key, ...valueParts] = trimmedLine.split(":");
           const value = valueParts.join(":").trim();
-
-          // Clean up the key
           const cleanKey = key.trim().toLowerCase().replace(/\s+/g, "_");
           metadata[cleanKey] = value;
         }
       });
-
       return metadata;
     } catch (error) {
       return {};
     }
   };
 
+  const transformRemote = (model) => {
+    const metadata = parseMetadata(model.model_metadata);
+    return {
+      id: model.id,
+      name: model.name,
+      size: metadata.size || "Unknown",
+      // Fields the details modal reads, derived from the parsed metadata.
+      parameters: metadata.parameters || (model.param_size ? `${model.param_size}B` : "Unknown"),
+      downloads: metadata.downloads || "Unknown",
+      likes: metadata.likes || "Unknown",
+      author: metadata.author || "Unknown",
+      library: metadata.library || "Unknown",
+      pipeline: metadata.pipeline || "Unknown",
+      lastUpdate: metadata.last_modified || "Unknown",
+      description: model.description,
+      runnable: model.runnable !== false,
+      is_base: model.is_base === true,
+      category: model.category || "general",
+      type: model.type,
+      param_size: model.param_size,
+      link: model.link,
+      quantized: model.quantized,
+      metadata,
+      rawMetadata: model.model_metadata,
+    };
+  };
+
+  const transformLocal = (model) => {
+    const metadata = parseMetadata(model.model_metadata);
+    return {
+      id: model.id,
+      name: model.name,
+      size: metadata.size || "Unknown",
+      parameters: metadata.parameters || "Unknown",
+      lastUpdate: metadata.last_modified || "Unknown",
+      isOnline: false,
+      description: model.description,
+      metadata,
+      rawMetadata: model.model_metadata,
+    };
+  };
+
   useEffect(() => {
-    // To know if it should spawn the welcome popup
     const fetchWelcomePopupStatus = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/startup/welcome-popup`);
@@ -84,7 +125,6 @@ export default function LandingPage() {
       }
     };
 
-    // Fetch hardware evaluation on component mount
     const fetchHardwareEvaluation = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/hardware/app_startup`);
@@ -92,8 +132,7 @@ export default function LandingPage() {
           throw new Error(`HTTP ${response.status}`);
         }
         const data = await response.json();
-        const transformed = transformAppStartupInfo(data);
-        setHardwareInfo(transformed);
+        setHardwareInfo(transformAppStartupInfo(data));
       } catch (error) {
         setHardwareInfo({
           backend_type: "unknown",
@@ -104,123 +143,67 @@ export default function LandingPage() {
         setLoading(false);
       }
     };
-    fetchWelcomePopupStatus();
 
-    // Fetch models from backend
+    // Richer hardware detail for the machine readout (chip, memory, GPU cores).
+    const fetchMachineDetail = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/hardware/detailed`);
+        if (response.ok) {
+          const data = await response.json();
+          setMachineDetail(data.hardware || null);
+        }
+      } catch (error) {
+        log.error("Error fetching hardware detail:", error);
+      }
+    };
+
     const fetchModels = async () => {
       setModelsLoading(true);
       try {
-        // Fetch local models
         const localResponse = await fetch(`${API_BASE_URL}/llms/local`);
         if (localResponse.ok) {
           const localData = await localResponse.json();
-          // Transform API data to match our UI format
-          const transformedLocalModels = localData.map((model) => {
-            const metadata = parseMetadata(model.model_metadata);
-            return {
-              id: model.id,
-              name: model.name,
-              size: metadata.size || "Unknown",
-              parameters: metadata.parameters || "Unknown",
-              lastUpdate: metadata.last_modified || "Unknown",
-              isOnline: false, // Default to offline
-              description: model.description,
-              metadata: metadata,
-              rawMetadata: model.model_metadata,
-            };
-          });
-          setLocalModels(transformedLocalModels);
+          setLocalModels(localData.map(transformLocal));
         }
-
-        // Fetch remote models
         const remoteResponse = await fetch(`${API_BASE_URL}/llms/remote`);
         if (remoteResponse.ok) {
           const remoteData = await remoteResponse.json();
-          // Transform API data to match our UI format
-          const transformedRemoteModels = remoteData.map((model) => {
-            const metadata = parseMetadata(model.model_metadata);
-            return {
-              id: model.id,
-              name: model.name,
-              size: metadata.size || "Unknown",
-              parameters: metadata.parameters || "Unknown",
-              downloads: metadata.downloads || model.description || "Unknown",
-              lastUpdate: metadata.last_modified || "Unknown",
-              author: metadata.author || "Unknown",
-              library: metadata.library || "Unknown",
-              pipeline: metadata.pipeline || "Unknown",
-              likes: metadata.likes || "Unknown",
-              description: model.description,
-              runnable: model.runnable !== false,
-              // Backend classification + true param size drive the Base/Community
-              // split and the hardware-fit "Models For You" recommendations (#86).
-              is_base: model.is_base === true,
-              // Capability category drives the grouped Base sections (#122).
-              category: model.category || "general",
-              param_size: model.param_size,
-              link: model.link,
-              quantized: model.quantized,
-              metadata: metadata,
-              rawMetadata: model.model_metadata,
-            };
-          });
-          setRemoteModels(transformedRemoteModels);
+          setRemoteModels(remoteData.map(transformRemote));
         }
       } catch (error) {
-        // Error fetching models
         log.error("Error fetching models:", error);
       } finally {
         setModelsLoading(false);
       }
     };
 
+    fetchWelcomePopupStatus();
     fetchHardwareEvaluation();
+    fetchMachineDetail();
     fetchModels();
   }, []);
 
   const closeWelcome = () => {
-    // If hardware info is still loading, show intermediate popup
     if (loading) {
       setShowLoadingPopup(true);
       return;
     }
-    // Otherwise, close normally
     setShowWelcome(false);
   };
 
-  const closeLoadingOnly = () => {
-    // Close only the loading popup, keep welcome popup open
-    setShowLoadingPopup(false);
-  };
+  const closeLoadingOnly = () => setShowLoadingPopup(false);
 
   const handleMainPageRefresh = async () => {
-    // This function refreshes the main page local models when called from ModelCollapsibleSection
     await reloadLocalModels();
   };
 
   const reloadLocalModels = async () => {
     setModelsLoading(true);
     try {
-      const url = `${API_BASE_URL}/llms/local`;
-      const res = await fetch(url);
+      const res = await fetch(`${API_BASE_URL}/llms/local`);
       if (res.ok) {
         const localData = await res.json();
-        // Transform API data to match our UI format (same as fetchModels)
-        const transformedLocalModels = localData.map((model) => {
-          const metadata = parseMetadata(model.model_metadata);
-          return {
-            id: model.id,
-            name: model.name,
-            size: metadata.size || "Unknown",
-            parameters: metadata.parameters || "Unknown",
-            lastUpdate: metadata.last_modified || "Unknown",
-            isOnline: false,
-            description: model.description,
-            metadata: metadata,
-            rawMetadata: model.model_metadata,
-          };
-        });
-        setLocalModels(transformedLocalModels);
+        setLocalModels(localData.map(transformLocal));
       } else {
         setErrorMessage(
           "Failed to fetch local models. Please try again and contact the Erudi team for support."
@@ -231,153 +214,69 @@ export default function LandingPage() {
         "Failed to fetch local models. Please try again and contact the Erudi team for support."
       );
     } finally {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 600));
       setModelsLoading(false);
     }
   };
 
-  const scrollToExplore = () => {
-    const exploreSection = document.getElementById("explore-models");
-    if (exploreSection) {
-      exploreSection.scrollIntoView({ behavior: "smooth" });
-    } else {
-      log.warn("Explore models section not found");
-    }
-  };
-
-  // Derived data from fetched models. Base vs Community comes from the backend
-  // is_base flag, and "Models For You" from the hardware-fit param window the
-  // backend computes — no hand-maintained name list, no name-regex parsing (#86).
+  // Derived: Base vs Community (backend is_base), hardware-fit window, and the
+  // best-fitting base models for the recommendation rail (#122 redesign).
   const { base: baseModels, community: communityModels } = splitByBase(remoteModels);
-
-  const recommendedRange = hardwareInfo
+  const range = hardwareInfo
     ? { min: hardwareInfo.recommended_param_min, max: hardwareInfo.recommended_param_max }
     : null;
-  const modelsForYou = recommendModels(baseModels, recommendedRange, 3);
+  const recommended = pickFlagships(baseModels, range, 3);
+  const filteredBase = applyCatalogFilters(baseModels, filters, range);
+  const filteredCommunity = applyCatalogFilters(communityModels, filters, range);
+  const filtersActive = filters.size !== "any" || filters.fitOnly;
 
-  // Search functionality
-  const filterModels = (models, query) => {
-    if (!query.trim()) {
-      return models;
-    }
-
-    return models.filter(
-      (model) =>
-        model.name.toLowerCase().includes(query.toLowerCase()) ||
-        (model.parameters && model.parameters.toLowerCase().includes(query.toLowerCase())) ||
-        (model.size && model.size.toLowerCase().includes(query.toLowerCase()))
-    );
+  const machine = {
+    chip: machineDetail?.mlx_chip_model
+      ? `Apple ${machineDetail.mlx_chip_model}`
+      : machineDetail?.gpu_name || machineDetail?.cpu_model || "Your hardware",
+    backend: (hardwareInfo?.backend_type || "").toUpperCase(),
+    memoryGb: machineDetail?.total_memory_gb ? Math.round(machineDetail.total_memory_gb) : null,
+    gpuCores: machineDetail?.mlx_gpu_cores || null,
+    bandwidth: machineDetail?.memory_bandwidth_gbs
+      ? Math.round(machineDetail.memory_bandwidth_gbs)
+      : null,
+    inferenceLabel: hardwareInfo?.global_inference_label,
+    inferenceScore: hardwareInfo?.global_inference_score,
+    range,
   };
 
-  // Live HuggingFace search: hit the backend live-search endpoint and shape the
-  // hits like catalog cards (no id → they download by repo link, #122).
-  const runHuggingFaceSearch = async () => {
-    const q = searchQuery.trim();
-    if (!q) {
-      return;
-    }
-    setHfLoading(true);
-    setHfError("");
-    try {
-      const res = await fetch(`${API_BASE_URL}/llms/search/huggingface?q=${encodeURIComponent(q)}`);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      setHfResults(
-        data.map((m) => ({
-          name: m.name,
-          link: m.link,
-          category: m.category,
-          param_size: m.param_size,
-          quantized: m.quantized,
-          size: m.param_size ? `~${m.param_size}B params` : "Unknown",
-          downloads: m.downloads ? String(m.downloads) : undefined,
-          likes: m.likes ? String(m.likes) : undefined,
-          runnable: true,
-        }))
-      );
-    } catch (err) {
-      log.error("HF search failed:", err);
-      setHfError("HuggingFace search failed. Check your connection and try again.");
-      setHfResults([]);
-    } finally {
-      setHfLoading(false);
-    }
-  };
-
-  const clearHuggingFaceSearch = () => {
-    setHfResults(null);
-    setHfError("");
-  };
-
-  // Filtered models based on search query
-  const filteredLocalModels = filterModels(localModels, searchQuery);
-  const filteredBaseModels = filterModels(baseModels, searchQuery);
-  const filteredModelsForYou = filterModels(modelsForYou, searchQuery);
-  const filteredCommunityModels = filterModels(communityModels, searchQuery);
-
-  // Check if any models match the search
-  const hasSearchResults =
-    filteredLocalModels.length > 0 ||
-    filteredBaseModels.length > 0 ||
-    filteredModelsForYou.length > 0 ||
-    filteredCommunityModels.length > 0;
-
-  // Event handlers
   const handleDownload = (model) => {
-    // Implement download logic or use existing download modal
     if (open) {
       open(model, {
         onComplete: async () => {
-          // Refresh local models on both main page and sidebar
           await reloadLocalModels();
           if (localModelsRef.current) {
             localModelsRef.current.reloadLocalModels();
           }
         },
-        onError: (_err) => {
-          setErrorMessage("Download failed. Please try again.");
-        },
+        onError: () => setErrorMessage("Download failed. Please try again."),
       });
     }
   };
 
-  const handleInfo = (model) => {
-    setSelectedModelInfo(model);
-  };
-
-  const handleChat = (model) => {
-    // Navigate to chat page with model parameter
-    navigate(`/erudi/chat?model=${encodeURIComponent(model.name)}`);
-  };
-
-  const handleKnowledgeBase = (model) => {
-    // Navigate to knowledge base page with model parameter
+  const handleInfo = (model) => setSelectedModelInfo(model);
+  const handleChat = (model) => navigate(`/erudi/chat?model=${encodeURIComponent(model.name)}`);
+  const handleKnowledgeBase = (model) =>
     navigate(`/erudi/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
-  };
-
-  const handleDelete = (model) => {
-    setDeleteConfirmation({ show: true, model });
-  };
+  const handleDelete = (model) => setDeleteConfirmation({ show: true, model });
 
   const confirmDelete = async () => {
     if (!deleteConfirmation.model) {
       return;
     }
-
-    // Store model reference and close modal immediately to prevent double-clicks
     const modelToDelete = deleteConfirmation.model;
     setDeleteConfirmation({ show: false, model: null });
-
     try {
       const response = await fetch(`${API_BASE_URL}/llms/${modelToDelete.id}`, {
         method: "DELETE",
       });
-
       if (response.ok) {
         setSuccessMessage(`Model ${modelToDelete.name} has been successfully deleted.`);
-        // Reload local models on both main page and sidebar
         await reloadLocalModels();
         if (localModelsRef.current) {
           localModelsRef.current.reloadLocalModels();
@@ -393,26 +292,24 @@ export default function LandingPage() {
     }
   };
 
-  const cancelDelete = () => {
-    setDeleteConfirmation({ show: false, model: null });
-  };
+  const cancelDelete = () => setDeleteConfirmation({ show: false, model: null });
+  const handleToggleBrainSidebar = () => setBrainSidebarCollapsed(!brainSidebarCollapsed);
 
-  const handleToggleBrainSidebar = () => {
-    setBrainSidebarCollapsed(!brainSidebarCollapsed);
+  // Left-rail Explore index scrolls the main panel to a section.
+  const scrollToSection = (id) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
     <div className="flex h-screen">
-      {/* Left mini sidebar */}
       <Sidebar
         showBrainCollapsible={true}
         onToggleBrainSidebar={handleToggleBrainSidebar}
         brainCollapsed={brainSidebarCollapsed}
       />
 
-      {/* Main sidebar */}
       <aside
-        className={`${brainSidebarCollapsed ? "w-0 opacity-0" : "w-80 opacity-100 p-6"} bg-[#272727] text-white flex flex-col transition-all duration-300 overflow-hidden`}
+        className={`${brainSidebarCollapsed ? "w-0 opacity-0 overflow-hidden" : "w-80 opacity-100 p-6 overflow-visible"} bg-[#272727] text-white flex flex-col transition-all duration-300`}
       >
         <div className="flex items-center justify-start mb-6 flex-shrink-0">
           <img
@@ -420,10 +317,7 @@ export default function LandingPage() {
             alt="Erudi"
             className="h-[40px] ml-2 w-auto cursor-pointer hover:opacity-80 transition-opacity"
             onClick={() => setShowWelcome(true)}
-            onError={(e) => {
-              log.error("Failed to load logo:", e.target.src);
-            }}
-            onLoad={() => log.log("Logo loaded successfully")}
+            onError={(e) => log.error("Failed to load logo:", e.target.src)}
           />
         </div>
         <div className="mb-6 flex-shrink-0">
@@ -433,308 +327,169 @@ export default function LandingPage() {
             onLocalModelRefresh={handleMainPageRefresh}
           />
         </div>
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <ModelCollapsibleSection
-            title="Remote Models"
-            hasSearch={true}
-            onDownload={handleDownload}
-            onLocalModelRefresh={handleMainPageRefresh}
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scroll">
+          <ExploreIndex
+            models={filteredBase}
+            communityCount={filteredCommunity.length}
+            hasRecommended={recommended.length > 0}
+            loading={modelsLoading}
+            onJump={scrollToSection}
           />
+        </div>
+        <div className="flex-shrink-0">
+          <ConnectionStatus />
         </div>
       </aside>
 
-      {/* Main content */}
-      <main className="flex-1 bg-[#071b18] relative custom-scroll overflow-auto">
-        <div className="p-8 space-y-8">
-          {/* Local Models Section */}
+      {/* Main explore panel */}
+      <main className="flex-1 bg-[var(--canvas)] relative custom-scroll overflow-auto">
+        <div className="mx-auto max-w-6xl px-8 py-8 space-y-9">
+          {/* Hero: machine readout — the spine of the panel */}
+          <MachineReadout machine={machine} loading={loading} />
+
+          {/* Local models */}
           <section>
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <MonitorCheck className="w-6 h-6 text-white" />
-                <h2 className="text-2xl font-bold text-white">Local Models</h2>
+            <div className="flex items-center justify-between mb-4">
+              <span className="eyebrow">Installed</span>
+              <button
+                onClick={() => reloadLocalModels()}
+                title="Refresh installed models"
+                className="text-[var(--ink-dim)] hover:text-[var(--ink)] transition-colors"
+              >
+                <RefreshCcw className="w-4 h-4" />
+              </button>
+            </div>
+            {modelsLoading ? (
+              <div className="flex items-center gap-2 text-[var(--ink-faint)] mono text-xs py-6">
+                <span className="w-2 h-2 rounded-full bg-[var(--fit-good)] animate-pulse" />
+                loading installed models…
               </div>
-              <RefreshCcw
-                className="w-4 h-4 hover:opacity-70  text-white cursor-pointer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  reloadLocalModels();
-                }}
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-2">
-              {modelsLoading ? (
-                <div className="col-span-3 text-center py-8">
-                  <div className="flex items-center justify-center">
-                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
-                    <p className="text-gray-400">Loading local models...</p>
-                  </div>
-                </div>
-              ) : filteredLocalModels.length > 0 ? (
-                <>
-                  {filteredLocalModels.map((model) => (
-                    <ModelCard
-                      key={model.id}
-                      model={model}
-                      type="local"
-                      onChat={handleChat}
-                      onInfo={handleInfo}
-                      onKnowledgeBase={handleKnowledgeBase}
-                      onDelete={handleDelete}
-                    />
-                  ))}
-                  {!searchQuery && <ModelCard type="add" onDownload={scrollToExplore} />}
-                </>
-              ) : searchQuery ? (
-                <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">
-                    No local models found for &quot;{searchQuery}&quot;
-                  </p>
-                </div>
-              ) : (
-                <ModelCard type="add" onDownload={scrollToExplore} />
-              )}
-            </div>
+            ) : localModels.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                {localModels.map((model) => (
+                  <ModelCard
+                    key={model.id}
+                    model={model}
+                    type="local"
+                    onChat={handleChat}
+                    onInfo={handleInfo}
+                    onKnowledgeBase={handleKnowledgeBase}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-[var(--ink-dim)] text-sm">
+                No models installed yet. Pick one below. Your machine handles {""}
+                <span className="mono text-[var(--fit-good)]">
+                  {range ? `${range.min}–${range.max}B` : "small"}
+                </span>{" "}
+                comfortably.
+              </p>
+            )}
           </section>
 
-          {/* Sticky Header for Explore Models */}
-          <div className="sticky top-0 bg-[#071b18] backdrop-blur-md z-10 py-6 border-b border-white/10">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <SearchCode className="w-6 h-6 text-white" />
-                <h2 className="text-2xl font-bold text-white">Explore Models</h2>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="text"
-                    placeholder="Filter catalog, or Enter to search HuggingFace"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        runHuggingFaceSearch();
-                      }
-                    }}
-                    className="bg-[#1a1a1a]/60 border border-white/10 rounded-2xl px-3 py-1 pl-8 pr-8 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-white/30 w-72"
+          {/* Recommended for your machine — flagship, instruct-only picks */}
+          {recommended.length > 0 && (
+            <section id="explore-recommended" className="rise scroll-mt-6">
+              <span className="eyebrow !text-[var(--fit-good)]">Recommended for your machine</span>
+              <p className="text-[13px] text-[var(--ink-dim)] mt-1.5 mb-4">
+                Popular, ready-to-chat models that run well on your {machine.chip}.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                {recommended.map((model) => (
+                  <ExploreModelCard
+                    key={`rec-${model.id ?? model.link}`}
+                    model={model}
+                    range={range}
+                    onDownload={handleDownload}
+                    onInfo={handleInfo}
                   />
-                </div>
-                <button
-                  onClick={runHuggingFaceSearch}
-                  disabled={!searchQuery.trim() || hfLoading}
-                  title="Search HuggingFace directly"
-                  className="flex items-center gap-1.5 px-3 py-1 text-sm rounded-2xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Globe className="w-4 h-4" />
-                  {hfLoading ? "Searching…" : "HuggingFace"}
-                </button>
-                <RefreshCcw
-                  className="w-4 h-4 hover:opacity-70 text-white cursor-pointer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    reloadLocalModels();
-                  }}
-                />
+                ))}
               </div>
-            </div>
+            </section>
+          )}
+
+          {/* Live Hugging Face search — the research tool */}
+          <div id="explore-search" className="scroll-mt-6">
+            <HuggingFaceSearchPanel range={range} onDownload={handleDownload} onInfo={handleInfo} />
           </div>
 
-          {/* Live HuggingFace search results (#122) — shown only after a search */}
-          {(hfResults !== null || hfLoading) && (
-            <section>
-              <div className="flex items-center justify-between mb-4 pt-3">
-                <div className="flex items-center gap-2">
-                  <Globe className="w-5 h-5 text-emerald-300" />
-                  <h3 className="text-xl font-semibold text-white">
-                    HuggingFace Results
-                    {hfResults && (
-                      <span className="text-sm text-gray-400 ml-2">
-                        ({hfResults.length} for &quot;{searchQuery}&quot;)
-                      </span>
-                    )}
-                  </h3>
-                </div>
-                <button
-                  onClick={clearHuggingFaceSearch}
-                  className="text-sm text-gray-400 hover:text-white transition-colors"
-                >
-                  Clear
-                </button>
-              </div>
-              {hfLoading ? (
-                <div className="text-center py-8">
-                  <div className="flex items-center justify-center">
-                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
-                    <p className="text-gray-400">Searching HuggingFace…</p>
-                  </div>
-                </div>
-              ) : hfError ? (
-                <p className="text-amber-400/80 py-4">{hfError}</p>
-              ) : hfResults && hfResults.length > 0 ? (
-                <div className="grid grid-cols-3 gap-4 max-h-[600px] overflow-y-auto pr-2">
-                  {hfResults.map((model) => (
-                    <ModelCard
-                      key={`hf-${model.link}`}
+          {/* Browse by capability */}
+          <section>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <span className="eyebrow">Browse by capability</span>
+              <CatalogFilters value={filters} onChange={setFilters} hasRange={!!range} />
+            </div>
+            {filtersActive && filteredBase.length === 0 ? (
+              <p className="text-[var(--ink-dim)] text-sm py-8 text-center">
+                No models match these filters. Widen the size range or turn off “Fits my machine”.
+              </p>
+            ) : (
+              <CategorySections
+                models={filteredBase}
+                range={range}
+                loading={modelsLoading}
+                onDownload={handleDownload}
+                onInfo={handleInfo}
+              />
+            )}
+          </section>
+
+          {/* Community fine-tunes — collapsed by default to keep the panel calm */}
+          {filteredCommunity.length > 0 && (
+            <section id="explore-community" className="scroll-mt-6">
+              <button
+                className="flex items-center gap-3 w-full text-left mb-4 group"
+                onClick={() => setCommunityOpen((o) => !o)}
+              >
+                <span className="eyebrow group-hover:text-[var(--ink)] transition-colors">
+                  Community fine-tunes
+                </span>
+                <span className="mono text-[11px] text-[var(--ink-faint)]">
+                  {filteredCommunity.length}
+                </span>
+                <span className="h-px flex-1 bg-white/10" />
+                <span className="mono text-[11px] text-[var(--ink-dim)] group-hover:text-[var(--fit-good)] transition-colors">
+                  {communityOpen ? "Hide" : "Show all"}
+                </span>
+              </button>
+              {communityOpen && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[640px] overflow-y-auto custom-scroll pr-1">
+                  {rankByFit(filteredCommunity, range).map((model) => (
+                    <ExploreModelCard
+                      key={`com-${model.id ?? model.link}`}
                       model={model}
-                      type="base"
+                      range={range}
                       onDownload={handleDownload}
                       onInfo={handleInfo}
                     />
                   ))}
                 </div>
-              ) : (
-                <p className="text-gray-400 py-4">
-                  No runnable models on HuggingFace matched &quot;{searchQuery}&quot;.
-                </p>
               )}
             </section>
-          )}
-
-          {/* Explore Models — recommendations first (#86): Models For You */}
-          <section id="explore-models">
-            <div className="flex items-center gap-2 mb-4 pt-3">
-              <Star className="w-5 h-5 text-white" />
-              <h3 className="text-xl font-semibold text-white">
-                Models For You
-                {searchQuery && (
-                  <span className="text-sm text-gray-400 ml-2">
-                    ({filteredModelsForYou.length} results)
-                  </span>
-                )}
-              </h3>
-            </div>
-            <div className="grid grid-cols-3 gap-6 max-h-[600px] overflow-y-auto pr-2">
-              {modelsLoading ? (
-                <div className="col-span-3 text-center py-8">
-                  <div className="flex items-center justify-center">
-                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
-                    <p className="text-gray-400">Loading recommended models...</p>
-                  </div>
-                </div>
-              ) : filteredModelsForYou.length > 0 ? (
-                filteredModelsForYou.map((model) => (
-                  <ModelCard
-                    key={`foryou-${model.id}`}
-                    model={model}
-                    type="base"
-                    onDownload={handleDownload}
-                    onInfo={handleInfo}
-                  />
-                ))
-              ) : searchQuery ? (
-                <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">
-                    No recommended models found for &quot;{searchQuery}&quot;
-                  </p>
-                </div>
-              ) : (
-                <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">No recommended models available</p>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Base Models — grouped by capability category (#122) */}
-          <section className="pt-3">
-            <CategorySections
-              models={filteredBaseModels}
-              loading={modelsLoading}
-              searchQuery={searchQuery}
-              onDownload={handleDownload}
-              onInfo={handleInfo}
-            />
-          </section>
-
-          {/* Community Models Section */}
-          <section>
-            <div className="flex items-center gap-2 mb-3">
-              <Users className="w-5 h-5 text-white" />
-              <h3 className="text-lg font-semibold text-white">
-                Community Models
-                {searchQuery && (
-                  <span className="text-xs text-gray-400 ml-2">
-                    ({filteredCommunityModels.length} results)
-                  </span>
-                )}
-              </h3>
-            </div>
-            <div className="grid grid-cols-3 gap-4 max-h-[480px] overflow-y-auto pr-2">
-              {modelsLoading ? (
-                <div className="col-span-3 text-center py-8">
-                  <div className="flex items-center justify-center">
-                    <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3"></div>
-                    <p className="text-gray-400">Loading community models...</p>
-                  </div>
-                </div>
-              ) : filteredCommunityModels.length > 0 ? (
-                filteredCommunityModels.map((model) => (
-                  <ModelCard
-                    key={`community-${model.id}`}
-                    model={model}
-                    type="base"
-                    onDownload={handleDownload}
-                    onInfo={handleInfo}
-                  />
-                ))
-              ) : searchQuery ? (
-                <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">
-                    No community models found for &quot;{searchQuery}&quot;
-                  </p>
-                </div>
-              ) : (
-                <div className="col-span-3 text-center py-8">
-                  <p className="text-gray-400">No community models available</p>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* No Results Message */}
-          {searchQuery && !hasSearchResults && (
-            <div className="text-center py-12">
-              <div className="text-gray-400 text-lg mb-2">No models found</div>
-              <p className="text-gray-500">
-                No models match your search for &quot;{searchQuery}&quot;. Try a different search
-                term.
-              </p>
-              <button
-                onClick={() => setSearchQuery("")}
-                className="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
-              >
-                Clear Search
-              </button>
-            </div>
           )}
         </div>
       </main>
 
-      {/* Welcome Modal */}
       <WelcomeModal
         isOpen={showWelcome}
         onClose={closeWelcome}
         hardwareInfo={hardwareInfo}
         loading={loading}
       />
-
-      {/* Model Info Modal */}
       <ModelInfoModal
         modelInfo={selectedModelInfo}
         isOpen={!!selectedModelInfo}
         onClose={() => setSelectedModelInfo(null)}
         onDownload={handleDownload}
       />
-
-      {/* Delete Confirmation Modal */}
       <DeleteModelModal
         isOpen={deleteConfirmation.show}
         model={deleteConfirmation.model}
         onConfirm={confirmDelete}
         onCancel={cancelDelete}
       />
-
-      {/* Success Message Modal */}
       <MessageModal
         isOpen={!!successMessage}
         title="Success"
@@ -742,8 +497,6 @@ export default function LandingPage() {
         type="success"
         onClose={() => setSuccessMessage("")}
       />
-
-      {/* Error Message Modal */}
       <MessageModal
         isOpen={!!errorMessage}
         title="Error"
@@ -751,8 +504,6 @@ export default function LandingPage() {
         type="error"
         onClose={() => setErrorMessage("")}
       />
-
-      {/* Loading Popup (appears on top of welcome popup when hardware is still loading) */}
       <HardwareLoadingPopup show={showLoadingPopup} loading={loading} onClose={closeLoadingOnly} />
     </div>
   );
