@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState, useMemo } from "react";
 import PropTypes from "prop-types";
 import { Search } from "lucide-react";
 import ExploreModelCard from "./ExploreModelCard";
@@ -24,6 +24,27 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo }) {
   const [error, setError] = useState("");
   const [searchedTerm, setSearchedTerm] = useState("");
   const [collapsed, setCollapsed] = useState(false);
+  const [sortBy, setSortBy] = useState("fit");
+
+  const SORT_OPTIONS = [
+    { value: "fit", label: "Best fit" },
+    { value: "downloads", label: "Most downloads" },
+    { value: "likes", label: "Most liked" },
+    { value: "smallest", label: "Smallest" },
+    { value: "largest", label: "Largest" },
+  ];
+
+  const sortedResults = useMemo(() => {
+    if (!results) return results;
+    const r = [...results];
+    if (sortBy === "fit") return r; // already ranked by fit from rankByFit
+    if (sortBy === "downloads") return r.sort((a, b) => (b.downloads || 0) - (a.downloads || 0));
+    if (sortBy === "likes") return r.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+    if (sortBy === "smallest")
+      return r.sort((a, b) => (a.param_size || Infinity) - (b.param_size || Infinity));
+    if (sortBy === "largest") return r.sort((a, b) => (b.param_size || 0) - (a.param_size || 0));
+    return r;
+  }, [results, sortBy]);
 
   const clear = () => {
     setResults(null);
@@ -40,6 +61,7 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo }) {
     setQuery(q);
     setSearchedTerm(q);
     setError("");
+    setSortBy("fit");
     // Offline guard: searching Hugging Face needs the internet, so say so plainly
     // instead of returning an empty "no matches" or throwing.
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -94,7 +116,7 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && runSearch()}
-          placeholder="Try “qwen coder”, “a tiny model”, “vision”…"
+          placeholder={'Try "qwen coder", "a tiny model", "vision"…'}
           className="flex-1 bg-transparent border-0 text-sm text-[var(--ink)] placeholder-[var(--ink-faint)] focus:outline-none focus:ring-0"
         />
         <button
@@ -126,17 +148,28 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo }) {
           {loading ? (
             <div className="flex items-center gap-2 text-[var(--ink-faint)] mono text-xs py-6 justify-center">
               <span className="w-2 h-2 rounded-full bg-[var(--fit-good)] animate-pulse" />
-              searching hugging face for “{query}”…
+              searching hugging face for "{query}"…
             </div>
           ) : error ? (
             <p className="text-[var(--fit-tight)] text-sm py-3">{error}</p>
           ) : results.length > 0 ? (
             <>
-              <div className="flex items-center gap-3 mb-3">
+              <div className="flex items-center gap-3 mb-3 flex-wrap">
                 <span className="eyebrow">
-                  {results.length} results for “{searchedTerm}” · best fit first
+                  {results.length} results for &ldquo;{searchedTerm}&rdquo;
                 </span>
                 <span className="h-px flex-1 bg-white/10" />
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="mono text-[11px] rounded-lg border border-[var(--line)] bg-[var(--canvas)] text-[var(--ink-dim)] px-2 py-1 focus:outline-none focus:border-[var(--fit-good)] transition-colors cursor-pointer"
+                >
+                  {SORT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
                 <button
                   onClick={() => setCollapsed((c) => !c)}
                   className="mono text-[11px] text-[var(--ink-dim)] hover:text-[var(--fit-good)] transition-colors"
@@ -152,7 +185,7 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo }) {
               </div>
               {!collapsed && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[560px] overflow-y-auto custom-scroll pr-1">
-                  {results.map((model) => (
+                  {sortedResults.map((model) => (
                     <ExploreModelCard
                       key={`hf-${model.link}`}
                       model={model}
@@ -166,8 +199,8 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo }) {
             </>
           ) : (
             <p className="text-[var(--ink-dim)] text-sm py-3">
-              Nothing runnable matched “{searchedTerm}”. Try a broader term, or a family name like
-              “qwen” or “llama”.
+              Nothing runnable matched "{searchedTerm}". Try a broader term, or a family name like
+              "qwen" or "llama".
             </p>
           )}
         </div>
