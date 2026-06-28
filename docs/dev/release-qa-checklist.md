@@ -99,5 +99,14 @@ then stays on that channel. So QA must, per release:
 When all assigned artifacts pass:
 
 1. Edit the draft GitHub Release: add the changelog.
-2. Un-draft (publish) — keep "latest" for stable, or flag prerelease for betas.
+2. Un-draft (publish) by running the **Promote release** workflow (Actions →
+   "Promote release" → Run workflow → enter the tag). It **refuses to promote
+   unless all 5 platform legs of `release.yml` went green** for that tag — atomic
+   platform parity, so prod never gets version skew or a missing `latest-*.yml`
+   feed (#115). If a leg failed, re-run it from the release run first, then
+   dispatch again. (For a beta, flag prerelease manually instead.)
 3. Verify an installed older build detects + applies the update end-to-end.
+
+> The gate is the **safety net**, not the QA: a green matrix only proves the
+> artifacts built + published, never that inference works on real GPU hardware —
+> that is what the manual scenarios above are for. Promote only after both pass.
