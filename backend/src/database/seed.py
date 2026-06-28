@@ -284,7 +284,7 @@ class Model_Seeder:
     # Non-chat task families published under foundation orgs (TTS / OCR / encoder).
     NONCHAT_FAMILIES: tuple = (
         "docling", "vibevoice", "whisper", "clip", "reformer", "rerank",
-        "siglip", "t5gemma", "biogpt", "dialogpt", "embed",
+        "siglip", "t5gemma", "biogpt", "dialogpt", "embed", "diffusion",
     )
     # Pipelines we draw the Base catalog from: plain text chat + (per #122) the
     # multimodal VLMs whose primary pipeline is image-text-to-text / any-to-any.
@@ -1133,7 +1133,13 @@ class Database_Seeder:
                 added += 1
             else:
                 for field in self._RESYNC_FIELDS:   # refresh in place → id preserved
-                    setattr(current, field, getattr(fresh, field))
+                    value = getattr(fresh, field)
+                    # category is NOT NULL with a default; a fresh row that predates
+                    # it (or a bare test fixture) leaves it None — coalesce, never
+                    # clobber the existing value with NULL.
+                    if field == "category" and value is None:
+                        value = "general"
+                    setattr(current, field, value)
                 updated += 1
 
         removed = 0
