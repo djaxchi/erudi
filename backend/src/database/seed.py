@@ -1006,31 +1006,60 @@ class Database_Seeder:
         return fresh_base, fresh_derived
 
     def resync_remote_catalog(self, db: Session, model_seeder: "Model_Seeder") -> Dict[str, Any]:
-        """Atomically replace the remote catalog (local=0) with a fresh HF fetch.
+        """Reconcile the remote catalog (local=0) IN PLACE with a fresh HF fetch.
 
-        Reconciles our local catalog with HuggingFace (the source of truth): models
-        gone from HF disappear, new ones appear, names/metadata refresh. Downloaded
-        (local=1) and in-progress (local=2) models are NEVER touched. The HF fetch
-        runs BEFORE any delete, so a network failure leaves the existing catalog
-        intact (no empty-catalog window).
+        HuggingFace is the source of truth: models gone from HF disappear, new ones
+        appear, names/metadata refresh — but survivors keep their database id (matched
+        by link), so ids the frontend already fetched stay valid across restarts (#123).
+        Downloaded (local=1) and in-progress (local=2) models are NEVER touched. The HF
+        fetch runs BEFORE any write, so a network failure leaves the catalog intact
+        (no empty-catalog window).
         """
         fresh_base, fresh_derived = self.build_fresh_catalog(model_seeder)
         if not fresh_base:
             logger.warning("Resync produced no base models — keeping existing catalog")
             return {"base_models_added": 0, "derived_models_added": 0, "resynced": False}
 
-        # Swap: drop the old remote suggestions, insert the fresh set. Downloaded
-        # (local=1) and downloading (local=2) rows are separate and left intact.
-        db.query(Llm).filter(Llm.local == 0).delete(synchronize_session=False)
-        db.add_all(fresh_base + fresh_derived)
+        # Reconcile local=0 IN PLACE, matching by link (the HF repo id), so catalog
+        # ids stay stable across restarts (#123): update survivors, insert genuinely
+        # new models, delete only models that vanished from HF. The old delete+reinsert
+        # churned the PG sequence — the frontend's already-fetched ids went stale.
+        # Downloaded (local=1) and downloading (local=2) rows are separate, untouched.
+        fresh = fresh_base + fresh_derived
+        fresh_by_link = {m.link: m for m in fresh}  # dedup defensively (last wins)
+        existing_by_link = {r.link: r for r in db.query(Llm).filter(Llm.local == 0).all()}
+
+        updated = inserted = deleted = 0
+        for link, m in fresh_by_link.items():
+            row = existing_by_link.get(link)
+            if row is None:
+                db.add(m)
+                inserted += 1
+            else:
+                row.name = m.name
+                row.type = m.type
+                row.quantized = m.quantized
+                row.model_metadata = m.model_metadata
+                row.param_size = m.param_size
+                row.is_base = m.is_base
+                row.supports_tools = m.supports_tools
+                updated += 1
+        for link, row in existing_by_link.items():
+            if link not in fresh_by_link:
+                db.delete(row)
+                deleted += 1
         db.commit()
         logger.info(
-            f"Remote catalog resynced: {len(fresh_base)} base + {len(fresh_derived)} derived "
-            f"(downloaded/in-progress models untouched)"
+            f"Remote catalog resynced ({len(fresh_base)} base + {len(fresh_derived)} derived): "
+            f"{updated} updated in place, {inserted} inserted, {deleted} removed "
+            f"(ids stable; downloaded/in-progress untouched)"
         )
         return {
             "base_models_added": len(fresh_base),
             "derived_models_added": len(fresh_derived),
+            "updated": updated,
+            "inserted": inserted,
+            "deleted": deleted,
             "resynced": True,
         }
 

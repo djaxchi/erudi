@@ -175,6 +175,7 @@ class TestRemoteCatalogResync:
         kw.setdefault("type", "x")
         kw.setdefault("quantized", False)
         kw.setdefault("param_size", 1.0)
+        kw.setdefault("is_base", False)  # real fresh models always carry the flag
         return Llm(**kw)
 
     def test_swap_replaces_remote_keeps_downloaded(self, test_db_session):
@@ -238,6 +239,62 @@ class TestRemoteCatalogResync:
         res = Database_Seeder().resync_remote_catalog(db, ms)
         assert res["resynced"] is False
         assert db.query(Llm).filter(Llm.link == "keep/me-GGUF").count() == 1
+
+    def test_resync_keeps_ids_stable_in_place(self, test_db_session):
+        """#123: a model still on HF keeps its catalog id across resyncs (in-place
+        update), and its fields are refreshed — no delete+reinsert id churn."""
+        from unittest.mock import MagicMock
+        from src.entities.Llm import Llm
+
+        db = test_db_session
+        ms = MagicMock()
+        ms.build_base_models.return_value = [
+            self._llm(name="Gemma 3 1B Instruct", local=0,
+                      link="unsloth/gemma-3-1b-it-GGUF", type="gemma", param_size=1.0)
+        ]
+        ms.build_derived_models.return_value = []
+        Database_Seeder().resync_remote_catalog(db, ms)
+        first_id = db.query(Llm).filter(Llm.link == "unsloth/gemma-3-1b-it-GGUF").one().id
+
+        # Second resync: SAME link, refreshed name + param_size.
+        ms.build_base_models.return_value = [
+            self._llm(name="Gemma 3 1B Instruct (refreshed)", local=0,
+                      link="unsloth/gemma-3-1b-it-GGUF", type="gemma", param_size=1.5)
+        ]
+        Database_Seeder().resync_remote_catalog(db, ms)
+
+        again = db.query(Llm).filter(Llm.link == "unsloth/gemma-3-1b-it-GGUF").one()
+        assert again.id == first_id                       # id stable → in-place update
+        assert again.name == "Gemma 3 1B Instruct (refreshed)"
+        assert again.param_size == 1.5
+
+    def test_resync_inserts_new_and_deletes_disappeared(self, test_db_session):
+        """#123: only new models are inserted, only models gone from HF are deleted,
+        and survivors keep their ids."""
+        from unittest.mock import MagicMock
+        from src.entities.Llm import Llm
+
+        db = test_db_session
+        ms = MagicMock()
+        ms.build_base_models.return_value = [
+            self._llm(name="Keep", local=0, link="org/keep-GGUF", type="gemma"),
+            self._llm(name="Gone", local=0, link="org/gone-GGUF", type="gemma"),
+        ]
+        ms.build_derived_models.return_value = []
+        Database_Seeder().resync_remote_catalog(db, ms)
+        keep_id = db.query(Llm).filter(Llm.link == "org/keep-GGUF").one().id
+
+        # Next fetch: 'gone' disappeared, 'fresh' appeared, 'keep' survives.
+        ms.build_base_models.return_value = [
+            self._llm(name="Keep", local=0, link="org/keep-GGUF", type="gemma"),
+            self._llm(name="Fresh", local=0, link="org/fresh-GGUF", type="gemma"),
+        ]
+        Database_Seeder().resync_remote_catalog(db, ms)
+
+        rows = {r.link: r.id for r in db.query(Llm).filter(Llm.local == 0).all()}
+        assert "org/gone-GGUF" not in rows            # disappeared → deleted
+        assert "org/fresh-GGUF" in rows               # new → inserted
+        assert rows["org/keep-GGUF"] == keep_id       # survivor → id unchanged
 
 
 class TestNonBlockingCatalogRefresh:
