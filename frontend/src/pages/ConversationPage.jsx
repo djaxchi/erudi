@@ -56,7 +56,10 @@ export default function ConversationPage() {
     if (content.includes("[ERROR_MESSAGE_SYSTEM]")) {
       return content.replace("[ERROR_MESSAGE_SYSTEM] ", "❌ ");
     }
-    return content.replace(/\[image\]/g, "").replace(/\[image_path:[^\]]*\]/g, "").trim();
+    return content
+      .replace(/\[image\]/g, "")
+      .replace(/\[image_path:[^\]]*\]/g, "")
+      .trim();
   };
 
   useEffect(() => {
@@ -73,14 +76,18 @@ export default function ConversationPage() {
           if (m.images !== undefined || !/\[image_path:[^\]]+\]/.test(m.content)) return m;
           const paths = [...m.content.matchAll(/\[image_path:([^\]]+)\]/g)].map((x) => x[1]);
           const images = (
-            await Promise.all(paths.map((p) => window.fsAPI.readImageAsDataURL(p).catch(() => null)))
+            await Promise.all(
+              paths.map((p) => window.fsAPI.readImageAsDataURL(p).catch(() => null))
+            )
           ).filter(Boolean);
           return { ...m, images };
         })
       );
       if (!cancelled) setMessages(restored);
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [messages]);
 
   useEffect(() => {
@@ -159,7 +166,13 @@ export default function ConversationPage() {
   }, [id]);
 
   const handleAskWithParams = useCallback(
-    async (question, images = [], explicitSettings = null, explicitCustomPrompt = null, imagePaths = []) => {
+    async (
+      question,
+      images = [],
+      explicitSettings = null,
+      explicitCustomPrompt = null,
+      imagePaths = []
+    ) => {
       const settingsToUse = explicitSettings || settings;
       const customPromptToUse = explicitCustomPrompt !== null ? explicitCustomPrompt : customPrompt;
 
@@ -645,7 +658,9 @@ export default function ConversationPage() {
                           </div>
                         ) : (
                           (() => {
-                            const fallbackCount = (msg.content.match(/\[image\]|\[image_path:[^\]]*\]/g) || []).length;
+                            const fallbackCount = (
+                              msg.content.match(/\[image\]|\[image_path:[^\]]*\]/g) || []
+                            ).length;
                             return Array.from({ length: fallbackCount }, (_, i) => (
                               <span
                                 key={i}
