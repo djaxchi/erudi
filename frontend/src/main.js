@@ -736,6 +736,17 @@ ipcMain.handle("dialog:openDirectory", async () => {
   return result.filePaths[0];
 });
 
+ipcMain.handle("fs:readImageAsDataURL", async (_event, filePath) => {
+  try {
+    const data = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).slice(1).toLowerCase();
+    const mime = ext === "jpg" ? "jpeg" : ext || "png";
+    return `data:image/${mime};base64,${data.toString("base64")}`;
+  } catch {
+    return null;
+  }
+});
+
 // Helper function to get the user data directory path (cross-platform)
 function getDataDirectory() {
   const appName = "erudi";
