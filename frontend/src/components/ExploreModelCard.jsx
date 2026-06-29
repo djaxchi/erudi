@@ -1,5 +1,6 @@
 import React from "react";
 import PropTypes from "prop-types";
+import { Download, Heart } from "lucide-react";
 import GradientBox from "./GradientBox";
 import FitGauge from "./FitGauge";
 import { CATEGORY_META } from "../utils/modelCatalog";
@@ -20,19 +21,16 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo }) {
         : `${Math.round(model.param_size * 1000)}M`
       : null;
 
-  const downloads = (() => {
-    const n = parseInt(String(model.downloads ?? "").replace(/[^\d]/g, ""), 10);
-    if (!n) {
-      return null;
-    }
-    if (n >= 1e6) {
-      return `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, "")}M`;
-    }
-    if (n >= 1e3) {
-      return `${Math.round(n / 1e3)}k`;
-    }
+  const formatCount = (val) => {
+    const n = parseInt(String(val ?? "").replace(/[^\d]/g, ""), 10);
+    if (!n) return null;
+    if (n >= 1e6) return `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, "")}M`;
+    if (n >= 1e3) return `${Math.round(n / 1e3)}k`;
     return String(n);
-  })();
+  };
+
+  const downloads = formatCount(model.downloads);
+  const likes = formatCount(model.likes);
 
   return (
     <GradientBox
@@ -65,8 +63,15 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo }) {
         <div className="mono text-xs text-[var(--ink-dim)] flex items-center gap-2 mb-2.5">
           {params && <span>{params}</span>}
           {downloads && (
-            <span>
-              <span className="text-[var(--ink)] font-semibold">{downloads}</span> downloads
+            <span className="flex items-center gap-1">
+              <Download className="w-3 h-3" />
+              <span className="text-[var(--ink)] font-semibold">{downloads}</span>
+            </span>
+          )}
+          {likes && (
+            <span className="flex items-center gap-1">
+              <Heart className="w-3 h-3" />
+              <span className="text-[var(--ink)] font-semibold">{likes}</span>
             </span>
           )}
           {model.gated && <span className="text-[var(--fit-tight)]">gated</span>}
