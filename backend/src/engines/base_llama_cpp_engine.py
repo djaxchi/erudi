@@ -102,7 +102,7 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
                     message=f"Expected a .gguf file. Got: {p}",
                 )
             return p
-        ggufs = list(p.glob("*.gguf"))
+        ggufs = [g for g in p.glob("*.gguf") if "mmproj" not in g.name.lower()]
         if not ggufs:
             raise EngineException(
                 message=f"No .gguf found in {p}. Convert or quantize first.",
@@ -122,6 +122,16 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
             f"[{cls.__name__}] No known quant pattern; using smallest: {smallest.name}"
         )
         return smallest
+
+    @classmethod
+    def _find_mmproj(cls, model_gguf: Path) -> Optional[Path]:
+        """Return the mmproj GGUF in the same directory as model_gguf, or None."""
+        candidates = list(model_gguf.parent.glob("mmproj-*.gguf"))
+        if not candidates:
+            return None
+        if len(candidates) > 1:
+            logger.warning(f"[{cls.__name__}] Multiple mmproj files found, using {candidates[0].name}")
+        return candidates[0]
 
     @classmethod
     def _resolve_model_artifact(cls, llm_local_path: Union[str, Path]) -> Path:
@@ -207,6 +217,10 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
             port=port,
             **ctx,
         )
+        mmproj = cls._find_mmproj(model_path)
+        if mmproj:
+            argv += ["--mmproj", str(mmproj)]
+            logger.info(f"[{cls.__name__}] Vision projector found: {mmproj.name}")
         env = cls._build_spawn_env()
         proc = subprocess.Popen(
             [str(a) for a in argv],

@@ -118,7 +118,7 @@ export default function ChatPage() {
   };
 
   const handleAsk = useCallback(
-    async (question, images = []) => {
+    async (question, images = [], imagePaths = []) => {
       const llm = models.find((m) => m.name === selectedModel);
       if (!llm) {
         log.error("Selected model not found");
@@ -147,6 +147,7 @@ export default function ChatPage() {
           state: {
             initialQuestion: question,
             initialImages: images,
+            initialImagePaths: imagePaths,
             initialSettings: settings,
             initialCustomPrompt: customPrompt,
           },

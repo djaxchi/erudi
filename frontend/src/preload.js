@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld("electron", {
   },
 });
 
+// Local filesystem image loader (for reloading image attachments from stored paths)
+contextBridge.exposeInMainWorld("fsAPI", {
+  readImageAsDataURL: (filePath) => ipcRenderer.invoke("fs:readImageAsDataURL", filePath),
+});
+
 // Expose additional API for data management
 contextBridge.exposeInMainWorld("electronAPI", {
   openDataFolder: () => ipcRenderer.invoke("data:openFolder"),

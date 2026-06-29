@@ -56,8 +56,39 @@ export default function ConversationPage() {
     if (content.includes("[ERROR_MESSAGE_SYSTEM]")) {
       return content.replace("[ERROR_MESSAGE_SYSTEM] ", "❌ ");
     }
-    return content;
+    return content
+      .replace(/\[image\]/g, "")
+      .replace(/\[image_path:[^\]]*\]/g, "")
+      .trim();
   };
+
+  useEffect(() => {
+    if (!window.fsAPI?.readImageAsDataURL) return;
+    // undefined = not yet attempted; [] = attempted but file gone; [...] = loaded
+    const needsRestore = messages.some(
+      (m) => m.images === undefined && /\[image_path:[^\]]+\]/.test(m.content)
+    );
+    if (!needsRestore) return;
+    let cancelled = false;
+    (async () => {
+      const restored = await Promise.all(
+        messages.map(async (m) => {
+          if (m.images !== undefined || !/\[image_path:[^\]]+\]/.test(m.content)) return m;
+          const paths = [...m.content.matchAll(/\[image_path:([^\]]+)\]/g)].map((x) => x[1]);
+          const images = (
+            await Promise.all(
+              paths.map((p) => window.fsAPI.readImageAsDataURL(p).catch(() => null))
+            )
+          ).filter(Boolean);
+          return { ...m, images };
+        })
+      );
+      if (!cancelled) setMessages(restored);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [messages]);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/llms/local`)
@@ -127,7 +158,7 @@ export default function ConversationPage() {
       setStarredIds(starredMap);
       const convs = await convRes.json();
       convs.sort((a, b) => new Date(b.last_message_time) - new Date(a.last_message_time));
-      setMessages(msgs);
+      setMessages((prev) => msgs.map((m, i) => ({ ...m, images: prev[i]?.images || m.images })));
       setConversations(convs);
     } catch (err) {
       log.error("Failed to fetch messages and conversations", err);
@@ -135,7 +166,13 @@ export default function ConversationPage() {
   }, [id]);
 
   const handleAskWithParams = useCallback(
-    async (question, images = [], explicitSettings = null, explicitCustomPrompt = null) => {
+    async (
+      question,
+      images = [],
+      explicitSettings = null,
+      explicitCustomPrompt = null,
+      imagePaths = []
+    ) => {
       const settingsToUse = explicitSettings || settings;
       const customPromptToUse = explicitCustomPrompt !== null ? explicitCustomPrompt : customPrompt;
 
@@ -216,6 +253,7 @@ export default function ConversationPage() {
           body: JSON.stringify({
             question,
             images,
+            image_paths: imagePaths,
             temperature: settingsToUse.temperature,
             top_p: settingsToUse.topP,
             max_new_tokens: settingsToUse.maxTokens,
@@ -309,8 +347,8 @@ export default function ConversationPage() {
   );
 
   const handleAsk = useCallback(
-    async (question, images = []) => {
-      return handleAskWithParams(question, images, settings, customPrompt);
+    async (question, images = [], imagePaths = []) => {
+      return handleAskWithParams(question, images, settings, customPrompt, imagePaths);
     },
     [handleAskWithParams, settings, customPrompt]
   );
@@ -353,7 +391,7 @@ export default function ConversationPage() {
           }
         });
         setStarredIds(starredMap);
-        setMessages(msgs);
+        setMessages((prev) => msgs.map((m, i) => ({ ...m, images: prev[i]?.images || m.images })));
 
         // Load conversation parameters
         if (convDetailRes.ok) {
@@ -395,7 +433,8 @@ export default function ConversationPage() {
           location.state.initialQuestion,
           location.state.initialImages || [],
           settingsToUse,
-          customPromptToUse
+          customPromptToUse,
+          location.state.initialImagePaths || []
         );
         navigate(location.pathname, { replace: true, state: {} });
       } else if (!location.state || !location.state.initialQuestion) {
@@ -410,7 +449,12 @@ export default function ConversationPage() {
             }
           });
           setStarredIds(starredMap);
-          setMessages(msgs);
+          setMessages((prev) => {
+            const imagesByContent = new Map(
+              prev.filter((m) => m.images?.length > 0).map((m) => [m.content, m.images])
+            );
+            return msgs.map((m) => ({ ...m, images: imagesByContent.get(m.content) || m.images }));
+          });
         } catch (err) {
           log.error("Failed to fetch messages", err);
         }
@@ -601,7 +645,7 @@ export default function ConversationPage() {
                       // Keep user messages and error messages as plain text;
                       // attached images (this session only) render as thumbnails.
                       <div className="flex flex-col gap-2">
-                        {msg.images?.length > 0 && (
+                        {msg.images?.length > 0 ? (
                           <div className="flex flex-wrap gap-2">
                             {msg.images.map((src, i) => (
                               <img
@@ -612,6 +656,20 @@ export default function ConversationPage() {
                               />
                             ))}
                           </div>
+                        ) : (
+                          (() => {
+                            const fallbackCount = (
+                              msg.content.match(/\[image\]|\[image_path:[^\]]*\]/g) || []
+                            ).length;
+                            return Array.from({ length: fallbackCount }, (_, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 text-xs text-[var(--ink-faint)] border border-[var(--line)] rounded px-2 py-0.5 w-fit"
+                              >
+                                🖼 image attachment
+                              </span>
+                            ));
+                          })()
                         )}
                         {getDisplayContent(msg.content) && (
                           <pre className="whitespace-pre-wrap font-sans">
