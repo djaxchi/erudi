@@ -148,7 +148,7 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo }) {
           {loading ? (
             <div className="flex items-center gap-2 text-[var(--ink-faint)] mono text-xs py-6 justify-center">
               <span className="w-2 h-2 rounded-full bg-[var(--fit-good)] animate-pulse" />
-              searching hugging face for "{query}"…
+              searching hugging face for &ldquo;{query}&rdquo;…
             </div>
           ) : error ? (
             <p className="text-[var(--fit-tight)] text-sm py-3">{error}</p>
@@ -199,8 +199,8 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo }) {
             </>
           ) : (
             <p className="text-[var(--ink-dim)] text-sm py-3">
-              Nothing runnable matched "{searchedTerm}". Try a broader term, or a family name like
-              "qwen" or "llama".
+              Nothing runnable matched &ldquo;{searchedTerm}&rdquo;. Try a broader term, or a family
+              name like &ldquo;qwen&rdquo; or &ldquo;llama&rdquo;.
             </p>
           )}
         </div>
