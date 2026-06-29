@@ -416,16 +416,23 @@ async def download_llm(
             best_gguf = pick_best_gguf(all_repo_files)
             if not best_gguf:
                 raise Exception(f"No .gguf files found in repo {actual_download_link}")
+            mmproj_files = [
+                f for f in all_repo_files
+                if "mmproj" in f.lower() and f.lower().endswith(".gguf")
+            ]
             small_aux = [
                 f for f in all_repo_files
                 if not f.lower().endswith(".gguf")
                 and f in file_sizes
                 and file_sizes.get(f, 0) < 10 * 1024 * 1024  # < 10 MB
             ]
-            all_files = [best_gguf] + small_aux
+            all_files = [best_gguf] + mmproj_files + small_aux
             job.total_bytes = sum(file_sizes.get(f, 0) for f in all_files)
             callback.set_size(job.total_bytes)
-            logger.info(f"GGUF download: {best_gguf} + {len(small_aux)} aux files")
+            if mmproj_files:
+                logger.info(f"GGUF download: {best_gguf} + mmproj ({mmproj_files[0]}) + {len(small_aux)} aux files")
+            else:
+                logger.info(f"GGUF download: {best_gguf} + {len(small_aux)} aux files")
         else:
             all_files = [f for f in all_repo_files if f in file_sizes]
 

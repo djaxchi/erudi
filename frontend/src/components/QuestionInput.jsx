@@ -12,6 +12,7 @@ export default function QuestionInput({
 }) {
   const [value, setValue] = useState("");
   const [images, setImages] = useState([]);
+  const [imagePaths, setImagePaths] = useState([]);
   const [dragging, setDragging] = useState(false);
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -21,24 +22,30 @@ export default function QuestionInput({
   const addFiles = (files) => {
     const imageFiles = Array.from(files || []).filter((f) => f.type.startsWith("image/"));
     imageFiles.forEach((file) => {
+      const filePath = window.electron?.getFilePath?.(file) || null;
       const reader = new FileReader();
       reader.onload = () => {
         setImages((prev) => (prev.length >= MAX_IMAGES ? prev : [...prev, reader.result]));
+        setImagePaths((prev) => (prev.length >= MAX_IMAGES ? prev : [...prev, filePath || ""]));
       };
       reader.readAsDataURL(file);
     });
   };
 
-  const removeImage = (idx) => setImages((prev) => prev.filter((_, i) => i !== idx));
+  const removeImage = (idx) => {
+    setImages((prev) => prev.filter((_, i) => i !== idx));
+    setImagePaths((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   const handleSend = () => {
     const trimmed = value.trim();
     if (!trimmed && images.length === 0) {
       return;
     }
-    onSend?.(trimmed, images);
+    onSend?.(trimmed, images, imagePaths);
     setValue("");
     setImages([]);
+    setImagePaths([]);
     resizeTextarea();
   };
 

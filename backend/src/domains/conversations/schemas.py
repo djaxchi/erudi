@@ -258,6 +258,10 @@ class ConversationQuery(BaseModel):
         default=None,
         description="Optional base64 data-URL images attached to the question (vision models)",
     )
+    image_paths: Optional[List[str]] = Field(
+        default=None,
+        description="Local filesystem paths for each image (parallel to images, empty string when unavailable)",
+    )
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     max_new_tokens: Optional[int] = None

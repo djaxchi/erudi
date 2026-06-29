@@ -211,7 +211,7 @@ class ConversationService:
             await run_in_threadpool(
                 self._persist_user_message,
                 conversation_id,
-                self._user_display_content(payload.question, payload.images),
+                self._user_display_content(payload.question, payload.images, payload.image_paths or []),
             )
 
             starred = await run_in_threadpool(
@@ -337,14 +337,20 @@ class ConversationService:
         ]
 
     @staticmethod
-    def _user_display_content(question: str, images) -> str:
+    def _user_display_content(question: str, images, image_paths=None) -> str:
         """Short text persisted in the Message table: the question plus one
-        ``[image]`` marker per attachment. The base64 image is NEVER stored (it
-        would blow the 32768-char content limit)."""
+        marker per attachment. When a local filesystem path is known it is stored
+        as ``[image_path:/abs/path]`` so the frontend can reload the file on
+        revisit. Falls back to ``[image]`` for clipboard/unknown-origin images."""
         if not images:
             return question
-        markers = " ".join("[image]" for _ in images)
-        return f"{question} {markers}".strip() if question.strip() else markers
+        paths = list(image_paths or [])
+        markers = []
+        for i in range(len(images)):
+            p = paths[i] if i < len(paths) else ""
+            markers.append(f"[image_path:{p}]" if p else "[image]")
+        marker_str = " ".join(markers)
+        return f"{question} {marker_str}".strip() if question.strip() else marker_str
 
     def _persist_user_message(self, conversation_id: int, content: str) -> None:
         self.message_repo.create_message(
