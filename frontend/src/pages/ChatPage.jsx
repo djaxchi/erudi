@@ -13,6 +13,7 @@ import logoErudi from "../assets/images/logos/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api.js";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
+import { canAttachImages } from "../utils/modelCapabilities";
 
 const log = createLogger("ChatPage");
 
@@ -547,7 +548,11 @@ export default function ChatPage() {
 
                 {/* Question Input - Always visible */}
                 <div className="mt-6">
-                  <QuestionInput onSend={handleAsk} placeholder="Ask me anything..." />
+                  <QuestionInput
+                    onSend={handleAsk}
+                    placeholder="Ask me anything..."
+                    canAttachImages={canAttachImages(models.find((m) => m.name === selectedModel))}
+                  />
                 </div>
                 {/* Language Warning */}
                 <div className="flex justify-center mt-6 px-2 pb-1">

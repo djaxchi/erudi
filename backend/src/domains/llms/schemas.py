@@ -101,6 +101,23 @@ class LLMResponse(LLMBase):
         except Exception:
             return True
 
+    @computed_field
+    @property
+    def supports_vision(self) -> Optional[bool]:
+        """Image-input capability, derived for downloaded models (#133).
+
+        Computed on the fly (no DB column), like ``runnable``: the engine reads
+        the artifact (mmproj projector for llama.cpp, ``config.json`` for MLX).
+        Only meaningful once downloaded, so remote rows stay None. None = unknown
+        and the UI treats it as permissive — it disables the image attach button
+        only on an explicit False, never blocking a real VLM by accident.
+        """
+        if self.local != 1 or not self.link:
+            return None
+        from src.domains.llms.repository import detect_supports_vision
+
+        return detect_supports_vision(self.link)
+
     class Config:
         """Pydantic configuration for LLMResponse model.
 

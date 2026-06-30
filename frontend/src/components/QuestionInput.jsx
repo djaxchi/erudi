@@ -9,6 +9,7 @@ export default function QuestionInput({
   onSend,
   disabled = false,
   className = "",
+  canAttachImages = true,
 }) {
   const [value, setValue] = useState("");
   const [images, setImages] = useState([]);
@@ -20,6 +21,11 @@ export default function QuestionInput({
   const canSend = !disabled && (value.trim() !== "" || images.length > 0);
 
   const addFiles = (files) => {
+    // Single gate for the button, paste and drag-and-drop: a non-vision model
+    // never collects an image the backend would just strip (#133).
+    if (!canAttachImages) {
+      return;
+    }
     const imageFiles = Array.from(files || []).filter((f) => f.type.startsWith("image/"));
     imageFiles.forEach((file) => {
       const filePath = window.electron?.getFilePath?.(file) || null;
@@ -176,10 +182,14 @@ export default function QuestionInput({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || images.length >= MAX_IMAGES}
+          disabled={disabled || images.length >= MAX_IMAGES || !canAttachImages}
           className="pl-3 md:pl-4 text-white/70 hover:text-white disabled:opacity-40 transition"
           aria-label="Attach image"
-          title="Attach image (or paste / drag and drop)"
+          title={
+            canAttachImages
+              ? "Attach image (or paste / drag and drop)"
+              : "This model can't read images — pick a Vision model"
+          }
         >
           <ImagePlus className="w-5 h-5" />
         </button>
@@ -227,4 +237,5 @@ QuestionInput.propTypes = {
   onSend: PropTypes.func.isRequired,
   disabled: PropTypes.bool,
   className: PropTypes.string,
+  canAttachImages: PropTypes.bool,
 };

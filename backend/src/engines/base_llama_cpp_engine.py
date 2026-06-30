@@ -153,6 +153,22 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         )
 
     @classmethod
+    def model_supports_vision(cls, llm_local_path: Union[str, Path]) -> Optional[bool]:
+        """A llama.cpp model is vision-capable iff it ships an ``mmproj`` projector.
+
+        That is exactly the file the engine passes to ``llama-server --mmproj``
+        (#130). No artifact / unreadable directory -> ``None`` (permissive).
+        """
+        try:
+            gguf_path = cls._select_gguf(llm_local_path)
+            return cls._find_mmproj(gguf_path) is not None
+        except Exception:
+            logger.warning(
+                f"[{cls.__name__}] vision detection failed for {llm_local_path}"
+            )
+            return None
+
+    @classmethod
     def _terminate_process(cls, proc: Any) -> None:
         """Idempotent terminate for `subprocess.Popen`.
 

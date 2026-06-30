@@ -417,6 +417,23 @@ def detect_supports_tools(local_path: Optional[str]) -> Optional[bool]:
         return None
 
 
+def detect_supports_vision(local_path: Optional[str]) -> Optional[bool]:
+    """Static vision (image-input) capability via the active engine (#133).
+
+    Deterministic, no model load (mmproj presence for llama.cpp, ``config.json``
+    for MLX). Returns None when the engine/path is unavailable or detection
+    fails; callers treat None as permissive and gate only on an explicit False.
+    """
+    engine = config.LLM_Engine
+    if engine is None or not local_path:
+        return None
+    try:
+        return engine.model_supports_vision(local_path)
+    except Exception:
+        logger.warning(f"vision detection failed for {local_path}")
+        return None
+
+
 def update_db_with_progress(job_tracker, job_id: int, model_id: int) -> None:
     """Background thread function that polls DownloadTracker and persists progress to database.
 

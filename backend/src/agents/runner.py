@@ -176,6 +176,36 @@ class _StripStaleImagesMiddleware(AgentMiddleware):
         return await handler(self._strip(request))
 
 
+class _StripImagesForTextModel(AgentMiddleware):
+    """Flatten ALL image content when the model can't see images (#133).
+
+    A text-only model (no MLX ``vision_config`` / no llama.cpp ``mmproj``) would
+    either crash or silently ignore image parts, so for a non-vision model every
+    ``image_url`` part — the current turn included — collapses to an ``[image]``
+    text marker before the request reaches the model server. The answer stays
+    clean text instead of broken inference. The caller adds this only on an
+    explicit ``supports_vision is False`` (None/True leave images intact, so a
+    real VLM is never blocked by a detection miss).
+    """
+
+    def _strip(self, request):
+        messages = list(request.messages)
+        changed = False
+        for i, m in enumerate(messages):
+            if isinstance(m.content, list):
+                messages[i] = m.model_copy(
+                    update={"content": _flatten_without_images(m.content)}
+                )
+                changed = True
+        return request.override(messages=messages) if changed else request
+
+    def wrap_model_call(self, request, handler):
+        return handler(self._strip(request))
+
+    async def awrap_model_call(self, request, handler):
+        return await handler(self._strip(request))
+
+
 class _StripStaleKbToolMessages(AgentMiddleware):
     """Placeholder the ``search_knowledge_base`` results of PAST turns.
 
@@ -237,6 +267,7 @@ class AgentRunner:
         kb_language_line: str = "",
         tools: Optional[list] = None,
         context: Optional[Any] = None,
+        supports_vision: Optional[bool] = None,
     ) -> AsyncIterator[str]:
         engine = config.LLM_Engine
         stateful = thread_id is not None and self.checkpointer is not None
@@ -259,6 +290,10 @@ class AgentRunner:
                         *middleware,
                         _KbContextMiddleware(kb_context_block, kb_language_line),
                     ]
+                if supports_vision is False:
+                    # Outermost, so images are gone before the KB merge re-reads
+                    # the last user message: a non-vision model never sees an image.
+                    middleware = [_StripImagesForTextModel(), *middleware]
                 agent = create_agent(
                     model,
                     tools=tools if tools is not None else AGENT_TOOLS,

@@ -11,6 +11,7 @@ import MarkdownRenderer from "../components/MarkdownRenderer";
 import { API_BASE_URL } from "../config/api.js";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
+import { canAttachImages } from "../utils/modelCapabilities";
 
 const log = createLogger("ConversationPage");
 
@@ -721,7 +722,12 @@ export default function ConversationPage() {
         </div>
         <div className="sticky bottom-0 left-0 right-0 px-10 py-10 backdrop-blur-md flex justify-center w-full">
           <div className="w-full max-w-lg">
-            <QuestionInput onSend={handleAsk} backgroundClass="bg-emerald-900" disabled={loading} />
+            <QuestionInput
+              onSend={handleAsk}
+              backgroundClass="bg-emerald-900"
+              disabled={loading}
+              canAttachImages={canAttachImages(models.find((m) => m.name === currentModel))}
+            />
           </div>
         </div>
       </main>

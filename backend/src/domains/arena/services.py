@@ -26,6 +26,7 @@ from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
 from src.agents.kb_mode import plan_turn
 from src.agents.runner import AgentRunner, GenParams
 from src.domains.arena.repository import ArenaRepository
+from src.domains.llms.repository import detect_supports_vision
 from src.domains.arena.schemas import ArenaQueryPayload
 from src.entities.Llm import Llm
 from src.core.exceptions import (
@@ -123,6 +124,9 @@ class ArenaService:
             max_tokens=payload.max_new_tokens,
         )
 
+        # Safety net (#133): a text-only model never receives image content.
+        supports_vision = await run_in_threadpool(detect_supports_vision, llm.link)
+
         async for token in self.runner.astream_text(
             llm=llm,
             user_message=payload.question,
@@ -134,5 +138,6 @@ class ArenaService:
             kb_language_line=plan.kb_language_line,
             tools=plan.tools,
             context=plan.context,
+            supports_vision=supports_vision,
         ):
             yield token
