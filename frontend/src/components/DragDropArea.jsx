@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { Upload, File, X, Plus, Folder } from "lucide-react";
 import GradientBox from "./GradientBox";
 import { createLogger } from "../utils/logger";
+import { isSupportedKbFile, KB_ACCEPT_ATTR } from "../utils/kbFormats";
 const log = createLogger("DragDropArea");
 
 /**
@@ -17,11 +18,7 @@ export default function DragDropArea({ onFilesAdded }) {
   const inputRef = useRef(null);
 
   /* -------------------------------- helpers -------------------------------- */
-  const isAllowedFileType = (fileName) => {
-    const allowedExtensions = [".pdf", ".txt"];
-    const extension = "." + fileName.split(".").pop()?.toLowerCase();
-    return allowedExtensions.includes(extension);
-  };
+  const isAllowedFileType = (fileName) => isSupportedKbFile(fileName);
 
   const extractPaths = (fileList) => {
     return Array.from(fileList)
@@ -29,7 +26,7 @@ export default function DragDropArea({ onFilesAdded }) {
         const fileName = file.name || file.path?.split(/[/\\]/).pop() || "";
         const isAllowed = isAllowedFileType(fileName);
         if (!isAllowed) {
-          log.warn(`File "${fileName}" rejected: only PDF and TXT files are allowed`);
+          log.warn(`File "${fileName}" rejected: unsupported format (allowed: ${KB_ACCEPT_ATTR})`);
         }
         return isAllowed;
       })
@@ -71,15 +68,7 @@ export default function DragDropArea({ onFilesAdded }) {
     }
 
     const extension = fileName.split(".").pop()?.toLowerCase();
-
-    switch (extension) {
-      case "pdf":
-        return "PDF";
-      case "txt":
-        return "TXT";
-      default:
-        return "Other";
-    }
+    return extension ? extension.toUpperCase() : "Other";
   };
 
   const openPicker = () => inputRef.current?.click();
@@ -262,7 +251,7 @@ export default function DragDropArea({ onFilesAdded }) {
         ref={inputRef}
         type="file"
         multiple
-        accept=".pdf,.txt,application/pdf,text/plain"
+        accept={KB_ACCEPT_ATTR}
         onChange={handleSelect}
         style={{ display: "none" }}
       />
