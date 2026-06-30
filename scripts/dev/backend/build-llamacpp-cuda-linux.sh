@@ -77,6 +77,11 @@ fi
 mkdir -p "$BUILD_DIR" "$INSTALL_DIR"
 
 # -------- configure (CUDA backend + CPU fallback layers) --------
+# Build ONLY what we ship (the server, under tools/). The 38 examples/ binaries
+# each statically embed the large CUDA lib (BUILD_SHARED_LIBS=OFF), and linking
+# the full suite overflows the Linux runner disk ("ld: No space left on device")
+# as the submodule grows — so examples + tests are off. The Windows runner has the
+# headroom, so only the Linux CUDA leg needs this.
 echo "[build] Configuring llama.cpp (Linux CUDA)..."
 "$CMAKE" -S "$SRC_DIR" -B "$BUILD_DIR" \
   -DCMAKE_BUILD_TYPE=Release \
@@ -84,6 +89,10 @@ echo "[build] Configuring llama.cpp (Linux CUDA)..."
   -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
   -DCMAKE_CUDA_COMPILER="$NVCC" \
   -DLLAMA_CURL=OFF \
+  -DLLAMA_BUILD_TESTS=OFF \
+  -DLLAMA_BUILD_EXAMPLES=OFF \
+  -DLLAMA_BUILD_TOOLS=ON \
+  -DLLAMA_BUILD_SERVER=ON \
   -DGGML_CUDA=ON \
   -DCMAKE_CUDA_ARCHITECTURES="50;61;70;75;80;86;89" \
   -DGGML_CPU=ON \
