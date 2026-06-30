@@ -10,6 +10,7 @@ import TypingIndicator from "../components/TypingIndicator";
 import MarkdownRenderer from "../components/MarkdownRenderer";
 import { API_BASE_URL } from "../config/api.js";
 import { createLogger } from "../utils/logger";
+import { conversationPath } from "../utils/routes";
 
 const log = createLogger("ConversationPage");
 
@@ -520,7 +521,7 @@ export default function ConversationPage() {
     }
   }, [messages, userScrolledUp]);
 
-  const handleConversationClick = (newId) => navigate(`/erudi/conversations/${newId}`);
+  const handleConversationClick = (newId) => navigate(conversationPath(newId));
 
   const handleRename = (cid, newName) =>
     setConversations((prev) => prev.map((c) => (c.id === cid ? { ...c, name: newName } : c)));

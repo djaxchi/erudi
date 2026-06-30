@@ -12,6 +12,7 @@ import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";
 import logoErudi from "../assets/images/logos/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api.js";
 import { createLogger } from "../utils/logger";
+import { conversationPath } from "../utils/routes";
 
 const log = createLogger("ChatPage");
 
@@ -114,7 +115,7 @@ export default function ChatPage() {
   }, [searchParams, models]); // Re-run when searchParams or models change
 
   const handleConversationClick = (id) => {
-    navigate(`/erudi/conversation/${id}`);
+    navigate(conversationPath(id));
   };
 
   const handleAsk = useCallback(
@@ -143,7 +144,7 @@ export default function ChatPage() {
         const conversation = await res.json();
 
         // 2. Redirect to ConversationPage and pass the question AND parameters
-        navigate(`/erudi/conversations/${conversation.id}`, {
+        navigate(conversationPath(conversation.id), {
           state: {
             initialQuestion: question,
             initialImages: images,
