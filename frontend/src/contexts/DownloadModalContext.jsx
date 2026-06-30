@@ -7,6 +7,7 @@ import SpinnerDots from "../components/Spinner";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { API_BASE_URL } from "../config/api.js";
 import { createLogger } from "../utils/logger";
+import { DOWNLOAD_CANCELLED } from "../utils/downloadStatus";
 const log = createLogger("DownloadModalContext");
 
 const DownloadModalContext = createContext();
@@ -69,7 +70,7 @@ export function DownloadModalProvider({ children }) {
           clearInterval(intervalRef.current);
           setIsDownloading(false);
           setProgress(0);
-          setStatus("cancelled");
+          setStatus(DOWNLOAD_CANCELLED);
           return;
         }
         throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
@@ -79,13 +80,17 @@ export function DownloadModalProvider({ children }) {
       setStatus(data.status);
       setTimeLeft(data.time_left);
 
-      if (data.status === "completed" || data.status === "failed" || data.status === "cancelled") {
+      if (
+        data.status === "completed" ||
+        data.status === "failed" ||
+        data.status === DOWNLOAD_CANCELLED
+      ) {
         clearInterval(intervalRef.current);
         setIsDownloading(false);
         if (data.status === "completed") {
           callbacksRef.current.onComplete?.();
-        } else if (data.status === "cancelled") {
-          callbacksRef.current.onError?.("cancelled");
+        } else if (data.status === DOWNLOAD_CANCELLED) {
+          callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
         } else {
           const errorMsg = data.error_message || "Download failed unexpectedly";
           setErrorMessage(errorMsg);
@@ -158,8 +163,8 @@ export function DownloadModalProvider({ children }) {
       clearInterval(intervalRef.current);
       setIsDownloading(false);
       setProgress(0);
-      setStatus("cancelled");
-      callbacksRef.current.onError?.("cancelled");
+      setStatus(DOWNLOAD_CANCELLED);
+      callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
       return;
     }
 
@@ -185,8 +190,8 @@ export function DownloadModalProvider({ children }) {
       clearInterval(intervalRef.current);
       setIsDownloading(false);
       setProgress(0);
-      setStatus("cancelled");
-      callbacksRef.current.onError?.("cancelled");
+      setStatus(DOWNLOAD_CANCELLED);
+      callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
     }
   }, [jobId]);
 
