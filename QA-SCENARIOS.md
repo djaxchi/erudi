@@ -36,7 +36,7 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When a Hugging Face search returns nothing runnable, then I see "Nothing runnable matched…" (a helpful message, not an error).
 - [ ] When I am **offline** and run a Hugging Face search, then I see "No internet connection for the moment." and no request is made.
 - [ ] When a download **fails**, then the widget shows the error and a "Download failed. Please try again." message.
-- [ ] When I **cancel** an in-progress download, then it stops and the model returns to a not-downloaded state *(currently surfaces a "Download failed" dialog — see #133)*.
+- [ ] When I **cancel** an in-progress download, then it stops and the model returns to a not-downloaded state (no "Download failed" dialog).
 - [ ] When I delete an installed model and confirm, then it is removed and a success message shows; if the delete request fails, the list is left intact with an error.
 - [ ] When the network drops, then the connection pill switches from "Connected" to "Offline" live.
 
@@ -51,7 +51,7 @@ screens, the shared chrome, and non-functional behavior.
 **Edge cases & errors**
 - [ ] When I send **without any image** (plain text), then the model answers normally.
 - [ ] When I attach image(s) on a **vision-capable** model (button, paste, or drag-and-drop) and send, then thumbnails show (up to 4) and the images are used in the answer.
-- [ ] When I attach an image but the **selected model is NOT vision-capable**, then the app should prevent it or clearly warn that image input won't work *(currently the image is sent silently with no gating — see #133)*.
+- [ ] When the **selected model is NOT vision-capable**, then the image **attach button is disabled** with a tooltip ("This model can't read images — pick a Vision model") and pasting/dropping an image is ignored; if an image still reaches the backend it is stripped, so the answer is plain text (never broken).
 - [ ] When I try to attach a **5th** image, then it is rejected (cap of 4) and the attach button is disabled at 4.
 - [ ] When I drop a **non-image** file, then it is ignored.
 - [ ] When the input is **empty or whitespace** only, then the send button is disabled.
@@ -78,7 +78,7 @@ screens, the shared chrome, and non-functional behavior.
 **Multimodal / multi-turn**
 - [ ] When I send an image on a vision model, then it is used for that turn; on the **next** turn the stale image is dropped from the model's context (only the current turn's image is sent), while the display keeps all images.
 - [ ] When I reload a conversation with **file-attached** images, then the thumbnails re-render (for images still present on disk).
-- [ ] When I reload a conversation whose image was **pasted from the clipboard**, then it shows an "image attachment" placeholder, not the image *(clipboard images aren't restorable — see #133)*.
+- [ ] When I reload a conversation whose image was **pasted from the clipboard**, then it shows an "image attachment" placeholder, not the image *(clipboard images aren't restorable yet — see #136)*.
 - [ ] When an attached image's original file was **moved/deleted**, then that image quietly shows nothing on reload (no broken-image artifact).
 
 **Edge cases & errors**
@@ -102,7 +102,7 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When two panels use the **same** model, then the loaded model is reused (no reload between them).
 - [ ] When a panel's model **errors**, then that panel shows "[Erreur]" in red while the others still resolve.
 - [ ] When a panel's model has a **KB attached**, then KB context is auto-injected for that panel (no toggle).
-- [ ] When I attach an **image** in Arena, then note it is currently ignored *(images dropped — see #133)*.
+- [ ] When I attach an **image** in Arena, then note it is currently ignored *(images dropped — see #136)*.
 - [ ] When a generation is running, then settings/model pickers are disabled; there is **no stop button** — the run must finish.
 - [ ] When I submit an **empty** prompt, then it does not send.
 
@@ -110,15 +110,15 @@ screens, the shared chrome, and non-functional behavior.
 
 **Happy path**
 - [ ] When I open the screen, then I see the KB description, a chat-capabilities rating (my machine's inference label/score), the local-model library, a name field, and a drag-and-drop area.
-- [ ] When I select a base model, type a name and **click Check to lock it**, add `.pdf`/`.txt` files, and click "Create Assistant" + confirm, then a spinner polls progress.
+- [ ] When I select a base model, type a name and **click Check to lock it**, add supported files (`.pdf`/`.txt`/`.docx`/`.xlsx`/`.csv`/`.md`), and click "Create Assistant" + confirm, then a spinner polls progress.
 - [ ] When ingestion completes, then "Data attached to your Assistant successfully!" shows and the form resets.
 
 **Edge cases & errors**
 - [ ] When I leave the assistant name **unlocked** (didn't click Check), or pick no model, or add no files, then "Please fill in all required fields" shows and nothing is sent.
-- [ ] When I select a file that is **not `.pdf`/`.txt`** (e.g. `.docx`, `.png`, `.csv`), then it is not accepted *(silently dropped though the backend supports more — see #133)*.
+- [ ] When I add a **supported document** beyond `.pdf`/`.txt` (`.docx`, `.xlsx`, `.csv`, `.md`), then it is accepted; an **unsupported** file (e.g. `.png`, `.zip`) isn't offered by the picker and a dropped one is ignored.
 - [ ] When I add the **same file twice**, then it is de-duplicated.
-- [ ] When I submit a **scanned / image-only PDF**, then it is accepted as *pending vision* (no searchable content yet) and the job still completes.
-- [ ] When I submit an **empty / no-text** file, then the job completes but the KB has no searchable content *(reported as success — see #133)*.
+- [ ] When I submit a **scanned / image-only PDF** alongside readable files, then it is accepted as *pending vision* (no searchable content yet) and the job completes for the readable ones; a **pending-vision-only** upload fails with "no searchable content" (no OCR tier yet).
+- [ ] When I submit an **empty / no-text** file (and nothing else indexes), then the job **fails** with a "no searchable content" message and the document is flagged *empty* — never a false success.
 - [ ] When **every** submitted file is unreadable/unsupported, then the job fails with a clear error and the half-built assistant is auto-cleaned up.
 - [ ] When **some** files fail but at least one ingests, then the job still completes for the good ones.
 - [ ] When ingestion **fails** (network/HTTP), then an error dialog shows the reason.
@@ -135,7 +135,7 @@ screens, the shared chrome, and non-functional behavior.
 
 **Boot & errors**
 - [ ] When I launch the app, then the window opens immediately on a loading screen and switches to the app once the backend is healthy, landing on Models.
-- [ ] When the **backend fails to start** (port in use, crash, timeout), then the app shows a clear error with the reason — **not** a perpetual spinner *(currently it hangs on the spinner — see #133, P0)*.
+- [ ] When the **backend fails to start** (port in use, crash, timeout), then the app shows a clear error with the reason (code + log path) and Retry/Quit — **not** a perpetual spinner.
 - [ ] When the backend dies **after** load, then API calls fail per-screen with a visible error.
 
 **Offline & persistence**
@@ -159,5 +159,5 @@ screens, the shared chrome, and non-functional behavior.
 Per release candidate, note: build version, OS + hardware, who ran it, date, and
 any **FAIL** with a linked issue. Platform coverage (which OS/GPU each artifact
 was tested on) is tracked in `docs/dev/release-qa-checklist.md`. Scenarios marked
-*(see #133)* are known defects to fix before release — they should pass once #133
-is closed.
+*(see #136)* are known **P2** UX defects (not release-blocking), tracked in #136;
+the release-blocking defects from the bug bash (#133) are fixed (PR #135).
