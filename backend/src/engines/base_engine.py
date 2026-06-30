@@ -251,6 +251,17 @@ class BaseEngine(ABC, metaclass=EngineMeta):
             return False
         return tokenizer_declares_tools(tokenizer)
 
+    @classmethod
+    def model_supports_vision(cls, local_path: Union[str, Path]) -> Optional[bool]:
+        """Whether the model at ``local_path`` accepts image input (#133).
+
+        Deterministic, no model load: llama.cpp engines look for an ``mmproj``
+        projector, MLX reads ``config.json``. Returns ``None`` when the engine
+        cannot decide; callers treat ``None`` as permissive and only act on an
+        explicit ``False`` so a detection miss never blocks a real VLM.
+        """
+        return None
+
     # ======================= HARDWARE DETECTION & EVALUATION =======================
     @classmethod
     @abstractmethod

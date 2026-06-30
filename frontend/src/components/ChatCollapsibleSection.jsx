@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import ErrorModal from "./modals/ErrorModal";
 import { API_BASE_URL } from "../config/api.js";
 import { createLogger } from "../utils/logger";
+import { conversationPath } from "../utils/routes";
 const log = createLogger("ChatCollapsibleSection");
 
 ChatCollapsibleSection.propTypes = {
@@ -112,7 +113,7 @@ export default function ChatCollapsibleSection({
             onClick={() => {
               if (!isEditing) {
                 onSelect?.(conv.id);
-                navigate(`/erudi/conversations/${conv.id}`);
+                navigate(conversationPath(conv.id));
               }
             }}
             className={`relative group py-2 px-4 rounded-md cursor-pointer transition-all duration-150 ${

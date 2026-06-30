@@ -20,6 +20,7 @@ import WelcomeModal from "../components/modals/WelcomeModal";
 import logoErudi from "../assets/images/logos/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api";
 import { transformAppStartupInfo } from "../utils/hardwareTransform";
+import { downloadErrorMessage } from "../utils/downloadStatus";
 import { createLogger } from "../utils/logger";
 import { splitByBase } from "../utils/modelCatalog";
 import { rankByFit, pickFlagships, applyCatalogFilters } from "../utils/hardwareFit";
@@ -254,7 +255,10 @@ export default function LandingPage() {
             localModelsRef.current.reloadLocalModels();
           }
         },
-        onError: () => setErrorMessage("Download failed. Please try again."),
+        onError: (reason) => {
+          const msg = downloadErrorMessage(reason);
+          if (msg) setErrorMessage(msg);
+        },
       });
     }
   };

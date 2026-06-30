@@ -21,6 +21,7 @@ from src.core.logging import logger
 from src.agents.kb_mode import plan_turn
 from src.agents.runner import AgentRunner, GenParams, ERROR_MESSAGE
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
+from src.domains.llms.repository import detect_supports_vision
 from src.domains.conversations.schemas import ConversationQuery
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
@@ -235,6 +236,11 @@ class ConversationService:
                 max_tokens=payload.max_new_tokens or conversation.max_tokens or 1024,
             )
 
+            # Safety net (#133): if the model can't see images, drop them before
+            # inference so a text-only model never breaks or hallucinates on an
+            # attachment. None/True leave images intact (a real VLM is untouched).
+            supports_vision = await run_in_threadpool(detect_supports_vision, llm.link)
+
             async for token in self.runner.astream_text(
                 llm=llm,
                 user_message=user_message,
@@ -246,6 +252,7 @@ class ConversationService:
                 kb_language_line=plan.kb_language_line,
                 tools=plan.tools,
                 context=plan.context,
+                supports_vision=supports_vision,
             ):
                 assistant_response += token
                 yield token

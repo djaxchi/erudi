@@ -35,6 +35,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
   clearAllData: () => ipcRenderer.invoke("data:clearAll"),
 });
 
+// Backend lifecycle bridge: forwards run.py / main.js "backend-event" messages
+// ({event: "starting"|"ready"|"shutdown"|"startup_error", code?, message?}) so the
+// renderer can show a real error instead of an endless loading spinner.
+contextBridge.exposeInMainWorld("backendAPI", {
+  onBackendEvent: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on("backend-event", handler);
+    return () => ipcRenderer.removeListener("backend-event", handler);
+  },
+});
+
 // Auto-updater bridge
 contextBridge.exposeInMainWorld("updaterAPI", {
   // Register a callback for updater events from main process.

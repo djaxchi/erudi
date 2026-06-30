@@ -241,6 +241,26 @@ class MLX_Engine(BaseChatServerEngine):
         return AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=False)
 
     @classmethod
+    def model_supports_vision(cls, llm_local_path: Union[str, Path]) -> Optional[bool]:
+        """An MLX model is vision-capable iff its ``config.json`` declares vision.
+
+        Reads the directory's ``config.json`` only (no weights, no server) and
+        defers the decision to ``config_declares_vision``. Unreadable/absent
+        config -> ``None`` (permissive).
+        """
+        import json
+
+        from src.engines.vision_capability import config_declares_vision
+
+        try:
+            model_dir = cls._resolve_model_artifact(llm_local_path)
+            config = json.loads((model_dir / "config.json").read_text(encoding="utf-8"))
+            return config_declares_vision(config)
+        except Exception:
+            logging.warning(f"[MLX_Engine] vision detection failed for {llm_local_path}")
+            return None
+
+    @classmethod
     def _spawn_child(
         cls,
         *,

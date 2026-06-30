@@ -9,6 +9,8 @@ column.
 
 Statuses:
     - ``active``: extracted, chunked, and indexed — retrievable.
+    - ``empty``: extracted but produced zero indexable chunks (blank/whitespace
+      file or a parser that yielded no text); nothing searchable was added.
     - ``failed``: ingestion raised; error surfaced via the KB job.
     - ``pending_vision``: image or scanned PDF accepted but not yet readable
       (OCR/VLM tiers land in a later release); zero chunks indexed.
@@ -19,7 +21,7 @@ from sqlalchemy.sql import func
 
 from src.database.core import Base
 
-ALLOWED_STATUSES = ("active", "failed", "pending_vision")
+ALLOWED_STATUSES = ("active", "empty", "failed", "pending_vision")
 
 
 class KnowledgeDocument(Base):

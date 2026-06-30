@@ -241,7 +241,7 @@ class KB_Service:
             if not kb:
                 raise ValueError(f"KnowledgeBase {kb_job.kb_id} not found")
 
-            indexed, pending, skipped, failed = 0, 0, 0, 0
+            indexed, pending, skipped, empty, failed = 0, 0, 0, 0, 0
             for raw_path in file_paths:
                 outcome = self._ingest_one_file(db, kb.id, raw_path)
                 if outcome == "indexed":
@@ -250,18 +250,26 @@ class KB_Service:
                     pending += 1
                 elif outcome == "skipped":
                     skipped += 1
+                elif outcome == "empty":
+                    empty += 1
                 else:
                     failed += 1
 
             logger.info(
                 f"KB job {kb_job_id} ({'update' if is_update else 'creation'}): "
                 f"{indexed} indexed, {pending} pending_vision, "
-                f"{skipped} duplicates, {failed} failed"
+                f"{skipped} duplicates, {empty} empty, {failed} failed"
             )
 
-            if failed and failed == len(file_paths):
+            # Don't report success when nothing queryable was added. A batch that
+            # indexed zero chunks and had no duplicates (its files were empty,
+            # pending_vision with no OCR tier, or failed) is a failure the user must
+            # see — never a silent "completed". All-duplicates (skipped > 0) stays a
+            # success: that content is already in the KB.
+            if indexed == 0 and skipped == 0:
                 raise ValueError(
-                    f"No document could be ingested ({failed} file(s) failed)"
+                    f"No searchable content could be indexed "
+                    f"({failed} failed, {empty} empty, {pending} pending vision)."
                 )
 
             self.repo.update_kb_job_status(db, kb_job, "completed")
@@ -306,13 +314,19 @@ class KB_Service:
                 return "pending_vision"
 
             chunks = chunk_document(extracted)
-            if chunks:
-                add_kb_chunks(
-                    kb_id=kb_id,
-                    document_id=document.id,
-                    source_file=path.name,
-                    chunks=chunks,
-                )
+            if not chunks:
+                # Extracted, but produced nothing indexable (blank/whitespace file
+                # or a parser that yielded no text): honestly 'empty', never
+                # reported as indexed.
+                self.repo.update_document_status(db, document, "empty")
+                logger.info(f"KB {kb_id}: {path.name} produced no indexable content")
+                return "empty"
+            add_kb_chunks(
+                kb_id=kb_id,
+                document_id=document.id,
+                source_file=path.name,
+                chunks=chunks,
+            )
             logger.info(f"KB {kb_id}: {path.name} indexed ({len(chunks)} chunks)")
             return "indexed"
 

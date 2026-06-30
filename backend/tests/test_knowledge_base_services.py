@@ -267,7 +267,7 @@ class TestIngestionPipeline:
         bad = tmp_path / "broken.xyz"
         bad.write_text("nope")
 
-        with pytest.raises(ValueError, match="No document could be ingested"):
+        with pytest.raises(ValueError, match="No searchable content could be indexed"):
             service.process_and_index_documents(
                 db=session, kb_job_id=job.id, file_paths=[str(bad)]
             )
@@ -275,4 +275,55 @@ class TestIngestionPipeline:
         session.expire_all()
         job_after = service.repo.get_kb_job_by_id(session, job.id)
         assert job_after.status == "failed"
-        assert "No document could be ingested" in job_after.error_message
+        assert "No searchable content could be indexed" in job_after.error_message
+
+    def test_empty_file_is_marked_empty_and_job_fails(
+        self, kb_store, real_db_session, tmp_path
+    ):
+        """A file that yields zero chunks must NOT be reported as indexed: the
+        document is flagged 'empty' and a content-less job fails honestly (#133)."""
+        session, created = real_db_session
+        service, kb, job = _make_kb_and_job(session, created)
+
+        blank = tmp_path / "blank.txt"
+        blank.write_text("   \n\t\n   ", encoding="utf-8")  # whitespace -> 0 chunks
+
+        with pytest.raises(ValueError, match="No searchable content could be indexed"):
+            service.process_and_index_documents(
+                db=session, kb_job_id=job.id, file_paths=[str(blank)]
+            )
+
+        session.expire_all()
+        job_after = service.repo.get_kb_job_by_id(session, job.id)
+        assert job_after.status == "failed"
+        doc = (
+            session.query(KnowledgeDocument)
+            .filter_by(kb_id=kb.id, name="blank.txt")
+            .one()
+        )
+        assert doc.status == "empty"
+
+    def test_empty_file_alongside_content_still_completes(
+        self, kb_store, real_db_session, tmp_path
+    ):
+        """An empty file does not sink a batch that indexed real content: the job
+        completes, the good doc is 'active', the empty one is honestly 'empty'."""
+        session, created = real_db_session
+        service, kb, job = _make_kb_and_job(session, created)
+
+        good = tmp_path / "good.md"
+        good.write_text("# Notes\n\nLe délai est de dix jours ouvrés.", encoding="utf-8")
+        blank = tmp_path / "blank.txt"
+        blank.write_text("", encoding="utf-8")
+
+        service.process_and_index_documents(
+            db=session, kb_job_id=job.id, file_paths=[str(good), str(blank)]
+        )
+
+        session.expire_all()
+        assert service.repo.get_kb_job_by_id(session, job.id).status == "completed"
+        statuses = {
+            d.name: d.status
+            for d in session.query(KnowledgeDocument).filter_by(kb_id=kb.id)
+        }
+        assert statuses == {"good.md": "active", "blank.txt": "empty"}

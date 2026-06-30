@@ -525,6 +525,47 @@ async def test_stale_images_stripped_on_followup(monkeypatch):
     assert "see this" in past_human.content
 
 
+async def test_images_stripped_for_non_vision_model(monkeypatch):
+    """A text-only model (supports_vision=False) must never receive image parts:
+    the CURRENT turn's image is flattened to an [image] marker so inference is
+    clean text instead of broken/garbage output (#133)."""
+    fake = _RecordingModel(messages=iter([AIMessage(content="ok")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=None)
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message=[{"type": "text", "text": "what is this"}, _IMG],
+        system_prompt="s", params=_PARAMS, supports_vision=False,
+    ):
+        pass
+
+    sent = fake.received[-1]
+    for m in sent:
+        if isinstance(m.content, list):
+            assert all(p.get("type") != "image_url" for p in m.content)
+    human = [m for m in sent if m.type == "human"][0]
+    assert isinstance(human.content, str)
+    assert "[image]" in human.content
+    assert "what is this" in human.content
+
+
+async def test_images_kept_for_vision_model(monkeypatch):
+    """A vision model (supports_vision=True) keeps the current image attached (#133)."""
+    fake = _RecordingModel(messages=iter([AIMessage(content="ok")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=None)
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message=[{"type": "text", "text": "what is this"}, _IMG],
+        system_prompt="s", params=_PARAMS, supports_vision=True,
+    ):
+        pass
+
+    last = fake.received[-1][-1]
+    assert isinstance(last.content, list)
+    assert any(p.get("type") == "image_url" for p in last.content)
+
+
 # ===================== Agentic KB tool (issue #84) =====================
 
 from unittest.mock import MagicMock  # noqa: E402
