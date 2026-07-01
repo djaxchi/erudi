@@ -511,8 +511,10 @@ class TestClassAttributes:
     def test_tokenizer_provider_is_mlx_vlm(self):
         assert MLX_Engine._tokenizer_provider == "mlx-vlm-server"
 
-    def test_port_range_start_unchanged(self):
-        assert MLX_Engine._port_range_start == 9080
+    def test_port_range_start_in_canonical_block(self):
+        # MLX owns the top slice of Erudi's 271xx–273xx block: 27300–27399,
+        # clear of llama.cpp (27200–27299) and the backend (27182–27199).
+        assert MLX_Engine._port_range_start == 27300
 
 
 @pytest.mark.unit

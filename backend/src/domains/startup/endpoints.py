@@ -13,7 +13,7 @@ Endpoints:
     GET /startup/welcome-popup - Check and update welcome popup display status.
 
 Example:
-    curl http://localhost:8000/erudi/startup/welcome-popup
+    curl http://127.0.0.1:27182/erudi/startup/welcome-popup
     {"has_already_displayed": false}
 """
 from fastapi import Depends, APIRouter

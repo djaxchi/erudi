@@ -188,14 +188,14 @@ delete + B3 purge (IT4). Arena (E21–E23) validated via the API (the repetition
 applies there too).
 
 ## Setup
-- **Backend**: `cd backend && source venv/bin/activate && python run.py --port 8765`.
+- **Backend**: `cd backend && source venv/bin/activate && python run.py --port 27182`.
 - **Renderer**: webpack dev server `http://localhost:3000` (HashRouter `/#/erudi/...`);
-  Playwright drives it; streaming is `fetch` to `127.0.0.1:8765`.
+  Playwright drives it; streaming is `fetch` to `127.0.0.1:27182`.
 - **Browser security (critical for a plain browser):** in Electron, `main.js`
   (`onHeadersReceived`) overrides the dev CSP and the runtime ignores Chromium's
   Local Network Access checks, so the renderer can call the loopback backend. A
   plain Chromium does NOT — it enforces (a) the dev server's restrictive
-  `Content-Security-Policy` header (no `connect-src` → blocks `127.0.0.1:8765`)
+  `Content-Security-Policy` header (no `connect-src` → blocks `127.0.0.1:27182`)
   and (b) `ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS` (loopback from a
   `localhost` origin). Both are defeated by launching Chromium via
   `.playwright/cli.config.json` with `contextOptions.bypassCSP=true` and

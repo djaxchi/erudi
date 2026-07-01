@@ -103,7 +103,7 @@ class CPU_Engine(BaseLlamaCppEngine):
     # --- BaseChatServerEngine config overrides ---
     _server_name = "llama-server"
     _tokenizer_provider = "llama-server"
-    # _port_range_start = 8080 (inherited from BaseLlamaCppEngine)
+    # _port_range_start = 27200 (inherited from BaseLlamaCppEngine)
     # _use_cuda_build = False (inherited from BaseLlamaCppEngine)
     # USES_GGUF + MODEL_MAPPING (public-GGUF catalog) inherited from BaseLlamaCppEngine.
 

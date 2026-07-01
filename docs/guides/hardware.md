@@ -189,7 +189,7 @@ Refresh hardware detection if you:
 **Via API** (for developers):
 
 ```bash
-curl -X POST http://127.0.0.1:8765/hardware/refresh
+curl -X POST http://127.0.0.1:27182/hardware/refresh
 ```
 
 **Via UI** (coming soon):
@@ -294,7 +294,7 @@ Hardware is re-detected on every app launch.
 ### Get Training Info
 
 ```bash
-curl http://127.0.0.1:8765/hardware/training_info
+curl http://127.0.0.1:27182/hardware/training_info
 ```
 
 Returns full backend-specific hardware profile.
@@ -302,7 +302,7 @@ Returns full backend-specific hardware profile.
 ### Get Startup Info
 
 ```bash
-curl http://127.0.0.1:8765/hardware/app_startup
+curl http://127.0.0.1:27182/hardware/app_startup
 ```
 
 Returns minimal UI data with boosted scores.
@@ -310,7 +310,7 @@ Returns minimal UI data with boosted scores.
 ### Get Detailed Info
 
 ```bash
-curl http://127.0.0.1:8765/hardware/detailed
+curl http://127.0.0.1:27182/hardware/detailed
 ```
 
 Returns comprehensive diagnostics with raw/boosted comparison.
@@ -318,7 +318,7 @@ Returns comprehensive diagnostics with raw/boosted comparison.
 ### Refresh Hardware
 
 ```bash
-curl -X POST http://127.0.0.1:8765/hardware/refresh
+curl -X POST http://127.0.0.1:27182/hardware/refresh
 ```
 
 Forces hardware re-detection.

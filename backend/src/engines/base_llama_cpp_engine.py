@@ -38,9 +38,12 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
     """Shared scaffolding for engines that spawn `llama-server` via Popen."""
 
     # ====================== Overridable class attrs ======================
-    # llama-server uses the 8080+ range historically (collision-free against
-    # MLX which uses 9080+ and the Erudi backend which uses 8765-8799).
-    _port_range_start: ClassVar[int] = 8080
+    # llama-server binds inside Erudi's canonical 271xx–273xx block: 27200–27299,
+    # collision-free against MLX (27300–27399) and the backend HTTP server
+    # (27182–27199). Deliberately off the historic 8080 default, which is the most
+    # contested port around (Tomcat, and llama.cpp's own default). See backend/run.py
+    # for why 271xx (digits of e, below every OS ephemeral range, IANA-unassigned).
+    _port_range_start: ClassVar[int] = 27200
 
     # Subclass selects which artifact directory to look in.
     # False → `artifacts/llama-cpp/cpu/bin`, True → `artifacts/llama-cpp/cuda/bin`.
