@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "../config/api.js";
+import { getApiBaseUrl } from "../config/api.js";
 export async function askArena({
   question,
   llmId,
@@ -13,7 +13,7 @@ export async function askArena({
     throw new Error("Question is empty");
   }
 
-  const res = await fetch(`${API_BASE_URL}/arena/${llmId}/query`, {
+  const res = await fetch(`${getApiBaseUrl()}/arena/${llmId}/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

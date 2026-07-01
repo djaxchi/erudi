@@ -171,9 +171,9 @@ Rule out a capability/plumbing bug before any scenario.
 
 ## Setup (same as PR1)
 
-- **Backend**: `cd backend && source venv/bin/activate && python run.py --port 8765`.
+- **Backend**: `cd backend && source venv/bin/activate && python run.py --port 27182`.
 - **Renderer**: webpack dev server `http://localhost:3000` (HashRouter `/#/erudi/...`);
-  Playwright drives it; streaming is `fetch` to `127.0.0.1:8765`.
+  Playwright drives it; streaming is `fetch` to `127.0.0.1:27182`.
 - **Browser security**: launch Chromium via `.playwright/cli.config.json` with
   `contextOptions.bypassCSP=true` and `launchOptions.args` disabling web-security +
   Local-Network-Access checks (replicates Electron's session; test-harness only).

@@ -149,8 +149,11 @@ class TestCpuEngineConfig:
     def test_tokenizer_provider(self):
         assert CPU_Engine._tokenizer_provider == "llama-server"
 
-    def test_port_range_starts_at_8080(self):
-        assert CPU_Engine._port_range_start == 8080
+    def test_port_range_starts_in_canonical_block(self):
+        # llama.cpp owns 27200–27299 inside Erudi's canonical 271xx–273xx block,
+        # clear of the backend (27182–27199) and MLX (27300–27399).
+        assert CPU_Engine._port_range_start == 27200
+        assert CPU_Engine._port_range_start + CPU_Engine._port_range_count <= 27300
 
     def test_payload_model_value_returns_handle_alias(self):
         """LlamaCpp engines use the handle's alias (not the MLX sentinel)."""
