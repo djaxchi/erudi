@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { HelpCircle } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ModelLibrary from "../components/ModelLibrary";
 import InfoRow from "../components/InfoRow";
@@ -18,6 +18,7 @@ const log = createLogger("KnowledgeBasePage");
 export default function KnowledgeBasePage() {
   const { open: openKnowledgeBase, isCreating, isStarting } = useKnowledgeBase();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [errorMessage, setErrorMessage] = useState("");
   const [isValidated, setIsValidated] = useState(false);
 
@@ -254,7 +255,11 @@ export default function KnowledgeBasePage() {
     }
   };
 
-  const handleGateDismiss = () => setGateState(GATE.HIDDEN);
+  // "Not now" / decline: the KB is unusable without the embedding model, so
+  // leave the page entirely (back to the landing) rather than sit on a dead KB.
+  const handleGateLeave = () => navigate("/erudi/models");
+  // "Close" after a successful download: the model is present now, stay on the KB.
+  const handleGateClose = () => setGateState(GATE.HIDDEN);
 
   return (
     <div className="flex h-screen bg-[#071b18]">
@@ -263,7 +268,8 @@ export default function KnowledgeBasePage() {
           state={gateState}
           error={gateError}
           onDownload={handleGateDownload}
-          onDismiss={handleGateDismiss}
+          onLeave={handleGateLeave}
+          onClose={handleGateClose}
         />
       )}
       <Sidebar />
