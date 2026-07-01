@@ -27,6 +27,7 @@ from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
 )
 
+from src.core import config
 from src.ingestion.types import ExtractedDocument
 
 E5_TOKENIZER_NAME = "intfloat/multilingual-e5-small"
@@ -53,7 +54,11 @@ def _get_tokenizer():
             if _tokenizer is None:
                 from transformers import AutoTokenizer
 
-                _tokenizer = AutoTokenizer.from_pretrained(E5_TOKENIZER_NAME)
+                # Same repo as the embedding model, pinned to CACHE_DIR so the
+                # single #146 download serves both consumers (no 2nd fetch).
+                _tokenizer = AutoTokenizer.from_pretrained(
+                    E5_TOKENIZER_NAME, cache_dir=str(config.CACHE_DIR)
+                )
     return _tokenizer
 
 

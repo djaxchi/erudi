@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from langchain_core.embeddings import Embeddings
 
+from src.core import config
 from src.core.logging import logger
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -51,7 +52,13 @@ class E5Embeddings(Embeddings):
                     from sentence_transformers import SentenceTransformer
 
                     logger.info(f"Loading embedding model {E5_MODEL_NAME} (resident)")
-                    cls._model = SentenceTransformer(E5_MODEL_NAME)
+                    # cache_folder pins the model INSIDE the app data dir
+                    # (CACHE_DIR = data/models_cache) instead of the global
+                    # ~/.cache/huggingface, so it is self-contained and the #146
+                    # gate can check/download it at a path the app owns.
+                    cls._model = SentenceTransformer(
+                        E5_MODEL_NAME, cache_folder=str(config.CACHE_DIR)
+                    )
         return cls._model
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
