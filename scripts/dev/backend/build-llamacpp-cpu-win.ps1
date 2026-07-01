@@ -155,6 +155,34 @@ if ($ConvertScripts) {
     }
 }
 
+# -------- bundle the MSVC C++ runtime next to llama-server.exe (#144) --------
+# The CPU build links the CRT dynamically (/MD), so llama-server.exe imports
+# vcruntime140/vcruntime140_1/msvcp140. On a clean Windows machine without the
+# VC++ 2015-2022 redistributable these are absent and the exe fails to load
+# (STATUS_DLL_NOT_FOUND) at first chat. The Windows loader searches the exe's own
+# directory first, so we ship the runtime DLLs beside it — consistent with the CRT
+# the PyInstaller bundle already ships for the Python side. The spec then bundles
+# every *.dll in this bin dir (see backend.spec).
+Write-Step "Bundling the MSVC C++ runtime next to llama-server.exe..."
+$Sys32 = Join-Path $env:SystemRoot "System32"
+$RequiredCrt = @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")
+$OptionalCrt = @("msvcp140_1.dll", "msvcp140_2.dll", "msvcp140_atomic_wait.dll", "msvcp140_codecvt_ids.dll")
+foreach ($dll in $RequiredCrt) {
+    $src = Join-Path $Sys32 $dll
+    if (-not (Test-Path $src)) {
+        Write-Fail "Required CRT DLL not found on the build machine: $src"
+    }
+    Copy-Item -Path $src -Destination $BinDir -Force
+    Write-OK "Bundled $dll"
+}
+foreach ($dll in $OptionalCrt) {
+    $src = Join-Path $Sys32 $dll
+    if (Test-Path $src) {
+        Copy-Item -Path $src -Destination $BinDir -Force
+        Write-OK "Bundled $dll"
+    }
+}
+
 # -------- verify output --------
 Write-Host ""
 Write-Step "Verifying output..."
