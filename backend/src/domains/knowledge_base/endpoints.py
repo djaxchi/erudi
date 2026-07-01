@@ -21,6 +21,7 @@ from src.domains.knowledge_base.schemas import (
     KnowledgeBaseResponse
 )
 from src.core.logging import logger
+from src.ingestion.embedding_model import download_state, start_download
 from src.core.exceptions import (
     AppBaseException,
     KnowledgeBaseNotFoundException,
@@ -30,6 +31,22 @@ from src.core.exceptions import (
 
 
 router = APIRouter(prefix="/knowledge_base", tags=["knowledge_base"])
+
+
+# Declared BEFORE the parametric /{llm_id}/status so "embedding-model" is not
+# captured as an llm_id (which would 422). The KB needs the e5 embedding model;
+# these gate its on-demand download so a fresh/offline install doesn't fail its
+# first KB use silently. #146.
+@router.get("/embedding-model/status")
+def get_embedding_model_status():
+    """On-disk presence of the KB embedding model + any in-flight download."""
+    return download_state()
+
+
+@router.post("/embedding-model/download")
+def post_embedding_model_download():
+    """Kick off the embedding-model download in the background (idempotent)."""
+    return start_download()
 
 
 @router.get("/{llm_id}/status")

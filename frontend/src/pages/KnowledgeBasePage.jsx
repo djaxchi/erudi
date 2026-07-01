@@ -8,6 +8,9 @@ import DragDropArea from "../components/DragDropArea";
 import { useKnowledgeBase } from "../contexts/KnowledgeBaseContext";
 import ErrorModal from "../components/modals/ErrorModal";
 import { API_BASE_URL } from "../config/api.js";
+import apiClient from "../services/api/client";
+import EmbeddingModelGateModal from "../components/modals/EmbeddingModelGateModal";
+import { GATE, gateStateFromStatus, shouldPoll, isGateBlocking } from "../utils/embeddingGate";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("KnowledgeBasePage");
@@ -45,6 +48,10 @@ export default function KnowledgeBasePage() {
   const [description, setDescription] = useState("");
   const [paths, setPaths] = useState([]);
   const [models, setModels] = useState([]);
+
+  // --- Embedding-model gate (#146): the KB needs the e5 model on disk. ---
+  const [gateState, setGateState] = useState(GATE.CHECKING);
+  const [gateError, setGateError] = useState(null);
 
   // Handle files dropped from DragDropArea
   const addDroppedFiles = (newPathObjects) => {
@@ -207,8 +214,58 @@ export default function KnowledgeBasePage() {
     setModelName(name);
   };
 
+  // --- Embedding-model gate (#146): presence is filesystem-driven; the modal
+  // blocks the KB page until the model is on disk. ---
+  const refreshGateStatus = async (prev) => {
+    try {
+      const status = await apiClient.get("/knowledge_base/embedding-model/status");
+      setGateError(status.error || null);
+      setGateState((current) => gateStateFromStatus(status, prev ?? current));
+      return status;
+    } catch (err) {
+      log.warn("Embedding-model status check failed", err);
+      return null;
+    }
+  };
+
+  // Check presence on mount; if a download is already running, enter the spinner.
+  useEffect(() => {
+    refreshGateStatus(GATE.CHECKING);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Poll only while a download is in flight (survives leaving/returning to KB).
+  useEffect(() => {
+    if (!shouldPoll(gateState)) return undefined;
+    const id = setInterval(() => refreshGateStatus(), 2000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gateState]);
+
+  const handleGateDownload = async () => {
+    setGateState(GATE.DOWNLOADING);
+    setGateError(null);
+    try {
+      await apiClient.post("/knowledge_base/embedding-model/download");
+    } catch (err) {
+      log.warn("Embedding-model download request failed", err);
+      setGateError(String(err?.message || err));
+      setGateState(GATE.ERROR);
+    }
+  };
+
+  const handleGateDismiss = () => setGateState(GATE.HIDDEN);
+
   return (
     <div className="flex h-screen bg-[#071b18]">
+      {isGateBlocking(gateState) && (
+        <EmbeddingModelGateModal
+          state={gateState}
+          error={gateError}
+          onDownload={handleGateDownload}
+          onDismiss={handleGateDismiss}
+        />
+      )}
       <Sidebar />
 
       <main className="flex-1 p-4 md:p-6 lg:p-8 flex flex-col gap-4 md:gap-6 overflow-hidden">
