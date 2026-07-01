@@ -18,6 +18,7 @@ from src.database.backup import backup_database, backups_dir_for
 from src.database.core import Base
 from src.database.migrations import (
     BASELINE_REVISION,
+    ROOT_DIR,
     _alembic_config,
     _head_revision,
     run_migrations,
@@ -125,3 +126,20 @@ def test_fresh_db_migration_takes_no_backup(fresh_cluster):
 
     backups = backups_dir_for(fresh_cluster.data_dir)
     assert not backups.exists() or not list(backups.glob("*.dump"))
+
+
+@pytest.mark.unit
+def test_alembic_ini_is_pure_ascii():
+    # A packaged app can launch without a UTF-8 locale (macOS Finder sets no LANG),
+    # so configparser reads alembic.ini with the ASCII codec. Any non-ASCII byte
+    # then crashes the boot-time migration with UnicodeDecodeError (#149). Keep the
+    # file pure ASCII (comments included) so it loads under any locale.
+    raw = (ROOT_DIR / "alembic.ini").read_bytes()
+    try:
+        raw.decode("ascii")
+    except UnicodeDecodeError as exc:
+        pytest.fail(
+            f"alembic.ini has a non-ASCII byte at offset {exc.start} "
+            f"(0x{raw[exc.start]:02x}); it must stay pure ASCII so it loads under an "
+            f"ASCII locale (macOS Finder launch). See #149."
+        )
