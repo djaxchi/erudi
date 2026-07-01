@@ -86,4 +86,9 @@ docs/session-*.md
 
 # Playwright CLI artefacts (local E2E exploration only)
 .playwright-cli/
+.playwright/
 erudi-landing-loaded.yaml
+
+# Local-only security report — details the app's attack surface; never commit it
+# to the public repo (findings are tracked in issue #89).
+security_best_practices_report.md
