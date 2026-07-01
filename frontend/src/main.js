@@ -9,6 +9,7 @@ const os = require("os");
 const { confirmBackendHealth } = require("./utils/backendHealth");
 const { classifyStderrLine } = require("./utils/backendStderr");
 const { shouldRetrySpawn } = require("./utils/backendRetry");
+const { buildBackendSpawnOptions } = require("./utils/backendSpawn");
 
 // electron-updater: only loaded in production to avoid dev noise.
 // Reads latest.yml / latest-mac.yml from GitHub Releases and handles
@@ -227,12 +228,11 @@ const startRealBackend = () => {
     // to ASCII and crash on any non-ASCII byte at boot (see #149).
     const backendEnv = { ...process.env, PYTHONUTF8: "1" };
 
-    backendProcess = spawn(backendPath, ["--port", PORT.toString()], {
-      stdio: ["pipe", "pipe", "pipe"],
-      cwd: workingDir,
-      env: backendEnv,
-      detached: true, // Own process group so we can kill the whole tree with -pid
-    });
+    backendProcess = spawn(
+      backendPath,
+      ["--port", PORT.toString()],
+      buildBackendSpawnOptions(process.platform, { cwd: workingDir, env: backendEnv })
+    );
 
     log(`Backend process spawned with PID: ${backendProcess.pid}`);
 
