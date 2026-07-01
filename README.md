@@ -93,7 +93,8 @@ npm install
 npm start
 ```
 
-The app opens automatically. The backend runs on `http://127.0.0.1:8765` by default.
+The app opens automatically. The backend runs on `http://127.0.0.1:27182` by default
+(27182 = the digits of _e_, for erudites).
 
 ---
 

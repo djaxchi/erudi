@@ -19,12 +19,12 @@ Endpoint:
 Example:
     Check backend health from command line::
 
-        curl http://localhost:8000/erudi/health/
+        curl http://127.0.0.1:27182/erudi/health/
         # {"status": "ok", "message": "Backend is running"}
 
     Use in frontend before API calls::
 
-        const response = await fetch('http://localhost:8000/erudi/health/');
+        const response = await fetch('http://127.0.0.1:27182/erudi/health/');
         if (response.ok) {
             // Backend available, proceed with API calls
         }
@@ -55,7 +55,7 @@ async def health():
 
             import requests
 
-            response = requests.get("http://localhost:8000/erudi/health/")
+            response = requests.get("http://127.0.0.1:27182/erudi/health/")
             assert response.json()["status"] == "ok"
     """
     return {"status": "ok", "message": "Backend is running"}

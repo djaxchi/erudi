@@ -16,7 +16,7 @@
     <key>com.apple.security.cs.allow-dyld-environment-variables</key>
     <true/>
 
-    <!-- The backend is a localhost HTTP server (127.0.0.1:8765): it both makes
+    <!-- The backend is a localhost HTTP server (127.0.0.1:27182): it both makes
          and accepts loopback connections. -->
     <key>com.apple.security.network.client</key>
     <true/>

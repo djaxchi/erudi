@@ -74,10 +74,31 @@ STARTUP_TIMEOUT_SECONDS = 120
 FIRST_RUN_TIMEOUT_SECONDS = 300
 READINESS_POLL_SECONDS = 0.25
 
+# Erudi's canonical port. 27182 = the leading digits of Euler's number e
+# (2.7182…) — a wink for an app built for erudites. Practically, it's a good
+# choice on every OS: IANA-unassigned, it sits below every OS's ephemeral range
+# (Linux 32768–60999, Windows/macOS 49152–65535, plus Windows Hyper-V/WSL
+# exclusions live inside that range), and it's clear of the crowded dev/LLM
+# defaults Erudi users are likely to run alongside it (Ollama 11434, LM Studio
+# 1234, vLLM 8000, llama.cpp/Tomcat 8080). The renderer never assumes this value:
+# it learns the *actual* bound port from the `starting`/`ready` events. This is
+# only the try-first default; find_available_port() scans forward on collision.
+CANONICAL_PORT = 27182
+# The backend scans 27182–27199 and stops short of 27200, which is where the
+# inference pools live (llama.cpp 27200–27299, MLX 27300–27399) — so the three
+# local servers can never fight over a port. Erudi's whole footprint is 271xx–273xx.
+PORT_SCAN_COUNT = 18
+
+
 def parse_args():
     """Parse command-line arguments for launcher."""
     parser = argparse.ArgumentParser(description="Erudi backend launcher")
-    parser.add_argument("--port", type=int, default=8765, help="Port to bind FastAPI server (default: 8765)")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=CANONICAL_PORT,
+        help=f"Port to bind FastAPI server (default: {CANONICAL_PORT})",
+    )
     return parser.parse_args()
 
 
@@ -193,9 +214,9 @@ def port_open(host: str, port: int, timeout: float = 0.4) -> bool:
         return False
 
 
-def find_available_port(start_port: int, host: str) -> int | None:
-    """Find available port from start_port to start_port+34. Returns None if all busy."""
-    for port in range(start_port, start_port + 35):
+def find_available_port(start_port: int, host: str, count: int = PORT_SCAN_COUNT) -> int | None:
+    """Find a free port in [start_port, start_port + count). Returns None if all busy."""
+    for port in range(start_port, start_port + count):
         if not port_open(host, port):
             return port
     return None
@@ -304,19 +325,25 @@ def main() -> None:
     port = find_available_port(requested_port, host)
     
     if port is None:
-        # All ports busy, try killing 8777 (middle of range)
-        fallback_port = 8777
+        # Every candidate is busy — last resort, try to reclaim the middle of the
+        # scan window. (POSIX-only via lsof/kill; a no-op on Windows, where this
+        # branch is effectively unreachable since 18 consecutive busy ports is
+        # absurd. NO_PORT_AVAILABLE is a transient code the frontend auto-retries.)
+        fallback_port = requested_port + PORT_SCAN_COUNT // 2
         if kill_port_process(fallback_port):
             time.sleep(1)
             if not port_open(host, fallback_port):
                 port = fallback_port
-        
+
         if port is None:
             emit_event(
                 {
                     "event": "startup_error",
                     "code": "NO_PORT_AVAILABLE",
-                    "message": f"Ports {requested_port}-{requested_port+34} all busy, failed to free {fallback_port}",
+                    "message": (
+                        f"Ports {requested_port}-{requested_port + PORT_SCAN_COUNT - 1} "
+                        f"all busy, failed to free {fallback_port}"
+                    ),
                 }
             )
             sys.exit(1)

@@ -98,4 +98,4 @@ jobs:
       - name: Smoke-test the bundled backend boot (assert "ready")
         env:
           SMOKE_TIMEOUT: 300
-        run: python scripts/ci/smoke_boot.py "${{ steps.locate.outputs.exe }}" --port 8765
+        run: python scripts/ci/smoke_boot.py "${{ steps.locate.outputs.exe }}" --port 27182

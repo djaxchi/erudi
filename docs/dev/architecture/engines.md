@@ -15,12 +15,12 @@ BaseEngine
 └── BaseChatServerEngine        ← shared: port pick, /health + chat-ping probe,
     │                             SSE byte-buffer parser, atexit storage,
     │                             idle-cleanup active marker, kwarg translation
-    ├── MLX_Engine               (mp.Process + mlx_vlm.server, port 9080+)
+    ├── MLX_Engine               (mp.Process + mlx_vlm.server, port 27300+)
     └── BaseLlamaCppEngine      ← shared CPU/CUDA: Popen, llama-server resolution,
         │                         GGUF picker (q4_k_m > q4_0 > … > smallest),
         │                         `repetition_penalty → repeat_penalty` rename
-        ├── CPU_Engine           (Popen + llama-server CPU, -ngl 0, port 8080+)
-        └── CUDA_Engine          (Popen + llama-server CUDA, -ngl <computed>, port 8080+)
+        ├── CPU_Engine           (Popen + llama-server CPU, -ngl 0, port 27200+)
+        └── CUDA_Engine          (Popen + llama-server CUDA, -ngl <computed>, port 27200+)
 ```
 
 Concrete engines implement only the small surface that is genuinely

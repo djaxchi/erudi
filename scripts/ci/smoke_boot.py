@@ -27,7 +27,7 @@ def main() -> int:
         print("SMOKE FAIL: missing path to frozen exe", flush=True)
         return 1
     exe = sys.argv[1]
-    port = "8765"
+    port = "27182"  # Erudi's canonical port (digits of e); see backend/run.py
     if "--port" in sys.argv:
         port = sys.argv[sys.argv.index("--port") + 1]
     timeout = int(os.environ.get("SMOKE_TIMEOUT", "240"))

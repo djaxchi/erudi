@@ -139,7 +139,7 @@ class BaseEngine(ABC):
 | **CUDA_Engine** | Linux + NVIDIA | `llama-server` (CUDA build) | `subprocess.Popen` | 8080+ | 🚧 Planifié |
 | **CPU_Engine** | Windows / Linux / macOS Intel | `llama-server` (CPU build) | `subprocess.Popen` | 8080+ | ✅ Shippé Windows ; 🚧 ailleurs |
 
-Le backend FastAPI lui-même écoute sur 8765-8799 (cf `backend/run.py:72`),
+Le backend FastAPI lui-même écoute sur 27182-27199 (cf `backend/run.py:72`),
 distinct des port ranges engine pour éviter les collisions sur les machines
 de dev qui font tourner plusieurs engines successivement.
 

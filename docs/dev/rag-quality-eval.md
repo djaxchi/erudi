@@ -39,7 +39,7 @@ embedder, model) can be re-evaluated against the same baseline.
    ⚠ **Harness check (hard-learned)**: before ANY run, kill every stray
    `run.py` process and confirm the launcher's `{"event": "ready"}` reports
    the port you will query. `run.py` falls back to the next free port when
-   8765 is taken, so a stale backend silently absorbs your eval traffic
+   27182 is taken, so a stale backend silently absorbs your eval traffic
    against OLD code (this invalidated four intermediate runs of the PR3
    session — identical answers across "different" code versions were the
    tell).

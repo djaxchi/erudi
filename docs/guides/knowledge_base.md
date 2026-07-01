@@ -32,7 +32,7 @@ LLM generates with context
 ### Upload Documents
 
 ```bash
-curl -X POST http://127.0.0.1:8765/erudi/knowledge_base \
+curl -X POST http://127.0.0.1:27182/erudi/knowledge_base \
   -F "base_model_id=1" \
   -F "files=@docs/manual.pdf" \
   -F "files=@docs/faq.txt" \
@@ -57,7 +57,7 @@ curl -X POST http://127.0.0.1:8765/erudi/knowledge_base \
 ### Surveiller le Traitement
 
 ```bash
-curl http://127.0.0.1:8765/erudi/knowledge_base/jobs/1
+curl http://127.0.0.1:27182/erudi/knowledge_base/jobs/1
 ```
 
 **Status possibles** :
@@ -83,7 +83,7 @@ curl http://127.0.0.1:8765/erudi/knowledge_base/jobs/1
 ### Créer une Conversation
 
 ```bash
-curl -X POST http://127.0.0.1:8765/erudi/conversations \
+curl -X POST http://127.0.0.1:27182/erudi/conversations \
   -H "Content-Type: application/json" \
   -d '{
     "llm_id": 35,
@@ -96,7 +96,7 @@ curl -X POST http://127.0.0.1:8765/erudi/conversations \
 ### Poser des Questions
 
 ```bash
-curl -X POST http://127.0.0.1:8765/erudi/conversations/42/generate \
+curl -X POST http://127.0.0.1:27182/erudi/conversations/42/generate \
   -H "Content-Type: application/json" \
   -d '{
     "content": "What is the installation procedure?"
@@ -119,7 +119,7 @@ Voir `backend/src/utils/prompt_utils.py::get_prompting_strategy()`.
 ## Supprimer une KB
 
 ```bash
-curl -X DELETE http://127.0.0.1:8765/erudi/knowledge_base/1
+curl -X DELETE http://127.0.0.1:27182/erudi/knowledge_base/1
 ```
 
 Supprime :
@@ -308,7 +308,7 @@ Modifier dans `backend/src/utils/prompt_utils.py::get_prompting_strategy()`.
 Vérifier :
 ```bash
 # Nombre de chunks
-curl http://127.0.0.1:8765/erudi/knowledge_base/1
+curl http://127.0.0.1:27182/erudi/knowledge_base/1
 # Retourne "file_names_list" et count
 
 # Index FAISS
@@ -346,7 +346,7 @@ Si > 500ms :
 import requests
 import time
 
-base_url = 'http://127.0.0.1:8765/erudi'
+base_url = 'http://127.0.0.1:27182/erudi'
 
 # 1. Créer KB avec documents
 files = [

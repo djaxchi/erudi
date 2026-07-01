@@ -15,7 +15,7 @@ Le domaine **Conversations** gère les sessions de chat interactives avec les LL
 ### 1. Créer une Conversation
 
 ```bash
-curl -X POST http://127.0.0.1:8765/erudi/conversations \
+curl -X POST http://127.0.0.1:27182/erudi/conversations \
   -H "Content-Type: application/json" \
   -d '{
     "llm_id": 1,
@@ -44,7 +44,7 @@ Réponse :
 ### 2. Générer une Réponse (Streaming)
 
 ```bash
-curl -X POST http://127.0.0.1:8765/erudi/conversations/42/generate \
+curl -X POST http://127.0.0.1:27182/erudi/conversations/42/generate \
   -H "Content-Type: application/json" \
   -d '{
     "content": "Explain async/await in Python"
@@ -81,7 +81,7 @@ while (true) {
 ### 3. Récupérer l'Historique
 
 ```bash
-curl http://127.0.0.1:8765/erudi/conversations/42
+curl http://127.0.0.1:27182/erudi/conversations/42
 ```
 
 Retourne la conversation avec tous les messages :
@@ -101,13 +101,13 @@ Retourne la conversation avec tous les messages :
 ### 4. Lister Toutes les Conversations
 
 ```bash
-curl http://127.0.0.1:8765/erudi/conversations
+curl http://127.0.0.1:27182/erudi/conversations
 ```
 
 ### 5. Supprimer une Conversation
 
 ```bash
-curl -X DELETE http://127.0.0.1:8765/erudi/conversations/42
+curl -X DELETE http://127.0.0.1:27182/erudi/conversations/42
 ```
 
 Supprime la conversation et tous ses messages (cascade).
@@ -117,13 +117,13 @@ Supprime la conversation et tous ses messages (cascade).
 Marquer un message comme important (pour injection dans system prompt) :
 
 ```bash
-curl -X POST http://127.0.0.1:8765/erudi/conversations/42/messages/1/star
+curl -X POST http://127.0.0.1:27182/erudi/conversations/42/messages/1/star
 ```
 
 Unstar :
 
 ```bash
-curl -X POST http://127.0.0.1:8765/erudi/conversations/42/messages/1/unstar
+curl -X POST http://127.0.0.1:27182/erudi/conversations/42/messages/1/unstar
 ```
 
 Les messages starred sont injectés dans le system prompt pour guider le comportement du modèle.
@@ -238,14 +238,14 @@ tail -f backend/logs/app.log | grep "Final prompt"
 import requests
 
 # Créer conversation
-resp = requests.post('http://127.0.0.1:8765/erudi/conversations', json={
+resp = requests.post('http://127.0.0.1:27182/erudi/conversations', json={
     'llm_id': 1,
     'name': 'Quick Chat'
 })
 conv_id = resp.json()['id']
 
 # Générer réponse
-resp = requests.post(f'http://127.0.0.1:8765/erudi/conversations/{conv_id}/generate', 
+resp = requests.post(f'http://127.0.0.1:27182/erudi/conversations/{conv_id}/generate', 
                      json={'content': 'Hello!'}, stream=True)
 
 for chunk in resp.iter_content(decode_unicode=True):
@@ -256,7 +256,7 @@ for chunk in resp.iter_content(decode_unicode=True):
 
 ```python
 # Conversation créative
-resp = requests.post('http://127.0.0.1:8765/erudi/conversations', json={
+resp = requests.post('http://127.0.0.1:27182/erudi/conversations', json={
     'llm_id': 1,
     'name': 'Story Writing',
     'temperature': 1.2,
@@ -266,11 +266,11 @@ resp = requests.post('http://127.0.0.1:8765/erudi/conversations', json={
 conv_id = resp.json()['id']
 
 # Tour 1
-requests.post(f'http://127.0.0.1:8765/erudi/conversations/{conv_id}/generate',
+requests.post(f'http://127.0.0.1:27182/erudi/conversations/{conv_id}/generate',
               json={'content': 'Write a sci-fi story opening'}, stream=True)
 
 # Tour 2 (contexte automatique)
-requests.post(f'http://127.0.0.1:8765/erudi/conversations/{conv_id}/generate',
+requests.post(f'http://127.0.0.1:27182/erudi/conversations/{conv_id}/generate',
               json={'content': 'Continue the story'}, stream=True)
 ```
 

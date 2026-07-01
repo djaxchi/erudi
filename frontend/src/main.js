@@ -148,7 +148,7 @@ const startRealBackend = () => {
       log("Development mode: assuming backend is running via dev-start.sh");
       // Just check if backend is responding
       const checkDevBackendHealth = async () => {
-        const devPort = process.env.BACKEND_PORT || "8765";
+        const devPort = process.env.BACKEND_PORT || "27182";
         log(`Dev mode using port: ${devPort}`);
 
         for (let i = 0; i < 10; i++) {
@@ -187,10 +187,13 @@ const startRealBackend = () => {
       return;
     }
 
-    // Production mode: spawn packaged backend
-    const PORT = 8765;
+    // Production mode: spawn packaged backend.
+    // 27182 = Erudi's canonical port (digits of e, for erudites — see backend/run.py).
+    const PORT = 27182;
 
-    // Backend will handle port selection (8765-8864)
+    // The backend owns port selection: it scans 27182–27199 and announces the
+    // resolved port back to us via its JSON lifecycle events (we forward it to the
+    // renderer), so it's fine if this exact port is taken.
     let backendPath;
     if (app.isPackaged) {
       backendPath = resolvePackagedBackendPath();

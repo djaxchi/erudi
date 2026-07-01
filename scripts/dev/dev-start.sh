@@ -14,7 +14,7 @@ NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-BACKEND_PORT="${BACKEND_PORT:-8765}"
+BACKEND_PORT="${BACKEND_PORT:-27182}"
 
 echo -e "${BLUE}Starting Erudi dev environment...${NC}"
 echo -e "${YELLOW}Project root: $PROJECT_ROOT${NC}"

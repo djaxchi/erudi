@@ -14,7 +14,7 @@ Architecture:
     MLX_Engine (singleton)
     ┌───────────────────────────────────────────────────────────────┐
     │ get_model_and_tokenizer(llm_id, path)                         │
-    │  1. Pick free TCP port (9080+)                                │
+    │  1. Pick free TCP port (27300+)                              │
     │  2. Spawn child: mp.Process(target=run_mlx_vlm_server)        │
     │  3. Poll GET /health until 200 (≤120s)                        │
     │  4. atexit.register(terminate)                                │
@@ -205,7 +205,11 @@ class MLX_Engine(BaseChatServerEngine):
     # `run_mlx_vlm_server` target works in dev (real Python) and in prod (frozen).
 
     # --- BaseChatServerEngine config overrides ---
-    _port_range_start = 9080
+    # MLX binds the top slice of Erudi's canonical 271xx–273xx block: 27300–27399,
+    # collision-free against llama.cpp (27200–27299) and the backend (27182–27199).
+    # (Was 9080; see backend/run.py for the 271xx rationale — digits of e, below
+    # every OS ephemeral range, IANA-unassigned.)
+    _port_range_start = 27300
     _server_name = "mlx_vlm.server"
     _tokenizer_provider = "mlx-vlm-server"
     # mlx_vlm.server accepts HF/transformers kwarg names natively (repetition_penalty,

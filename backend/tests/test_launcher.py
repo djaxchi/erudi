@@ -19,6 +19,34 @@ def test_argparse_port(monkeypatch, port):
 
 
 @pytest.mark.unit
+def test_default_port_is_canonical_27182(monkeypatch):
+    # Erudi's canonical port: the leading digits of e (2.7182…).
+    import run
+    monkeypatch.setattr(sys, "argv", ["run.py"])
+    assert run.parse_args().port == 27182
+    assert run.CANONICAL_PORT == 27182
+
+
+@pytest.mark.unit
+def test_backend_scan_stays_below_inference_pools(monkeypatch):
+    # The backend scans 27182–27199 and must stop short of 27200, where the
+    # inference pools begin (llama.cpp 27200–27299, MLX 27300–27399), so the
+    # three local servers never contend for a port.
+    import run
+
+    assert run.CANONICAL_PORT + run.PORT_SCAN_COUNT <= 27200
+
+    # With every candidate free, it returns the canonical port; the highest port
+    # it can ever return stays inside the backend's own window.
+    monkeypatch.setattr(run, "port_open", lambda host, port, timeout=0.4: False)
+    assert run.find_available_port(run.CANONICAL_PORT, "127.0.0.1") == run.CANONICAL_PORT
+
+    # With everything busy, it gives up (None) rather than wandering into 27200+.
+    monkeypatch.setattr(run, "port_open", lambda host, port, timeout=0.4: True)
+    assert run.find_available_port(run.CANONICAL_PORT, "127.0.0.1") is None
+
+
+@pytest.mark.unit
 def test_compute_first_run(tmp_path):
     import run
 

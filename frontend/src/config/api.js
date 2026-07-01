@@ -1,14 +1,18 @@
 // API Configuration
 // Centralized API base URL for all frontend requests.
 //
-// The backend picks a free port at startup (it prefers 8765 but scans upward if
-// it's taken) and announces the resolved port via its lifecycle events, which
-// main.js forwards to the renderer. App.jsx calls setBackendPort() with that
-// port before rendering the app, so every request targets the right port
-// instead of a hardcoded 8765. `API_BASE_URL` is an ESM live binding — call
-// sites that interpolate it at request time automatically see the update.
+// The backend picks a free port at startup (it prefers Erudi's canonical 27182
+// but scans 27182–27199 if it's taken) and announces the resolved port via its
+// lifecycle events, which main.js forwards to the renderer. App.jsx calls
+// setBackendPort() with that port before rendering the app, so every request
+// targets the right port instead of the hardcoded default. `API_BASE_URL` is an
+// ESM live binding — call sites that interpolate it at request time see the update.
+//
+// Why 27182: it's the leading digits of Euler's number e (2.7182…), a wink for an
+// app for erudites — and a practically safe default (IANA-unassigned, below every
+// OS's ephemeral range, clear of common dev/LLM ports). See backend/run.py.
 
-const DEFAULT_PORT = 8765;
+const DEFAULT_PORT = 27182;
 let currentPort = DEFAULT_PORT;
 
 export let API_BASE_URL = `http://127.0.0.1:${currentPort}/erudi`;
