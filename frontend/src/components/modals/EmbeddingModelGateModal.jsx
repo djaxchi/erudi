@@ -5,8 +5,9 @@ import { GATE } from "../../utils/embeddingGate";
 // Blocking, backdrop-blurred gate over the Knowledge Base page (#146). The KB
 // needs the e5 embedding model on disk; this prompts an on-demand download and
 // blocks the page until the model is present. Not dismissible by clicking the
-// backdrop — the flow ends via "Not now" or, once downloaded, "Close".
-export default function EmbeddingModelGateModal({ state, error, onDownload, onDismiss }) {
+// backdrop — "Not now" leaves the KB page (onLeave); once downloaded, "Close"
+// (onClose) stays on the now-usable KB.
+export default function EmbeddingModelGateModal({ state, error, onDownload, onLeave, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md">
       <div className="w-[92%] max-w-md rounded-2xl border border-[#385B4F] bg-[#0e2621] p-6 text-white shadow-2xl">
@@ -23,7 +24,7 @@ export default function EmbeddingModelGateModal({ state, error, onDownload, onDi
             </p>
             <div className="flex justify-end gap-3">
               <button
-                onClick={onDismiss}
+                onClick={onLeave}
                 className="rounded-lg px-4 py-2 text-sm text-gray-300 hover:bg-white/10"
               >
                 Not now
@@ -59,7 +60,7 @@ export default function EmbeddingModelGateModal({ state, error, onDownload, onDi
             </p>
             <div className="flex justify-end">
               <button
-                onClick={onDismiss}
+                onClick={onClose}
                 className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium hover:bg-emerald-500"
               >
                 Close
@@ -80,7 +81,7 @@ export default function EmbeddingModelGateModal({ state, error, onDownload, onDi
             {error && <p className="mb-6 break-words text-xs text-gray-500">{error}</p>}
             <div className="flex justify-end gap-3">
               <button
-                onClick={onDismiss}
+                onClick={onLeave}
                 className="rounded-lg px-4 py-2 text-sm text-gray-300 hover:bg-white/10"
               >
                 Not now
