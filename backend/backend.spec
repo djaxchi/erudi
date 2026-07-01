@@ -130,6 +130,11 @@ if IS_WIN or IS_LINUX:
                 datas.append((str(_f), _dest))
         for _f in llama_bin.glob("convert*.py"):
             datas.append((str(_f), _dest))
+        # Ship any runtime DLLs placed beside the server (the Windows CPU build
+        # copies the MSVC C++ runtime here so llama-server.exe loads on machines
+        # without the VC++ redistributable — #144). No-op on Linux (.so, not .dll).
+        for _f in llama_bin.glob("*.dll"):
+            datas.append((str(_f), _dest))
         _gguf = llama_bin / "gguf-py"
         if _gguf.exists():
             datas.append((str(_gguf), f"{_dest}/gguf-py"))
