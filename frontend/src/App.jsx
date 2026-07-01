@@ -11,59 +11,83 @@ import LoadingScreen from "./components/LoadingScreen";
 import BackendErrorScreen from "./components/BackendErrorScreen";
 import UpdateBanner from "./components/UpdateBanner";
 import { apiClient } from "./services/api/client";
-import { describeBackendError, isStartupError } from "./utils/backendStatus";
+import { setBackendPort } from "./config/api";
+import {
+  describeBackendError,
+  isStartupError,
+  isBackendReady as isReadyEvent,
+} from "./utils/backendStatus";
 import { createLogger } from "./utils/logger";
 
 const log = createLogger("App");
 
-// Give up on the /health poll after this long and surface an error instead of
-// spinning forever. Generous (boot-to-ready is normally ~17s) so a slow cold boot
-// isn't flagged; overridable for E2E via window.__ERUDI_BACKEND_TIMEOUT_MS__.
-const DEFAULT_HEALTH_TIMEOUT_MS = 90000;
+// Fallback only (no Electron preload, e.g. a browser/e2e context): poll /health
+// and give up after this long. In the real app, readiness is event-driven —
+// main.js waits patiently for the backend and never kills it for being slow.
+const FALLBACK_HEALTH_TIMEOUT_MS = 90000;
 
 export default function App() {
   const [isBackendReady, setIsBackendReady] = useState(false);
   const [backendError, setBackendError] = useState(null);
+  const [phase, setPhase] = useState(null);
+  const [firstRun, setFirstRun] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
 
-  // Packaged builds: the main process forwards backend lifecycle events. A
-  // startup_error gets us off the spinner immediately with a real message.
-  useEffect(() => {
-    const unsubscribe = window.backendAPI?.onBackendEvent?.((evt) => {
-      if (isStartupError(evt)) {
-        log.warn("Backend startup error", evt);
-        setBackendError(describeBackendError(evt));
-      }
-    });
-    return () => {
-      if (typeof unsubscribe === "function") unsubscribe();
-    };
-  }, []);
-
-  // Canonical readiness signal (works in dev too): poll /health until it answers;
-  // give up after the timeout so a silent hang never strands the user.
   useEffect(() => {
     let cancelled = false;
+    const bridge = window.backendAPI;
+
+    // Real app: trust the main process, which owns the backend, knows the
+    // resolved port, waits for `ready`, and confirms health. We react to its
+    // forwarded events and also query getInfo() to cover the race where
+    // readiness happened before this listener attached.
+    if (bridge?.onBackendEvent) {
+      const unsubscribe = bridge.onBackendEvent((evt) => {
+        if (cancelled) return;
+        if (isStartupError(evt)) {
+          log.warn("Backend startup error", evt);
+          setBackendError(describeBackendError(evt));
+          return;
+        }
+        if (evt?.port) setBackendPort(evt.port);
+        if (evt?.event === "starting") setFirstRun(!!evt.first_run);
+        if (evt?.event === "phase") setPhase(evt.phase);
+        if (isReadyEvent(evt)) {
+          log.log("Backend is ready");
+          setIsBackendReady(true);
+        }
+      });
+
+      bridge
+        .getInfo?.()
+        .then((info) => {
+          if (cancelled || !info) return;
+          if (info.port) setBackendPort(info.port);
+          if (info.ready) setIsBackendReady(true);
+        })
+        .catch(() => {});
+
+      return () => {
+        cancelled = true;
+        if (typeof unsubscribe === "function") unsubscribe();
+      };
+    }
+
+    // Fallback (no preload bridge): poll /health directly.
     let timer = null;
     const start = Date.now();
-    const timeoutMs = Number(window.__ERUDI_BACKEND_TIMEOUT_MS__) || DEFAULT_HEALTH_TIMEOUT_MS;
-
+    const timeoutMs = Number(window.__ERUDI_BACKEND_TIMEOUT_MS__) || FALLBACK_HEALTH_TIMEOUT_MS;
     const poll = async () => {
       if (cancelled) return;
       try {
         await apiClient.get("/health/");
-        if (!cancelled) {
-          log.log("Backend is ready");
-          setIsBackendReady(true);
-        }
+        if (!cancelled) setIsBackendReady(true);
       } catch (error) {
         if (cancelled) return;
         if (Date.now() - start >= timeoutMs) {
-          log.warn("Backend unreachable after timeout", error);
           setBackendError((prev) => prev || describeBackendError({ code: "BACKEND_UNREACHABLE" }));
           return;
         }
-        log.warn("Backend not ready, retrying...", error);
         timer = setTimeout(poll, 2000);
       }
     };
@@ -77,6 +101,9 @@ export default function App() {
   const handleRetry = useCallback(() => {
     setBackendError(null);
     setIsBackendReady(false);
+    setPhase(null);
+    // Actually re-spawn the backend (not just re-poll) when the bridge exists.
+    window.backendAPI?.restartBackend?.().catch(() => {});
     setRetryNonce((n) => n + 1);
   }, []);
 
@@ -89,7 +116,7 @@ export default function App() {
   }
 
   if (!isBackendReady) {
-    return <LoadingScreen />;
+    return <LoadingScreen phase={phase} firstRun={firstRun} />;
   }
 
   return (

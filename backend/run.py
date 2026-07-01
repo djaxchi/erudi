@@ -7,15 +7,16 @@ tree) and in PyInstaller bundles targeting macOS, Windows, and Linux across
 CUDA, MLX, and CPU builds.
 
 **Lifecycle events (newline-delimited JSON to stdout):**
-    - {"event": "starting", "arch": "...", "mode": "dev|prod", "data_path": "...", "port": N}
+    - {"event": "starting", "arch": "...", "mode": "dev|prod", "data_path": "...", "port": N, "first_run": bool}
+    - {"event": "phase", "phase": "preparing_database|running_migrations|loading_catalog"}
     - {"event": "ready", "port": N}
     - {"event": "shutdown"}
     - {"event": "startup_error", "code": "ERROR_CODE", "message": "..."}
 
 **Supported error codes:**
-    - PORT_IN_USE: Port already bound by another process
+    - NO_PORT_AVAILABLE: Every candidate port in the scan range is busy
     - CRASH_BEFORE_READY: Backend thread exited before binding port
-    - PORT_TIMEOUT: Server did not bind within startup window (120s)
+    - PORT_TIMEOUT: Server did not bind within the startup window
     - IMPORT_ERROR: Failed to import FastAPI application
     - DATA_PREP_ERROR: Failed to prepare data directories
     - UNEXPECTED_ERROR: Unhandled exception in server thread
@@ -28,7 +29,8 @@ CUDA, MLX, and CPU builds.
     * Redirect data/log directories to user-writable locations on bundled builds.
     * Preserve macOS symlink behavior while adopting OS-appropriate folders on Windows/Linux.
     * Initialize multiprocessing spawn settings before importing heavy modules.
-    * Guard startup with readiness polling (127.0.0.1:PORT), crash detection, and 120s timeout.
+    * Guard startup with readiness polling (127.0.0.1:PORT), crash detection, and a
+      first-run-aware timeout (longer on first boot, which pays a one-time initdb).
     * Support all build variants (CPU, CUDA, MLX) transparently via ERUDI_BUILD_VARIANT env var.
 
 **Usage:**
@@ -45,7 +47,6 @@ CUDA, MLX, and CPU builds.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import platform
@@ -64,7 +65,13 @@ if TYPE_CHECKING:  # pragma: no cover - import for type checking only
 
 import argparse
 
+from src.launcher.events import emit_event, emit_phase
+
 STARTUP_TIMEOUT_SECONDS = 120
+# First boot also pays a one-time embedded-Postgres initdb (plus a cold disk
+# cache / AV first-scan of the freshly extracted bundle), so allow much longer
+# before declaring failure. The frontend mirrors this budget.
+FIRST_RUN_TIMEOUT_SECONDS = 300
 READINESS_POLL_SECONDS = 0.25
 
 def parse_args():
@@ -161,9 +168,20 @@ def force_mp_spawn() -> None:
         pass
 
 
-def emit_event(payload: dict) -> None:
-    """Print a structured JSON event for the Electron frontend."""
-    print(json.dumps(payload), flush=True)
+def compute_first_run(data_dir: Path | str) -> bool:
+    """True when the embedded Postgres cluster has not been initialized yet.
+
+    The canonical first-run signal for the whole app is the absence of
+    ``<data_dir>/postgres/PG_VERSION`` — pgserver writes it once initdb
+    completes. Used to widen the startup budget and to let the frontend show a
+    "first launch may take longer" hint.
+    """
+    return not (Path(data_dir) / "postgres" / "PG_VERSION").exists()
+
+
+def startup_timeout_seconds(first_run: bool) -> int:
+    """Boot budget: longer on first run (one-time initdb), tighter afterwards."""
+    return FIRST_RUN_TIMEOUT_SECONDS if first_run else STARTUP_TIMEOUT_SECONDS
 
 
 def port_open(host: str, port: int, timeout: float = 0.4) -> bool:
@@ -303,6 +321,7 @@ def main() -> None:
             )
             sys.exit(1)
 
+    first_run = compute_first_run(data_dir)
     emit_event(
         {
             "event": "starting",
@@ -310,10 +329,16 @@ def main() -> None:
             "mode": mode,
             "data_path": str(data_dir),
             "port": port,
+            "first_run": first_run,
         }
     )
 
     import uvicorn
+
+    # Let the FastAPI lifespan emit startup-progress phases on the same stdout
+    # stream (same process). Absent (e.g. plain uvicorn in dev), the lifespan
+    # simply skips phase emission.
+    fastapi_app.state.emit_phase = emit_phase
 
     server = uvicorn.Server(
         uvicorn.Config(fastapi_app, host=host, port=port, log_level="info", workers=1)
@@ -331,7 +356,7 @@ def main() -> None:
     server_thread = threading.Thread(target=run_server, args=(server,), daemon=True)
     server_thread.start()
 
-    deadline = time.time() + STARTUP_TIMEOUT_SECONDS
+    deadline = time.time() + startup_timeout_seconds(first_run)
     try:
         while time.time() < deadline:
             if port_open(host, port):

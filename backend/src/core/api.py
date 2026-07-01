@@ -222,7 +222,19 @@ async def lifespan(app: FastAPI):
     """
     # Before yield comes the startup code
     logger.info("==== Starting up... ====")
-    # Step 0: embedded PostgreSQL cluster — must precede any DB usage.
+    # Startup-progress phases for the Electron loader. run.py injects the emitter
+    # on app.state (same process/stdout); absent (plain uvicorn in dev/tests) this
+    # is a no-op. Phases are informational only — readiness is still the `ready`
+    # event / a confirming health check, never a phase.
+    _emit_phase = getattr(app.state, "emit_phase", None)
+
+    def _phase(name: str) -> None:
+        if _emit_phase is not None:
+            _emit_phase(name)
+
+    # Step 0: embedded PostgreSQL cluster — must precede any DB usage. On first
+    # run this pays a one-time initdb (the long pole), so surface it explicitly.
+    _phase("preparing_database")
     app.state.postgres = start_postgres(config.POSTGRES_DATA_DIR)
     # Step 1: bind the SQLAlchemy engine/session factory to the live cluster.
     init_database(app.state.postgres.sqlalchemy_url)
@@ -230,11 +242,13 @@ async def lifespan(app: FastAPI):
     # Step 4: migrate the schema to head (forward-only). Alembic is sync, so run
     # it off the event loop. Replaces create_all — which never altered an existing
     # (persisted) database — and auto-adopts pre-Alembic schemas (stamp baseline).
+    _phase("running_migrations")
     await run_in_threadpool(run_migrations, app.state.postgres)
     # await delete_all_data()
     # Fast startup data (vars, cleanup, hardware, + an offline placeholder catalog
     # on first boot). The heavy HF catalog resync is deferred to a background task
     # below so boot reaches `ready` immediately (#109).
+    _phase("loading_catalog")
     startup_results = await startup_populate_database()
     app.state.catalog_refresh_task = None
     if startup_results.get("needs_background_refresh"):

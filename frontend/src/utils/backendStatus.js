@@ -64,6 +64,16 @@ const MESSAGES = {
     detail: "The local server could not start after several attempts.",
     hint: "Relaunch Erudi; if it persists, check the backend log.",
   },
+  BACKEND_EXIT_ERROR: {
+    title: "Backend stopped unexpectedly",
+    detail: "The local server process exited with an error.",
+    hint: "Relaunch Erudi; if it persists, check the backend log.",
+  },
+  BACKEND_SPAWN_FAILED: {
+    title: "Backend could not be launched",
+    detail: "Erudi could not start its local server process.",
+    hint: "Reinstall Erudi (or allow it through antivirus/SmartScreen), then relaunch.",
+  },
   UNEXPECTED_ERROR: {
     title: "Unexpected startup error",
     detail: "Something went wrong while starting Erudi.",

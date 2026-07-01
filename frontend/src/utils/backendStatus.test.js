@@ -13,6 +13,8 @@ describe("describeBackendError", () => {
       "DATABASE_ERROR",
       "CUDA_RUNTIME_ERROR",
       "BACKEND_STARTUP_FAILED",
+      "BACKEND_EXIT_ERROR",
+      "BACKEND_SPAWN_FAILED",
       "BACKEND_UNREACHABLE",
     ];
     for (const code of codes) {

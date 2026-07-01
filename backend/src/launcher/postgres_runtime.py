@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -90,6 +91,39 @@ def _prune_stale_handle_pids(data_dir: Path) -> None:
         logger.warning(f"Could not prune pgserver handle pids: {exc}")
 
 
+def _recover_corrupt_pgdata(data_dir: Path) -> None:
+    """Wipe a half-initialized data dir so pgserver can run a clean initdb.
+
+    An interrupted first-run initdb (e.g. the launcher was killed mid-init by an
+    over-eager watchdog) can leave the data dir populated but WITHOUT a
+    ``PG_VERSION`` file. On the next boot ``initdb`` refuses a non-empty target
+    directory, so every later launch fails permanently until the user manually
+    deletes the folder. Detect that state and clear the directory before handing
+    it to pgserver, which then initializes a fresh cluster. A dir that already
+    has ``PG_VERSION`` is a real cluster and is left untouched; an empty dir is
+    fine as-is.
+    """
+    if (data_dir / "PG_VERSION").exists():
+        return  # a real, initialized cluster — never touch it
+    try:
+        entries = list(data_dir.iterdir())
+    except OSError:
+        return
+    if not entries:
+        return  # empty — pgserver will initdb into it cleanly
+    logger.warning(
+        f"Recovering half-initialized Postgres data dir (no PG_VERSION): {data_dir}"
+    )
+    for entry in entries:
+        try:
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry, ignore_errors=True)
+            else:
+                entry.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(f"Could not remove {entry} during pgdata recovery: {exc}")
+
+
 @dataclass(frozen=True)
 class PostgresHandle:
     """Live embedded-cluster handle with the two derived connection URLs."""
@@ -116,6 +150,7 @@ def start_postgres(data_dir: Path | str) -> PostgresHandle:
     data_dir = Path(data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     _prune_stale_handle_pids(data_dir)
+    _recover_corrupt_pgdata(data_dir)
 
     server = pgserver.get_server(str(data_dir))
     admin_uri = server.get_uri()
