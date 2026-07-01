@@ -1,5 +1,5 @@
 import { createLogger } from "../../utils/logger";
-import { API_BASE_URL } from "../../config/api";
+import { getApiBaseUrl } from "../../config/api";
 
 const log = createLogger("APIClient");
 
@@ -8,7 +8,9 @@ const log = createLogger("APIClient");
  * Provides consistent error handling and response transformation across the app
  */
 class APIClient {
-  constructor(baseURL = API_BASE_URL) {
+  constructor(baseURL = null) {
+    // null → resolve the live base URL per request (follows the dynamic backend
+    // port). Pass an explicit baseURL only to pin the client to a fixed host.
     this.baseURL = baseURL;
     this.timeout = 30000; // 30 seconds
     this.maxRetries = 3;
@@ -89,7 +91,7 @@ class APIClient {
    * @returns {Promise<*>} Parsed response
    */
   async request(endpoint, options = {}, attempt = 1) {
-    const url = `${this.baseURL}${endpoint}`;
+    const url = `${this.baseURL || getApiBaseUrl()}${endpoint}`;
     const controller = new AbortController();
 
     try {

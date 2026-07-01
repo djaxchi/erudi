@@ -18,6 +18,28 @@ def test_argparse_port(monkeypatch, port):
     assert args.port == port
 
 
+@pytest.mark.unit
+def test_compute_first_run(tmp_path):
+    import run
+
+    # No postgres/PG_VERSION yet -> first run.
+    assert run.compute_first_run(tmp_path) is True
+
+    pgdata = tmp_path / "postgres"
+    pgdata.mkdir()
+    (pgdata / "PG_VERSION").write_text("16\n")
+    assert run.compute_first_run(tmp_path) is False
+
+
+@pytest.mark.unit
+def test_startup_timeout_is_first_run_aware():
+    import run
+
+    assert run.startup_timeout_seconds(True) == run.FIRST_RUN_TIMEOUT_SECONDS
+    assert run.startup_timeout_seconds(False) == run.STARTUP_TIMEOUT_SECONDS
+    assert run.FIRST_RUN_TIMEOUT_SECONDS > run.STARTUP_TIMEOUT_SECONDS
+
+
 def test_json_event_emission():
     import time
 
@@ -58,3 +80,5 @@ def test_json_event_emission():
     event = starting_events[0]
     assert event["event"] == "starting"
     assert event["port"] == 12345
+    assert "first_run" in event
+    assert isinstance(event["first_run"], bool)

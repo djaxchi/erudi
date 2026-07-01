@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 
 /**
@@ -8,6 +8,21 @@ import PropTypes from "prop-types";
  */
 export default function BackendErrorScreen({ error, onRetry, onQuit }) {
   const { title, detail, hint, raw, code } = error || {};
+  // Resolve the OS-correct backend log path from the main process (Windows
+  // %TEMP%\erudi-backend.log vs POSIX /tmp/erudi-backend.log) — never hardcode it.
+  const [logPath, setLogPath] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    window.backendAPI
+      ?.getLogPath?.()
+      .then((p) => {
+        if (!cancelled) setLogPath(p);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div
@@ -63,11 +78,12 @@ export default function BackendErrorScreen({ error, onRetry, onQuit }) {
           </button>
         )}
       </div>
-      {code && (
-        <p className="text-[10px] mt-6 opacity-50" style={{ color: "#7c8f88" }}>
-          Error code: {code} · backend log: /tmp/erudi-backend.log
-        </p>
-      )}
+      <p className="text-[10px] mt-6 opacity-60 max-w-lg" style={{ color: "#7c8f88" }}>
+        {code ? `Error code: ${code} · ` : ""}
+        {logPath
+          ? `Check the logs in ${logPath} and contact us.`
+          : "Check the backend logs and contact us."}
+      </p>
     </div>
   );
 }

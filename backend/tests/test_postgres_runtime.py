@@ -12,7 +12,11 @@ import psycopg
 import pytest
 from sqlalchemy import create_engine, inspect as sa_inspect, text
 
-from src.launcher.postgres_runtime import start_postgres, stop_postgres
+from src.launcher.postgres_runtime import (
+    _recover_corrupt_pgdata,
+    start_postgres,
+    stop_postgres,
+)
 
 
 @pytest.fixture(scope="module")
@@ -93,6 +97,60 @@ class TestPostgresRuntime:
         finally:
             # The red scenario is precisely "the stop is skipped": never leak
             # a live postmaster on the dev machine when this test regresses.
+            pid_file = data_dir / "postmaster.pid"
+            if pid_file.exists():
+                os.kill(int(pid_file.read_text().splitlines()[0]), signal.SIGTERM)
+
+
+class TestCorruptPgdataRecovery:
+    """#145 — a half-initialized pgdata (no PG_VERSION) must not brick boot."""
+
+    @pytest.mark.unit
+    def test_recover_leaves_initialized_cluster_untouched(self, tmp_path):
+        (tmp_path / "PG_VERSION").write_text("16\n")
+        (tmp_path / "base").mkdir()
+        _recover_corrupt_pgdata(tmp_path)
+        assert (tmp_path / "PG_VERSION").exists()
+        assert (tmp_path / "base").exists()
+
+    @pytest.mark.unit
+    def test_recover_wipes_partial_dir_without_pg_version(self, tmp_path):
+        (tmp_path / "junk.tmp").write_text("x")
+        (tmp_path / "global").mkdir()
+        (tmp_path / "global" / "leftover").write_text("y")
+        assert list(tmp_path.iterdir())  # non-empty, no PG_VERSION
+        _recover_corrupt_pgdata(tmp_path)
+        assert list(tmp_path.iterdir()) == []  # wiped clean
+
+    @pytest.mark.unit
+    def test_recover_noop_on_empty_dir(self, tmp_path):
+        _recover_corrupt_pgdata(tmp_path)  # must not raise
+        assert list(tmp_path.iterdir()) == []
+
+    @pytest.mark.integration
+    def test_start_postgres_recovers_from_missing_pg_version(self, tmp_path_factory):
+        import os
+        import signal
+
+        data_dir = tmp_path_factory.mktemp("pgdata-recover")
+        try:
+            first = start_postgres(data_dir)
+            stop_postgres(first)
+
+            # Simulate an initdb interrupted before PG_VERSION was written:
+            # the dir is populated but has no PG_VERSION. Without recovery,
+            # pgserver's initdb would refuse the non-empty directory.
+            (data_dir / "PG_VERSION").unlink()
+            assert list(data_dir.iterdir())  # still populated
+
+            handle = start_postgres(data_dir)
+            try:
+                assert (data_dir / "PG_VERSION").exists()  # re-initialized
+                with psycopg.connect(handle.psycopg_url, autocommit=True) as conn:
+                    assert conn.execute("SELECT 1").fetchone()[0] == 1
+            finally:
+                stop_postgres(handle)
+        finally:
             pid_file = data_dir / "postmaster.pid"
             if pid_file.exists():
                 os.kill(int(pid_file.read_text().splitlines()[0]), signal.SIGTERM)

@@ -1265,29 +1265,23 @@ class Database_Seeder:
             # what's already in the DB (or a fast offline placeholder on first boot)
             # and defer the resync to a background task scheduled by the caller (#109).
             if needs_seeding:
-                online_status = is_online()
+                # Snapshot-first, never block boot on the network (#151). Always
+                # seed the bundled snapshot when the catalog is empty and always
+                # defer the live HF resync to the background task, which runs its
+                # own connectivity check (is_online) and either reconciles or
+                # no-ops. This removes the blocking is_online() call from the boot
+                # critical path — offline still boots instantly from the snapshot.
                 catalog_empty = db.query(Llm).filter(Llm.local == 0).count() == 0
-
-                if online_status:
-                    if catalog_empty:
-                        # Instant first-boot catalog from the bundled snapshot (full,
-                        # zero HF calls — #112); falls back to the minimal offline JSON.
-                        # The background refresh then reconciles with live HF.
-                        results["base_models_added"] = Model_Seeder(db, offline_mode=True).seed_initial_catalog()
-                    logger.info("Online: deferring catalog resync to a background task (non-blocking boot)")
-                    results["offline_mode"] = False
-                    results["needs_background_refresh"] = True
-                    # last_seeded_at is stamped by the background refresh on success.
-                else:
-                    logger.warning("Offline mode: seeding the bundled catalog snapshot / fallback JSON")
-                    if catalog_empty:
-                        results["base_models_added"] = Model_Seeder(db, offline_mode=True).seed_initial_catalog()
-                    results["offline_mode"] = True
-                    startup_vars.models_seeded = True
-                    startup_vars.last_seeded_at = datetime.now()
-                    startup_vars.offline_mode = True
-                    db.commit()
-                    results["models_seeded"] = True
+                if catalog_empty:
+                    # Instant first-boot catalog from the bundled snapshot (full,
+                    # zero HF calls — #112); falls back to the minimal offline JSON.
+                    # The background refresh then reconciles with live HF.
+                    results["base_models_added"] = Model_Seeder(db, offline_mode=True).seed_initial_catalog()
+                logger.info("Deferring catalog resync to a background task (non-blocking boot)")
+                results["offline_mode"] = False
+                results["needs_background_refresh"] = True
+                # last_seeded_at / models_seeded are stamped by the background
+                # refresh on success (offline it no-ops and we retry next boot).
             else:
                 logger.info("Skipping model seeding (already seeded recently)")
                 results["offline_mode"] = startup_vars.offline_mode

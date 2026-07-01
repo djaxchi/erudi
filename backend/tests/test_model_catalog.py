@@ -444,6 +444,53 @@ class TestPlaceholderSeedIsBestEffort:
         assert res["needs_background_refresh"] is True
         assert res["base_models_added"] == 0
 
+    def test_boot_is_snapshot_first_and_never_calls_is_online(self, test_db_session, monkeypatch):
+        """#151 — boot seeds the bundled snapshot and defers the resync WITHOUT the
+        blocking is_online() network call. Connectivity is decided later by the
+        background task, so a slow/offline network never delays or blocks boot."""
+        import asyncio
+        from src.database import seed as seed_mod
+        from src.database.seed import Llm
+
+        # Force the empty-catalog first-boot path.
+        test_db_session.query(Llm).filter(Llm.local == 0).delete()
+        test_db_session.commit()
+
+        def _boom():
+            raise AssertionError("is_online() must not run on the boot path (#151)")
+
+        monkeypatch.setattr(seed_mod, "is_online", _boom)
+
+        class _CountingSeeder:
+            def __init__(self, *a, **k):
+                pass
+
+            def seed_initial_catalog(self):
+                return 7
+
+        class _NoCleanup:
+            def __init__(self, *a, **k):
+                pass
+
+            def cleanup_all_unfinished_jobs(self):
+                return {}
+
+        class _NoHw:
+            def __init__(self, *a, **k):
+                pass
+
+            def initialize_if_needed(self):
+                return False
+
+        monkeypatch.setattr(seed_mod, "Model_Seeder", _CountingSeeder)
+        monkeypatch.setattr(seed_mod, "Job_Cleanup_Service", _NoCleanup)
+        monkeypatch.setattr(seed_mod, "Hardware_Initializer", _NoHw)
+
+        res = asyncio.run(Database_Seeder().populate_startup_data(db=test_db_session))
+        assert res["needs_background_refresh"] is True  # always defer
+        assert res["base_models_added"] == 7  # snapshot seeded regardless of network
+        assert res.get("offline_mode") is False
+
 
 class TestDownloadRunnabilityGuard:
     """download_llm rejects a KNOWN_BROKEN target up front (clear error, no crash)."""

@@ -44,6 +44,12 @@ contextBridge.exposeInMainWorld("backendAPI", {
     ipcRenderer.on("backend-event", handler);
     return () => ipcRenderer.removeListener("backend-event", handler);
   },
+  // Recover {port, ready} if the renderer mounted after the events fired.
+  getInfo: () => ipcRenderer.invoke("backend:getInfo"),
+  // Actually re-spawn the backend (used by the error screen's Retry button).
+  restartBackend: () => ipcRenderer.invoke("backend:restart"),
+  // OS-correct path to the backend log, for the error screen.
+  getLogPath: () => ipcRenderer.invoke("app:getLogPath"),
 });
 
 // Auto-updater bridge

@@ -5,6 +5,11 @@ const { spawn, execSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 
+// Pure, unit-tested startup helpers (shared with the renderer).
+const { confirmBackendHealth } = require("./utils/backendHealth");
+const { classifyStderrLine } = require("./utils/backendStderr");
+const { shouldRetrySpawn } = require("./utils/backendRetry");
+
 // electron-updater: only loaded in production to avoid dev noise.
 // Reads latest.yml / latest-mac.yml from GitHub Releases and handles
 // download + install of new versions.
@@ -45,6 +50,14 @@ const RENDERER_DEV_URL = "http://localhost:3000/";
 let backendProcess = null;
 let mainWindow = null;
 let isCreatingWindow = false;
+// Backend readiness state, published to the renderer (covers the race where
+// readiness happens before the renderer attaches its event listener — the
+// renderer queries `backend:getInfo` on mount).
+let resolvedPort = null;
+let backendIsReady = false;
+// Transient failures (port contention) may auto-respawn; deterministic ones
+// fail fast and wait for a manual retry.
+const MAX_SPAWN_ATTEMPTS = 2;
 
 // Kill the backend process and its entire child tree.
 // On Windows, SIGTERM only kills the parent — llama-server.exe is left orphaned.
@@ -152,7 +165,7 @@ const startRealBackend = () => {
             if (response.ok) {
               const data = await response.json();
               log(`Backend is ready: ${data.message}`);
-              resolve();
+              resolve({ port: Number(devPort) });
               return;
             }
           } catch (error) {
@@ -220,237 +233,147 @@ const startRealBackend = () => {
 
     log(`Backend process spawned with PID: ${backendProcess.pid}`);
 
-    backendProcess.stdout.on("data", (data) => {
-      const output = data.toString().trim();
-      log(`Backend stdout: ${output}`);
+    const proc = backendProcess;
+    let settled = false;
+    let actualPort = PORT;
+    let capTimer = null;
+    const settle = (fn) => (arg) => {
+      if (settled) return;
+      settled = true;
+      if (capTimer) clearTimeout(capTimer);
+      fn(arg);
+    };
+    const succeed = settle(() => resolve({ port: actualPort }));
+    // reject carries the error CODE (string) so the supervisor can classify it.
+    const failWith = settle((code) => reject(new Error(code)));
 
-      // Parse JSON events from backend
-      if (output) {
+    // Absolute safety cap. The backend self-aborts at its own first-run-aware
+    // budget (300s first run / 120s after) and emits startup_error, which we
+    // catch below; this only fires if it goes completely silent. We NEVER kill
+    // the backend just for being slow — that was the 30s-kill bug.
+    const MAX_READY_WAIT_MS = 330000;
+    capTimer = setTimeout(() => {
+      log("Backend did not report ready within the safety cap.");
+      failWith("PORT_TIMEOUT");
+    }, MAX_READY_WAIT_MS);
+
+    backendProcess.stdout.on("data", (data) => {
+      for (const line of data.toString().split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        log(`Backend stdout: ${trimmed}`);
+        let event = null;
         try {
-          const event = JSON.parse(output);
-          if (event && event.event) {
-            log(`Backend event: ${event.event} ${event.code ? `(${event.code})` : ""}`);
-            // Forward structured events to renderer
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send("backend-event", event);
-            }
-          }
+          event = JSON.parse(trimmed);
         } catch (_) {
-          // Not JSON, just a log line
+          continue; // ordinary (non-JSON) log line
+        }
+        if (!event || !event.event) continue;
+        // Forward every structured event to the renderer (starting/phase/ready/…).
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("backend-event", event);
+        }
+        if (event.event === "starting" && event.port) {
+          actualPort = event.port;
+          log(`Backend selected port: ${actualPort}`);
+        } else if (event.event === "startup_error") {
+          log(`Backend reported startup_error: ${event.code}`);
+          failWith(event.code || "BACKEND_STARTUP_FAILED");
+        } else if (event.event === "ready") {
+          if (event.port) actualPort = event.port;
+          log(`Backend reported ready on port ${actualPort}; confirming health…`);
+          confirmBackendHealth({
+            fetchFn: (url) => fetch(url),
+            url: `http://127.0.0.1:${actualPort}/erudi/health/`,
+          })
+            .then((ok) => {
+              if (ok) {
+                log("Backend health confirmed.");
+                succeed();
+              } else {
+                log("Backend reported ready but health could not be confirmed.");
+                failWith("BACKEND_UNREACHABLE");
+              }
+            })
+            .catch(() => failWith("BACKEND_UNREACHABLE"));
         }
       }
     });
 
     backendProcess.stderr.on("data", (data) => {
       const output = data.toString().trim();
+      if (!output) return;
       log(`Backend stderr: ${output}`);
-
-      // Intelligent error detection: map stderr patterns to structured errors
-      // These are hints from libraries based on what's available at runtime
-      const detectError = (line) => {
-        if (!line) {
-          return null;
-        }
-
-        // GPU/CUDA detection errors (if CUDA build was expected but libs missing)
-        if (line.includes("CUDA runtime error") || line.includes("CUDA out of memory")) {
-          return { code: "CUDA_RUNTIME_ERROR", message: line };
-        }
-        if (line.includes("pynvml") || line.includes("NVML")) {
-          return {
-            code: "NVIDIA_ML_ERROR",
-            message: "NVIDIA GPU runtime unavailable; falling back to CPU",
-          };
-        }
-
-        // MLX detection errors (Mac Silicon specific)
-        if (line.includes("mlx.core") || line.includes("MLX")) {
-          return {
-            code: "MLX_ERROR",
-            message: "MLX framework error; verify Mac Silicon support",
-          };
-        }
-
-        // PyTorch errors (works on all builds)
-        if (line.includes("torch.cuda") || line.includes("cuda:") || line.includes("CUDA")) {
-          return {
-            code: "TORCH_CUDA_ERROR",
-            message: "PyTorch CUDA unavailable; check GPU drivers",
-          };
-        }
-        if (line.includes("No module named torch")) {
-          return {
-            code: "PYTORCH_MISSING",
-            message: "PyTorch not installed in backend environment",
-          };
-        }
-
-        // Dependency errors
-        if (line.includes("No module named")) {
-          const match = line.match(/No module named '([^']+)'/);
-          const module = match ? match[1] : "unknown";
-          return { code: "MISSING_DEPENDENCY", message: `Missing Python module: ${module}` };
-        }
-        if (line.includes("ImportError") || line.includes("import error")) {
-          return { code: "IMPORT_ERROR", message: "Failed to import required Python module" };
-        }
-
-        // Database errors (embedded PostgreSQL / psycopg / SQLAlchemy)
-        if (
-          line.includes("database") ||
-          line.includes("psycopg.errors") ||
-          line.includes("sqlalchemy.exc")
-        ) {
-          return { code: "DATABASE_ERROR", message: "Database initialization failed" };
-        }
-
-        // Config/startup errors
-        if (line.includes("KeyError") || line.includes("FileNotFoundError")) {
-          return { code: "CONFIG_ERROR", message: "Configuration or data file error" };
-        }
-
-        return null;
-      };
-
-      const error = detectError(output);
-      if (error) {
-        log(`Detected error: ${error.code} - ${error.message}`);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("backend-event", {
-            event: "startup_error",
-            code: error.code,
-            message: error.message,
-            source: "stderr",
-          });
-        }
-      }
+      // stderr is advisory only. The backend emits authoritative startup_error
+      // events on stdout; a stderr substring must never be treated as fatal — a
+      // CPU build prints benign lines like "CUDA not available" / NVML / SQLAlchemy
+      // "database" logs during a perfectly healthy boot. Log a hint at most.
+      const hint = classifyStderrLine(output);
+      if (hint) log(`stderr hint: ${hint.code} — ${hint.message}`);
     });
 
     backendProcess.on("exit", (code, signal) => {
       log(`Backend process exited with code ${code}, signal ${signal}`);
-
-      // Map exit codes to errors
-      let errorEvent = null;
-      if (code !== 0 && code !== null) {
-        if (code === 1) {
-          errorEvent = {
-            code: "BACKEND_STARTUP_FAILED",
-            message: `Backend exited with code ${code}`,
-          };
-        } else if (code === 127) {
-          errorEvent = { code: "BACKEND_NOT_FOUND", message: "Backend executable not found" };
-        } else {
-          errorEvent = {
-            code: "BACKEND_EXIT_ERROR",
-            message: `Backend exited unexpectedly (code: ${code})`,
-          };
-        }
-
-        log(`Backend exit error: ${errorEvent.code}`);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("backend-event", {
-            event: "startup_error",
-            ...errorEvent,
-            source: "exit",
-          });
-        }
+      if (backendProcess === proc) backendProcess = null;
+      if (code === 127) {
+        failWith("BACKEND_NOT_FOUND");
+      } else if (code !== 0 && code !== null) {
+        failWith("BACKEND_EXIT_ERROR");
+      } else {
+        // Clean exit before readiness was confirmed — treat as a crash. After a
+        // successful start this is a no-op (the promise is already settled).
+        failWith("CRASH_BEFORE_READY");
       }
-
-      backendProcess = null;
     });
 
     backendProcess.on("error", (error) => {
       log(`Failed to start backend process: ${error.message}`);
-
-      // Platform-specific guidance
-      let guidance = "";
-      if (process.platform === "darwin") {
-        guidance =
-          "On macOS, the first run of an unsigned binary may be blocked. " +
-          "If you see a security popup, open System Settings > Privacy & Security and allow the backend binary.";
-      } else if (process.platform === "win32") {
-        guidance = "On Windows, ensure CUDA drivers and Python runtime are properly installed.";
-      }
-
-      const errorObj = {
-        event: "startup_error",
-        code: "BACKEND_SPAWN_FAILED",
-        message: error.message,
-        guidance: guidance,
-        source: "spawn",
-      };
-
-      log(guidance);
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("backend-event", errorObj);
+        mainWindow.webContents.send("backend-event", {
+          event: "startup_error",
+          code: "BACKEND_SPAWN_FAILED",
+          message: error.message,
+          source: "spawn",
+        });
       }
-
-      reject(error);
+      failWith("BACKEND_SPAWN_FAILED");
     });
-
-    const checkHealth = async () => {
-      let lastError = null;
-      let actualPort = PORT; // Will be updated from backend event
-
-      // Listen for port changes from backend
-      backendProcess.stdout.on("data", (data) => {
-        try {
-          const event = JSON.parse(data.toString().trim());
-          if (event.event === "starting" && event.port) {
-            actualPort = event.port;
-            log(`Backend selected port: ${actualPort}`);
-          }
-        } catch (_) {
-          // Not JSON
-        }
-      });
-
-      for (let i = 0; i < 30; i++) {
-        // Abort early if the backend process has already exited — no point waiting 30s
-        if (!backendProcess) {
-          reject(new Error("Backend process exited before becoming healthy"));
-          return;
-        }
-
-        try {
-          log(`Health check attempt ${i + 1}/30 on port ${actualPort}`);
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2000);
-
-          const response = await fetch(`http://127.0.0.1:${actualPort}/erudi/health/`, {
-            signal: controller.signal,
-          });
-          clearTimeout(timeoutId);
-
-          if (response.ok) {
-            const data = await response.json();
-            log(`Backend is ready: ${data.message}`);
-            resolve();
-            return;
-          }
-        } catch (error) {
-          lastError = error.message;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-
-      const error = `Backend failed to start within 30 seconds. Last error: ${lastError}`;
-      log(error);
-      if (backendProcess) {
-        log("Killing stuck backend process...");
-        try {
-          backendProcess.kill("SIGTERM");
-        } catch (e) {
-          log(`Could not kill process: ${e.message}`);
-        }
-        backendProcess = null;
-      }
-      reject(new Error(error));
-    };
-
-    setTimeout(checkHealth, 2000);
   });
 };
+
+// Supervise a backend spawn: auto-respawn only transient failures (port
+// contention), fail fast + surface deterministic ones for a manual retry.
+async function startBackendSupervised(attempt = 0) {
+  try {
+    log(`Backend startup attempt ${attempt + 1}...`);
+    const { port } = await startRealBackend();
+    resolvedPort = port;
+    backendIsReady = true;
+    log(`Backend is ready on port ${port}.`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("backend-event", { event: "backend_ready", port });
+    }
+  } catch (error) {
+    const code = (error && error.message) || "BACKEND_STARTUP_FAILED";
+    log(`Backend start attempt ${attempt + 1} failed: ${code}`);
+    if (shouldRetrySpawn(code, attempt, MAX_SPAWN_ATTEMPTS)) {
+      log(`Transient failure (${code}); respawning…`);
+      killBackend(backendProcess);
+      backendProcess = null;
+      await new Promise((r) => setTimeout(r, 2000));
+      return startBackendSupervised(attempt + 1);
+    }
+    log(`Backend startup failed (${code}); surfacing to the user.`);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("backend-event", {
+        event: "startup_error",
+        code,
+        message: (error && error.message) || code,
+        source: "startup",
+      });
+    }
+  }
+}
 
 // Create application menu with Help options
 const createApplicationMenu = () => {
@@ -733,6 +656,21 @@ const createWindow = () => {
 
 app.commandLine.appendSwitch("no-sandbox");
 
+// Backend readiness + diagnostics for the renderer. getInfo lets the renderer
+// recover the resolved port / ready state if it mounted after the events fired
+// (race-safe); restart actually re-spawns the backend (used by the Retry button).
+ipcMain.handle("backend:getInfo", () => ({ port: resolvedPort, ready: backendIsReady }));
+ipcMain.handle("app:getLogPath", () => logFile);
+ipcMain.handle("backend:restart", async () => {
+  log("Renderer requested a backend restart.");
+  killBackend(backendProcess);
+  backendProcess = null;
+  backendIsReady = false;
+  resolvedPort = null;
+  startBackendSupervised();
+  return { ok: true };
+});
+
 ipcMain.handle("dialog:openDirectory", async () => {
   const result = await dialog.showOpenDialog({
     properties: ["openDirectory"],
@@ -929,48 +867,22 @@ app.whenReady().then(async () => {
   setupAutoUpdater();
 
   if (!app.isPackaged) {
-    // Dev mode: backend is expected to be already running via dev-start.sh
-    startRealBackend().catch((err) => {
-      log(`Dev backend not available: ${err.message}`);
-    });
+    // Dev mode: backend is expected to be already running via dev-start.sh.
+    startRealBackend()
+      .then(({ port }) => {
+        resolvedPort = port;
+        backendIsReady = true;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("backend-event", { event: "backend_ready", port });
+        }
+      })
+      .catch((err) => log(`Dev backend not available: ${err.message}`));
     return;
   }
 
-  // Production: start backend in the background, retry up to 3 times
-  const maxRetries = 3;
-  let retries = 0;
-
-  const tryStartBackend = async () => {
-    try {
-      log(`Backend startup attempt ${retries + 1}/${maxRetries}...`);
-      await startRealBackend();
-      log("Backend is ready.");
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send("backend-event", { event: "backend_ready" });
-      }
-    } catch (error) {
-      retries++;
-      log(`Backend start attempt ${retries} failed: ${error.toString()}`);
-      if (retries < maxRetries) {
-        log(`Retrying in 2 seconds... (attempt ${retries + 1}/${maxRetries})`);
-        await new Promise((r) => setTimeout(r, 2000));
-        await tryStartBackend();
-      } else {
-        log(`Backend startup failed after ${maxRetries} attempts.`);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send("backend-event", {
-            event: "startup_error",
-            code: "BACKEND_STARTUP_FAILED",
-            message: `Backend failed to start after ${maxRetries} attempts.`,
-            source: "retry_exhausted",
-          });
-        }
-      }
-    }
-  };
-
-  // Don't await — let it run in the background so the window is immediately usable
-  tryStartBackend();
+  // Production: supervise the backend in the background so the window stays
+  // immediately usable (the renderer shows the loading/error state via events).
+  startBackendSupervised();
 });
 
 app.on("activate", () => {
