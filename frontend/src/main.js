@@ -205,7 +205,11 @@ const startRealBackend = () => {
 
     // Storage paths (embedded PostgreSQL data dir, model cache) are resolved
     // by the backend itself (src/launcher/runtime_paths.py) — nothing to pass.
-    const backendEnv = { ...process.env };
+    // PYTHONUTF8=1 forces the frozen interpreter into UTF-8 mode so it reads
+    // bundled data files (e.g. alembic.ini) as UTF-8 regardless of the locale.
+    // A macOS app launched from Finder inherits no LANG, so open() would default
+    // to ASCII and crash on any non-ASCII byte at boot (see #149).
+    const backendEnv = { ...process.env, PYTHONUTF8: "1" };
 
     backendProcess = spawn(backendPath, ["--port", PORT.toString()], {
       stdio: ["pipe", "pipe", "pipe"],
