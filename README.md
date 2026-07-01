@@ -105,7 +105,7 @@ The app opens automatically. The backend runs on `http://127.0.0.1:8765` by defa
 .\scripts\build\build-win-cuda-121.ps1
 ```
 
-Output: `frontend/out/installer/Erudi Setup 1.0.0.exe`
+Output: `frontend/out/installer/Erudi Setup <version>.exe`
 
 ### macOS
 
@@ -154,7 +154,7 @@ Windows/Linux + NVIDIA  →  CUDA_Engine  (llama-server with CUDA offload)
 Windows/Linux, no GPU   →  CPU_Engine   (llama-server, CPU only)
 ```
 
-All inference engines run an OpenAI-compatible HTTP server in a child process and talk to it over `http://127.0.0.1:<port>/v1/chat/completions`. Windows/Linux NVIDIA and CPU fallback use `llama-server` from llama.cpp; macOS Apple Silicon uses `mlx_lm.server`. The bundled PyTorch is CPU-only and used only for sentence-transformers embeddings (Knowledge Base and conversation memory).
+All inference engines run an OpenAI-compatible HTTP server in a child process and talk to it over `http://127.0.0.1:<port>/v1/chat/completions`. Windows/Linux NVIDIA and CPU fallback use `llama-server` from llama.cpp; macOS Apple Silicon uses `mlx_vlm.server` (vision + tool calling). The bundled PyTorch is CPU-only and used only for sentence-transformers embeddings (Knowledge Base and conversation memory).
 
 ---
 

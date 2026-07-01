@@ -5,7 +5,7 @@
 | Output | Size | Status |
 |---|---|---|
 | PyInstaller bundle (`frontend/backend/`) | 2.3 GB | ✅ |
-| NSIS installer (`out/installer/Erudi Setup 1.0.0.exe`) | ~1.3 GB est. | ✅ Active output |
+| NSIS installer (`out/installer/Erudi Setup <version>.exe`) | ~1.3 GB est. | ✅ Active output |
 
 Squirrel has been removed. The build now uses electron-forge package + electron-builder NSIS.
 
@@ -17,13 +17,13 @@ Squirrel has been removed. The build now uses electron-forge package + electron-
 .\scripts\build\build-win-cuda-121.ps1
 ```
 
-Output: `frontend/out/installer/Erudi Setup 1.0.0.exe`
+Output: `frontend/out/installer/Erudi Setup <version>.exe`
 
 ---
 
 ## How to Test
 
-Run `Erudi Setup 1.0.0.exe`. It installs to `%APPDATA%\Local\Programs\erudi` by default (user-scope, no admin required) and creates a Start Menu shortcut.
+Run `Erudi Setup <version>.exe`. It installs to `%APPDATA%\Local\Programs\erudi` by default (user-scope, no admin required) and creates a Start Menu shortcut.
 
 The backend log file is written to `%TEMP%\erudi-backend.log`.
 
