@@ -150,7 +150,9 @@ class RequestLoggingMiddleware:
             )
             raise
         duration_ms = (time.perf_counter() - start) * 1000
-        log = logger.debug if _is_polling_path(path) else logger.info
+        # CORS preflights carry no QA signal — keep them out of the INFO stream.
+        quiet = _is_polling_path(path) or method == "OPTIONS"
+        log = logger.debug if quiet else logger.info
         log(f"HTTP {method} {path} -> {status_code} in {duration_ms:.1f}ms")
 
     @staticmethod
