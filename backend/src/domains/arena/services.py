@@ -56,6 +56,18 @@ class ArenaService:
         """Retrieve LLM entity by ID via repository (raises 404 if missing)."""
         return self.arena_repo.get_llm_by_id(llm_id)
 
+    @staticmethod
+    def _build_user_message(question: str, images):
+        """Multimodal content (text + ``image_url`` parts) when images are
+        attached, else the plain question string (mirrors conversations; the
+        arena is stateless so images live for this turn only)."""
+        if not images:
+            return question
+        return [
+            {"type": "text", "text": question},
+            *[{"type": "image_url", "image_url": {"url": url}} for url in images],
+        ]
+
     def _retrieve_kb_excerpts(
         self,
         llm: Llm,
@@ -100,12 +112,18 @@ class ArenaService:
         Generation/model-load failures are NOT raised here — the runner yields the
         ``[ERROR_MESSAGE_SYSTEM]`` sentinel inline (unified with conversation).
         """
-        if not payload.question or not payload.question.strip():
+        if not payload.question.strip() and not payload.images:
             raise InvalidInputException("question")
 
         start_s = time.perf_counter()
+        # Local-first policy: log the question content (bounded), never image
+        # bytes — only their count and encoded size (mirrors conversations).
+        image_note = ""
+        if payload.images:
+            total_b64_chars = sum(len(url) for url in payload.images)
+            image_note = f", images={len(payload.images)} ({total_b64_chars} base64 chars)"
         logger.info(
-            f"Arena query started for LLM {llm_id}: "
+            f"Arena query started for LLM {llm_id}{image_note}: "
             f"{truncate_for_log(payload.question, 2000)}"
         )
         llm = self._get_llm(llm_id)
@@ -136,7 +154,7 @@ class ArenaService:
         response = ""
         async for token in self.runner.astream_text(
             llm=llm,
-            user_message=payload.question,
+            user_message=self._build_user_message(payload.question, payload.images),
             system_prompt=plan.system_prompt,
             params=params,
             thread_id=None,
