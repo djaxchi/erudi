@@ -304,7 +304,9 @@ _hidden_macos = [
     "mlx_vlm.server",           # uvicorn loads "mlx_vlm.server:app"
 ]
 
-hiddenimports = _hidden_common
+# += (NOT =): hiddenimports already carries pgserver's collect_all submodules
+# gathered above — a plain reassignment silently discarded them (#181).
+hiddenimports += _hidden_common
 if IS_WIN:
     hiddenimports += _hidden_windows
 if IS_MAC:
