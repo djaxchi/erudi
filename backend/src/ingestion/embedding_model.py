@@ -11,11 +11,16 @@ its first Knowledge Base use silently.
 
 Design invariants:
 - **Presence is filesystem-driven, never a DB flag.** ``embedding_model_available``
-  checks the *weights* symlink in ``CACHE_DIR`` — huggingface_hub only links a
-  file into ``snapshots/`` once it is fully downloaded, so a partial/interrupted
-  download reads as unavailable and the gate re-appears. This also makes the
-  state self-heal across backend restarts (in-memory flags are lost, the file
-  check is not).
+  checks EVERY file a ``SentenceTransformer`` load needs (#164) — huggingface_hub
+  only links a file into ``snapshots/`` once it is fully downloaded, so a
+  partial/interrupted download reads as unavailable and the gate re-appears.
+  This also makes the state self-heal across backend restarts (in-memory flags
+  are lost, the file check is not).
+- **A complete cache means OFFLINE loads** (#164). Without ``local_files_only=True``
+  huggingface_hub HEAD-revalidates every file against the hub on each load —
+  offline, the failed DNS probe surfaces as a bogus load error despite a fully
+  pre-downloaded model, defeating the whole point of the gate. Consumers
+  (``E5Embeddings``, ``chunking._get_tokenizer``) apply the same rule.
 - **Download == the real load path** (``SentenceTransformer(..., cache_folder=CACHE_DIR)``),
   not a parallel ``snapshot_download`` — so the download target is ISO with where
   the app loads from, by construction, and it warms the resident singleton.
@@ -26,6 +31,7 @@ Design invariants:
 from __future__ import annotations
 
 import threading
+import time
 from typing import Optional
 
 from huggingface_hub import try_to_load_from_cache
@@ -34,21 +40,54 @@ from src.core import config
 from src.core.logging import logger
 
 EMBEDDING_MODEL_ID = "intfloat/multilingual-e5-small"
-# The big weights file: its presence in the HF cache means a COMPLETE download
-# (huggingface_hub links it into snapshots/ only once fully fetched). Checking a
-# small file like config.json would false-positive on a partial download.
-_WEIGHTS_FILENAME = "model.safetensors"
+# Everything a SentenceTransformer load of multilingual-e5-small touches, as
+# present in its hub snapshot: the ST architecture (modules.json), the
+# transformer config + weights, the pooling module, and the tokenizer files.
+# Checking only the weights false-positived on a partial download (#164).
+# NB: config_sentence_transformers.json is NOT required — the upstream repo
+# does not ship it (it lives in the cache's .no_exist/ markers).
+REQUIRED_FILES = (
+    "modules.json",
+    "config.json",
+    "model.safetensors",
+    "sentence_bert_config.json",
+    "1_Pooling/config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "special_tokens_map.json",
+    "sentencepiece.bpe.model",
+)
+
+OFFLINE_ERROR_MESSAGE = "no internet connection — the embedding model could not be downloaded"
+
+# Lowercased substrings that mark a network-down failure anywhere in the
+# exception chain. transformers/hub re-wrap connection errors liberally, so
+# matching by message (defensively, alongside types) is deliberate.
+_OFFLINE_MESSAGE_MARKERS = (
+    "getaddrinfo",
+    "nodename nor servname",
+    "name or service not known",
+    "temporary failure in name resolution",
+    "network is unreachable",
+    "offline mode is enabled",
+    "outgoing traffic has been disabled",
+    "connection error",
+    "couldn't connect to 'https://huggingface.co'",
+)
 
 _lock = threading.Lock()
 _state = {"downloading": False, "error": None}
 
 
 def embedding_model_available() -> bool:
-    """True iff the model weights are fully present in ``CACHE_DIR`` (no network)."""
-    cached = try_to_load_from_cache(
-        EMBEDDING_MODEL_ID, _WEIGHTS_FILENAME, cache_dir=str(config.CACHE_DIR)
-    )
-    return isinstance(cached, str)
+    """True iff EVERY required file is fully present in ``CACHE_DIR`` (no network)."""
+    for filename in REQUIRED_FILES:
+        cached = try_to_load_from_cache(
+            EMBEDDING_MODEL_ID, filename, cache_dir=str(config.CACHE_DIR)
+        )
+        if not isinstance(cached, str):
+            return False
+    return True
 
 
 def download_state() -> dict:
@@ -60,11 +99,47 @@ def download_state() -> dict:
     }
 
 
-def _load_model():
-    """The real load path — downloads into ``CACHE_DIR`` if absent (ISO with runtime)."""
+def _load_model(local_files_only: Optional[bool] = None):
+    """The real load path — downloads into ``CACHE_DIR`` if absent (ISO with runtime).
+
+    ``local_files_only`` defaults to the availability check: once the cache is
+    complete the load NEVER touches the network (#164). The download path
+    passes ``False`` explicitly — that IS the fetch.
+    """
     from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer(EMBEDDING_MODEL_ID, cache_folder=str(config.CACHE_DIR))
+    if local_files_only is None:
+        local_files_only = embedding_model_available()
+    return SentenceTransformer(
+        EMBEDDING_MODEL_ID,
+        cache_folder=str(config.CACHE_DIR),
+        local_files_only=local_files_only,
+    )
+
+
+def _is_offline_error(exc: BaseException) -> bool:
+    """True if the exception chain looks like a no-network failure (#164)."""
+    from huggingface_hub.errors import OfflineModeIsEnabled
+    from requests.exceptions import ConnectionError as RequestsConnectionError
+
+    seen: set[int] = set()
+    current: Optional[BaseException] = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (OfflineModeIsEnabled, RequestsConnectionError)):
+            return True
+        message = str(current).lower()
+        if any(marker in message for marker in _OFFLINE_MESSAGE_MARKERS):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _describe_download_error(exc: BaseException) -> str:
+    """Map raw transformers/hub failures to a message the user can act on."""
+    if _is_offline_error(exc):
+        return OFFLINE_ERROR_MESSAGE
+    return str(exc)
 
 
 def _spawn(target) -> None:
@@ -72,13 +147,17 @@ def _spawn(target) -> None:
 
 
 def _run_download() -> None:
+    start_s = time.perf_counter()
     try:
         logger.info(f"Downloading embedding model {EMBEDDING_MODEL_ID} -> {config.CACHE_DIR}")
-        _load_model()
+        _load_model(local_files_only=False)
         _state["error"] = None
+        logger.info(
+            f"Embedding model download complete ({time.perf_counter() - start_s:.1f}s)"
+        )
     except Exception as exc:  # noqa: BLE001 - any failure is surfaced to the UI
         logger.error(f"Embedding model download failed: {exc}")
-        _state["error"] = str(exc)
+        _state["error"] = _describe_download_error(exc)
     finally:
         _state["downloading"] = False
 

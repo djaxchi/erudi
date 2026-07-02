@@ -29,6 +29,7 @@ from langchain_text_splitters import (
 
 from src.core import config
 from src.core.logging import logger
+from src.ingestion.embedding_model import embedding_model_available
 from src.ingestion.types import ExtractedDocument
 
 E5_TOKENIZER_NAME = "intfloat/multilingual-e5-small"
@@ -57,8 +58,13 @@ def _get_tokenizer():
 
                 # Same repo as the embedding model, pinned to CACHE_DIR so the
                 # single #146 download serves both consumers (no 2nd fetch).
+                # local_files_only once the cache is complete: without it, hub
+                # HEAD-revalidates the tokenizer files on load and an offline
+                # machine fails on the DNS probe despite the pre-download (#164).
                 _tokenizer = AutoTokenizer.from_pretrained(
-                    E5_TOKENIZER_NAME, cache_dir=str(config.CACHE_DIR)
+                    E5_TOKENIZER_NAME,
+                    cache_dir=str(config.CACHE_DIR),
+                    local_files_only=embedding_model_available(),
                 )
     return _tokenizer
 
