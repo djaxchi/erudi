@@ -52,6 +52,13 @@ contextBridge.exposeInMainWorld("backendAPI", {
   getLogPath: () => ipcRenderer.invoke("app:getLogPath"),
 });
 
+// Renderer log bridge: fire-and-forget forwarding of renderer logger entries
+// ({ts, level, ns, msg, data}) to the main process, which persists them in the
+// same log file QA already reads (see main.js "renderer-log" handler).
+contextBridge.exposeInMainWorld("logAPI", {
+  send: (entry) => ipcRenderer.send("renderer-log", entry),
+});
+
 // Auto-updater bridge
 contextBridge.exposeInMainWorld("updaterAPI", {
   // Register a callback for updater events from main process.

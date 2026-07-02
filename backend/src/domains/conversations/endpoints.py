@@ -94,6 +94,7 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from fastapi.responses import StreamingResponse
 
+from src.core.logging import logger
 from src.database.core import get_db
 from src.agents.checkpoint import get_checkpointer
 from src.domains.conversations.schemas import (
@@ -225,6 +226,7 @@ async def get_messages_by_conversation(
     """
     Fetch all messages for a specific conversation.
     """
+    logger.debug(f"Fetching messages for conversation {conversation_id}")
     # Read-only operation, no commit needed
     return await run_in_threadpool(
         message_repo.get_messages_by_conversation,
@@ -269,6 +271,7 @@ async def get_all_conversations(
     """
     Fetch all conversations.
     """
+    logger.debug("Fetching all conversations")
     # Read-only operation, no commit needed
     return await run_in_threadpool(conversation_repo.get_all_conversations)
 
@@ -309,6 +312,7 @@ async def get_conversation_by_id(
     """
     Fetch a single conversation by its ID, including messages.
     """
+    logger.debug(f"Fetching conversation {conversation_id}")
     # Read-only operation, no commit needed
     return await run_in_threadpool(
         conversation_repo.get_conversation_by_id,
@@ -370,6 +374,11 @@ async def create_conversation(
             payload.custom_prompt,
         )
         db.commit()
+        logger.info(
+            f"Conversation created: id={conv.id}, llm_id={payload.llm_id}, "
+            f"temperature={payload.temperature}, top_p={payload.top_p}, "
+            f"max_tokens={payload.max_tokens}"
+        )
         return conv
     except Exception:
         db.rollback()
@@ -407,6 +416,7 @@ async def delete_conversation(
     """
     try:
         await service.delete_conversation(conversation_id)
+        logger.info(f"Conversation deleted: id={conversation_id}")
         return {"message": "Conversation deleted successfully"}
     except Exception:
         db.rollback()
@@ -467,6 +477,21 @@ async def update_conversation(
             payload.custom_prompt,
         )
         db.commit()
+        updated_fields = [
+            field
+            for field, value in (
+                ("name", payload.name),
+                ("llm_id", payload.llm_id),
+                ("temperature", payload.temperature),
+                ("top_p", payload.top_p),
+                ("max_tokens", payload.max_tokens),
+                ("custom_prompt", payload.custom_prompt),
+            )
+            if value is not None
+        ]
+        logger.info(
+            f"Conversation updated: id={conversation_id}, fields={updated_fields}"
+        )
         return result
     except Exception:
         db.rollback()
@@ -604,6 +629,10 @@ async def store_error_message(
             conversation_id,
         )
         db.commit()
+        logger.info(
+            f"Error message stored: conversation_id={conversation_id}, "
+            f"error_message_id={error_message_id}"
+        )
         return {
             "message": "Error message stored successfully",
             "error_message_id": error_message_id,
@@ -646,6 +675,7 @@ async def star_message(
     try:
         await run_in_threadpool(message_repo.star_message, payload.message_id)
         db.commit()
+        logger.info(f"Message starred: message_id={payload.message_id}")
         return {"state": "success", "message": "Message starred successfully"}
     except Exception:
         db.rollback()
@@ -681,6 +711,7 @@ async def unstar_message(
     try:
         await run_in_threadpool(message_repo.unstar_message, payload.message_id)
         db.commit()
+        logger.info(f"Message unstarred: message_id={payload.message_id}")
         return {"state": "success", "message": "Message unstarred successfully"}
     except Exception:
         db.rollback()

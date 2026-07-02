@@ -22,9 +22,20 @@ What you expected to happen.
 **Actual behavior**
 What actually happened. Include error messages, logs, or screenshots if relevant.
 
-Backend logs are at:
-- macOS/Linux: `/tmp/erudi-backend.log`
+Two log files help us diagnose issues (see [docs/logging.md](https://github.com/djaxchi/erudi/blob/main/docs/logging.md) for details):
+
+App log (backend output + UI events):
+- macOS: `$TMPDIR/erudi-backend.log` — run `echo $TMPDIR` in a terminal to resolve the folder, or use the path shown on the in-app error screen
+- Linux: `/tmp/erudi-backend.log`
 - Windows: `%TEMP%\erudi-backend.log`
+
+Backend log:
+- macOS: `~/Library/Logs/erudi/backend.log`
+- Windows: `%LOCALAPPDATA%\erudi\logs\backend.log`
+- Linux: `${XDG_STATE_HOME:-~/.local/state}/erudi/logs/backend.log`
+- Running from source: `backend/logs/backend.log`
+
+> ⚠️ Logs include conversation and message content as well as document names. Please review and redact anything private before attaching them to a public issue.
 
 **Platform**
 - OS: [e.g. Windows 11, macOS 15 Sequoia, Ubuntu 24.04]

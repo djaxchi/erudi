@@ -17,6 +17,7 @@ never reaps the model mid-stream.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Optional
 
@@ -294,19 +295,37 @@ class AgentRunner:
                     # Outermost, so images are gone before the KB merge re-reads
                     # the last user message: a non-vision model never sees an image.
                     middleware = [_StripImagesForTextModel(), *middleware]
+                effective_tools = tools if tools is not None else AGENT_TOOLS
                 agent = create_agent(
                     model,
-                    tools=tools if tools is not None else AGENT_TOOLS,
+                    tools=effective_tools,
                     system_prompt=system_prompt,
                     checkpointer=self.checkpointer if stateful else None,
                     middleware=middleware,
                     context_schema=type(context) if context is not None else None,
+                )
+                logger.info(
+                    f"Agent built: llm={getattr(llm, 'id', '?')} "
+                    f"({getattr(llm, 'name', '?')}), "
+                    f"tools={[getattr(t, 'name', str(t)) for t in effective_tools]}, "
+                    f"stateful={stateful}, summarize={summarize}, "
+                    f"kb_context={'yes' if kb_context_block else 'no'}"
                 )
             except Exception:
                 logger.exception("Agent construction failed")
                 yield ERROR_MESSAGE
                 return
 
+            # Aggregate-only stream accounting (never log per token): start,
+            # first-token latency, then one completion line with totals.
+            stream_start_s = time.perf_counter()
+            first_token_s: Optional[float] = None
+            chunk_count = 0
+            char_count = 0
+            logger.info(
+                f"Agent stream started: llm={getattr(llm, 'id', '?')}, "
+                f"thread_id={thread_id}"
+            )
             try:
                 async for token, meta in agent.astream(
                     {"messages": [HumanMessage(user_message)]},
@@ -315,7 +334,21 @@ class AgentRunner:
                     stream_mode="messages",
                 ):
                     if meta.get("langgraph_node") == "model" and getattr(token, "text", ""):
+                        if first_token_s is None:
+                            first_token_s = time.perf_counter()
+                            logger.info(
+                                f"Agent first token: llm={getattr(llm, 'id', '?')}, "
+                                f"latency_ms={(first_token_s - stream_start_s) * 1000:.0f}"
+                            )
+                        chunk_count += 1
+                        char_count += len(token.text)
                         yield token.text
+                duration_ms = (time.perf_counter() - stream_start_s) * 1000
+                logger.info(
+                    f"Agent stream completed: llm={getattr(llm, 'id', '?')}, "
+                    f"duration_ms={duration_ms:.0f}, chunks={chunk_count} (~tokens), "
+                    f"chars={char_count}"
+                )
             except Exception:
                 logger.exception("Agent streaming failed")
                 if stateful:

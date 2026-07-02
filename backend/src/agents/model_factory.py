@@ -12,6 +12,7 @@ from __future__ import annotations
 from langchain_openai import ChatOpenAI
 
 from src.core import config
+from src.core.logging import logger
 
 # Sampling controls the bare OpenAI wire schema lacks but local models need to
 # avoid degenerate repetition loops. These mirror the pre-LangChain engine
@@ -63,6 +64,10 @@ def build_chat_model(
         }
     )
 
+    logger.info(
+        f"ChatOpenAI built: model={model_field}, base_url={handle['base_url']}/v1, "
+        f"temperature={temperature}, top_p={top_p}, max_tokens={max_tokens}"
+    )
     return ChatOpenAI(
         base_url=f"{handle['base_url']}/v1",
         api_key="not-needed",  # local server ignores it; explicit avoids OPENAI_API_KEY lookup

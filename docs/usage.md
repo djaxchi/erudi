@@ -157,7 +157,7 @@ erudi/
 
 1. Vérifier que le venv est activé : `which python` doit pointer vers `backend/venv/bin/python`
 2. Réinstaller les dépendances : `pip install -r requirements/entrypoints/dev/<platform>.txt`
-3. Consulter les logs : `backend/logs/app.log`
+3. Consulter les logs : `backend/logs/backend.log`
 
 ### Erreur "No module named 'src'"
 

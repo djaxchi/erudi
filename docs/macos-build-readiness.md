@@ -109,5 +109,5 @@ Branch: multi_backend_cuda (or wherever macOS work happens)
 2. Fix backend.spec pynvml hiddenimport for macOS
 3. Run the build on an Apple Silicon Mac
 4. Smoke test: launch → download a model → chat → KB
-5. Check /tmp/erudi-backend.log for any engine selection issues
+5. Check $TMPDIR/erudi-backend.log for any engine selection issues
 ```

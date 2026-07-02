@@ -11,6 +11,7 @@ from pathlib import Path
 
 import openpyxl
 
+from src.core.logging import logger
 from src.ingestion.cleaning import clean_extracted_text
 from src.ingestion.markdown import rows_to_markdown_table
 from src.ingestion.types import ExtractedDocument
@@ -34,6 +35,10 @@ class XlsxExtractor:
             workbook.close()
 
         markdown = clean_extracted_text("\n\n".join(sections))
+        logger.debug(
+            f"XLSX extracted: {path.name} ({len(sections)} non-empty sheets, "
+            f"{len(markdown)} chars)"
+        )
         return ExtractedDocument(
             markdown=markdown,
             status="active",

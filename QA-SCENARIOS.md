@@ -157,7 +157,9 @@ screens, the shared chrome, and non-functional behavior.
 ### How to record a run
 
 Per release candidate, note: build version, OS + hardware, who ran it, date, and
-any **FAIL** with a linked issue. Platform coverage (which OS/GPU each artifact
+any **FAIL** with a linked issue. For a FAIL, grab both log files and the `fe-…`
+request id of the failing action — locations and the tracing recipe are in
+[docs/logging.md](docs/logging.md). Platform coverage (which OS/GPU each artifact
 was tested on) is tracked in `docs/dev/release-qa-checklist.md`. Scenarios marked
 *(see #136)* are known **P2** UX defects (not release-blocking), tracked in #136;
 the release-blocking defects from the bug bash (#133) are fixed (PR #135).

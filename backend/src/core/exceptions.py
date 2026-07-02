@@ -114,6 +114,7 @@ from fastapi.responses import JSONResponse
 from fastapi import status
 from typing import Optional
 from src.core.logging import logger
+from src.core.request_context import get_request_id
 
 
 class AppBaseException(Exception):
@@ -147,13 +148,16 @@ class AppBaseException(Exception):
             
         Note:
             The message is automatically extended with support contact information.
-            All errors are logged via the structured logger.
+            All errors are logged via the structured logger. Severity follows
+            the HTTP class: WARNING for client errors (< 500), ERROR for
+            server errors (>= 500).
 
         """
         self.message = message + "\nPlease report the bug on the dedicted section. You are welcome to contact erudipro@gmail.com for further support."
         self.status_code = status_code
         self.erudi_code = erudi_code or "INTERNAL_SERVER_ERROR"
-        logger.error(f"- Status Code: {status_code}\n- Erudi Custom Code: {erudi_code}\n- Message: {message}\n- Trace: {trace}")
+        log = logger.error if status_code >= 500 else logger.warning
+        log(f"- Status Code: {status_code}\n- Erudi Custom Code: {erudi_code}\n- Message: {message}\n- Trace: {trace}")
         super().__init__(message)
 
     def __repr__(self):
@@ -785,7 +789,8 @@ async def app_base_exception_handler(request: Request, exc: AppBaseException):
             app.add_exception_handler(AppBaseException, app_base_exception_handler)
 
     """
-    logger.error(f"- Path: {request.url}")
+    log = logger.error if exc.status_code >= 500 else logger.warning
+    log(f"- Path: {request.url}")
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -795,4 +800,38 @@ async def app_base_exception_handler(request: Request, exc: AppBaseException):
                 "message": exc.message
             }
         }
+    )
+
+
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Fallback handler for exceptions that escaped every domain handler.
+
+    Logs the full traceback tagged with the current request id and returns a
+    500 JSON body shaped exactly like app_base_exception_handler responses.
+    Registered for plain ``Exception``: Starlette wires it into
+    ServerErrorMiddleware, which sits OUTSIDE the request-logging middleware,
+    so this response must carry the X-Request-ID header itself.
+
+    Args:
+        request: Incoming FastAPI request object.
+        exc: The unhandled exception instance.
+
+    Returns:
+        JSONResponse with structured error information (HTTP 500).
+    """
+    request_id = get_request_id()
+    logger.error(
+        f"Unhandled exception on {request.method} {request.url.path}: {exc}",
+        exc_info=exc,
+    )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "success": False,
+            "error": {
+                "type": "INTERNAL_SERVER_ERROR",
+                "message": f"Unexpected server error: {exc}",
+            },
+        },
+        headers={"X-Request-ID": request_id},
     )

@@ -1,7 +1,20 @@
 import { createLogger } from "../../utils/logger";
 import { getApiBaseUrl } from "../../config/api";
+import { truncateValue } from "../../utils/interactionLogger";
 
 const log = createLogger("APIClient");
+
+// Per-request correlation id, sent as X-Request-ID. The backend echoes it and
+// injects it in its own logs, so the same id on both sides stitches an
+// end-to-end trace. A retried request gets a fresh id per attempt (each HTTP
+// exchange is individually traceable).
+let requestCounter = 0;
+const nextRequestId = () => {
+  requestCounter += 1;
+  return `fe-${Date.now().toString(36)}-${requestCounter}`;
+};
+
+const BODY_PREVIEW_MAX_CHARS = 500;
 
 /**
  * API client with built-in retry logic, timeout handling, and error normalization
@@ -93,6 +106,20 @@ class APIClient {
   async request(endpoint, options = {}, attempt = 1) {
     const url = `${this.baseURL || getApiBaseUrl()}${endpoint}`;
     const controller = new AbortController();
+    const rid = nextRequestId();
+    const method = options.method || "GET";
+    const startedAt = Date.now();
+
+    log.info("api.request", {
+      rid,
+      method,
+      path: endpoint,
+      attempt,
+      body:
+        typeof options.body === "string"
+          ? truncateValue(options.body, BODY_PREVIEW_MAX_CHARS)
+          : undefined,
+    });
 
     try {
       // Set timeout
@@ -101,6 +128,7 @@ class APIClient {
       const headers = {
         "Content-Type": "application/json",
         ...options.headers,
+        "X-Request-ID": rid,
       };
 
       const response = await fetch(url, {
@@ -117,6 +145,12 @@ class APIClient {
         throw error;
       }
 
+      log.info("api.response", {
+        rid,
+        status: response.status,
+        duration_ms: Date.now() - startedAt,
+      });
+
       // Parse and return response
       try {
         const data = await response.json();
@@ -126,21 +160,33 @@ class APIClient {
         return response;
       }
     } catch (error) {
+      const durationMs = Date.now() - startedAt;
+
       // Handle timeout
       if (error.name === "AbortError") {
         const timeoutError = new Error("Request timeout");
         timeoutError.code = "TIMEOUT";
+        log.error("api.failure", { rid, error: timeoutError.message, duration_ms: durationMs });
         throw timeoutError;
       }
 
       // Retry on transient errors
       if (this.isTransientError(error) && attempt < this.maxRetries) {
         const delay = this.retryDelay * Math.pow(2, attempt - 1); // Exponential backoff
-        log.warn(`Request failed, retrying in ${delay}ms (attempt ${attempt}/${this.maxRetries})`);
+        log.warn(`Request failed, retrying in ${delay}ms (attempt ${attempt}/${this.maxRetries})`, {
+          rid,
+          error: error.message,
+        });
         await this.sleep(delay);
         return this.request(endpoint, options, attempt + 1);
       }
 
+      log.error("api.failure", {
+        rid,
+        error: error.message,
+        status: error.status,
+        duration_ms: durationMs,
+      });
       throw error;
     }
   }

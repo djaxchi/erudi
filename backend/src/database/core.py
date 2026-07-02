@@ -46,9 +46,11 @@ Note:
 from typing import Optional
 
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+
+from src.core.logging import logger
 
 # Session factory — configured in place by init_database(). Safe to import.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False)
@@ -58,6 +60,19 @@ db_engine: Optional[Engine] = None
 
 # Base class for ORM models
 Base = declarative_base()
+
+
+def _sanitize_url_for_log(sqlalchemy_url: str) -> str:
+    """Credential-free rendering of a DB URL for log lines.
+
+    The embedded pgserver URL normally carries no password, but sanitize
+    defensively anyway: the password (if any) is masked, never printed.
+    Never raises — an unparseable URL degrades to a placeholder.
+    """
+    try:
+        return make_url(sqlalchemy_url).render_as_string(hide_password=True)
+    except Exception:
+        return "<unparseable database url>"
 
 
 def init_database(sqlalchemy_url: str) -> Engine:
@@ -76,6 +91,7 @@ def init_database(sqlalchemy_url: str) -> Engine:
     global db_engine
     db_engine = create_engine(sqlalchemy_url)
     SessionLocal.configure(bind=db_engine)
+    logger.info(f"Database bound: {_sanitize_url_for_log(sqlalchemy_url)}")
     return db_engine
 
 

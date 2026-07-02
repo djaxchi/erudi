@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from src.core.logging import logger
 from src.ingestion.cleaning import clean_extracted_text
 from src.ingestion.types import ExtractedDocument
 
@@ -19,7 +20,12 @@ class TextExtractor:
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
+            logger.warning(
+                f"Text file {path.name}: not valid UTF-8 — "
+                f"falling back to latin-1 decoding"
+            )
             text = raw.decode("latin-1")
+        logger.debug(f"Text extracted: {path.name} ({len(text)} chars)")
 
         return ExtractedDocument(
             markdown=clean_extracted_text(text),

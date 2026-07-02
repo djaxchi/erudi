@@ -43,6 +43,7 @@ export default function Sidebar({
     >
       {showBrainCollapsible ? (
         <button
+          aria-label="Toggle models sidebar"
           onClick={onToggleBrainSidebar}
           onMouseEnter={() => setIsBrainHovering(true)}
           onMouseLeave={() => setIsBrainHovering(false)}
@@ -67,6 +68,7 @@ export default function Sidebar({
       ) : (
         <Link
           to="/erudi/models"
+          aria-label="Models"
           className={`w-full flex justify-center items-center py-5 border-l-4 ${
             isModelsActive ? "border-green-500" : "border-transparent"
           }`}
@@ -81,6 +83,7 @@ export default function Sidebar({
 
       {showCollapsible ? (
         <button
+          aria-label="Toggle chat sidebar"
           onClick={onToggleSidebar}
           onMouseEnter={() => setIsHovering(true)}
           onMouseLeave={() => setIsHovering(false)}
@@ -107,6 +110,7 @@ export default function Sidebar({
       ) : (
         <Link
           to="/erudi/chat"
+          aria-label="Chat"
           className={`w-full flex justify-center items-center py-5 border-l-4 ${
             isChatActive ? "border-green-500" : "border-transparent"
           }`}
@@ -120,6 +124,7 @@ export default function Sidebar({
       )}
       <Link
         to="/erudi/arena"
+        aria-label="Arena"
         className={`w-full flex justify-center items-center py-5 border-l-4 ${
           isArenaActive ? "border-green-500" : "border-transparent"
         }`}
@@ -132,6 +137,7 @@ export default function Sidebar({
       </Link>
       <Link
         to="/erudi/attach_knowledge_base"
+        aria-label="Knowledge Base"
         className={`w-full flex justify-center items-center py-5 border-l-4 ${
           isKnowledgeBaseActive ? "border-green-500" : "border-transparent"
         }`}
@@ -147,6 +153,7 @@ export default function Sidebar({
       <div className="flex-1" />
       {!isDownloading && (
         <button
+          aria-label="Report a bug"
           onClick={() => window.open("https://erudi.app/contact", "_blank")}
           className="w-full flex justify-center items-center py-5 border-l-4 border-transparent mb-4"
         >

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from src.core.logging import logger
 from src.ingestion.cleaning import clean_extracted_text
 from src.ingestion.types import ExtractedDocument, ExtractedPage
 
@@ -33,7 +34,15 @@ class PdfExtractor:
         ]
 
         total_chars = sum(len(p.text) for p in pages)
+        logger.debug(
+            f"PDF extracted: {path.name} ({len(pages)} pages, {total_chars} chars)"
+        )
         if not pages or total_chars / len(pages) < self.MIN_AVG_CHARS_PER_PAGE:
+            logger.warning(
+                f"PDF {path.name}: no usable text layer "
+                f"({len(pages)} pages, {total_chars} chars) — "
+                f"routed to pending_vision (scanned?)"
+            )
             return ExtractedDocument(
                 markdown="",
                 status="pending_vision",

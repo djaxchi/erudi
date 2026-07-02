@@ -25,6 +25,8 @@ from langchain.tools import ToolRuntime
 from langchain_core.tools import tool
 
 from src.agents.prompts import answer_language_line, build_kb_context_block
+from src.core.logging import logger
+from src.core.logutils import truncate_for_log
 from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
 
 _BINARY_OPERATORS = {
@@ -103,6 +105,9 @@ def calculator(expression: str) -> str:
         expression: A pure arithmetic expression, e.g. "1240 + 1378 + 1456"
             or "(290 - 89) * 12". Numbers and + - * / // % ** ( ) only.
     """
+    logger.info(
+        f"Tool invoked: calculator(expression={truncate_for_log(expression, 200)})"
+    )
     try:
         return evaluate_arithmetic(expression)
     except ValueError as exc:
@@ -153,11 +158,20 @@ async def search_knowledge_base(query: str, runtime: ToolRuntime[KbToolContext])
         query: A focused natural-language search query for the documents.
     """
     ctx = runtime.context
+    logger.info(
+        f"Tool invoked: search_knowledge_base(query={truncate_for_log(query, 200)}, "
+        f"kb_id={ctx.kb_id}, token_budget={ctx.token_budget})"
+    )
     try:
         excerpts = await run_in_threadpool(
             retrieve_kb_excerpts, query, ctx.kb_id, ctx.token_budget
         )
     except Exception:
         # A broken vector store must not crash the agent loop.
+        logger.exception("search_knowledge_base tool failed (degrading gracefully)")
         return "The knowledge base could not be searched right now."
+    logger.info(
+        f"Tool search_knowledge_base returned {len(excerpts)} excerpt(s) "
+        f"(kb_id={ctx.kb_id})"
+    )
     return format_kb_tool_result(excerpts, query)

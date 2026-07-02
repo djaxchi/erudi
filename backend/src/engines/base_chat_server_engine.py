@@ -181,6 +181,9 @@ class BaseChatServerEngine(BaseEngine):
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     s.bind(("127.0.0.1", port))
+                logger.info(
+                    f"[{cls.__name__}] Picked free port {port} for {cls._server_name}"
+                )
                 return port
             except OSError:
                 continue
@@ -231,7 +234,8 @@ class BaseChatServerEngine(BaseEngine):
         `_payload_model_value(handle)`: llama-cpp returns the alias, MLX returns
         the preloaded model path mlx_vlm.server resolves with `get_cached_model`).
         """
-        deadline = time.monotonic() + cls._probe_timeout_s
+        probe_start = time.monotonic()
+        deadline = probe_start + cls._probe_timeout_s
         last_status: Optional[int] = None
         last_err: Optional[Exception] = None
         while time.monotonic() < deadline:
@@ -246,6 +250,11 @@ class BaseChatServerEngine(BaseEngine):
                 resp = requests.get(f"{base_url}/health", timeout=2.0)
                 last_status = resp.status_code
                 if resp.status_code == 200:
+                    health_ms = (time.monotonic() - probe_start) * 1000
+                    logger.info(
+                        f"[{cls.__name__}] {cls._server_name} /health ok "
+                        f"after {health_ms:.0f}ms"
+                    )
                     break
                 # 503 (or anything else) → keep polling.
             except requests.RequestException as e:
@@ -264,6 +273,7 @@ class BaseChatServerEngine(BaseEngine):
             )
         # Stage 2 — cheap chat-completions ping (1 token). `model_field` is the
         # real per-subclass model identifier computed by `_start_server`.
+        ping_start = time.monotonic()
         try:
             resp = requests.post(
                 f"{base_url}/v1/chat/completions",
@@ -288,6 +298,10 @@ class BaseChatServerEngine(BaseEngine):
                     f"HTTP {resp.status_code}: {resp.text[:200]}"
                 ),
             )
+        ping_ms = (time.monotonic() - ping_start) * 1000
+        logger.info(
+            f"[{cls.__name__}] {cls._server_name} chat-ping ok after {ping_ms:.0f}ms"
+        )
 
     @classmethod
     def _stop_server_if_running(cls) -> None:

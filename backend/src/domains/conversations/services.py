@@ -13,11 +13,13 @@ wrapped in ``run_in_threadpool`` so DB commits never block the loop.
 """
 
 import re
+import time
 from typing import AsyncGenerator, Optional
 
 from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
+from src.core.logutils import truncate_for_log
 from src.agents.kb_mode import plan_turn
 from src.agents.runner import AgentRunner, GenParams, ERROR_MESSAGE
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
@@ -195,7 +197,17 @@ class ConversationService:
         assistant message after streaming. The agent restores prior history from
         the checkpointer, so only the new message is sent.
         """
-        logger.info(f"Processing query for conversation {conversation_id}")
+        start_s = time.perf_counter()
+        # Local-first policy: log the question content (bounded), never image
+        # bytes — only their count and encoded size.
+        image_note = ""
+        if payload.images:
+            total_b64_chars = sum(len(url) for url in payload.images)
+            image_note = f", images={len(payload.images)} ({total_b64_chars} base64 chars)"
+        logger.info(
+            f"Processing query for conversation {conversation_id}{image_note}: "
+            f"{truncate_for_log(payload.question, 2000)}"
+        )
 
         try:
             conversation, llm = await run_in_threadpool(
@@ -262,6 +274,13 @@ class ConversationService:
                 assistant_response = ERROR_MESSAGE
                 yield ERROR_MESSAGE
         finally:
+            duration_ms = (time.perf_counter() - start_s) * 1000
+            logger.info(
+                f"Query completed for conversation {conversation_id}: "
+                f"duration_ms={duration_ms:.0f}, "
+                f"response_chars={len(assistant_response)}, "
+                f"preview={truncate_for_log(assistant_response, 500)}"
+            )
             await run_in_threadpool(
                 self._persist_assistant_message, conversation_id, assistant_response
             )
@@ -272,7 +291,11 @@ class ConversationService:
         question: str,
     ) -> AsyncGenerator[str, None]:
         """Stream an auto-generated 2–4 word title (stateless one-shot)."""
-        logger.info(f"Generating title for conversation {conversation_id}")
+        start_s = time.perf_counter()
+        logger.info(
+            f"Generating title for conversation {conversation_id}: "
+            f"{truncate_for_log(question, 2000)}"
+        )
 
         try:
             _conversation, llm = await run_in_threadpool(
@@ -304,6 +327,11 @@ class ConversationService:
                 yield chunk
         finally:
             final_title = _sanitize_title(generated_title) or "New Conversation"
+            duration_ms = (time.perf_counter() - start_s) * 1000
+            logger.info(
+                f"Title generation completed for conversation {conversation_id}: "
+                f"duration_ms={duration_ms:.0f}, title={final_title!r}"
+            )
             await run_in_threadpool(self._save_title, conversation_id, final_title)
 
     # ===================== Sync DB helpers (run in threadpool) =====================

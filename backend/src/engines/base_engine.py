@@ -37,6 +37,7 @@ Examples:
 import asyncio
 import platform
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Any, Optional, Tuple, Union, Type, Dict
 from abc import ABC, abstractmethod, ABCMeta
@@ -644,12 +645,32 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         used to carry; it lives here (not in the agent layer) to keep subprocess
         lifecycle and concurrency inside the engine encapsulation.
         """
-        async with cls._generation_lock_for_running_loop():
+        lock = cls._generation_lock_for_running_loop()
+        # Contention diagnostic: another generation (or the cleanup tick)
+        # holds the lock right now — measure how long this request waits.
+        wait_start_s = time.perf_counter()
+        contended = lock.locked()
+        async with lock:
+            if contended:
+                wait_ms = (time.perf_counter() - wait_start_s) * 1000
+                logger.debug(
+                    f"[{cls.__name__}] generation_guard waited {wait_ms:.0f}ms "
+                    f"for the generation lock (model={cls._model_id})"
+                )
+            logger.info(
+                f"[{cls.__name__}] generation_guard acquired (model={cls._model_id})"
+            )
+            held_start_s = time.perf_counter()
             try:
                 yield
             finally:
                 # Restart the idle clock from the end of the generation.
                 cls._last_used = datetime.now()
+                held_ms = (time.perf_counter() - held_start_s) * 1000
+                logger.info(
+                    f"[{cls.__name__}] generation_guard released "
+                    f"(model={cls._model_id}, held {held_ms:.0f}ms)"
+                )
 
     @classmethod
     def cleanup(cls) -> None:

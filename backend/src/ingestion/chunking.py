@@ -28,6 +28,7 @@ from langchain_text_splitters import (
 )
 
 from src.core import config
+from src.core.logging import logger
 from src.ingestion.types import ExtractedDocument
 
 E5_TOKENIZER_NAME = "intfloat/multilingual-e5-small"
@@ -222,10 +223,23 @@ def chunk_document(
                     start_index=len(chunks),
                 )
             )
-        return chunks
+    else:
+        chunks = chunk_markdown(
+            document.markdown,
+            target_tokens=target_tokens,
+            overlap_tokens=overlap_tokens,
+        )
 
-    return chunk_markdown(
-        document.markdown,
-        target_tokens=target_tokens,
-        overlap_tokens=overlap_tokens,
-    )
+    if chunks:
+        avg_tokens = sum(chunk.token_count for chunk in chunks) / len(chunks)
+        logger.info(
+            f"Document chunked: {len(chunks)} chunks, "
+            f"avg {avg_tokens:.0f} tokens/chunk "
+            f"(extractor={document.metadata.get('extractor', '?')})"
+        )
+    else:
+        logger.debug(
+            f"Document chunked: 0 chunks "
+            f"(extractor={document.metadata.get('extractor', '?')})"
+        )
+    return chunks
