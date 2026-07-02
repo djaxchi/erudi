@@ -94,10 +94,13 @@ def _build_backend_specific_schema(profile: HardwareProfile, scores: dict):
             unified_memory=False,
         )
     else:  # cpu
+        # The entity has no compute_units column — the CPU count lives in
+        # cpu_performance_units (a Float; the schema wants an int).
+        cpu_units = int(profile.cpu_performance_units or 1)
         return CPUHardwareInfo(
             **base_data,
-            compute_units=profile.compute_units or profile.cpu_performance_units or 1,
-            cpu_performance_units=profile.cpu_performance_units or 1,
+            compute_units=cpu_units,
+            cpu_performance_units=cpu_units,
             accelerator_available=False,
             gpu_score=0.0,
             unified_memory=False,

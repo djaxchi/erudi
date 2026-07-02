@@ -207,3 +207,90 @@ def test_recommended_param_range_tiers(score, expected):
     """The hardware-fit model size window per boosted inference score (#86)."""
     from src.domains.hardware.services import recommended_param_range
     assert recommended_param_range(score) == expected
+
+
+class TestBuildBackendSpecificSchema:
+    """/hardware/detailed schema construction from the entity, per backend (#165)."""
+
+    SCORES = {
+        "raw_inference_score": 17.6,
+        "raw_finetuning_score": 10.0,
+        "cpu_score": 50.0,
+        "memory_score": 60.0,
+        "gpu_score": 70.0,
+    }
+
+    @staticmethod
+    def _profile(**overrides):
+        common = dict(
+            backend_type="cpu",
+            cpu_model="Test CPU",
+            total_memory_gb=16.0,
+            available_memory_gb=8.0,
+            disk_total_gb=512.0,
+            disk_available_gb=256.0,
+            global_inference_score=40.0,
+            global_inference_label="Medium",
+            global_finetuning_score=20.0,
+            global_finetuning_label="Poor",
+            cpu_score=50.0,
+            memory_score=60.0,
+            architecture="x86_64",
+            system_platform="Windows",
+        )
+        common.update(overrides)
+        return HardwareProfile(**common)
+
+    def test_cpu_branch_reads_the_real_entity_column(self):
+        """The entity has no compute_units column — the CPU branch must build
+        from cpu_performance_units (Float in the entity, int in the schema).
+        Regression: this raised AttributeError on every CPU install (#165)."""
+        from src.domains.hardware.endpoints import _build_backend_specific_schema
+
+        profile = self._profile(cpu_performance_units=12.0)
+        info = _build_backend_specific_schema(profile, self.SCORES)
+
+        assert info.backend_type == "cpu"
+        assert info.compute_units == 12
+        assert info.cpu_performance_units == 12
+        assert info.gpu_score == 0.0
+
+    def test_cpu_branch_defaults_to_one_unit_when_unset(self):
+        from src.domains.hardware.endpoints import _build_backend_specific_schema
+
+        info = _build_backend_specific_schema(
+            self._profile(cpu_performance_units=None), self.SCORES
+        )
+        assert info.compute_units == 1
+        assert info.cpu_performance_units == 1
+
+    def test_mlx_branch_builds_from_entity_columns(self):
+        from src.domains.hardware.endpoints import _build_backend_specific_schema
+
+        profile = self._profile(
+            backend_type="mlx",
+            mlx_chip_model="M3 Max",
+            mlx_gpu_cores=40,
+            mps_available=True,
+            neural_engine_tops=35.0,
+        )
+        info = _build_backend_specific_schema(profile, self.SCORES)
+        assert info.backend_type == "mlx"
+        assert info.mlx_gpu_cores == 40
+
+    def test_cuda_branch_builds_from_entity_columns(self):
+        from src.domains.hardware.endpoints import _build_backend_specific_schema
+
+        profile = self._profile(
+            backend_type="cuda",
+            gpu_name="RTX 4090",
+            cuda_cores=16384,
+            cuda_version="12.1",
+            compute_capability="8.9",
+            vram_total_gb=24.0,
+            vram_available_gb=20.0,
+            estimated_tflops=82.6,
+        )
+        info = _build_backend_specific_schema(profile, self.SCORES)
+        assert info.backend_type == "cuda"
+        assert info.cuda_cores == 16384
