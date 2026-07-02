@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
@@ -113,6 +113,29 @@ export default function LandingPage() {
     };
   };
 
+  // Stable fetcher for both models lists, reusable outside the mount effect
+  // (e.g. to silently refresh a stale catalog after a failed download start, #167).
+  const refreshCatalog = useCallback(async () => {
+    setModelsLoading(true);
+    try {
+      const localResponse = await tracedFetch(`${API_BASE_URL}/llms/local`);
+      if (localResponse.ok) {
+        const localData = await localResponse.json();
+        setLocalModels(localData.map(transformLocal));
+      }
+      const remoteResponse = await tracedFetch(`${API_BASE_URL}/llms/remote`);
+      if (remoteResponse.ok) {
+        const remoteData = await remoteResponse.json();
+        setRemoteModels(remoteData.map(transformRemote));
+      }
+    } catch (error) {
+      log.error("Error fetching models:", error);
+    } finally {
+      setModelsLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const fetchWelcomePopupStatus = async () => {
       try {
@@ -151,31 +174,11 @@ export default function LandingPage() {
       }
     };
 
-    const fetchModels = async () => {
-      setModelsLoading(true);
-      try {
-        const localResponse = await tracedFetch(`${API_BASE_URL}/llms/local`);
-        if (localResponse.ok) {
-          const localData = await localResponse.json();
-          setLocalModels(localData.map(transformLocal));
-        }
-        const remoteResponse = await tracedFetch(`${API_BASE_URL}/llms/remote`);
-        if (remoteResponse.ok) {
-          const remoteData = await remoteResponse.json();
-          setRemoteModels(remoteData.map(transformRemote));
-        }
-      } catch (error) {
-        log.error("Error fetching models:", error);
-      } finally {
-        setModelsLoading(false);
-      }
-    };
-
     fetchWelcomePopupStatus();
     fetchHardwareEvaluation();
     fetchMachineDetail();
-    fetchModels();
-  }, []);
+    refreshCatalog();
+  }, [refreshCatalog]);
 
   const closeWelcome = () => {
     if (loading) {
@@ -249,6 +252,9 @@ export default function LandingPage() {
           }
         },
         onError: (reason) => {
+          // A failed start means the page data may be stale (e.g. the catalog id
+          // was deleted), so refresh silently and let the user re-click (#167).
+          refreshCatalog().catch(() => {});
           const msg = downloadErrorMessage(reason);
           if (msg) setErrorMessage(msg);
         },
