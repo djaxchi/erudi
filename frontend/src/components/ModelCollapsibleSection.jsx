@@ -7,6 +7,7 @@ import MessageModal from "./modals/MessageModal";
 import { ChevronDown, RefreshCcw, HelpCircle, Trash2, Database, Globe, Search } from "lucide-react";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { API_BASE_URL } from "../config/api";
+import { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 const log = createLogger("ModelCollapsibleSection");
 
@@ -59,7 +60,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
       try {
         const url =
           title === "Local Models" ? `${API_BASE_URL}/llms/local` : `${API_BASE_URL}/llms/remote`;
-        const res = await fetch(url);
+        const res = await tracedFetch(url);
         if (res.ok) {
           setModels(await res.json());
         }
@@ -80,7 +81,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
     setLoading(true);
     try {
       const url = `${API_BASE_URL}/llms/local`;
-      const res = await fetch(url);
+      const res = await tracedFetch(url);
       if (res.ok) {
         setModels(await res.json());
       } else {
@@ -132,7 +133,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
     setDeleteConfirmation({ show: false, model: null });
 
     try {
-      const response = await fetch(`${API_BASE_URL}/llms/${modelToDelete.id}`, {
+      const response = await tracedFetch(`${API_BASE_URL}/llms/${modelToDelete.id}`, {
         method: "DELETE",
       });
 

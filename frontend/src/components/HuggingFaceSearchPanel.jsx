@@ -3,7 +3,7 @@ import PropTypes from "prop-types";
 import { Search } from "lucide-react";
 import ExploreModelCard from "./ExploreModelCard";
 import { rankByFit } from "../utils/hardwareFit";
-import { API_BASE_URL } from "../config/api";
+import apiClient from "../services/api/client";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("HuggingFaceSearch");
@@ -71,11 +71,7 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo }) {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/llms/search/huggingface?q=${encodeURIComponent(q)}`);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const data = await res.json();
+      const data = await apiClient.get(`/llms/search/huggingface?q=${encodeURIComponent(q)}`);
       const mapped = data.map((m) => ({
         name: m.name,
         link: m.link,

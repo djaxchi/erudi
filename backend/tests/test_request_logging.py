@@ -236,3 +236,13 @@ def test_server_error_exceptions_log_at_error(caplog):
         EngineException("engine died")
     assert caplog.records
     assert any(rec.levelno == logging.ERROR for rec in caplog.records)
+
+
+@pytest.mark.unit
+def test_options_preflight_logs_at_debug(logging_client, caplog):
+    with caplog.at_level(logging.DEBUG, logger="erudi"):
+        logging_client.options("/ping")
+    records = _http_records(caplog)
+    assert len(records) == 1
+    assert records[0].levelno == logging.DEBUG
+    assert "HTTP OPTIONS /ping" in records[0].getMessage()

@@ -19,6 +19,7 @@ import { RefreshCcw } from "lucide-react";
 import WelcomeModal from "../components/modals/WelcomeModal";
 import logoErudi from "../assets/images/logos/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api";
+import apiClient, { tracedFetch } from "../services/api/client";
 import { transformAppStartupInfo } from "../utils/hardwareTransform";
 import { downloadErrorMessage } from "../utils/downloadStatus";
 import { createLogger } from "../utils/logger";
@@ -115,11 +116,7 @@ export default function LandingPage() {
   useEffect(() => {
     const fetchWelcomePopupStatus = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/startup/welcome-popup`);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await apiClient.get("/startup/welcome-popup");
         setShowWelcome(!data.has_already_displayed);
       } catch (error) {
         log.error("Error fetching welcome popup status:", error);
@@ -128,11 +125,7 @@ export default function LandingPage() {
 
     const fetchHardwareEvaluation = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/hardware/app_startup`);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-        const data = await response.json();
+        const data = await apiClient.get("/hardware/app_startup");
         setHardwareInfo(transformAppStartupInfo(data));
       } catch (error) {
         setHardwareInfo({
@@ -148,7 +141,7 @@ export default function LandingPage() {
     // Richer hardware detail for the machine readout (chip, memory, GPU cores).
     const fetchMachineDetail = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/hardware/detailed`);
+        const response = await tracedFetch(`${API_BASE_URL}/hardware/detailed`);
         if (response.ok) {
           const data = await response.json();
           setMachineDetail(data.hardware || null);
@@ -161,12 +154,12 @@ export default function LandingPage() {
     const fetchModels = async () => {
       setModelsLoading(true);
       try {
-        const localResponse = await fetch(`${API_BASE_URL}/llms/local`);
+        const localResponse = await tracedFetch(`${API_BASE_URL}/llms/local`);
         if (localResponse.ok) {
           const localData = await localResponse.json();
           setLocalModels(localData.map(transformLocal));
         }
-        const remoteResponse = await fetch(`${API_BASE_URL}/llms/remote`);
+        const remoteResponse = await tracedFetch(`${API_BASE_URL}/llms/remote`);
         if (remoteResponse.ok) {
           const remoteData = await remoteResponse.json();
           setRemoteModels(remoteData.map(transformRemote));
@@ -201,7 +194,7 @@ export default function LandingPage() {
   const reloadLocalModels = async () => {
     setModelsLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/llms/local`);
+      const res = await tracedFetch(`${API_BASE_URL}/llms/local`);
       if (res.ok) {
         const localData = await res.json();
         setLocalModels(localData.map(transformLocal));
@@ -276,7 +269,7 @@ export default function LandingPage() {
     const modelToDelete = deleteConfirmation.model;
     setDeleteConfirmation({ show: false, model: null });
     try {
-      const response = await fetch(`${API_BASE_URL}/llms/${modelToDelete.id}`, {
+      const response = await tracedFetch(`${API_BASE_URL}/llms/${modelToDelete.id}`, {
         method: "DELETE",
       });
       if (response.ok) {

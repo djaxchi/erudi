@@ -16,6 +16,100 @@ const nextRequestId = () => {
 
 const BODY_PREVIEW_MAX_CHARS = 500;
 
+/** Path + query of an absolute URL for log entries; falls back to the raw string. */
+function pathForLog(url) {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return String(url);
+  }
+}
+
+/**
+ * Loggable preview of a request body. Strings are truncated; FormData and
+ * binary payloads are summarized as kind + size instead of being dumped.
+ * @param {*} body - The fetch options.body, if any.
+ * @returns {Object} Fields to spread into the api.request log entry.
+ */
+function describeBody(body) {
+  if (body === undefined || body === null) {
+    return {};
+  }
+  if (typeof body === "string") {
+    return { body: truncateValue(body, BODY_PREVIEW_MAX_CHARS) };
+  }
+  if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) {
+    return { body: truncateValue(body.toString(), BODY_PREVIEW_MAX_CHARS) };
+  }
+  if (typeof FormData !== "undefined" && body instanceof FormData) {
+    return { body_kind: "FormData", body_size: [...body.keys()].length };
+  }
+  if (typeof Blob !== "undefined" && body instanceof Blob) {
+    return { body_kind: "Blob", body_size: body.size };
+  }
+  if (body instanceof ArrayBuffer) {
+    return { body_kind: "ArrayBuffer", body_size: body.byteLength };
+  }
+  if (ArrayBuffer.isView(body)) {
+    return { body_kind: body.constructor.name, body_size: body.byteLength };
+  }
+  return { body_kind: typeof body };
+}
+
+/**
+ * Drop-in replacement for the global `fetch` that adds request tracing.
+ *
+ * Behaves exactly like `fetch`: no retry, no timeout, no JSON parsing, no
+ * ok-check — the raw `Response` is returned (or the raw error rethrown) and
+ * the body is never touched, so streaming readers keep working. The only
+ * additions are the `X-Request-ID` header (merged into caller headers) and
+ * api.request / api.response / api.failure log entries, giving raw call sites
+ * the same click→request correlation as `apiClient`. api.response is logged
+ * when the headers arrive, before the body is consumed.
+ *
+ * @param {string} url - Absolute request URL (call sites build it from API_BASE_URL)
+ * @param {Object} [options] - Standard fetch options, passed through untouched
+ * @returns {Promise<Response>} The raw fetch Response
+ */
+export async function tracedFetch(url, options = {}) {
+  const rid = nextRequestId();
+  const method = options.method || "GET";
+  const startedAt = Date.now();
+
+  log.info("api.request", {
+    rid,
+    method,
+    path: pathForLog(url),
+    ...describeBody(options.body),
+  });
+
+  const callerHeaders =
+    typeof Headers !== "undefined" && options.headers instanceof Headers
+      ? Object.fromEntries(options.headers.entries())
+      : options.headers;
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: { ...callerHeaders, "X-Request-ID": rid },
+    });
+    log.info("api.response", {
+      rid,
+      status: response.status,
+      duration_ms: Date.now() - startedAt,
+    });
+    return response;
+  } catch (error) {
+    log.error("api.failure", {
+      rid,
+      error: error.message,
+      duration_ms: Date.now() - startedAt,
+    });
+    throw error;
+  }
+}
+
 /**
  * API client with built-in retry logic, timeout handling, and error normalization
  * Provides consistent error handling and response transformation across the app

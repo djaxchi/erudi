@@ -6,6 +6,7 @@ import ErrorModal from "../components/modals/ErrorModal";
 import SpinnerDots from "../components/Spinner";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { API_BASE_URL } from "../config/api.js";
+import { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 import { DOWNLOAD_CANCELLED } from "../utils/downloadStatus";
 const log = createLogger("DownloadModalContext");
@@ -63,7 +64,7 @@ export function DownloadModalProvider({ children }) {
 
   const checkDownloadStatus = useCallback(async (id) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/llms/downloads/${id}/status`);
+      const res = await tracedFetch(`${API_BASE_URL}/llms/downloads/${id}/status`);
       if (!res.ok) {
         if (res.status === 404) {
           // Le job n'existe plus (probablement annulé et nettoyé)
@@ -123,8 +124,8 @@ export function DownloadModalProvider({ children }) {
       // backend returns a DownloadJob we poll identically.
       const res =
         typeof model.id === "number"
-          ? await fetch(`${API_BASE_URL}/llms/${model.id}/download`, { method: "POST" })
-          : await fetch(`${API_BASE_URL}/llms/download/huggingface`, {
+          ? await tracedFetch(`${API_BASE_URL}/llms/${model.id}/download`, { method: "POST" })
+          : await tracedFetch(`${API_BASE_URL}/llms/download/huggingface`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -170,7 +171,7 @@ export function DownloadModalProvider({ children }) {
 
     try {
       // Appeler l'endpoint d'annulation
-      const response = await fetch(`${API_BASE_URL}/llms/downloads/${jobId}/cancel`, {
+      const response = await tracedFetch(`${API_BASE_URL}/llms/downloads/${jobId}/cancel`, {
         method: "POST",
       });
 
