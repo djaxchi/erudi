@@ -56,10 +56,12 @@ Note:
 """
 
 import asyncio
+import time
 
 from fastapi import FastAPI
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.datastructures import MutableHeaders
 from contextlib import asynccontextmanager
 from src.database.core import init_database
 from src.database.migrations import run_migrations
@@ -67,8 +69,13 @@ from src.database.seed import startup_populate_database, Database_Seeder
 from src.launcher.postgres_runtime import start_postgres, stop_postgres
 from src.ingestion.vector_store import close_kb_store, init_kb_store
 
-from src.core.exceptions import AppBaseException, app_base_exception_handler
+from src.core.exceptions import (
+    AppBaseException,
+    app_base_exception_handler,
+    unhandled_exception_handler,
+)
 from src.core import config
+from src.core.request_context import new_request_id, request_id_var
 from src.engines.base_engine import BaseEngine
 from src.core.logging import logger
 from src.agents.checkpoint import open_checkpointer
@@ -80,6 +87,82 @@ from src.domains.hardware.endpoints import router as hardware_router
 from src.domains.knowledge_base.endpoints import router as knowledge_base_router
 from src.domains.startup.endpoints import router as startup_router
 from src.core.health import router as health_router
+
+def _is_polling_path(path: str) -> bool:
+    """True for endpoints the frontend polls — their access log goes to DEBUG."""
+    return "/health" in path or path.endswith("/status")
+
+
+class RequestLoggingMiddleware:
+    """Pure ASGI middleware: request-id propagation + one access-log line.
+
+    Deliberately NOT BaseHTTPMiddleware: that wrapper re-buffers streaming
+    responses through an internal queue (breaking SSE chunk pacing) and adds
+    an extra task per request. Here the per-chunk cost is a single message
+    type comparison — response bodies are never inspected or buffered.
+
+    Per request:
+    - Reads ``X-Request-ID`` (case-insensitive) or generates ``be-<8 hex>``.
+    - Stores the id in ``request_id_var`` so every log line emitted while
+      handling the request is tagged with it (see src.core.logging).
+    - Echoes the id back as the ``X-Request-ID`` response header.
+    - After the response body completes, logs exactly one line:
+      ``HTTP <METHOD> <path> -> <status> in <ms>ms`` at INFO — DEBUG for
+      polling endpoints (paths containing ``/health`` or ending in
+      ``/status``) to keep the log readable.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request_id = self._incoming_request_id(scope) or new_request_id()
+        # Each request runs in its own task (own context copy), so no reset
+        # is needed and the id stays visible to the outer exception handlers.
+        request_id_var.set(request_id)
+
+        method = scope.get("method", "-")
+        path = scope.get("path", "-")
+        start = time.perf_counter()
+        status_code = 500  # overwritten on http.response.start
+
+        async def send_wrapper(message):
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+                message["headers"] = list(message.get("headers") or [])
+                headers = MutableHeaders(scope=message)
+                headers.append("X-Request-ID", request_id)
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        except Exception:
+            # Access line for the crashed request; the traceback itself is
+            # logged by unhandled_exception_handler (ServerErrorMiddleware).
+            duration_ms = (time.perf_counter() - start) * 1000
+            logger.error(
+                f"HTTP {method} {path} -> 500 in {duration_ms:.1f}ms (unhandled exception)"
+            )
+            raise
+        duration_ms = (time.perf_counter() - start) * 1000
+        log = logger.debug if _is_polling_path(path) else logger.info
+        log(f"HTTP {method} {path} -> {status_code} in {duration_ms:.1f}ms")
+
+    @staticmethod
+    def _incoming_request_id(scope) -> str | None:
+        """Extract a non-empty X-Request-ID header value, case-insensitively."""
+        for name, value in scope.get("headers") or ():
+            if name.lower() == b"x-request-id":
+                request_id = value.decode("latin-1").strip()
+                if request_id:
+                    return request_id
+        return None
+
 
 def register_routers(app: FastAPI) -> None :
     """Register all domain routers to the FastAPI application.
@@ -116,9 +199,12 @@ def register_routers(app: FastAPI) -> None :
 def add_exception_handlers(app: FastAPI) -> None :
     """Attach application-level exception handlers to FastAPI.
 
-    Registers custom exception handlers for application-specific errors.
-    Currently handles AppBaseException and its subclasses (ModelNotFoundException,
-    InvalidInputException, EngineException).
+    Registers custom exception handlers for application-level errors:
+    - AppBaseException and its subclasses (ModelNotFoundException,
+      InvalidInputException, EngineException, ...)
+    - plain Exception as a last-resort fallback, returning the same
+      structured 500 JSON shape and logging the traceback with the
+      request id.
 
     Args:
         app: The FastAPI application instance to attach handlers to.
@@ -140,12 +226,16 @@ def add_exception_handlers(app: FastAPI) -> None :
         See src.core.exceptions.app_base_exception_handler for response format.
     """
     app.add_exception_handler(AppBaseException, app_base_exception_handler)
+    app.add_exception_handler(Exception, unhandled_exception_handler)
 
 def add_middleware(app: FastAPI) -> None:
-    """Configure middleware for cross-origin resource sharing (CORS).
+    """Configure the middleware stack: CORS + request logging.
 
-    Adds permissive CORS middleware to allow requests from any origin.
-    Suitable for development and local desktop application environments.
+    Adds permissive CORS middleware to allow requests from any origin
+    (suitable for development and local desktop application environments)
+    and the request-logging middleware (request-id propagation + one
+    access-log line per request). Request logging is added last so it sits
+    outermost and also covers CORS-short-circuited requests.
 
     Args:
         app: The FastAPI application instance to configure.
@@ -173,8 +263,11 @@ def add_middleware(app: FastAPI) -> None:
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
-    
+    # Added last -> outermost: every request gets an id and one access line.
+    app.add_middleware(RequestLoggingMiddleware)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan with startup and shutdown hooks.

@@ -13,16 +13,33 @@ Event shapes:
     - {"event": "ready", "port": N}                  (run.py)
     - {"event": "shutdown"}                           (run.py)
     - {"event": "startup_error", "code": "...", ...}  (run.py)
+
+Every emitted event additionally carries a ``ts`` field (UTC ISO-8601 with
+milliseconds and a ``Z`` suffix, e.g. ``2026-07-02T09:15:32.123Z``) so the
+Electron log (``new Date().toISOString()``) and the backend log can be
+correlated on a single timeline.
 """
 
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
+
+
+def _utc_timestamp() -> str:
+    """UTC ISO-8601 with milliseconds and Z suffix (matches the backend log)."""
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00", "Z"
+    )
 
 
 def emit_event(payload: dict) -> None:
-    """Print a structured JSON lifecycle event (newline-delimited) to stdout."""
-    print(json.dumps(payload), flush=True)
+    """Print a structured JSON lifecycle event (newline-delimited) to stdout.
+
+    A ``ts`` field (UTC ISO-8601 ms, Z) is stamped on every event; the
+    caller's payload is not mutated.
+    """
+    print(json.dumps({**payload, "ts": _utc_timestamp()}), flush=True)
 
 
 def emit_phase(phase: str) -> None:

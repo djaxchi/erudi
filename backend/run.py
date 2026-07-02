@@ -13,6 +13,10 @@ CUDA, MLX, and CPU builds.
     - {"event": "shutdown"}
     - {"event": "startup_error", "code": "ERROR_CODE", "message": "..."}
 
+    Every event also carries {"ts": "<UTC ISO-8601 ms, Z>"} (stamped by
+    src.launcher.events.emit_event) so it can be correlated with the backend
+    and Electron logs.
+
 **Supported error codes:**
     - NO_PORT_AVAILABLE: Every candidate port in the scan range is busy
     - CRASH_BEFORE_READY: Backend thread exited before binding port
@@ -47,7 +51,6 @@ CUDA, MLX, and CPU builds.
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 import platform
 import signal
@@ -368,7 +371,12 @@ def main() -> None:
     fastapi_app.state.emit_phase = emit_phase
 
     server = uvicorn.Server(
-        uvicorn.Config(fastapi_app, host=host, port=port, log_level="info", workers=1)
+        # access_log=False: uvicorn's unstructured per-request lines are
+        # replaced by the request-logging middleware (method, path, status,
+        # duration, request id — see src.core.api.RequestLoggingMiddleware).
+        uvicorn.Config(
+            fastapi_app, host=host, port=port, log_level="info", workers=1, access_log=False
+        )
     )
 
     def _request_graceful_shutdown(signum: int, frame: object) -> None:
@@ -440,9 +448,9 @@ if __name__ == "__main__":
 
     multiprocessing.freeze_support()
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
-    )
+    # NOTE: no logging.basicConfig here. A root handler would duplicate every
+    # "erudi" log line on stdout (the app logger already owns a console
+    # handler and propagates to root), polluting the JSON event stream the
+    # Electron main process parses. Third-party WARNING+ records without
+    # handlers still surface via logging.lastResort (stderr).
     main()
