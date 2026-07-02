@@ -17,6 +17,11 @@ describe("LoadingScreen", () => {
     expect(screen.getByText(/Starting Erudi/i)).toBeTruthy();
   });
 
+  it("labels the crash-recovery phase", () => {
+    render(<LoadingScreen phase="recovering_database" firstRun={false} />);
+    expect(screen.getByText(/Recovering the database/i)).toBeTruthy();
+  });
+
   it("shows the first-launch hint only on first run", () => {
     const { rerender } = render(<LoadingScreen phase="starting" firstRun={true} />);
     expect(screen.getByText(/First launch/i)).toBeTruthy();

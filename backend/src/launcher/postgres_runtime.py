@@ -21,7 +21,9 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,12 +31,19 @@ import pgserver
 import pgserver.postgres_server as _pg_server_mod
 import psutil
 import psycopg
+from pgserver.utils import PostmasterInfo
 from pgserver.utils import find_suitable_socket_dir as _orig_find_socket_dir
 from pgserver.utils import socket_name_length_ok
 
 from src.core.logging import logger
+from src.launcher.events import emit_phase
 
 DB_NAME = "erudi"
+
+# How long a WAL crash-recovery may take before we give up on the boot. Must
+# stay under run.py's STARTUP_TIMEOUT_SECONDS (120s non-first-run) minus the
+# ~25s of cold imports — a recovery never happens on first run (no WAL yet).
+RECOVERY_WAIT_SECONDS = 90
 
 
 def _space_safe_socket_dir(pgdata, runtime_path):
@@ -141,6 +150,73 @@ def _uri_for_db(base_uri: str, dbname: str) -> str:
     return f"{head}?{query}" if query else head
 
 
+def _wait_for_postmaster_ready(data_dir: Path, deadline_seconds: float) -> bool:
+    """Wait for a background postmaster to finish WAL crash-recovery (#161).
+
+    pgserver starts the cluster with ``pg_ctl -w start`` under a HARDCODED
+    ``timeout=10`` and re-raises ``subprocess.TimeoutExpired`` when that wait
+    elapses. But the timeout only kills the *waiter* (``pg_ctl``), not the
+    postmaster it already spawned: after an unclean shutdown the postmaster keeps
+    replaying the WAL in the background and typically comes up fine a little
+    later. A slow recovery is not a failure, so we give the live postmaster a
+    patient (bounded) second chance instead of crashing the boot.
+
+    Readiness reuses pgserver's OWN predicate (its post-start wait loop):
+    ``PostmasterInfo.read_from_pgdata`` reports a running server whose ``status``
+    is ``ready``. Returns True once ready, False if the deadline expires.
+    """
+    emit_phase("recovering_database")
+    logger.info(
+        f"Waiting up to {deadline_seconds:.0f}s for Postgres crash recovery to "
+        f"finish (data_dir={data_dir})"
+    )
+    start = time.monotonic()
+    deadline = start + deadline_seconds
+    while time.monotonic() < deadline:
+        pinfo = PostmasterInfo.read_from_pgdata(data_dir)
+        if pinfo is not None and pinfo.is_running() and pinfo.status == "ready":
+            logger.info(
+                f"Postgres crash recovery finished after "
+                f"{time.monotonic() - start:.1f}s; reusing the recovered postmaster"
+            )
+            return True
+        time.sleep(1.0)
+    logger.warning(
+        f"Postgres crash recovery did not report ready within {deadline_seconds:.0f}s"
+    )
+    return False
+
+
+def _get_server_with_recovery(data_dir: Path):
+    """Boot (or join) the cluster, tolerating a slow WAL crash-recovery (#161).
+
+    ``pgserver.get_server`` starts the postmaster with ``pg_ctl -w`` under a
+    hardcoded 10s timeout and re-raises ``subprocess.TimeoutExpired`` when the
+    wait elapses. After an unclean shutdown the first boot must crash-recover,
+    which routinely takes longer than 10s — yet the timeout only kills the
+    ``pg_ctl`` waiter, not the postmaster, which keeps recovering in the
+    background.
+
+    Second-chance semantics: catch the timeout, wait (bounded) for the live
+    postmaster to report ready, then call ``get_server`` again — it reuses the
+    already-running postmaster without touching ``pg_ctl`` (a manual Retry
+    minutes after such a crash booted in 1.3s through exactly that path). If the
+    wait expires we re-raise the ORIGINAL error, preserving today's failure path
+    after real patience and clear logs.
+    """
+    try:
+        return pgserver.get_server(str(data_dir))
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "pgserver's pg_ctl waiter gave up after its hardcoded 10s timeout; "
+            "the postmaster is likely still WAL crash-recovering in the "
+            "background - waiting for it to finish before retrying"
+        )
+        if _wait_for_postmaster_ready(data_dir, RECOVERY_WAIT_SECONDS):
+            return pgserver.get_server(str(data_dir))
+        raise
+
+
 def start_postgres(data_dir: Path | str) -> PostgresHandle:
     """Boot (or join) the embedded cluster and make the `erudi` DB ready.
 
@@ -152,7 +228,7 @@ def start_postgres(data_dir: Path | str) -> PostgresHandle:
     _prune_stale_handle_pids(data_dir)
     _recover_corrupt_pgdata(data_dir)
 
-    server = pgserver.get_server(str(data_dir))
+    server = _get_server_with_recovery(data_dir)
     admin_uri = server.get_uri()
 
     # CREATE DATABASE has no IF NOT EXISTS → guard on pg_database.
