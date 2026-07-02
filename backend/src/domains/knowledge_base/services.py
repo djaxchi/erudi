@@ -20,6 +20,7 @@ Architecture:
             src.ingestion (DocumentReader → chunking → vector store)
 """
 import hashlib
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -230,6 +231,7 @@ class KB_Service:
             file_paths: List of file paths to process.
             is_update: True if updating existing KB, False if creating new.
         """
+        start_s = time.perf_counter()
         try:
             kb_job = self.repo.get_kb_job_by_id(db, kb_job_id)
             if not kb_job:
@@ -240,6 +242,12 @@ class KB_Service:
             kb = self.repo.get_knowledge_base_by_id(db, kb_job.kb_id)
             if not kb:
                 raise ValueError(f"KnowledgeBase {kb_job.kb_id} not found")
+
+            logger.info(
+                f"KB job {kb_job_id} started "
+                f"({'update' if is_update else 'creation'}, kb_id={kb.id}, "
+                f"{len(file_paths)} file(s))"
+            )
 
             indexed, pending, skipped, empty, failed = 0, 0, 0, 0, 0
             for raw_path in file_paths:
@@ -255,10 +263,12 @@ class KB_Service:
                 else:
                     failed += 1
 
+            duration_ms = (time.perf_counter() - start_s) * 1000
             logger.info(
                 f"KB job {kb_job_id} ({'update' if is_update else 'creation'}): "
                 f"{indexed} indexed, {pending} pending_vision, "
-                f"{skipped} duplicates, {empty} empty, {failed} failed"
+                f"{skipped} duplicates, {empty} empty, {failed} failed, "
+                f"duration_ms={duration_ms:.0f}"
             )
 
             # Don't report success when nothing queryable was added. A batch that

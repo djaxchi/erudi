@@ -20,6 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.core.exceptions import InvalidInputException
+from src.core.logging import logger
 from src.ingestion.extractors import (
     CsvExtractor,
     DocxExtractor,
@@ -57,6 +58,10 @@ class DocumentReader:
         extension = path.suffix.lower()
 
         if extension in IMAGE_EXTENSIONS:
+            logger.info(
+                f"Document read: {path.name} (format={extension}, "
+                f"status=pending_vision, chars=0)"
+            )
             return ExtractedDocument(
                 markdown="",
                 status="pending_vision",
@@ -74,4 +79,9 @@ class DocumentReader:
                 f"Supported: {supported}"
             )
 
-        return extractor.extract(path)
+        document = extractor.extract(path)
+        logger.info(
+            f"Document read: {path.name} (format={extension}, "
+            f"status={document.status}, chars={len(document.markdown)})"
+        )
+        return document

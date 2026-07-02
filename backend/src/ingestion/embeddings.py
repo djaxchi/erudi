@@ -19,6 +19,7 @@ breadcrumb by the chunker.)
 from __future__ import annotations
 
 import threading
+import time
 from typing import TYPE_CHECKING, ClassVar
 
 from langchain_core.embeddings import Embeddings
@@ -63,10 +64,16 @@ class E5Embeddings(Embeddings):
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed indexed chunks (``passage: `` prefix, L2-normalized)."""
+        start_s = time.perf_counter()
         vectors = self._get_model().encode(
             [f"passage: {text}" for text in texts],
             normalize_embeddings=True,
             show_progress_bar=False,
+        )
+        duration_ms = (time.perf_counter() - start_s) * 1000
+        # One line per BATCH — never per text.
+        logger.info(
+            f"Embedded batch: {len(texts)} texts in {duration_ms:.0f}ms"
         )
         return [vector.tolist() for vector in vectors]
 

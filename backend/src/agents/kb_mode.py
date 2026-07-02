@@ -26,6 +26,7 @@ from src.agents.prompts import (
     build_kb_system_prompt,
 )
 from src.agents.tools import KbToolContext, calculator, search_knowledge_base
+from src.core.logging import logger
 from src.utils.kb_utils import KbExcerpt
 from src.utils.prompt_utils import get_prompting_strategy
 
@@ -71,6 +72,10 @@ def plan_turn(
     """
     if should_use_kb(llm) and getattr(llm, "supports_tools", False):
         budget = get_prompting_strategy(_param_size(llm))["kb_token_budget"]
+        logger.info(
+            f"Turn mode: agentic KB (kb_id={getattr(llm, 'kb_id', None)}, "
+            f"reason=model supports tools and size tier allows KB context)"
+        )
         return TurnPlan(
             system_prompt=build_kb_agentic_system_prompt(
                 llm, custom_prompt=custom_prompt, starred_messages=starred_messages
@@ -84,6 +89,11 @@ def plan_turn(
     # Systematic: retrieve() encapsulates is_attached + tier + failure policy.
     excerpts = retrieve()
     if excerpts:
+        logger.info(
+            f"Turn mode: systematic KB (kb_id={getattr(llm, 'kb_id', None)}, "
+            f"excerpts={len(excerpts)}, reason=KB attached, tier allows context, "
+            f"model lacks tool support)"
+        )
         return TurnPlan(
             system_prompt=build_kb_system_prompt(
                 llm, custom_prompt=custom_prompt, starred_messages=starred_messages
@@ -94,6 +104,13 @@ def plan_turn(
             context=None,
         )
 
+    if not getattr(llm, "is_attached_to_kb", False):
+        plain_reason = "no KB attached"
+    elif not should_use_kb(llm):
+        plain_reason = "size tier disables KB context"
+    else:
+        plain_reason = "KB retrieval returned no excerpts"
+    logger.info(f"Turn mode: plain (reason={plain_reason})")
     return TurnPlan(
         system_prompt=build_agent_system_prompt(
             llm, custom_prompt=custom_prompt, starred_messages=starred_messages

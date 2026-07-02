@@ -6,6 +6,7 @@ import csv
 import io
 from pathlib import Path
 
+from src.core.logging import logger
 from src.ingestion.cleaning import clean_extracted_text
 from src.ingestion.markdown import rows_to_markdown_table
 from src.ingestion.types import ExtractedDocument
@@ -28,9 +29,14 @@ class CsvExtractor:
         try:
             dialect = csv.Sniffer().sniff(text[:_SNIFF_BYTES], delimiters=",;\t")
         except csv.Error:
+            logger.warning(
+                f"CSV {path.name}: dialect sniffing failed — "
+                f"falling back to default comma dialect"
+            )
             dialect = csv.excel  # default comma
 
         rows = [row for row in csv.reader(io.StringIO(text), dialect) if any(row)]
+        logger.debug(f"CSV extracted: {path.name} ({len(rows)} non-empty rows)")
         markdown = clean_extracted_text(rows_to_markdown_table(rows))
         return ExtractedDocument(
             markdown=markdown,

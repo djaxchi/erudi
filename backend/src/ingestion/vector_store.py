@@ -22,6 +22,7 @@ on every call. Do not "simplify" this away.
 
 from __future__ import annotations
 
+import time
 import uuid
 from typing import TYPE_CHECKING, Optional
 
@@ -34,6 +35,7 @@ from langchain_postgres.v2.hybrid_search_config import (
 from langchain_postgres.v2.indexes import DistanceStrategy, HNSWIndex
 
 from src.core.logging import logger
+from src.core.logutils import truncate_for_log
 from src.ingestion.embeddings import (
     EMBEDDING_DIMENSIONS,
     E5Embeddings,
@@ -209,6 +211,7 @@ def add_kb_chunks(
     prefix (live-E2E finding)."""
     if not chunks:
         return []
+    start_s = time.perf_counter()
     embedding_texts = [
         build_embedding_text(file_name=source_file, chunk_text=chunk.text)
         for chunk in chunks
@@ -225,9 +228,16 @@ def add_kb_chunks(
         }
         for chunk in chunks
     ]
-    return get_kb_store().add_embeddings(
+    ids = get_kb_store().add_embeddings(
         texts=texts, embeddings=vectors, metadatas=metadatas
     )
+    duration_ms = (time.perf_counter() - start_s) * 1000
+    logger.info(
+        f"KB chunks added: kb_id={kb_id}, document_id={document_id}, "
+        f"source_file={source_file}, n_chunks={len(chunks)}, "
+        f"duration_ms={duration_ms:.0f}"
+    )
+    return ids
 
 
 def _dense_similarities(
@@ -265,6 +275,7 @@ def search_kb_chunks_scored(
     config per call (lib bug — see module docstring); the query is embedded
     once and shared by the search and the similarity read.
     """
+    start_s = time.perf_counter()
     query_vector = E5Embeddings().embed_query(query)
     documents = get_kb_store().similarity_search_by_vector(
         query_vector,
@@ -273,6 +284,19 @@ def search_kb_chunks_scored(
         hybrid_search_config=_hybrid_config(fts_query=query, pool_k=pool_k),
     )
     if not documents:
+        duration_ms = (time.perf_counter() - start_s) * 1000
+        logger.info(
+            f"KB search: kb_id={kb_id}, k={pool_k}, hits=0, top_score=n/a, "
+            f"duration_ms={duration_ms:.0f}, "
+            f"query={truncate_for_log(query, 2000)}"
+        )
         return []
     similarities = _dense_similarities([doc.id for doc in documents], query_vector)
+    duration_ms = (time.perf_counter() - start_s) * 1000
+    top_score = max(similarities.values()) if similarities else float("nan")
+    logger.info(
+        f"KB search: kb_id={kb_id}, k={pool_k}, hits={len(documents)}, "
+        f"top_score={top_score:.4f}, duration_ms={duration_ms:.0f}, "
+        f"query={truncate_for_log(query, 2000)}"
+    )
     return [(doc, similarities[doc.id]) for doc in documents]

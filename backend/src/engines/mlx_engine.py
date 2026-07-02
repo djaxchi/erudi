@@ -94,6 +94,7 @@ from typing import Any, Dict, Optional, Union
 
 from src.engines.base_chat_server_engine import BaseChatServerEngine
 from src.engines._mlx_vlm_server_runner import run_mlx_vlm_server
+from src.core.logging import logger
 from src.core.exceptions import (
     FileSystemException,
     HardwareException,
@@ -283,6 +284,10 @@ class MLX_Engine(BaseChatServerEngine):
         ]
         proc = mp.Process(target=run_mlx_vlm_server, args=(argv,), daemon=False)
         proc.start()
+        logger.info(
+            f"[MLX_Engine] Spawned mlx_vlm.server child: pid={proc.pid}, "
+            f"port={port}, model={model_path}"
+        )
         return {
             "pid": proc.pid,
             "proc": proc,
@@ -309,6 +314,15 @@ class MLX_Engine(BaseChatServerEngine):
                 if proc.is_alive():
                     proc.kill()
                     proc.join(timeout=2)
+                    outcome = "killed (SIGKILL after SIGTERM timeout)"
+                else:
+                    outcome = "terminated (SIGTERM)"
+            else:
+                outcome = "already exited"
+            logger.info(
+                f"[MLX_Engine] Child terminated: {outcome}, "
+                f"exitcode={getattr(proc, 'exitcode', None)}"
+            )
         except Exception:
             # Best-effort cleanup; never let teardown errors mask the real
             # failure that triggered termination in the first place.

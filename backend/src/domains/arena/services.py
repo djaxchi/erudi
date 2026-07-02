@@ -16,11 +16,13 @@ this endpoint); the runner's engine guard serializes them on the single-model
 engine, so model swaps don't thrash the subprocess.
 """
 
+import time
 from typing import AsyncGenerator, Dict, Any
 
 from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
+from src.core.logutils import truncate_for_log
 from src.utils.prompt_utils import get_prompting_strategy
 from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
 from src.agents.kb_mode import plan_turn
@@ -101,7 +103,11 @@ class ArenaService:
         if not payload.question or not payload.question.strip():
             raise InvalidInputException("question")
 
-        logger.info(f"Querying LLM {llm_id} from DB")
+        start_s = time.perf_counter()
+        logger.info(
+            f"Arena query started for LLM {llm_id}: "
+            f"{truncate_for_log(payload.question, 2000)}"
+        )
         llm = self._get_llm(llm_id)
 
         param_size = llm.param_size if getattr(llm, "param_size", None) else 2
@@ -127,6 +133,7 @@ class ArenaService:
         # Safety net (#133): a text-only model never receives image content.
         supports_vision = await run_in_threadpool(detect_supports_vision, llm.link)
 
+        response = ""
         async for token in self.runner.astream_text(
             llm=llm,
             user_message=payload.question,
@@ -140,4 +147,13 @@ class ArenaService:
             context=plan.context,
             supports_vision=supports_vision,
         ):
+            response += token
             yield token
+
+        duration_ms = (time.perf_counter() - start_s) * 1000
+        logger.info(
+            f"Arena query completed for LLM {llm_id} "
+            f"(model={getattr(llm, 'name', '?')}): duration_ms={duration_ms:.0f}, "
+            f"response_chars={len(response)}, "
+            f"preview={truncate_for_log(response, 500)}"
+        )
