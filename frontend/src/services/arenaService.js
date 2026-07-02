@@ -2,15 +2,18 @@ import { getApiBaseUrl } from "../config/api.js";
 import { tracedFetch } from "./api/client";
 export async function askArena({
   question,
+  images = [],
   llmId,
   temperature,
   topP,
   maxNewTokens,
   quantize,
   customPrompt,
+  signal,
   onStreamChunk,
 }) {
-  if (!question.trim()) {
+  // Image-only asks are valid vision-model turns (#136 C).
+  if (!question.trim() && images.length === 0) {
     throw new Error("Question is empty");
   }
 
@@ -19,12 +22,15 @@ export async function askArena({
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       question: question,
+      images: images,
       temperature: temperature,
       top_p: topP,
       max_new_tokens: maxNewTokens,
       quantize: quantize,
       custom_prompt: customPrompt,
     }),
+    // Caller-owned AbortController: stopping a comparison aborts the stream (#136 H).
+    signal,
   });
   if (!res.ok) {
     throw new Error("Arena query failed");

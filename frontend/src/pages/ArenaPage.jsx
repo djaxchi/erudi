@@ -3,7 +3,8 @@ import Sidebar from "../components/Sidebar";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
 import { askArena } from "../services/arenaService.js";
-import { Trash, Plus } from "lucide-react";
+import { canAttachImages } from "../utils/modelCapabilities";
+import { Trash, Plus, Square } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import MarkdownRenderer from "../components/MarkdownRenderer";
@@ -45,6 +46,9 @@ export default function ArenaPage() {
   const streamingPanels = useRef(new Set());
   const buffersRef = useRef({});
   const flushIntervalRef = useRef(null);
+  // One controller per ask: all panel streams share it so Stop aborts the
+  // whole comparison at once (#136 H).
+  const abortRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -75,17 +79,21 @@ export default function ArenaPage() {
   const handleCustomizePrompt = (panelId, show) =>
     setPanels((prev) => prev.map((p) => (p.id === panelId ? { ...p, showPromptModal: show } : p)));
 
-  const handleAsk = async (inputValue) => {
+  const handleAsk = async (inputValue, images = []) => {
+    if (!inputValue.trim() && images.length === 0) {
+      return;
+    }
     if (flushIntervalRef.current) {
       clearInterval(flushIntervalRef.current);
     }
     setLoading(true);
+    abortRef.current = new AbortController();
 
     const withPlaceholders = panels.map((panel) => ({
       ...panel,
       messages: [
         ...panel.messages,
-        { role: "user", content: inputValue },
+        { role: "user", content: inputValue, images },
         { role: "llm", content: "" },
       ],
     }));
@@ -148,11 +156,13 @@ export default function ArenaPage() {
 
       askArena({
         question: inputValue,
+        images,
         llmId: llm.id,
         temperature: panel.temperature,
         topP: panel.topP,
         maxNewTokens: panel.maxTokens,
         customPrompt: panel.customPrompt,
+        signal: abortRef.current.signal,
         onStreamChunk: (chunk) => {
           buffersRef.current[panel.id].push(chunk);
         },
@@ -163,8 +173,12 @@ export default function ArenaPage() {
             setLoading(false);
           }
         })
-        .catch(() => {
-          buffersRef.current[panel.id].push("[Erreur]");
+        .catch((err) => {
+          // Deliberately swallow AbortError: a user-initiated stop is not an
+          // error — panels keep whatever partial text they streamed (#136 H).
+          if (err?.name !== "AbortError") {
+            buffersRef.current[panel.id].push("[Erreur]");
+          }
           streamingPanels.current.delete(panel.id);
           if (streamingPanels.current.size === 0) {
             setLoading(false);
@@ -173,6 +187,10 @@ export default function ArenaPage() {
     });
 
     setInputValue("");
+  };
+
+  const handleStop = () => {
+    abortRef.current?.abort();
   };
 
   const handleAddPanel = () => {
@@ -291,7 +309,25 @@ export default function ArenaPage() {
               }`}
             >
               {isUser || isError ? (
-                <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+                // Attached images (this session only) render as thumbnails,
+                // mirroring the conversation user bubble (#136 C).
+                <div className="flex flex-col gap-2">
+                  {msg.images?.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {msg.images.map((src, i) => (
+                        <img
+                          key={i}
+                          src={src}
+                          alt={`attachment ${i + 1}`}
+                          className="max-h-48 rounded-lg border border-emerald-200/20"
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {msg.content && (
+                    <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+                  )}
+                </div>
               ) : (
                 <MarkdownRenderer content={msg.content} />
               )}
@@ -314,8 +350,42 @@ export default function ArenaPage() {
       <div className="fixed bottom-0 left-0 right-0 flex justify-center align-center z-30">
         <div className="max-w-lg w-full mb-8 px-4 py-2 flex items-center gap-3">
           <div className="flex-1">
-            <QuestionInput onSend={handleAsk} disabled={loading} />
+            {/* Panels can run mixed models: attaching is allowed as soon as ANY
+                selected panel model supports vision — the backend safety net
+                (#133) strips images per model for the text-only panels. */}
+            <QuestionInput
+              onSend={handleAsk}
+              disabled={loading}
+              canAttachImages={panels.some((p) =>
+                canAttachImages(models.find((m) => m.name === p.selectedModel))
+              )}
+            />
           </div>
+
+          {/* Stop button: visible only while a comparison is streaming (#136 H) */}
+          {loading && (
+            <button
+              className="rounded-full -mb-1"
+              onClick={handleStop}
+              title="Stop generation"
+              aria-label="Stop generation"
+            >
+              <div
+                className={[
+                  "relative flex items-center justify-center w-10 h-10 rounded-full overflow-hidden",
+                  "border border-emerald-400/20",
+                  "bg-emerald-900/30 backdrop-blur-[10px] saturate-[1.3]",
+                  "shadow-[0_10px_30px_-6px_rgba(0,0,0,0.5),0_2px_6px_-1px_rgba(0,0,0,0.45)]",
+                ].join(" ")}
+              >
+                <Square
+                  className="w-4 h-4 text-white relative z-10"
+                  fill="currentColor"
+                  strokeWidth={2}
+                />
+              </div>
+            </button>
+          )}
 
           {/* Add Panel Button */}
           <button

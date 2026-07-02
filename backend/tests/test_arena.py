@@ -72,9 +72,44 @@ class TestArenaService:
         assert "".join(result) == "AI is artificial intelligence."
 
     async def test_query_llm_stream_empty_question_rejected_by_pydantic(self, test_db_session, mock_llm):
-        # Empty question is rejected at the schema level (min_length=1) -> 422.
+        # Empty question with no images is rejected at the schema level -> 422.
         with pytest.raises(Exception):
             ArenaQueryPayload(question="", temperature=0.5)
+
+    def test_payload_image_only_is_valid(self):
+        # An image-only ask (no text) is a legitimate vision-model turn,
+        # mirroring conversations (#136 C).
+        payload = ArenaQueryPayload(question="  ", images=["data:image/png;base64,AAA"])
+        assert payload.question == ""
+        assert payload.images == ["data:image/png;base64,AAA"]
+
+    async def test_query_llm_stream_with_images_multimodal(self, test_db_session, mock_llm, monkeypatch):
+        """Attached images ride the model call as multimodal content (#136 C)."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("A red square."))
+        service = ArenaService(test_db_session)
+
+        captured = {}
+        original = service.runner.astream_text
+
+        def spy(**kwargs):
+            captured.update(kwargs)
+            return original(**kwargs)
+
+        monkeypatch.setattr(service.runner, "astream_text", spy)
+
+        data_url = "data:image/png;base64," + "A" * 4000
+        payload = ArenaQueryPayload(question="What is this?", images=[data_url])
+
+        result = [t async for t in service.query_llm_stream(mock_llm.id, payload)]
+        assert "".join(result) == "A red square."
+
+        # The model received multimodal content carrying the image.
+        um = captured["user_message"]
+        assert isinstance(um, list)
+        assert any(
+            p.get("type") == "image_url" and p["image_url"]["url"] == data_url for p in um
+        )
 
     async def test_query_llm_stream_model_not_found(self, test_db_session):
         service = ArenaService(test_db_session)
@@ -163,6 +198,14 @@ class TestArenaEndpoints:
     def test_query_endpoint_model_not_found(self, client):
         response = client.post("/erudi/arena/999/query", json={"question": "Test question"})
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_query_endpoint_image_only(self, client, mock_llm):
+        # A question-less ask carrying an image streams normally (#136 C).
+        payload = {"question": "", "images": ["data:image/png;base64,AAA"]}
+        with patch.object(agent_runner, "build_chat_model", _fake_chat_model("A tiny image.")):
+            response = client.post(f"/erudi/arena/{mock_llm.id}/query", json=payload)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.text == "A tiny image."
 
     def test_query_endpoint_with_custom_prompt(self, client, mock_llm):
         payload = {"question": "Explain quantum physics", "custom_prompt": "Use simple language for a child", "temperature": 0.8}

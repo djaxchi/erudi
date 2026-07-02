@@ -14,8 +14,8 @@ Example:
         custom_prompt="Use simple language"
     )
 """
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from pydantic import BaseModel, Field, model_validator
+from typing import List, Optional
 
 
 class ArenaQueryPayload(BaseModel):
@@ -26,7 +26,9 @@ class ArenaQueryPayload(BaseModel):
     prompting.
 
     Attributes:
-        question: The question/prompt to send to the model (min 1 char, trimmed).
+        question: The question/prompt to send to the model (trimmed; may be empty
+            only when images are attached).
+        images: Optional base64 data-URL images attached to the question (vision models).
         temperature: Sampling temperature (0.0=deterministic, 2.0=creative, default=0.1).
         top_p: Nucleus sampling threshold (0.0-1.0, default=0.5).
         max_new_tokens: Maximum tokens to generate (1-8192, default=1024).
@@ -44,8 +46,11 @@ class ArenaQueryPayload(BaseModel):
     
     question: str = Field(
         ...,
-        min_length=1,
         description="The question to ask the model"
+    )
+    images: Optional[List[str]] = Field(
+        default=None,
+        description="Optional base64 data-URL images attached to the question (vision models)",
     )
     temperature: Optional[float] = Field(
         default=0.1,
@@ -70,23 +75,23 @@ class ArenaQueryPayload(BaseModel):
         description="Optional additional instructions for the model"
     )
 
-    @field_validator('question')
-    @classmethod
-    def validate_question(cls, v: str) -> str:
-        """Ensure question is not empty or whitespace-only.
+    @model_validator(mode='after')
+    def validate_question_or_images(self):
+        """Ensure the turn carries text or at least one image.
 
-        Args:
-            v: The question string to validate.
+        Image-only asks are valid vision-model turns (mirrors conversations,
+        #136 C); a fully empty ask is still rejected.
 
         Returns:
-            Trimmed question string.
+            The payload with a trimmed question.
 
         Raises:
-            ValueError: If question is empty or whitespace-only.
+            ValueError: If question is empty/whitespace and no images are attached.
         """
-        if not v or not v.strip():
+        self.question = self.question.strip()
+        if not self.question and not self.images:
             raise ValueError("Question cannot be empty or whitespace")
-        return v.strip()
+        return self
 
     class Config:
         json_schema_extra = {
