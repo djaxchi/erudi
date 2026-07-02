@@ -222,6 +222,8 @@ export default function HeaderBar({
 
             <div
               ref={dropdownRef}
+              role="button"
+              aria-label="Select model"
               className={[
                 "inline-flex items-center rounded-lg relative",
                 pillPx,

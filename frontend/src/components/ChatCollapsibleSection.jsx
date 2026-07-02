@@ -145,6 +145,8 @@ export default function ChatCollapsibleSection({
 
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-2 opacity-0 group-hover:opacity-100">
               <Edit3
+                role="button"
+                aria-label="Rename conversation"
                 onClick={(e) => {
                   e.stopPropagation();
                   setEditingId(conv.id);
@@ -153,6 +155,8 @@ export default function ChatCollapsibleSection({
                 className="w-4 h-4 text-gray-400 hover:text-gray-200 cursor-pointer"
               />
               <X
+                role="button"
+                aria-label="Delete conversation"
                 onClick={(e) => {
                   e.stopPropagation();
                   setPendingDeleteId(conv.id);
@@ -188,6 +192,8 @@ export default function ChatCollapsibleSection({
 
         <div className="flex gap-3">
           <RefreshCcw
+            role="button"
+            aria-label="Refresh conversations"
             className="w-6 h-6 hover:opacity-70 hover:bg-gray-600/30 rounded-full p-1 -m-1 cursor-pointer"
             onClick={async (e) => {
               e.stopPropagation();
@@ -206,6 +212,8 @@ export default function ChatCollapsibleSection({
             }}
           />
           <Plus
+            role="button"
+            aria-label="New chat"
             className="w-6 h-6 hover:opacity-70 hover:bg-gray-600/30 rounded-full p-1 -m-1 cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();

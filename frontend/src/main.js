@@ -89,13 +89,36 @@ function killBackend(proc) {
   }
 }
 
-// Create a log file for debugging
+// Create a log file for debugging. This is THE file QA reads (app:getLogPath);
+// renderer logs are forwarded here too via the "renderer-log" IPC channel.
 const logFile = path.join(os.tmpdir(), "erudi-backend.log");
+const oldLogFile = path.join(os.tmpdir(), "erudi-backend.old.log");
+const LOG_MAX_BYTES = 10 * 1024 * 1024; // 10 MB size cap
+const LOG_STAT_EVERY = 200; // fs.stat is cheap but not free — sample it
+let logWriteCount = 0;
+
+// Size-cap rotation: stat the file on the first write and then every
+// LOG_STAT_EVERY writes; past the cap, the current file replaces
+// erudi-backend.old.log and a fresh one starts. Never throws.
+const rotateLogIfNeeded = () => {
+  logWriteCount += 1;
+  if (logWriteCount % LOG_STAT_EVERY !== 1) return;
+  try {
+    const { size } = fs.statSync(logFile);
+    if (size <= LOG_MAX_BYTES) return;
+    fs.rmSync(oldLogFile, { force: true }); // rename() won't replace on Windows
+    fs.renameSync(logFile, oldLogFile);
+  } catch (_) {
+    // Missing file or a losing race — never let rotation break logging.
+  }
+};
+
 const log = (message) => {
   const timestamp = new Date().toISOString();
   const logMessage = `[${timestamp}] ${message}\n`;
   console.log(message);
   try {
+    rotateLogIfNeeded();
     fs.appendFileSync(logFile, logMessage);
   } catch (err) {
     console.error("Failed to write to log file:", err);
@@ -664,6 +687,25 @@ app.commandLine.appendSwitch("no-sandbox");
 // (race-safe); restart actually re-spawns the backend (used by the Retry button).
 ipcMain.handle("backend:getInfo", () => ({ port: resolvedPort, ready: backendIsReady }));
 ipcMain.handle("app:getLogPath", () => logFile);
+
+// Renderer log bridge: the renderer forwards its logger calls here (fire-and-
+// forget ipcRenderer.send, see preload.js logAPI) so they persist in the same
+// file QA already reads. Entries are validated defensively — a malformed
+// payload is dropped, never thrown on.
+const RENDERER_LOG_MAX_CHARS = 4000;
+const asLogString = (value, max) => (typeof value === "string" ? value.slice(0, max) : "");
+ipcMain.on("renderer-log", (_event, entry) => {
+  try {
+    if (!entry || typeof entry !== "object") return;
+    const ns = asLogString(entry.ns, 120) || "unknown";
+    const level = (asLogString(entry.level, 10) || "info").toUpperCase();
+    const msg = asLogString(entry.msg, RENDERER_LOG_MAX_CHARS);
+    const data = asLogString(entry.data, RENDERER_LOG_MAX_CHARS);
+    log(`[renderer:${ns}] ${level} ${msg}${data ? ` ${data}` : ""}`);
+  } catch (_) {
+    // Logging must never crash the main process.
+  }
+});
 ipcMain.handle("backend:restart", async () => {
   log("Renderer requested a backend restart.");
   killBackend(backendProcess);

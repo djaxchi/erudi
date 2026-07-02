@@ -10,6 +10,7 @@ import { KnowledgeBaseProvider } from "./contexts/KnowledgeBaseContext";
 import LoadingScreen from "./components/LoadingScreen";
 import BackendErrorScreen from "./components/BackendErrorScreen";
 import UpdateBanner from "./components/UpdateBanner";
+import InteractionLogger from "./components/InteractionLogger";
 import { apiClient } from "./services/api/client";
 import { setBackendPort } from "./config/api";
 import {
@@ -124,6 +125,8 @@ export default function App() {
       <KnowledgeBaseProvider>
         <UpdateBanner />
         <Router>
+          {/* Mounted-once UI interaction tracer (needs the Router for useLocation). */}
+          <InteractionLogger />
           <Routes>
             <Route path="/" element={<Navigate to="/erudi/models" replace />} />
             <Route path="/erudi" element={<Navigate to="/erudi/models" replace />} />
