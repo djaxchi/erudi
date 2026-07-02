@@ -7,7 +7,7 @@ import { Trash, Plus } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import MarkdownRenderer from "../components/MarkdownRenderer";
-import { API_BASE_URL } from "../config/api.js";
+import apiClient from "../services/api/client";
 import { createLogger } from "../utils/logger";
 
 const MAX_PANELS = 4;
@@ -55,8 +55,8 @@ export default function ArenaPage() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/llms/local`)
-      .then((res) => res.json())
+    apiClient
+      .get("/llms/local")
       .then((data) => {
         setModels(data);
         setPanels([0, 1].map((i) => makePanel(i, data[i % data.length]?.name, data)));

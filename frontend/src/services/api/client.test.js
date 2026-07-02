@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { apiClient } from "./client";
+import { apiClient, tracedFetch } from "./client";
 
 const okResponse = (body = { ok: true }) => ({
   ok: true,
@@ -89,5 +89,94 @@ describe("APIClient request tracing", () => {
     expect(fail.status).toBe(500);
     expect(typeof fail.duration_ms).toBe("number");
     expect(fail.rid).toBe(entryData("api.request").rid);
+  });
+});
+
+describe("tracedFetch", () => {
+  it("sets an X-Request-ID header and merges caller headers", async () => {
+    await tracedFetch("http://127.0.0.1:8765/erudi/conversations/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "hello" }),
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://127.0.0.1:8765/erudi/conversations/");
+    expect(init.method).toBe("POST");
+    expect(init.headers["Content-Type"]).toBe("application/json");
+    expect(init.headers["X-Request-ID"]).toMatch(/^fe-[0-9a-z]+-\d+$/);
+  });
+
+  it("returns the exact Response object without touching the body", async () => {
+    const body = new ReadableStream({ start() {} });
+    const jsonSpy = vi.fn();
+    const response = { ok: true, status: 200, body, json: jsonSpy };
+    fetchMock.mockResolvedValueOnce(response);
+
+    const result = await tracedFetch("http://127.0.0.1:8765/erudi/conversations/1/query");
+
+    expect(result).toBe(response);
+    expect(result.body).toBe(body);
+    expect(result.body.locked).toBe(false); // stream untouched, still readable
+    expect(jsonSpy).not.toHaveBeenCalled();
+  });
+
+  it("logs api.request and api.response with the rid that went over the wire", async () => {
+    await tracedFetch("http://127.0.0.1:8765/erudi/llms/local");
+
+    const start = entryData("api.request");
+    const done = entryData("api.response");
+    expect(start.method).toBe("GET");
+    expect(start.path).toBe("/erudi/llms/local");
+    expect(done.status).toBe(200);
+    expect(typeof done.duration_ms).toBe("number");
+    expect(start.rid).toBe(done.rid);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers["X-Request-ID"]).toBe(start.rid);
+  });
+
+  it("rethrows the raw error, logs api.failure, and never retries", async () => {
+    const netError = new TypeError("Failed to fetch");
+    fetchMock.mockRejectedValueOnce(netError);
+
+    await expect(tracedFetch("http://127.0.0.1:8765/erudi/llms/local")).rejects.toBe(netError);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1); // no retry, unlike apiClient
+    const fail = entryData("api.failure");
+    expect(fail.error).toBe("Failed to fetch");
+    expect(typeof fail.duration_ms).toBe("number");
+    expect(fail.rid).toBe(entryData("api.request").rid);
+  });
+
+  it("logs a FormData body as kind and size, not a preview", async () => {
+    const form = new FormData();
+    form.append("file", "a");
+    form.append("name", "b");
+
+    await tracedFetch("http://127.0.0.1:8765/erudi/knowledge_base/create", {
+      method: "POST",
+      body: form,
+    });
+
+    const start = entryData("api.request");
+    expect(start.body).toBeUndefined();
+    expect(start.body_kind).toBe("FormData");
+    expect(start.body_size).toBe(2);
+
+    // The body itself is passed through untouched.
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.body).toBe(form);
+  });
+
+  it("truncates the logged string body preview at 500 chars", async () => {
+    await tracedFetch("http://127.0.0.1:8765/erudi/conversations/", {
+      method: "POST",
+      body: JSON.stringify({ blob: "z".repeat(600) }),
+    });
+
+    const start = entryData("api.request");
+    expect(start.body.length).toBeLessThan(600);
+    expect(start.body).toMatch(/… \[\+\d+\]$/);
   });
 });
