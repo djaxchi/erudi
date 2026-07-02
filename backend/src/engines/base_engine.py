@@ -243,9 +243,13 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         try:
             tokenizer = cls._load_capability_tokenizer(local_path)
         except Exception:
+            # exc_info matters: a missing dependency in the frozen build (the
+            # gguf package, #171) is indistinguishable from an unreadable model
+            # without the underlying exception in the log.
             logger.warning(
                 f"[{cls.__name__}] tool-calling detection: could not load a "
-                f"tokenizer for {local_path}; treating as not tool-capable"
+                f"tokenizer for {local_path}; treating as not tool-capable",
+                exc_info=True,
             )
             return False
         if tokenizer is None:

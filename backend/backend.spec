@@ -297,6 +297,14 @@ if IS_WIN:
     hiddenimports += _hidden_windows
 if IS_MAC:
     hiddenimports += _hidden_macos
+else:
+    # llama.cpp builds (Windows/Linux, CPU + CUDA): transformers reads the GGUF
+    # chat template through the `gguf` package via a LAZY import
+    # (AutoTokenizer(gguf_file=...)), invisible to PyInstaller's static analysis.
+    # Without it, tool-calling detection fails for every downloaded GGUF and the
+    # agentic KB mode can never activate (#171). Not on macOS: the MLX env does
+    # not install gguf (requirements/meta/cpu.txt is not in mac-silicon-prod).
+    hiddenimports += ["gguf"]
 # Alembic loads its dialect ddl (alembic.ddl.postgresql) and other submodules
 # dynamically — collect them so the startup migration runs in the frozen build.
 hiddenimports += collect_submodules("alembic")
