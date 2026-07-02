@@ -86,6 +86,7 @@ from pathlib import Path
 
 from src.engines.base_llama_cpp_engine import BaseLlamaCppEngine
 from src.core.logging import logger
+from src.core.subprocess_flags import hidden_console_creationflags
 from src.core.exceptions import (
     HardwareException,
     EngineException,
@@ -496,6 +497,9 @@ class CUDA_Engine(BaseLlamaCppEngine):
                 env=env,
                 capture_output=True,
                 text=True,
+                # llama-quantize is a console exe; don't flash a terminal
+                # window on Windows (#175). No-op (0) on POSIX.
+                creationflags=hidden_console_creationflags(),
             )
             if result.returncode != 0:
                 out_q_tmp.unlink(missing_ok=True)
