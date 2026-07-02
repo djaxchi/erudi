@@ -122,11 +122,23 @@ def set_event_loop_policy() -> None:
 
 
 def configure_stdio() -> None:
-    """Enable line buffering on stdout/stderr for immediate event emission."""
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(line_buffering=True)
-    if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(line_buffering=True)
+    """Force UTF-8 (never-raising) line-buffered stdout/stderr.
+
+    The frozen interpreter ignores PYTHONUTF8 (PyInstaller pre-initializes
+    CPython), so without this the streams inherit the locale code page
+    (cp1252 on Windows) and any Unicode character in a log line blows up the
+    console log handler, which writes to sys.stdout (#168). errors="replace"
+    is the last-resort net: a log write can degrade a character to '?' but can
+    never raise. Line buffering keeps JSON lifecycle events flushed promptly.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(
+                    line_buffering=True, encoding="utf-8", errors="replace"
+                )
+            except Exception:
+                pass  # exotic stream: keep whatever it supports
 
 
 def is_frozen() -> bool:

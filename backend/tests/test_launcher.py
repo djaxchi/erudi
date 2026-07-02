@@ -68,6 +68,59 @@ def test_startup_timeout_is_first_run_aware():
     assert run.FIRST_RUN_TIMEOUT_SECONDS > run.STARTUP_TIMEOUT_SECONDS
 
 
+@pytest.mark.unit
+def test_configure_stdio_forces_utf8_replace(monkeypatch):
+    # The frozen interpreter ignores PYTHONUTF8, so configure_stdio must pin
+    # both streams to UTF-8 with errors="replace" (never-raising) and keep them
+    # line-buffered — otherwise a Unicode log line kills the handler (#168).
+    import run
+
+    class FakeStream:
+        def __init__(self):
+            self.kwargs = None
+
+        def reconfigure(self, **kwargs):
+            self.kwargs = kwargs
+
+    fake_out = FakeStream()
+    fake_err = FakeStream()
+    monkeypatch.setattr(sys, "stdout", fake_out)
+    monkeypatch.setattr(sys, "stderr", fake_err)
+
+    run.configure_stdio()
+
+    for stream in (fake_out, fake_err):
+        assert stream.kwargs == {
+            "line_buffering": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+        }
+
+
+@pytest.mark.unit
+def test_configure_stdio_survives_streams_without_reconfigure(monkeypatch):
+    # Some streams (bare objects, or ones that reject reconfigure kwargs) must
+    # not break startup — configure_stdio guards each stream individually.
+    import run
+
+    class NoReconfigure:
+        pass
+
+    class RaisingStream:
+        def reconfigure(self, **kwargs):
+            raise TypeError("reconfigure not supported")
+
+    # Bare stream with no reconfigure attribute at all.
+    monkeypatch.setattr(sys, "stdout", NoReconfigure())
+    monkeypatch.setattr(sys, "stderr", NoReconfigure())
+    run.configure_stdio()  # must not raise
+
+    # Stream whose reconfigure raises: swallowed by the per-stream guard.
+    monkeypatch.setattr(sys, "stdout", RaisingStream())
+    monkeypatch.setattr(sys, "stderr", RaisingStream())
+    run.configure_stdio()  # must not raise
+
+
 def test_json_event_emission():
     import time
 
