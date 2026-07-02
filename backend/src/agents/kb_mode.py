@@ -25,14 +25,9 @@ from src.agents.prompts import (
     build_kb_context_block,
     build_kb_system_prompt,
 )
-from src.agents.tools import KbToolContext, calculator, search_knowledge_base
 from src.core.logging import logger
 from src.utils.kb_utils import KbExcerpt
 from src.utils.prompt_utils import get_prompting_strategy
-
-# Deterministic tools carried by every turn; the KB tool is added only in
-# agentic mode (mirrors runner.AGENT_TOOLS for the non-agentic paths).
-_BASE_TOOLS = [calculator]
 
 
 @dataclass(frozen=True)
@@ -70,6 +65,14 @@ def plan_turn(
     ``retrieve`` is only called in systematic mode: agentic mode defers
     retrieval to the model's tool call, and plain mode has no KB.
     """
+    # Deferred (#160): importing the tools module pulls the LangChain ``@tool``
+    # machinery, needed on turns only — never at boot. Deterministic tools are
+    # carried by every turn; the KB tool is added only in agentic mode (mirrors
+    # runner._default_tools for the non-agentic paths).
+    from src.agents.tools import KbToolContext, calculator, search_knowledge_base
+
+    base_tools = [calculator]
+
     if should_use_kb(llm) and getattr(llm, "supports_tools", False):
         budget = get_prompting_strategy(_param_size(llm))["kb_token_budget"]
         logger.info(
@@ -80,7 +83,7 @@ def plan_turn(
             system_prompt=build_kb_agentic_system_prompt(
                 llm, custom_prompt=custom_prompt, starred_messages=starred_messages
             ),
-            tools=[*_BASE_TOOLS, search_knowledge_base],
+            tools=[*base_tools, search_knowledge_base],
             kb_context_block=None,
             kb_language_line="",
             context=KbToolContext(kb_id=llm.kb_id, token_budget=budget),
@@ -98,7 +101,7 @@ def plan_turn(
             system_prompt=build_kb_system_prompt(
                 llm, custom_prompt=custom_prompt, starred_messages=starred_messages
             ),
-            tools=list(_BASE_TOOLS),
+            tools=list(base_tools),
             kb_context_block=build_kb_context_block(excerpts=excerpts, question=question),
             kb_language_line=answer_language_line(question),
             context=None,
@@ -115,7 +118,7 @@ def plan_turn(
         system_prompt=build_agent_system_prompt(
             llm, custom_prompt=custom_prompt, starred_messages=starred_messages
         ),
-        tools=list(_BASE_TOOLS),
+        tools=list(base_tools),
         kb_context_block=None,
         kb_language_line="",
         context=None,

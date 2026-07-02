@@ -9,10 +9,13 @@ streaming is owned by this ``ChatOpenAI`` layer.
 
 from __future__ import annotations
 
-from langchain_openai import ChatOpenAI
+from typing import TYPE_CHECKING
 
 from src.core import config
 from src.core.logging import logger
+
+if TYPE_CHECKING:
+    from langchain_openai import ChatOpenAI
 
 # Sampling controls the bare OpenAI wire schema lacks but local models need to
 # avoid degenerate repetition loops. These mirror the pre-LangChain engine
@@ -47,6 +50,9 @@ def build_chat_model(
     Params are set on the constructor (NOT via ``.bind`` — LangChain v1 rejects
     pre-bound models passed to ``create_agent``).
     """
+    # Deferred (#160): langchain_openai only loads on the first turn, not at boot.
+    from langchain_openai import ChatOpenAI
+
     engine = config.LLM_Engine
     handle, _tokenizer = engine.get_model_and_tokenizer(llm.id, llm.link)
     model_field = engine._payload_model_value(handle)

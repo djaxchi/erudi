@@ -89,6 +89,29 @@ def test_all_specs_bundle_alembic_migrations():
 
 
 @pytest.mark.unit
+def test_all_specs_pin_lazy_langchain_agent_stack():
+    # The agent LangChain stack is imported at FUNCTION scope only (#160 lazy
+    # imports, deferred to the first turn). PyInstaller's bytecode scan still
+    # sees function-level imports today, but these hiddenimports pin the
+    # first-chat dependencies of a frozen build against any analysis change.
+    needed = (
+        '"langchain.agents"',
+        '"langchain.agents.middleware"',
+        '"langchain.tools"',
+        '"langchain_core.messages"',
+        '"langchain_core.tools"',
+        '"langchain_openai"',
+        '"src.agents.middleware"',
+        '"src.agents.kb_mode"',
+        '"src.agents.tools"',
+    )
+    for name in ("backend-mac-silicon.spec", "backend.spec"):
+        spec = _read(name)
+        for entry in needed:
+            assert entry in spec, f"{name} must hidden-import {entry} (#160)"
+
+
+@pytest.mark.unit
 def test_cpu_spec_excludes_mlx_vlm():
     spec = _read("backend-cpu.spec")
     assert "mlx_vlm" in spec
