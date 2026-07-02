@@ -6,6 +6,7 @@ import PropTypes from "prop-types";
 const PHASE_LABELS = {
   starting: "Starting Erudi…",
   preparing_database: "Preparing the database…",
+  recovering_database: "Recovering the database…",
   running_migrations: "Updating the database…",
   loading_catalog: "Loading the model catalog…",
   ready: "Almost ready…",

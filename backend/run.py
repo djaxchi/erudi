@@ -8,7 +8,7 @@ CUDA, MLX, and CPU builds.
 
 **Lifecycle events (newline-delimited JSON to stdout):**
     - {"event": "starting", "arch": "...", "mode": "dev|prod", "data_path": "...", "port": N, "first_run": bool}
-    - {"event": "phase", "phase": "preparing_database|running_migrations|loading_catalog"}
+    - {"event": "phase", "phase": "preparing_database|recovering_database|running_migrations|loading_catalog"}
     - {"event": "ready", "port": N}
     - {"event": "shutdown"}
     - {"event": "startup_error", "code": "ERROR_CODE", "message": "..."}

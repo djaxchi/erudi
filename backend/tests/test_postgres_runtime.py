@@ -8,10 +8,13 @@ Covers:
   anti-B1 rule (create_tables must not rely on an imported-by-value engine).
 """
 
+import subprocess
+
 import psycopg
 import pytest
 from sqlalchemy import create_engine, inspect as sa_inspect, text
 
+from src.launcher import postgres_runtime
 from src.launcher.postgres_runtime import (
     _recover_corrupt_pgdata,
     start_postgres,
@@ -197,3 +200,94 @@ class TestInitDatabase:
         assert core.db_engine is None  # process-fresh or reset by previous tests
         with pytest.raises(RuntimeError, match="init_database"):
             await Database_Seeder().create_tables()
+
+
+class FakePostmaster:
+    """Minimal stand-in for pgserver's PostmasterInfo readiness view."""
+
+    def __init__(self, running, status):
+        self._running = running
+        self.status = status
+
+    def is_running(self):
+        return self._running
+
+
+class TestRecoverySecondChance:
+    """#161 — survive a slow WAL crash-recovery past pgserver's 10s pg_ctl timeout.
+
+    Pure-unit: no real cluster. The postmaster/pgserver/time surfaces are
+    monkeypatched on the postgres_runtime module so the second-chance logic can
+    be exercised deterministically.
+    """
+
+    @pytest.mark.unit
+    def test_wait_for_postmaster_ready_polls_until_ready(self, tmp_path, monkeypatch):
+        # None (no pidfile yet) -> running but still recovering -> ready.
+        sequence = [
+            None,
+            FakePostmaster(running=True, status="starting"),
+            FakePostmaster(running=True, status="ready"),
+        ]
+        monkeypatch.setattr(
+            postgres_runtime.PostmasterInfo,
+            "read_from_pgdata",
+            lambda data_dir: sequence.pop(0),
+        )
+        monkeypatch.setattr(postgres_runtime.time, "sleep", lambda _s: None)
+        phases = []
+        monkeypatch.setattr(postgres_runtime, "emit_phase", phases.append)
+
+        assert postgres_runtime._wait_for_postmaster_ready(tmp_path, 90) is True
+        # The wait announced itself so the renderer can label the pause.
+        assert phases == ["recovering_database"]
+        assert sequence == []  # consumed exactly through the ready reading
+
+    @pytest.mark.unit
+    def test_wait_for_postmaster_ready_times_out(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            postgres_runtime.PostmasterInfo,
+            "read_from_pgdata",
+            lambda data_dir: None,  # never comes up
+        )
+        monkeypatch.setattr(postgres_runtime.time, "sleep", lambda _s: None)
+        monkeypatch.setattr(postgres_runtime, "emit_phase", lambda _p: None)
+
+        # Tiny deadline + no-op sleep -> the loop bails almost immediately.
+        assert postgres_runtime._wait_for_postmaster_ready(tmp_path, 0.01) is False
+
+    @pytest.mark.unit
+    def test_get_server_with_recovery_retries_after_timeout(self, tmp_path, monkeypatch):
+        sentinel = object()
+        calls = {"n": 0}
+
+        def fake_get_server(path):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise subprocess.TimeoutExpired(cmd="pg_ctl", timeout=10)
+            return sentinel  # second call reuses the recovered postmaster
+
+        monkeypatch.setattr(postgres_runtime.pgserver, "get_server", fake_get_server)
+        monkeypatch.setattr(
+            postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: True
+        )
+
+        assert postgres_runtime._get_server_with_recovery(tmp_path) is sentinel
+        assert calls["n"] == 2  # first timed out, second reused the live postmaster
+
+    @pytest.mark.unit
+    def test_get_server_with_recovery_reraises_when_wait_fails(self, tmp_path, monkeypatch):
+        calls = {"n": 0}
+
+        def fake_get_server(path):
+            calls["n"] += 1
+            raise subprocess.TimeoutExpired(cmd="pg_ctl", timeout=10)
+
+        monkeypatch.setattr(postgres_runtime.pgserver, "get_server", fake_get_server)
+        monkeypatch.setattr(
+            postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: False
+        )
+
+        with pytest.raises(subprocess.TimeoutExpired):
+            postgres_runtime._get_server_with_recovery(tmp_path)
+        assert calls["n"] == 1  # never retried get_server after the wait failed
