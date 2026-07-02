@@ -1,7 +1,7 @@
 """The catalog build path does NOT do pre-download tool detection (#113).
 
 Downloading a tokenizer per catalog model to render the chat template was not
-viable at catalog scale (~150 downloads dominating the resync). It is dropped:
+viable at catalog scale (~150 downloads dominating the catalog build). It is dropped:
 remote catalog entries keep ``supports_tools = null`` and detection happens
 post-download (where the tokenizer is already on disk). No network here.
 """
