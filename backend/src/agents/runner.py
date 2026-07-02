@@ -13,31 +13,44 @@ raw byte stream, no SSE framing) is preserved byte-for-byte.
 Everything runs inside ``engine.generation_guard()`` so model resolution + the
 whole stream serialize on the single-model engine and the idle-cleanup monitor
 never reaps the model mid-stream.
+
+LangChain imports are deferred to the methods that use them (issue #160):
+this module is imported at boot by the conversation/arena services, but the
+agent stack is only needed on the FIRST turn, so keeping the imports
+function-scoped keeps ``import src.main`` fast. ``build_chat_model`` stays a
+module-level name — tests monkeypatch ``runner.build_chat_model`` — and is
+itself LangChain-free at import time (``ChatOpenAI`` is deferred inside it).
 """
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 
 from fastapi.concurrency import run_in_threadpool
-from langchain.agents import create_agent
-from langchain.agents.middleware import AgentMiddleware, SummarizationMiddleware
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.messages.utils import count_tokens_approximately
-from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from src.agents.model_factory import build_chat_model
-from src.agents.tools import calculator
 from src.core import config
 from src.core.logging import logger
 
-# Deterministic tools carried by every chat/arena agent turn. Models with
-# native function calling invoke them through the standard loop; models
-# without (e.g. Gemma 3) never emit tool_calls — the server logs a warning
-# and generation proceeds normally (probed, harmless).
-AGENT_TOOLS = [calculator]
+if TYPE_CHECKING:
+    from langgraph.checkpoint.base import BaseCheckpointSaver
+
+
+def _default_tools() -> list:
+    """Deterministic tools carried by every chat/arena agent turn.
+
+    Models with native function calling invoke them through the standard loop;
+    models without (e.g. Gemma 3) never emit tool_calls — the server logs a
+    warning and generation proceeds normally (probed, harmless). Built lazily:
+    importing ``src.agents.tools`` pulls the LangChain ``@tool`` machinery,
+    which must not load at boot (#160).
+    """
+    from src.agents.tools import calculator
+
+    return [calculator]
+
 
 # Auto-summarization thresholds (message-count based — token triggers need a
 # model profile the local server doesn't expose). Once a conversation's agent
@@ -65,186 +78,6 @@ class GenParams:
     max_tokens: int
 
 
-def _split_multimodal(content):
-    """Split message content into (joined_text, image_parts).
-
-    For plain-string content, returns (content, []). For OpenAI multimodal
-    content (a list of ``{"type": "text"|"image_url", ...}`` parts), returns
-    the joined text of the text parts and the list of image parts.
-    """
-    if isinstance(content, str):
-        return content, []
-    text = " ".join(
-        p["text"]
-        for p in content
-        if isinstance(p, dict) and p.get("type") == "text" and p.get("text")
-    )
-    images = [p for p in content if isinstance(p, dict) and p.get("type") == "image_url"]
-    return text, images
-
-
-def _flatten_without_images(content) -> str:
-    """Plain-text rendering of multimodal content; each image -> ``[image]``."""
-    if isinstance(content, str):
-        return content
-    out = []
-    for p in content:
-        if isinstance(p, dict):
-            if p.get("type") == "text" and p.get("text"):
-                out.append(p["text"])
-            elif p.get("type") == "image_url":
-                out.append("[image]")
-    return " ".join(out).strip()
-
-
-class _KbContextMiddleware(AgentMiddleware):
-    """Merge the per-turn KB block into the model request's LAST user message.
-
-    Request-time only (``request.override``): the checkpointer keeps the
-    clean question, so past turns never re-expose stale excerpts (no
-    context pollution, no parroting fuel). Rationale: on small local
-    models, grounding/language instructions dissolve with turn depth when
-    they live in the system prompt (chat templates prepend it before the
-    whole history) — the tail of the last user message is the one spot
-    that always stays inside the effective window.
-
-    Layout: excerpts+rules block, then the question, then the answer-
-    language request LAST in the user's voice — pre-question language
-    lines are ignored as block metadata (run-4 eval), in-question
-    requests are honored (T5).
-    """
-
-    def __init__(self, context_block: str, language_line: str):
-        super().__init__()
-        self.context_block = context_block
-        self.language_line = language_line
-
-    def _merge(self, request):
-        messages = list(request.messages)
-        last = messages[-1]
-        # No "Question:" label: any English structural string near the
-        # question feeds the English attractor (run-5 eval finding).
-        question_text, image_parts = _split_multimodal(last.content)
-        merged_text = f"{self.context_block}\n\n{question_text}\n\n{self.language_line}"
-        if image_parts:
-            # Multimodal turn: merge the KB block into the text part and keep
-            # the screenshot(s) attached for the VLM.
-            merged = HumanMessage(
-                content=[{"type": "text", "text": merged_text}, *image_parts]
-            )
-        else:
-            merged = HumanMessage(content=merged_text)
-        return request.override(messages=[*messages[:-1], merged])
-
-    def wrap_model_call(self, request, handler):
-        return handler(self._merge(request))
-
-    async def awrap_model_call(self, request, handler):
-        return await handler(self._merge(request))
-
-
-class _StripStaleImagesMiddleware(AgentMiddleware):
-    """Keep only the CURRENT turn's images in the model request.
-
-    The checkpointer stores each turn's multimodal ``HumanMessage``, so without
-    this every past screenshot would be re-sent on each follow-up and blow the
-    (small, local) VLM context. Vision is therefore single-turn: an image is
-    seen only on the turn it is sent; in later turns it collapses to an
-    ``[image]`` text marker. The current turn — the last human message, even
-    across tool-call loops where a ToolMessage is last — keeps its images.
-    """
-
-    def _strip(self, request):
-        messages = list(request.messages)
-        human_idxs = [i for i, m in enumerate(messages) if m.type == "human"]
-        if not human_idxs:
-            return request
-        keep = human_idxs[-1]
-        changed = False
-        for i, m in enumerate(messages):
-            if i == keep or not isinstance(m.content, list):
-                continue
-            messages[i] = m.model_copy(
-                update={"content": _flatten_without_images(m.content)}
-            )
-            changed = True
-        return request.override(messages=messages) if changed else request
-
-    def wrap_model_call(self, request, handler):
-        return handler(self._strip(request))
-
-    async def awrap_model_call(self, request, handler):
-        return await handler(self._strip(request))
-
-
-class _StripImagesForTextModel(AgentMiddleware):
-    """Flatten ALL image content when the model can't see images (#133).
-
-    A text-only model (no MLX ``vision_config`` / no llama.cpp ``mmproj``) would
-    either crash or silently ignore image parts, so for a non-vision model every
-    ``image_url`` part — the current turn included — collapses to an ``[image]``
-    text marker before the request reaches the model server. The answer stays
-    clean text instead of broken inference. The caller adds this only on an
-    explicit ``supports_vision is False`` (None/True leave images intact, so a
-    real VLM is never blocked by a detection miss).
-    """
-
-    def _strip(self, request):
-        messages = list(request.messages)
-        changed = False
-        for i, m in enumerate(messages):
-            if isinstance(m.content, list):
-                messages[i] = m.model_copy(
-                    update={"content": _flatten_without_images(m.content)}
-                )
-                changed = True
-        return request.override(messages=messages) if changed else request
-
-    def wrap_model_call(self, request, handler):
-        return handler(self._strip(request))
-
-    async def awrap_model_call(self, request, handler):
-        return await handler(self._strip(request))
-
-
-class _StripStaleKbToolMessages(AgentMiddleware):
-    """Placeholder the ``search_knowledge_base`` results of PAST turns.
-
-    The checkpointer persists every KB ToolMessage, so without this each
-    follow-up would re-send every past turn's (bulky) excerpts and re-introduce
-    the multi-turn context pollution the request-time design of issue #81 had
-    eliminated. The CURRENT turn's KB result stays intact (the model just
-    fetched it and must read it); only past ones shrink to a short marker. We
-    rewrite content only, never dropping the message, so the
-    ``AIMessage(tool_calls) -> ToolMessage`` pairing the chat template requires
-    stays valid. The checkpointer keeps the full result, so the UI is
-    unaffected — symmetric to ``_StripStaleImagesMiddleware`` for images.
-    """
-
-    _MARKER = "[knowledge base results from an earlier turn omitted]"
-
-    def _strip(self, request):
-        messages = list(request.messages)
-        human_idxs = [i for i, m in enumerate(messages) if m.type == "human"]
-        if not human_idxs:
-            return request
-        keep = human_idxs[-1]  # last human marks the current turn; earlier = past
-        changed = False
-        for i, m in enumerate(messages):
-            if i >= keep:
-                continue
-            if m.type == "tool" and getattr(m, "name", None) == "search_knowledge_base":
-                messages[i] = m.model_copy(update={"content": self._MARKER})
-                changed = True
-        return request.override(messages=messages) if changed else request
-
-    def wrap_model_call(self, request, handler):
-        return handler(self._strip(request))
-
-    async def awrap_model_call(self, request, handler):
-        return await handler(self._strip(request))
-
-
 class AgentRunner:
     """Streams an agent turn as raw token text. Shared by conversation and arena.
 
@@ -270,6 +103,12 @@ class AgentRunner:
         context: Optional[Any] = None,
         supports_vision: Optional[bool] = None,
     ) -> AsyncIterator[str]:
+        # Deferred (#160): first turn pays the agent-stack import, boot doesn't.
+        from langchain.agents import create_agent
+        from langchain_core.messages import HumanMessage
+
+        from src.agents.middleware import _KbContextMiddleware, _StripImagesForTextModel
+
         engine = config.LLM_Engine
         stateful = thread_id is not None and self.checkpointer is not None
         run_config = {"configurable": {"thread_id": thread_id}} if stateful else {}
@@ -295,7 +134,7 @@ class AgentRunner:
                     # Outermost, so images are gone before the KB merge re-reads
                     # the last user message: a non-vision model never sees an image.
                     middleware = [_StripImagesForTextModel(), *middleware]
-                effective_tools = tools if tools is not None else AGENT_TOOLS
+                effective_tools = tools if tools is not None else _default_tools()
                 agent = create_agent(
                     model,
                     tools=effective_tools,
@@ -370,6 +209,8 @@ class AgentRunner:
         conversation/arena generations and keeps the model pinned while streaming.
         Failures are swallowed (the caller falls back to a default).
         """
+        from langchain_core.messages import HumanMessage
+
         engine = config.LLM_Engine
         async with engine.generation_guard():
             try:
@@ -399,6 +240,14 @@ class AgentRunner:
         summary) so the agent's context stays bounded; the Message table is
         untouched, so the UI still shows the full conversation.
         """
+        from langchain.agents.middleware import SummarizationMiddleware
+        from langchain_core.messages.utils import count_tokens_approximately
+
+        from src.agents.middleware import (
+            _StripStaleImagesMiddleware,
+            _StripStaleKbToolMessages,
+        )
+
         return [
             _StripStaleImagesMiddleware(),
             _StripStaleKbToolMessages(),
@@ -419,6 +268,8 @@ class AgentRunner:
         ``AIMessage`` so the thread stays well-formed. If the super-step never
         committed (last message is not a human, or state is empty), do nothing.
         """
+        from langchain_core.messages import AIMessage
+
         try:
             state = await agent.aget_state(run_config)
             messages = (state.values or {}).get("messages", []) if state else []

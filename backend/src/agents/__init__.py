@@ -7,6 +7,8 @@ A thin transverse layer (consumed by ``domains/conversations`` and
     and the engine-level serialization/idle-marker guard.
   - ``runner`` — ``AgentRunner``: one ``create_agent`` per turn, streamed as raw
     token text for the existing ``StreamingResponse(text/plain)`` contract.
+  - ``middleware`` — per-turn request-time middleware (KB merge, image/tool-result
+    hygiene), imported lazily by the runner so LangChain stays out of boot (#160).
   - ``prompts`` — size-adaptive system prompt construction.
   - ``checkpoint`` — PostgreSQL checkpointer wiring (AsyncPostgresSaver on the `erudi` database).
 """

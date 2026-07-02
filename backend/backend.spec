@@ -232,7 +232,19 @@ _hidden_common = [
     "src.agents.model_factory",
     "src.agents.prompts",
     "src.agents.runner",
+    "src.agents.middleware",
+    "src.agents.kb_mode",
+    "src.agents.tools",
     # LangChain/LangGraph dynamic imports not always caught by static analysis.
+    # The agent stack below is imported at FUNCTION scope only (#160 lazy
+    # imports) — pinned explicitly so the first chat turn of a frozen build
+    # can never lose it to an analysis change.
+    "langchain.agents",
+    "langchain.agents.middleware",
+    "langchain.tools",
+    "langchain_core.messages",
+    "langchain_core.tools",
+    "langchain_openai",
     "langgraph.checkpoint.postgres",
         "langgraph.checkpoint.postgres.aio",
         "psycopg",
