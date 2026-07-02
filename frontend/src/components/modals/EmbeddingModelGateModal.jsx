@@ -7,9 +7,11 @@ import { GATE } from "../../utils/embeddingGate";
 // blocks the page until the model is present. Not dismissible by clicking the
 // backdrop — "Not now" leaves the KB page (onLeave); once downloaded, "Close"
 // (onClose) stays on the now-usable KB.
+// Positioned absolute: it must be rendered inside a `relative` container that
+// wraps only the KB content, so the sidebar stays usable during a download.
 export default function EmbeddingModelGateModal({ state, error, onDownload, onLeave, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md">
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md">
       <div className="w-[92%] max-w-md rounded-2xl border border-[#385B4F] bg-[#0e2621] p-6 text-white shadow-2xl">
         {state === GATE.PROMPT && (
           <>

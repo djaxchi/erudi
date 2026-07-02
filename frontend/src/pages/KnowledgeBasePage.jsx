@@ -263,18 +263,21 @@ export default function KnowledgeBasePage() {
 
   return (
     <div className="flex h-screen bg-[#071b18]">
-      {isGateBlocking(gateState) && (
-        <EmbeddingModelGateModal
-          state={gateState}
-          error={gateError}
-          onDownload={handleGateDownload}
-          onLeave={handleGateLeave}
-          onClose={handleGateClose}
-        />
-      )}
       <Sidebar />
 
-      <main className="flex-1 p-4 md:p-6 lg:p-8 flex flex-col gap-4 md:gap-6 overflow-hidden">
+      {/* The gate overlay is scoped to this <main> (relative + absolute modal):
+          it blurs and blocks the KB content only, keeping the sidebar usable
+          while the embedding model downloads. */}
+      <main className="relative flex-1 p-4 md:p-6 lg:p-8 flex flex-col gap-4 md:gap-6 overflow-hidden">
+        {isGateBlocking(gateState) && (
+          <EmbeddingModelGateModal
+            state={gateState}
+            error={gateError}
+            onDownload={handleGateDownload}
+            onLeave={handleGateLeave}
+            onClose={handleGateClose}
+          />
+        )}
         {/* Top Section: Hardware + Model Library */}
         <div className="flex flex-col lg:flex-row gap-4 md:gap-6 flex-1 min-h-0">
           <div className="relative rounded-2xl overflow-hidden shadow-xl flex-1 min-w-[340px] border border-[#385B4F] border-[0.3px] bg-[rgba(22,40,36,0.45)] flex flex-col">
