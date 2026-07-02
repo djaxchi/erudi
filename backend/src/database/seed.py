@@ -1126,16 +1126,23 @@ class Database_Seeder:
             seen_links.add(fresh.link)
             current = existing.get(fresh.link)
             if current is None:
+                # category is NOT NULL: an unclassified fresh row (pre-#122
+                # snapshot / bare fixture) lands on the default bucket — the
+                # None -> "general" coalesce applies ONLY at insert (#192).
+                if fresh.category is None:
+                    fresh.category = "general"
                 db.add(fresh)                   # genuinely new → insert (new id)
                 added += 1
             else:
                 for field in self._RESYNC_FIELDS:   # refresh in place → id preserved
                     value = getattr(fresh, field)
-                    # category is NOT NULL with a default; a fresh row that predates
-                    # it (or a bare test fixture) leaves it None — coalesce, never
-                    # clobber the existing value with NULL.
+                    # An unclassified fresh row (category=None: pre-#122 snapshot
+                    # or bare test fixture) must NEVER clobber a classified one —
+                    # KEEP the existing category (#192, regression of #184: stale
+                    # snapshots collapsed the whole catalog to "general" at every
+                    # boot). Fresh rows carrying a REAL category still propagate.
                     if field == "category" and value is None:
-                        value = "general"
+                        continue
                     setattr(current, field, value)
                 updated += 1
 

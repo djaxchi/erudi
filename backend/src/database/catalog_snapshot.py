@@ -52,8 +52,12 @@ def dict_to_llm(entry: Dict[str, Any]) -> Llm:
         supports_tools=entry.get("supports_tools"),
         # Pre-#86 snapshots predate the flag → default to derived/community.
         is_base=entry.get("is_base", False),
-        # Pre-#122 snapshots predate categories → default to general.
-        category=entry.get("category", "general"),
+        # Pre-#122 snapshots carry no category (key absent or null). Keep None —
+        # it is the "unclassified" sentinel the boot reconcile relies on to
+        # PRESERVE the existing row's classification instead of collapsing every
+        # category to "general" (#192, regression of #184). Fresh inserts still
+        # land on the Llm column default / the reconcile's insert-time coalesce.
+        category=entry.get("category"),
     )
 
 
