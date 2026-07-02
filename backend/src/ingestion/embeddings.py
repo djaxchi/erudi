@@ -26,6 +26,7 @@ from langchain_core.embeddings import Embeddings
 
 from src.core import config
 from src.core.logging import logger
+from src.ingestion.embedding_model import embedding_model_available
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from sentence_transformers import SentenceTransformer
@@ -57,8 +58,14 @@ class E5Embeddings(Embeddings):
                     # (CACHE_DIR = data/models_cache) instead of the global
                     # ~/.cache/huggingface, so it is self-contained and the #146
                     # gate can check/download it at a path the app owns.
+                    # local_files_only once the cache is complete: without it,
+                    # hub HEAD-revalidates every file on load and an offline
+                    # machine fails on the DNS probe despite the pre-download
+                    # (#164).
                     cls._model = SentenceTransformer(
-                        E5_MODEL_NAME, cache_folder=str(config.CACHE_DIR)
+                        E5_MODEL_NAME,
+                        cache_folder=str(config.CACHE_DIR),
+                        local_files_only=embedding_model_available(),
                     )
         return cls._model
 
