@@ -1,35 +1,32 @@
-"""Business logic for LLM download orchestration with progress tracking and quantization.
+"""Business logic for LLM download orchestration with progress tracking.
 
-This module manages the complete lifecycle of downloading LLM models from HuggingFace,
-tracking progress in real-time, and converting to engine-specific formats (e.g., MLX 4-bit).
+This module manages the complete lifecycle of downloading LLM models from HuggingFace
+and tracking progress in real-time. Every catalog link is a pre-built engine-format
+quant, so downloads are moved into place with no local conversion.
 
 Architecture:
-    1. download_llm() orchestrates the full pipeline (download → quantize → cleanup).
-    2. DownloadTracker monitors progress and ETA across concurrent file downloads.
-    3. make_callback() creates fsspec hooks to update DownloadTracker on each chunk.
-    4. update_db_with_progress() runs in background thread to persist status to DB.
-    5. download_files_concurrent() parallelizes .safetensors shard downloads.
+    1. download_llm() orchestrates the full pipeline (select files → download → move).
+    2. _select_download_files() picks the exact files to fetch (single best GGUF quant).
+    3. DownloadTracker monitors progress and ETA across concurrent file downloads.
+    4. make_callback() creates fsspec hooks to update DownloadTracker on each chunk.
+    5. update_db_with_progress() runs in background thread to persist status to DB.
+    6. download_files_concurrent() parallelizes .safetensors shard downloads.
 
 Engine Integration:
-    - Checks llm.quantized flag to determine if model is pre-quantized (MLX format).
-    - Pre-quantized models skip local quantization and are moved directly to final dir.
-    - Non-quantized models are converted via config.LLM_Engine.quant_and_save_from_hf_format().
+    - Every catalog link is a pre-built engine-format quant; no local conversion.
+    - GGUF engines (USES_GGUF) download one best quant file + mmproj + small aux files.
 
 Download Flow:
     ┌─────────────┐
     │ HuggingFace │
     │  Repository │
     └──────┬──────┘
-           │ (1) List files & compute total bytes
+           │ (1) Select files & compute total bytes
            ↓
     ┌──────────────┐
-    │ temp_save_dir│ ← Download .safetensors + config files
+    │ temp_save_dir│ ← Download model weights + config files
     └──────┬───────┘
-           │ (2) Check llm.quantized flag
-           ↓
-    ┌─────────────┐
-    │  Quantize?  │ → YES → config.LLM_Engine.quant_and_save_from_hf_format()
-    └─────────────┘ → NO  → shutil.move to final_save_dir
+           │ (2) shutil.move
            ↓
     ┌──────────────┐
     │final_save_dir│ ← Ready for inference
@@ -39,7 +36,7 @@ Example:
     from src.domains.llms.services import download_llm
     import asyncio
 
-    # Download and quantize Llama-3-8B
+    # Download a pre-built quant of Llama-3-8B
     final_path = asyncio.run(download_llm(
         model_link="meta-llama/Llama-3-8B-Instruct",
         model_id=42,
@@ -47,7 +44,7 @@ Example:
         final_save_dir=config.LLM_DIR / "42",
         job_id=15
     ))
-    # → Downloads to temp, quantizes to MLX 4-bit, saves to final, updates job #15
+    # → Downloads to temp, moves to final, updates job #15
 """
 
 import os
@@ -56,7 +53,7 @@ import threading
 import shutil
 import asyncio
 from threading import Lock
-from typing import Optional, List, Tuple
+from typing import NamedTuple, Optional, List, Tuple
 
 from huggingface_hub import HfApi, HfFileSystem
 from huggingface_hub.utils import GatedRepoError, HfHubHTTPError
@@ -130,6 +127,66 @@ def pick_best_gguf(filenames: list[str]) -> str | None:
     chosen = sorted(ggufs)[0]
     logger.warning(f"No preferred quant found; falling back to {chosen}")
     return chosen
+
+
+class _DownloadSelection(NamedTuple):
+    """Files chosen for download, with the GGUF picks kept for logging."""
+
+    files: List[str]
+    best_gguf: Optional[str]
+    mmproj_files: List[str]
+    small_aux: List[str]
+
+
+def _select_download_files(
+    all_repo_files: List[str],
+    file_sizes: dict,
+    uses_gguf: bool,
+) -> _DownloadSelection:
+    """Pick the exact files to download from a repo listing (pure, no I/O).
+
+    GGUF repos: the single best quantization (pick_best_gguf) + mmproj gguf
+    files + auxiliary non-gguf files with a known size under 10 MB. When the
+    repo has no .gguf at all, best_gguf is None and files is empty — the
+    caller raises with the repo id in the message.
+
+    Non-GGUF repos: every repo file with a known size (exclusions were already
+    applied when building file_sizes).
+
+    Args:
+        all_repo_files: All filenames returned by HfApi.list_repo_files().
+        file_sizes: Filename → size in bytes, exclusions already removed.
+        uses_gguf: Whether the active engine consumes GGUF repos.
+
+    Returns:
+        _DownloadSelection with the files to download and the GGUF picks.
+    """
+    if not uses_gguf:
+        return _DownloadSelection(
+            files=[f for f in all_repo_files if f in file_sizes],
+            best_gguf=None,
+            mmproj_files=[],
+            small_aux=[],
+        )
+    best_gguf = pick_best_gguf(all_repo_files)
+    if not best_gguf:
+        return _DownloadSelection(files=[], best_gguf=None, mmproj_files=[], small_aux=[])
+    mmproj_files = [
+        f for f in all_repo_files
+        if "mmproj" in f.lower() and f.lower().endswith(".gguf")
+    ]
+    small_aux = [
+        f for f in all_repo_files
+        if not f.lower().endswith(".gguf")
+        and f in file_sizes
+        and file_sizes.get(f, 0) < 10 * 1024 * 1024  # < 10 MB
+    ]
+    return _DownloadSelection(
+        files=[best_gguf] + mmproj_files + small_aux,
+        best_gguf=best_gguf,
+        mmproj_files=mmproj_files,
+        small_aux=small_aux,
+    )
 
 
 class DownloadTracker:
@@ -324,24 +381,25 @@ async def download_llm(
     final_save_dir: str,
     job_id: Optional[int] = None
 ) -> str:
-    """Download HuggingFace model with progress tracking and engine-specific quantization.
+    """Download a pre-built HuggingFace quant with progress tracking.
 
-    Complete pipeline: list repo files → download to temp_save_dir → quantize (if needed)
-    → save to final_save_dir. Pre-quantized models (llm.quantized=1) skip local conversion
-    and are moved directly. Progress updates are persisted to DownloadJobModel if job_id provided.
+    Complete pipeline: list repo files → select files to download → download to
+    temp_save_dir → move to final_save_dir. Every catalog link is a pre-built quant,
+    so no local conversion happens. Progress updates are persisted to
+    DownloadJobModel if job_id provided.
 
     Args:
         model_link: HuggingFace repo ID (e.g., "meta-llama/Llama-3-8B-Instruct").
-        model_id: Database ID of the LLM entry (used to check quantized flag).
-        temp_save_dir: Temp directory for full-precision download (deleted after quantization).
-        final_save_dir: Final directory for quantized model (ready for inference).
+        model_id: Database ID of the LLM entry (used by the DB progress updater).
+        temp_save_dir: Temp directory for the download (moved to final_save_dir on success).
+        final_save_dir: Final directory for the model (ready for inference).
         job_id: Optional DownloadJobModel ID for progress tracking (spawns background thread).
 
     Returns:
-        Path to temp_save_dir (note: may be deleted if quantization successful).
+        Path to temp_save_dir (note: moved to final_save_dir on success).
 
     Raises:
-        Exception: If HuggingFace API fails, download fails, or quantization fails.
+        Exception: If HuggingFace API fails, the download fails, or a GGUF repo has no .gguf.
 
     Example:
         >>> final_path = await download_llm(
@@ -360,18 +418,13 @@ async def download_llm(
 
     # Everything we download is a pre-built quant → no local conversion. GGUF repos
     # additionally need only the single best quant file picked (pick_best_gguf).
-    is_prequantized = True
     _uses_gguf = getattr(config.LLM_Engine, 'USES_GGUF', False)
-    gguf_repo = actual_download_link if _uses_gguf else None
 
     # Prepare local path
     os.makedirs(temp_save_dir, exist_ok=True)
     os.makedirs(final_save_dir, exist_ok=True)
     logger.info(f"Starting download for {model_link} → {temp_save_dir}")
-    if is_prequantized:
-        logger.info(f"Model is pre-quantized (MLX), downloading directly: {actual_download_link}")
-    else:
-        logger.info("Model will be quantized locally after download")
+    logger.info(f"Downloading pre-built quant directly: {actual_download_link}")
 
     # Initialize HF API & filesystem
     api = HfApi(token=HF_TOKEN)
@@ -383,14 +436,32 @@ async def download_llm(
         _register_tracker(job_id, job)
 
     try:
-        # Gather file sizes and compute total
+        # Gather file sizes, then select the exact files to download BEFORE
+        # computing the total, so the logged size and progress reflect what is
+        # actually fetched (a single GGUF quant, not the whole repo).
         info = api.repo_info(actual_download_link, files_metadata=True)
         file_sizes = {
             s.rfilename: s.size
             for s in info.siblings
             if s.size and s.rfilename not in FILES_TO_EXCLUDE
         }
-        job.total_bytes = sum(file_sizes.values())
+        all_repo_files = list(api.list_repo_files(actual_download_link))
+        selection = _select_download_files(all_repo_files, file_sizes, _uses_gguf)
+        if _uses_gguf and selection.best_gguf is None:
+            raise Exception(f"No .gguf files found in repo {actual_download_link}")
+        all_files = selection.files
+        if _uses_gguf:
+            if selection.mmproj_files:
+                logger.info(
+                    f"GGUF download: {selection.best_gguf} + mmproj ({selection.mmproj_files[0]}) "
+                    f"+ {len(selection.small_aux)} aux files"
+                )
+            else:
+                logger.info(
+                    f"GGUF download: {selection.best_gguf} + {len(selection.small_aux)} aux files"
+                )
+
+        job.total_bytes = sum(file_sizes.get(f, 0) for f in all_files)
         logger.info(f"Total size: {job.total_bytes} bytes")
 
         # Create progress callback
@@ -407,34 +478,6 @@ async def download_llm(
 
         # Start ETA monitoring
         eta_task = asyncio.create_task(job.monitor_eta(interval=5.0))
-
-        # Build the file list to download.
-        # For GGUF repos: pick only the single best quantization + small aux files.
-        # For safetensors repos: download everything (then convert locally).
-        all_repo_files = list(api.list_repo_files(actual_download_link))
-        if gguf_repo:
-            best_gguf = pick_best_gguf(all_repo_files)
-            if not best_gguf:
-                raise Exception(f"No .gguf files found in repo {actual_download_link}")
-            mmproj_files = [
-                f for f in all_repo_files
-                if "mmproj" in f.lower() and f.lower().endswith(".gguf")
-            ]
-            small_aux = [
-                f for f in all_repo_files
-                if not f.lower().endswith(".gguf")
-                and f in file_sizes
-                and file_sizes.get(f, 0) < 10 * 1024 * 1024  # < 10 MB
-            ]
-            all_files = [best_gguf] + mmproj_files + small_aux
-            job.total_bytes = sum(file_sizes.get(f, 0) for f in all_files)
-            callback.set_size(job.total_bytes)
-            if mmproj_files:
-                logger.info(f"GGUF download: {best_gguf} + mmproj ({mmproj_files[0]}) + {len(small_aux)} aux files")
-            else:
-                logger.info(f"GGUF download: {best_gguf} + {len(small_aux)} aux files")
-        else:
-            all_files = [f for f in all_repo_files if f in file_sizes]
 
         misc = [f for f in all_files if not f.endswith(".safetensors")]
         shards = [f for f in all_files if f.endswith(".safetensors")]
@@ -454,18 +497,14 @@ async def download_llm(
             logger.info(f"Download job {job_id} was cancelled during transfer, skipping finalization")
             return temp_save_dir
 
-        # If pre-quantized, just move files; otherwise convert locally
-        if is_prequantized:
-            logger.info("Using pre-quantized model, moving files directly")
-            if not os.path.exists(temp_save_dir):
-                logger.warning(f"temp dir {temp_save_dir} missing (cancelled?), skipping move")
-                return temp_save_dir
-            if os.path.exists(final_save_dir):
-                shutil.rmtree(final_save_dir, ignore_errors=True)
-            shutil.move(temp_save_dir, final_save_dir)
-        else:
-            await asyncio.to_thread(config.LLM_Engine.quant_and_save_from_hf_format, temp_save_dir, final_save_dir)
-            shutil.rmtree(temp_save_dir, ignore_errors=True)
+        # Everything is a pre-built quant: move files straight to the final dir
+        logger.info("Moving downloaded files to final location")
+        if not os.path.exists(temp_save_dir):
+            logger.warning(f"temp dir {temp_save_dir} missing (cancelled?), skipping move")
+            return temp_save_dir
+        if os.path.exists(final_save_dir):
+            shutil.rmtree(final_save_dir, ignore_errors=True)
+        shutil.move(temp_save_dir, final_save_dir)
 
         # Wait for ETA monitor to finish
         await eta_task
