@@ -32,6 +32,7 @@ from src.core.config import ROOT_DIR
 from src.core.exceptions import EngineException
 from src.core.logging import logger
 from src.engines.base_chat_server_engine import BaseChatServerEngine
+from src.core.subprocess_flags import hidden_console_creationflags
 
 
 class BaseLlamaCppEngine(BaseChatServerEngine):
@@ -248,6 +249,10 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
             universal_newlines=True,
             bufsize=1,
             env=env,
+            # llama-server is a console exe: without this it opens its own
+            # terminal window on Windows when the backend's console isn't
+            # inheritable (#175). No-op (0) on POSIX.
+            creationflags=hidden_console_creationflags(),
         )
         handle: Dict[str, Any] = {
             "pid": proc.pid,
