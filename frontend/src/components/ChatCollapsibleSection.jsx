@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, RefreshCcw, Plus, Edit3, X } from "lucide-re
 import { useNavigate } from "react-router-dom";
 import ErrorModal from "./modals/ErrorModal";
 import { API_BASE_URL } from "../config/api.js";
+import { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 const log = createLogger("ChatCollapsibleSection");
@@ -55,7 +56,7 @@ export default function ChatCollapsibleSection({
 
   const renameConversation = async (id, name) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/conversations/${id}`, {
+      const res = await tracedFetch(`${API_BASE_URL}/conversations/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -75,7 +76,7 @@ export default function ChatCollapsibleSection({
 
   const deleteConversation = async (id) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/conversations/${id}`, {
+      const res = await tracedFetch(`${API_BASE_URL}/conversations/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });

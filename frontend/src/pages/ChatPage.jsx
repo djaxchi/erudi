@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";
 import logoErudi from "../assets/images/logos/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api.js";
+import apiClient, { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 import { canAttachImages } from "../utils/modelCapabilities";
@@ -62,8 +63,8 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/llms/local`)
-      .then((res) => res.json())
+    apiClient
+      .get("/llms/local")
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
           setModels(data);
@@ -79,8 +80,7 @@ export default function ChatPage() {
   useEffect(() => {
     const fetchConversations = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/conversations/`);
-        const data = await res.json();
+        const data = await apiClient.get("/conversations/");
         const sorted = data.sort(
           (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
         );
@@ -128,7 +128,7 @@ export default function ChatPage() {
       }
       try {
         // 1. Create a new conversation with the specified parameters
-        const res = await fetch(`${API_BASE_URL}/conversations/`, {
+        const res = await tracedFetch(`${API_BASE_URL}/conversations/`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -172,8 +172,7 @@ export default function ChatPage() {
 
   const handleRefreshConversations = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/conversations/`);
-      const data = await res.json();
+      const data = await apiClient.get("/conversations/");
       const sorted = data.sort(
         (a, b) => new Date(b.last_message_time) - new Date(a.last_message_time)
       );

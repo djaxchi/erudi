@@ -7,7 +7,6 @@ import InfoRow from "../components/InfoRow";
 import DragDropArea from "../components/DragDropArea";
 import { useKnowledgeBase } from "../contexts/KnowledgeBaseContext";
 import ErrorModal from "../components/modals/ErrorModal";
-import { API_BASE_URL } from "../config/api.js";
 import apiClient from "../services/api/client";
 import EmbeddingModelGateModal from "../components/modals/EmbeddingModelGateModal";
 import { GATE, gateStateFromStatus, shouldPoll, isGateBlocking } from "../utils/embeddingGate";
@@ -138,13 +137,8 @@ export default function KnowledgeBasePage() {
   };
 
   const fetchModels = () => {
-    fetch(`${API_BASE_URL}/llms/local`)
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        return res.json();
-      })
+    apiClient
+      .get("/llms/local")
       .then((data) => {
         log.log("Fetched models", { count: data ? data.length : 0 });
         setModels(data || []);
@@ -156,13 +150,8 @@ export default function KnowledgeBasePage() {
   };
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/hardware/app_startup`)
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        return res.json();
-      })
+    apiClient
+      .get("/hardware/app_startup")
       .then((data) => {
         setHw((prevHw) => ({
           ...prevHw,
