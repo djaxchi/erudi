@@ -17,6 +17,7 @@ Erudi permet de :
 
 ### Concepts
 - [🧩 Architecture](architecture.md) — Structure DDD, multi-engine, flux de démarrage
+- [🪵 Logging & Traceability](logging.md) — Log files, request-id correlation, how to trace a bug
 
 ### Guides Pratiques
 - [💬 Conversations](guides/conversations.md) — Créer des sessions, streaming, paramètres

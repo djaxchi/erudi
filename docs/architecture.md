@@ -265,7 +265,7 @@ logger.info("Model loaded", extra={
 
 Format : `[TIMESTAMP] [LEVEL] [MODULE] Message {context}`
 
-Logs écrits dans `backend/logs/app.log`.
+Logs are written to `backend/logs/backend.log` in development (rotating file, 10 MB, 10 backups). Packaged builds write to the OS log directory instead — macOS: `~/Library/Logs/erudi/backend.log`, Windows: `%LOCALAPPDATA%\erudi\logs\backend.log`, Linux: `${XDG_STATE_HOME:-~/.local/state}/erudi/logs/backend.log`. See [Logging & Traceability](logging.md).
 
 ## Persistence (SQLite + SQLAlchemy)
 

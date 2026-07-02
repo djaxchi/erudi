@@ -227,7 +227,7 @@ Si le modèle génère indéfiniment :
 Consulter les logs pour voir le prompt final :
 
 ```bash
-tail -f backend/logs/app.log | grep "Final prompt"
+tail -f backend/logs/backend.log | grep "Final prompt"
 ```
 
 ## Exemples d'Utilisation

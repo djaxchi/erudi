@@ -29,6 +29,7 @@ nav:
   - 🧠 Overview: index.md
   - 🧩 Architecture: architecture.md
   - 🚀 Getting Started: usage.md
+  - 🪵 Logging: logging.md
   - 📚 Guides:
       - Conversations: guides/conversations.md
       - LLMs: guides/llms.md

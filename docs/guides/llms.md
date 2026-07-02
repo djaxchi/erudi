@@ -327,7 +327,7 @@ curl http://127.0.0.1:27182/erudi/llms/download/1 | jq .error_message
 Vérifier les logs :
 
 ```bash
-tail -f backend/logs/app.log | grep "load_model"
+tail -f backend/logs/backend.log | grep "load_model"
 ```
 
 **Erreurs courantes** :
