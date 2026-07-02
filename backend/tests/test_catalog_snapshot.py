@@ -2,10 +2,12 @@
 loading. The snapshot is the instant, zero-HF first-boot catalog; offline JSON is
 the fallback. Offline unit tests — no network, no real DB."""
 import json
+import types
 from unittest.mock import MagicMock
 
 from src.core import config
 from src.database import catalog_snapshot as snap
+from src.database import seed as seed_mod
 from src.database.seed import Model_Seeder
 from src.entities.Llm import Llm
 
@@ -31,6 +33,63 @@ def test_dict_to_llm_defaults_is_base_false_when_missing():
     # Old snapshots predate the flag; loading one must not crash and defaults to derived.
     back = snap.dict_to_llm({"name": "X", "link": "y/z", "type": "qwen"})
     assert back.is_base is False
+
+
+def test_dict_to_llm_keeps_unclassified_category_none():
+    """#192: pre-#122 snapshots carry no category (or an explicit null). The loader
+    must NOT coalesce to "general" — None is the "unclassified" sentinel that lets
+    the boot reconcile keep the existing row's classification. Plain inserts still
+    land on the Llm column default ("general")."""
+    assert snap.dict_to_llm({"name": "X", "link": "y/z", "type": "qwen"}).category is None
+    assert snap.dict_to_llm(
+        {"name": "X", "link": "y/z", "type": "qwen", "category": None}
+    ).category is None
+
+
+def test_build_path_emits_classified_snapshot_entries(monkeypatch):
+    """#192 root cause pin: the bundled snapshots were generated BEFORE #122 wired
+    the classifier, so no entry carried a category and every boot reconciled the
+    catalog down to "general". The generation path (discovery → creators →
+    llm_to_dict, the exact chain generate_snapshot dumps) must consult the
+    classifier and emit a real category on every entry."""
+    calls = {"n": 0}
+    real_categorize = seed_mod.categorize
+
+    def spy(*a, **k):
+        calls["n"] += 1
+        return real_categorize(*a, **k)
+
+    monkeypatch.setattr(seed_mod, "categorize", spy)
+
+    class _Size:
+        def to_string(self):
+            return "1 GB"
+
+    monkeypatch.setattr(seed_mod, "format_model_info_metadata", lambda *a, **k: "meta")
+    monkeypatch.setattr(seed_mod, "get_model_size_estimate", lambda *a, **k: _Size())
+    monkeypatch.setattr(seed_mod, "get_disk_size_after_quant", lambda *a, **k: _Size())
+
+    api = MagicMock()
+    api.list_models.side_effect = lambda **kw: (
+        [types.SimpleNamespace(id="Qwen/Qwen3-Coder-8B", downloads=100000)]
+        if kw.get("pipeline_tag") == "text-generation" else []
+    )
+    api.model_info.return_value = object()
+    seeder = Model_Seeder(db=None, hf_api=api)
+
+    # Base path: discovery classifies; _create_base_llm carries it onto the row.
+    (cfg,) = seeder.discover_instruct_models("Qwen", "qwen", min_downloads=1)
+    base_entry = snap.llm_to_dict(seeder._create_base_llm(cfg, "quanter/Qwen3-Coder-8B-GGUF"))
+    assert base_entry["category"] == "code"
+
+    # Derived path: _create_derived_llm classifies from the community slug/tags.
+    model_info = types.SimpleNamespace(modelId="community/foo-r1-GGUF", tags=[],
+                                       pipeline_tag="text-generation")
+    search_config = types.SimpleNamespace(model_type="x", default_param_size=7.0)
+    derived_entry = snap.llm_to_dict(seeder._create_derived_llm(model_info, search_config))
+    assert derived_entry["category"] == "reasoning"
+
+    assert calls["n"] >= 2                        # the classifier was actually consulted
 
 
 def test_load_missing_snapshot_returns_empty(tmp_path, monkeypatch):

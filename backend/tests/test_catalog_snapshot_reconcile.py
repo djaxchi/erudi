@@ -209,6 +209,81 @@ class TestReconcileCatalogFromSnapshot:
         assert res["resynced"] is True
 
 
+class TestCategoryReconcileFromSnapshot:
+    """#192 (regression of #184): booting against an UNCLASSIFIED snapshot (a
+    pre-#122 artifact — no ``category`` key, or an explicit null) must never
+    collapse the DB's classified categories to "general". Snapshots that DO
+    carry real categories still propagate them, and brand-new unclassified
+    entries still land on the default bucket."""
+
+    def test_entry_without_category_key_keeps_existing_category(self, test_db_session, monkeypatch):
+        db = test_db_session
+        db.add(_llm(name="Coder", local=0, link="org/coder-GGUF", category="code"))
+        db.commit()
+
+        entry = _entry("org/coder-GGUF", name="Coder refreshed")
+        del entry["category"]                     # shape of the bundled #192 snapshots
+        _use_snapshot(monkeypatch, [entry])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+
+        row = db.query(Llm).filter(Llm.link == "org/coder-GGUF").one()
+        assert row.category == "code"             # classification survives the boot
+        assert row.name == "Coder refreshed"      # other mutable fields did refresh
+
+    def test_entry_with_null_category_keeps_existing_category(self, test_db_session, monkeypatch):
+        db = test_db_session
+        db.add(_llm(name="Coder", local=0, link="org/coder-GGUF", category="code"))
+        db.commit()
+
+        _use_snapshot(monkeypatch, [_entry("org/coder-GGUF", category=None)])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+
+        row = db.query(Llm).filter(Llm.link == "org/coder-GGUF").one()
+        assert row.category == "code"
+
+    def test_classified_entry_updates_category(self, test_db_session, monkeypatch):
+        # A release whose snapshot reclassifies a model must still propagate it.
+        db = test_db_session
+        db.add(_llm(name="Model", local=0, link="org/model-GGUF", category="general"))
+        db.commit()
+
+        _use_snapshot(monkeypatch, [_entry("org/model-GGUF", category="reasoning")])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+
+        row = db.query(Llm).filter(Llm.link == "org/model-GGUF").one()
+        assert row.category == "reasoning"
+
+    def test_new_entry_without_category_inserts_as_general(self, test_db_session, monkeypatch):
+        # Coalescing to the default bucket is an INSERT-only behavior.
+        db = test_db_session
+
+        entry = _entry("org/new-GGUF")
+        del entry["category"]
+        _use_snapshot(monkeypatch, [entry])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+
+        row = db.query(Llm).filter(Llm.link == "org/new-GGUF").one()
+        assert row.category == "general"
+
+    def test_first_boot_seed_from_unclassified_snapshot_lands_on_general(
+        self, test_db_session, monkeypatch
+    ):
+        """First boot seeds via a raw add_all of dict_to_llm rows (no reconcile):
+        an unclassified entry (category=None) must still satisfy the NOT NULL
+        column on the REAL cluster, landing on the "general" default."""
+        db = test_db_session
+
+        entry = _entry("org/first-GGUF")
+        del entry["category"]
+        _use_snapshot(monkeypatch, [entry])
+
+        n = seed_mod.Model_Seeder(db=db, hf_api=None).seed_from_snapshot()
+
+        assert n == 1
+        row = db.query(Llm).filter(Llm.link == "org/first-GGUF").one()
+        assert row.category == "general"
+
+
 class TestPopulateStartupData:
     """populate_startup_data reconciles from the snapshot at every boot — no
     background-refresh flag, StartupVariables stamped on success."""
