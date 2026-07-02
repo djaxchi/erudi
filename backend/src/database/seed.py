@@ -59,7 +59,6 @@ from typing import List, Optional, Dict, Any, Tuple
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
-from fastapi.concurrency import run_in_threadpool
 
 from src.core.logging import logger
 from src.core.config import get_hf_api
@@ -1105,21 +1104,19 @@ class Database_Seeder:
     _RESYNC_FIELDS = ("name", "type", "param_size", "model_metadata", "quantized",
                       "is_base", "category", "description")
 
-    def resync_remote_catalog(self, db: Session, model_seeder: "Model_Seeder") -> Dict[str, Any]:
-        """Reconcile the remote catalog (local=0) with a fresh HF fetch IN PLACE (#123).
+    def reconcile_remote_catalog(
+        self, db: Session, fresh_base: List[Llm], fresh_derived: List[Llm]
+    ) -> Dict[str, Any]:
+        """Reconcile the remote catalog (local=0) with a fresh model set IN PLACE (#123).
 
         Matches existing rows by ``link`` (the HF repo id): existing models are
         updated in place, genuinely new ones inserted, and models that vanished from
-        HF deleted. Rows are no longer dropped-and-reinserted, so catalog IDs stay
-        stable across restarts (the frontend's fetched IDs never go stale). Downloaded
-        (local=1) and in-progress (local=2) models are NEVER touched. The HF fetch
-        runs BEFORE any write, so a network failure leaves the existing catalog intact.
+        the fresh set deleted. Rows are no longer dropped-and-reinserted, so catalog
+        IDs stay stable across restarts (the frontend's fetched IDs never go stale).
+        Downloaded (local=1) and in-progress (local=2) models are NEVER touched. The
+        fresh set is fully loaded BEFORE any write, so a missing/broken source leaves
+        the existing catalog intact.
         """
-        fresh_base, fresh_derived = self.build_fresh_catalog(model_seeder)
-        if not fresh_base:
-            logger.warning("Resync produced no base models — keeping existing catalog")
-            return {"base_models_added": 0, "derived_models_added": 0, "resynced": False}
-
         existing = {row.link: row for row in db.query(Llm).filter(Llm.local == 0).all()}
         added = updated = 0
         seen_links: set = set()
@@ -1149,7 +1146,7 @@ class Database_Seeder:
                 removed += 1
         db.commit()
         logger.info(
-            f"Remote catalog resynced in place: {added} added, {updated} updated, "
+            f"Remote catalog reconciled in place: {added} added, {updated} updated, "
             f"{removed} removed ({len(fresh_base)} base + {len(fresh_derived)} derived; "
             f"downloaded/in-progress untouched)"
         )
@@ -1160,41 +1157,42 @@ class Database_Seeder:
             "resynced": True,
         }
 
-    async def refresh_remote_catalog(self) -> Dict[str, Any]:
-        """Resync the remote catalog from HF in the BACKGROUND (#109).
+    def reconcile_catalog_from_snapshot(self, db: Session) -> Dict[str, Any]:
+        """Reconcile the remote catalog (local=0) with the BUNDLED snapshot (#131, #163).
 
-        Scheduled by the lifespan AFTER the app is ready, so boot never blocks on org
-        discovery / quant resolution (hundreds of HF calls). The resync is synchronous
-        and network-bound, so it runs in a threadpool to keep the event loop free for
-        request handling. Reconciles ``local=0`` atomically (downloaded/in-progress
-        untouched) and stamps ``last_seeded_at`` on success. Never raises into the loop.
+        Runs at every boot: the catalog follows app releases (the snapshot ships
+        with the build) instead of a live HF resync, so it is fully offline —
+        zero network calls, no HF client — and never mutates mid-session. Loads
+        the snapshot through the same mechanism as first-boot seeding
+        (``load_catalog_snapshot`` + ``dict_to_llm``), keeps the existing catalog
+        untouched when no snapshot (or a base-model-less one) is available, and
+        stamps ``StartupVariables`` (models_seeded / last_seeded_at / offline_mode)
+        on success.
         """
-        return await run_in_threadpool(self._refresh_remote_catalog_sync)
+        from src.database.catalog_snapshot import load_catalog_snapshot, dict_to_llm
 
-    def _refresh_remote_catalog_sync(self) -> Dict[str, Any]:
-        """Blocking body of refresh_remote_catalog (runs off the event loop)."""
-        db = SessionLocal()
-        try:
-            if not is_online():
-                logger.info("Background catalog refresh skipped (offline)")
-                return {"resynced": False}
-            logger.info("Background catalog refresh: resyncing from Hugging Face…")
-            model_seeder = Model_Seeder(db, get_hf_api(), offline_mode=False)
-            res = self.resync_remote_catalog(db, model_seeder)
-            if res.get("resynced"):
-                startup_vars = db.query(StartupVariables).first()
-                if startup_vars:
-                    startup_vars.models_seeded = True
-                    startup_vars.last_seeded_at = datetime.now()
-                    startup_vars.offline_mode = False
-                    db.commit()
-            logger.info(f"Background catalog refresh complete: {res}")
-            return res
-        except Exception as e:
-            logger.error(f"Background catalog refresh failed: {e}", exc_info=True)
-            return {"resynced": False, "error": str(e)}
-        finally:
-            db.close()
+        tag = getattr(config.LLM_Engine, "FORMAT_TAG", None)
+        entries = load_catalog_snapshot(tag) if tag else []
+        if not entries:
+            logger.info("No bundled catalog snapshot — keeping the existing catalog")
+            return {"resynced": False}
+        fresh = [dict_to_llm(e) for e in entries]
+        fresh_base = [m for m in fresh if m.is_base]
+        fresh_derived = [m for m in fresh if not m.is_base]
+        if not fresh_base:
+            logger.warning("Snapshot carries no base models — keeping the existing catalog")
+            return {"resynced": False}
+        res = self.reconcile_remote_catalog(db, fresh_base, fresh_derived)
+        if res.get("resynced"):
+            startup_vars = db.query(StartupVariables).first()
+            if startup_vars:
+                startup_vars.models_seeded = True
+                startup_vars.last_seeded_at = datetime.now()
+                # The full snapshot is NOT the degraded JSON fallback: clear the
+                # offline flag a fallback-only first boot may have left behind.
+                startup_vars.offline_mode = False
+                db.commit()
+        return res
 
     async def populate_startup_data(
         self,
@@ -1224,9 +1222,6 @@ class Database_Seeder:
                 "startup_vars_initialized": False,
                 "offline_mode": False,
                 "models_seeded": False,
-                # True → the caller should schedule refresh_remote_catalog() as a
-                # background task (boot must NOT block on the HF resync, #109).
-                "needs_background_refresh": False,
             }
             
             # Initialize startup variables first
@@ -1242,50 +1237,20 @@ class Database_Seeder:
                 db.commit()
                 db.refresh(startup_vars)
             
-            # Determine if we need to seed models
-            needs_seeding = False
-            if not startup_vars.models_seeded:
-                needs_seeding = True
-                logger.info("First-time seeding required (models_seeded=False)")
-            elif startup_vars.last_seeded_at is None:
-                needs_seeding = True
-                logger.info("Seeding required (last_seeded_at is None)")
-            else:
-                # Local-time referential, consistent with the server-stamped
-                # (func.now()) timestamps everywhere else in the schema.
-                days_since_last_seed = (datetime.now() - startup_vars.last_seeded_at).days
-                if days_since_last_seed >= 3:
-                    needs_seeding = True
-                    logger.info(f"Reseed required (last seeded {days_since_last_seed} days ago)")
-                else:
-                    logger.info(f"Skipping seed (last seeded {days_since_last_seed} days ago, threshold=3)")
-            
-            # Seed models if needed. The full HF resync (org discovery + quant
-            # resolution) is SLOW, so it must never block boot: online, we serve
-            # what's already in the DB (or a fast offline placeholder on first boot)
-            # and defer the resync to a background task scheduled by the caller (#109).
-            if needs_seeding:
-                # Snapshot-first, never block boot on the network (#151). Always
-                # seed the bundled snapshot when the catalog is empty and always
-                # defer the live HF resync to the background task, which runs its
-                # own connectivity check (is_online) and either reconciles or
-                # no-ops. This removes the blocking is_online() call from the boot
-                # critical path — offline still boots instantly from the snapshot.
-                catalog_empty = db.query(Llm).filter(Llm.local == 0).count() == 0
-                if catalog_empty:
-                    # Instant first-boot catalog from the bundled snapshot (full,
-                    # zero HF calls — #112); falls back to the minimal offline JSON.
-                    # The background refresh then reconciles with live HF.
-                    results["base_models_added"] = Model_Seeder(db, offline_mode=True).seed_initial_catalog()
-                logger.info("Deferring catalog resync to a background task (non-blocking boot)")
-                results["offline_mode"] = False
-                results["needs_background_refresh"] = True
-                # last_seeded_at / models_seeded are stamped by the background
-                # refresh on success (offline it no-ops and we retry next boot).
-            else:
-                logger.info("Skipping model seeding (already seeded recently)")
-                results["offline_mode"] = startup_vars.offline_mode
-                results["models_seeded"] = False
+            # Reconcile the catalog with the bundled snapshot at EVERY boot
+            # (#131, #163): zero network, so downloads are never starved by a
+            # live HF resync and the catalog never mutates mid-session — it
+            # follows app releases instead.
+            reconcile = self.reconcile_catalog_from_snapshot(db)
+            if reconcile.get("resynced"):
+                results["base_models_added"] = reconcile.get("base_models_added", 0)
+                results["derived_models_added"] = reconcile.get("derived_models_added", 0)
+                results["models_seeded"] = True
+            elif db.query(Llm).filter(Llm.local == 0).count() == 0:
+                # No snapshot bundled (e.g. bare dev tree) and the catalog is
+                # still empty → minimal offline fallback so the app has models.
+                results["base_models_added"] = Model_Seeder(db, offline_mode=True).seed_initial_catalog()
+            results["offline_mode"] = False
             
             # Cleanup jobs (always run)
             logger.info("Cleaning up unfinished jobs...")
@@ -1386,8 +1351,8 @@ async def create_tables() -> None:
 async def startup_populate_database() -> Dict[str, Any]:
     """Populate startup data and return the result dict.
 
-    ``needs_background_refresh=True`` means the caller (lifespan) should schedule
-    ``Database_Seeder().refresh_remote_catalog()`` as a background task (#109).
+    The catalog is reconciled from the bundled snapshot inside (zero network,
+    #131/#163) — there is nothing left for the caller to schedule.
     """
     seeder = Database_Seeder()
     return await seeder.populate_startup_data()

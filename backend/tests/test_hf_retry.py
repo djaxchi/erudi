@@ -1,7 +1,8 @@
 """get_hf_api() returns a client that survives HF anonymous rate limiting (#108
-follow-up). The catalog resync fires hundreds of anonymous metadata calls in a
-burst; a 429 must be retried (with backoff), not abort the resync or be swallowed
-as 'no result'. These are offline unit tests — the HfApi base methods are stubbed."""
+follow-up). The build-time catalog snapshot generation fires hundreds of anonymous
+metadata calls in a burst; a 429 must be retried (with backoff), not abort the build
+or be swallowed as 'no result'. These are offline unit tests — the HfApi base
+methods are stubbed."""
 from types import SimpleNamespace
 
 import httpx

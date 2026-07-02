@@ -50,7 +50,7 @@ async def test_lifespan_emits_phases_in_order(monkeypatch):
     monkeypatch.setattr(api, "open_checkpointer", lambda *_: _FakeCheckpointerCM())
 
     async def _fake_populate():
-        return {}  # falsy needs_background_refresh -> no background task
+        return {}  # catalog reconcile happens inside; nothing else is scheduled
 
     monkeypatch.setattr(api, "startup_populate_database", _fake_populate)
 
