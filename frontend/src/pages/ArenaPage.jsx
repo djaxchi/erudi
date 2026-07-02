@@ -314,7 +314,7 @@ export default function ArenaPage() {
       <div className="fixed bottom-0 left-0 right-0 flex justify-center align-center z-30">
         <div className="max-w-lg w-full mb-8 px-4 py-2 flex items-center gap-3">
           <div className="flex-1">
-            <QuestionInput onSend={handleAsk} backgroundClass="bg-emerald-900" disabled={loading} />
+            <QuestionInput onSend={handleAsk} disabled={loading} />
           </div>
 
           {/* Add Panel Button */}

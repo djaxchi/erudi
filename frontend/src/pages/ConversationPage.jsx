@@ -724,7 +724,6 @@ export default function ConversationPage() {
           <div className="w-full max-w-lg">
             <QuestionInput
               onSend={handleAsk}
-              backgroundClass="bg-emerald-900"
               disabled={loading}
               canAttachImages={canAttachImages(models.find((m) => m.name === currentModel))}
             />
