@@ -13,6 +13,7 @@ import apiClient, { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 import { canAttachImages } from "../utils/modelCapabilities";
+import { getDisplayContent } from "../utils/messageContent";
 
 const log = createLogger("ConversationPage");
 
@@ -52,17 +53,6 @@ export default function ConversationPage() {
 
   const toggleSidebar = () => {
     setCollapsed((prev) => !prev);
-  };
-
-  // Utility function to clean error messages for display
-  const getDisplayContent = (content) => {
-    if (content.includes("[ERROR_MESSAGE_SYSTEM]")) {
-      return content.replace("[ERROR_MESSAGE_SYSTEM] ", "❌ ");
-    }
-    return content
-      .replace(/\[image\]/g, "")
-      .replace(/\[image_path:[^\]]*\]/g, "")
-      .trim();
   };
 
   useEffect(() => {
@@ -541,19 +531,27 @@ export default function ConversationPage() {
     }
   };
 
-  // Toggle star state and send appropriate POST
+  // Toggle star state optimistically, then reconcile with the server.
   const toggleStar = async (msgId) => {
     const isStarred = starredIds[msgId];
     const url = `${API_BASE_URL}/conversations/${isStarred ? "unstar_message" : "star_message"}`;
+    // Optimistic: flip immediately so the star responds on click.
+    setStarredIds((prev) => ({ ...prev, [msgId]: !isStarred }));
     try {
-      await tracedFetch(url, {
+      const res = await tracedFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message_id: msgId }),
       });
-      setStarredIds((prev) => ({ ...prev, [msgId]: !isStarred }));
+      // fetch only rejects on network errors — a non-ok status is also a failure.
+      if (!res.ok) {
+        throw new Error(`star toggle failed with status ${res.status}`);
+      }
     } catch (err) {
-      log.error("Failed to toggle message star", err);
+      // Rollback must stay SILENT (owner decision, #136): no toast, no modal —
+      // a star is low-stakes, so the only trace is this debug-level log line.
+      setStarredIds((prev) => ({ ...prev, [msgId]: isStarred }));
+      log.debug("Star toggle failed, reverting optimistic update", err);
     }
   };
 
@@ -693,7 +691,9 @@ export default function ConversationPage() {
                     {/* Copy button */}
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(msg.content).then(() => {
+                        // Copy the readable text the user sees, not the raw
+                        // stored content with internal attachment markers.
+                        navigator.clipboard.writeText(getDisplayContent(msg.content)).then(() => {
                           setCopiedMessageId(msg.id);
                           setTimeout(() => setCopiedMessageId(null), 1000);
                         });
