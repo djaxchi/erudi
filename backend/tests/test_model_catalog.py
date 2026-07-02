@@ -312,6 +312,52 @@ class TestReconcileRemoteCatalog:
         assert again.name == "Gemma 3 1B Instruct (refreshed)"
         assert again.param_size == 1.5
 
+    def test_reconcile_keeps_category_when_fresh_row_is_unclassified(self, test_db_session):
+        """#192 (regression of #184): fresh rows rebuilt from a pre-#122 snapshot
+        carry category=None — the in-place refresh must KEEP the existing row's
+        classification instead of clobbering it with the default bucket."""
+        from src.entities.Llm import Llm
+
+        db = test_db_session
+        Database_Seeder().reconcile_remote_catalog(db, [
+            self._llm(name="Coder", local=0, link="org/coder-GGUF", category="code")
+        ], [])
+
+        Database_Seeder().reconcile_remote_catalog(db, [
+            self._llm(name="Coder", local=0, link="org/coder-GGUF")  # category unset → None
+        ], [])
+
+        row = db.query(Llm).filter(Llm.link == "org/coder-GGUF").one()
+        assert row.category == "code"
+
+    def test_reconcile_updates_category_from_classified_fresh_row(self, test_db_session):
+        """A fresh set that carries a REAL category still propagates it in place."""
+        from src.entities.Llm import Llm
+
+        db = test_db_session
+        Database_Seeder().reconcile_remote_catalog(db, [
+            self._llm(name="Model", local=0, link="org/model-GGUF", category="code")
+        ], [])
+
+        Database_Seeder().reconcile_remote_catalog(db, [
+            self._llm(name="Model", local=0, link="org/model-GGUF", category="reasoning")
+        ], [])
+
+        row = db.query(Llm).filter(Llm.link == "org/model-GGUF").one()
+        assert row.category == "reasoning"
+
+    def test_reconcile_inserts_unclassified_fresh_row_as_general(self, test_db_session):
+        """Coalescing an unknown category to "general" applies ONLY at insert."""
+        from src.entities.Llm import Llm
+
+        db = test_db_session
+        Database_Seeder().reconcile_remote_catalog(db, [
+            self._llm(name="New", local=0, link="org/new-GGUF")      # category unset → None
+        ], [])
+
+        row = db.query(Llm).filter(Llm.link == "org/new-GGUF").one()
+        assert row.category == "general"
+
     def test_reconcile_inserts_new_and_deletes_disappeared(self, test_db_session):
         """#123: only new models are inserted, only models gone from the fresh set
         are deleted, and survivors keep their ids."""
