@@ -9,6 +9,7 @@ import { Copy, Check, Star } from "lucide-react";
 import TypingIndicator from "../components/TypingIndicator";
 import MarkdownRenderer from "../components/MarkdownRenderer";
 import { API_BASE_URL } from "../config/api.js";
+import apiClient, { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 import { canAttachImages } from "../utils/modelCapabilities";
@@ -93,7 +94,7 @@ export default function ConversationPage() {
   }, [messages]);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/llms/local`)
+    tracedFetch(`${API_BASE_URL}/llms/local`)
       .then((res) => res.json())
       .then((data) => {
         setModels(data);
@@ -116,7 +117,7 @@ export default function ConversationPage() {
       return;
     }
     // Call API to update conversation's llm_id
-    await fetch(`${API_BASE_URL}/conversations/${id}`, {
+    await tracedFetch(`${API_BASE_URL}/conversations/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ llm_id: model.id }),
@@ -128,7 +129,7 @@ export default function ConversationPage() {
   // Function to save conversation parameters
   const saveConversationParameters = async (newSettings, newCustomPrompt) => {
     try {
-      await fetch(`${API_BASE_URL}/conversations/${id}`, {
+      await tracedFetch(`${API_BASE_URL}/conversations/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -146,8 +147,8 @@ export default function ConversationPage() {
   const fetchMessagesAndConversations = useCallback(async () => {
     try {
       const [msgRes, convRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`),
-        fetch(`${API_BASE_URL}/conversations/`),
+        tracedFetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`),
+        tracedFetch(`${API_BASE_URL}/conversations/`),
       ]);
       const msgs = await msgRes.json();
       // initialize starred state from backend
@@ -208,11 +209,14 @@ export default function ConversationPage() {
         if (isFirstMessage) {
           (async () => {
             try {
-              const titleRes = await fetch(`${API_BASE_URL}/conversations/${id}/generate_title`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ question }),
-              });
+              const titleRes = await tracedFetch(
+                `${API_BASE_URL}/conversations/${id}/generate_title`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ question }),
+                }
+              );
 
               if (titleRes.ok) {
                 const reader = titleRes.body.getReader();
@@ -249,7 +253,7 @@ export default function ConversationPage() {
         }
 
         // Stream response using fetch + ReadableStream
-        const responseRes = await fetch(`${API_BASE_URL}/conversations/${id}/query`, {
+        const responseRes = await tracedFetch(`${API_BASE_URL}/conversations/${id}/query`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -315,7 +319,7 @@ export default function ConversationPage() {
           log.error("Server error during response generation", { status: responseRes.status });
 
           try {
-            await fetch(`${API_BASE_URL}/conversations/${id}/store_error_message`, {
+            await tracedFetch(`${API_BASE_URL}/conversations/${id}/store_error_message`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
             });
@@ -374,9 +378,9 @@ export default function ConversationPage() {
 
       try {
         const [convRes, msgRes, convDetailRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/conversations/`),
-          fetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`),
-          fetch(`${API_BASE_URL}/conversations/${id}`),
+          tracedFetch(`${API_BASE_URL}/conversations/`),
+          tracedFetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`),
+          tracedFetch(`${API_BASE_URL}/conversations/${id}`),
         ]);
 
         // Load conversations
@@ -441,8 +445,7 @@ export default function ConversationPage() {
         navigate(location.pathname, { replace: true, state: {} });
       } else if (!location.state || !location.state.initialQuestion) {
         try {
-          const msgRes = await fetch(`${API_BASE_URL}/conversations/${id}/fetch_messages`);
-          const msgs = await msgRes.json();
+          const msgs = await apiClient.get(`/conversations/${id}/fetch_messages`);
           // initialize starred state on initial load
           const starredMap = {};
           msgs.forEach((m) => {
@@ -529,7 +532,7 @@ export default function ConversationPage() {
 
   const handleDelete = async (cid) => {
     setConversations((prev) => prev.filter((conv) => conv.id !== cid));
-    await fetch(`${API_BASE_URL}/conversations/${cid}`, { method: "DELETE" });
+    await tracedFetch(`${API_BASE_URL}/conversations/${cid}`, { method: "DELETE" });
     await fetchMessagesAndConversations();
     if (cid === Number(id)) {
       navigate("/erudi/chat");
@@ -541,7 +544,7 @@ export default function ConversationPage() {
     const isStarred = starredIds[msgId];
     const url = `${API_BASE_URL}/conversations/${isStarred ? "unstar_message" : "star_message"}`;
     try {
-      await fetch(url, {
+      await tracedFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message_id: msgId }),

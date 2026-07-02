@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useCallback, useRef } from 
 import ReactDOM from "react-dom";
 import SpinnerDots from "../components/Spinner";
 import { API_BASE_URL } from "../config/api";
+import { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 const log = createLogger("KnowledgeBaseContext");
 
@@ -39,7 +40,7 @@ export function KnowledgeBaseProvider({ children }) {
 
     try {
       // Start the knowledge base creation API call
-      const response = await fetch(`${API_BASE_URL}/knowledge_base/create`, {
+      const response = await tracedFetch(`${API_BASE_URL}/knowledge_base/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -84,7 +85,7 @@ export function KnowledgeBaseProvider({ children }) {
 
   const checkCreationStatus = useCallback(async (assistantId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/knowledge_base/${assistantId}/status`);
+      const res = await tracedFetch(`${API_BASE_URL}/knowledge_base/${assistantId}/status`);
       if (!res.ok) {
         throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
       }
