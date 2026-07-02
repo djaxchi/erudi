@@ -22,6 +22,7 @@ from pathlib import Path
 import pgserver
 
 from src.core.logging import logger
+from src.core.subprocess_flags import hidden_console_creationflags
 
 # Number of most-recent snapshots to retain; older ones are pruned.
 KEEP_BACKUPS = 3
@@ -62,6 +63,9 @@ def backup_database(psycopg_url: str, data_dir: Path | str, label: str) -> Path:
         check=True,
         capture_output=True,
         text=True,
+        # pg_dump is a console exe; keep it from flashing a terminal window
+        # at boot on Windows (#175). No-op (0) on POSIX.
+        creationflags=hidden_console_creationflags(),
     )
 
     _prune(out_dir)
