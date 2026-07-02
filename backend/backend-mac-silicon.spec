@@ -210,6 +210,9 @@ a = Analysis(
         "langchain_core.messages",
         "langchain_core.tools",
         "langchain_openai",
+        # Ingestion splitters: imported at FUNCTION scope only (#160 lazy
+        # imports, src/ingestion/chunking.py) — pinned for the same reason.
+        "langchain_text_splitters",
         "langgraph.checkpoint.postgres",
         "langgraph.checkpoint.postgres.aio",
         "psycopg",

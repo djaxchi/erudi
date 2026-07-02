@@ -89,11 +89,12 @@ def test_all_specs_bundle_alembic_migrations():
 
 
 @pytest.mark.unit
-def test_all_specs_pin_lazy_langchain_agent_stack():
-    # The agent LangChain stack is imported at FUNCTION scope only (#160 lazy
-    # imports, deferred to the first turn). PyInstaller's bytecode scan still
-    # sees function-level imports today, but these hiddenimports pin the
-    # first-chat dependencies of a frozen build against any analysis change.
+def test_all_specs_pin_lazy_langchain_stacks():
+    # The agent LangChain stack (deferred to the first turn) and the ingestion
+    # splitter stack (deferred to KB ingestion time) are imported at FUNCTION
+    # scope only (#160 lazy imports). PyInstaller's bytecode scan still sees
+    # function-level imports today, but these hiddenimports pin the deferred
+    # dependencies of a frozen build against any analysis change.
     needed = (
         '"langchain.agents"',
         '"langchain.agents.middleware"',
@@ -101,6 +102,7 @@ def test_all_specs_pin_lazy_langchain_agent_stack():
         '"langchain_core.messages"',
         '"langchain_core.tools"',
         '"langchain_openai"',
+        '"langchain_text_splitters"',
         '"src.agents.middleware"',
         '"src.agents.kb_mode"',
         '"src.agents.tools"',

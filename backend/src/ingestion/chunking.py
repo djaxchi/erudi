@@ -21,16 +21,21 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-
-from langchain_text_splitters import (
-    MarkdownHeaderTextSplitter,
-    RecursiveCharacterTextSplitter,
-)
+from typing import TYPE_CHECKING
 
 from src.core import config
 from src.core.logging import logger
 from src.ingestion.embedding_model import embedding_model_available
 from src.ingestion.types import ExtractedDocument
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+# NB: langchain_text_splitters is imported in FUNCTION scope only (issue #160).
+# Its package __init__ eagerly imports sentence_transformers -> torch/sklearn
+# (~3-4 s), and this module sits on the boot path (seed -> utils -> kb_utils),
+# so a module-level import here taxes every backend start for a splitter that
+# is only needed at KB ingestion time.
 
 E5_TOKENIZER_NAME = "intfloat/multilingual-e5-small"
 
@@ -151,6 +156,8 @@ def _reattach_table_headers(chunks: list[str]) -> list[str]:
 
 
 def _make_sub_splitter(target_tokens: int, overlap_tokens: int) -> RecursiveCharacterTextSplitter:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
     return RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
         _get_tokenizer(),
         chunk_size=target_tokens,
@@ -173,6 +180,8 @@ def chunk_markdown(
 
     # PostgreSQL text columns reject NUL bytes; some parsers emit them.
     text = text.replace("\x00", "")
+
+    from langchain_text_splitters import MarkdownHeaderTextSplitter
 
     md_splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=HEADERS_TO_SPLIT_ON,
