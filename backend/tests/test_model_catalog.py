@@ -215,10 +215,11 @@ class TestRunnableExposedInResponse:
         assert r.runnable is True
 
 
-class TestRemoteCatalogResync:
-    """resync_remote_catalog reconciles local=0 with HF atomically: it preserves
-    downloaded (local=1) and in-progress (local=2) models, and never empties the
-    catalog if the fetch comes back empty (network failure)."""
+class TestReconcileRemoteCatalog:
+    """reconcile_remote_catalog reconciles local=0 with a fresh model set (now the
+    bundled snapshot — #131/#163) atomically: it preserves downloaded (local=1) and
+    in-progress (local=2) models, updates survivors in place (stable ids), inserts
+    new rows and deletes vanished ones."""
 
     def _llm(self, **kw):
         from src.entities.Llm import Llm
@@ -228,8 +229,7 @@ class TestRemoteCatalogResync:
         kw.setdefault("is_base", False)  # real fresh models always carry the flag
         return Llm(**kw)
 
-    def test_swap_replaces_remote_keeps_downloaded(self, test_db_session):
-        from unittest.mock import MagicMock
+    def test_reconcile_replaces_remote_keeps_downloaded(self, test_db_session):
         from src.entities.Llm import Llm
 
         db = test_db_session
@@ -241,11 +241,7 @@ class TestRemoteCatalogResync:
         db.commit()
 
         fresh = self._llm(name="Gemma 3 1B Instruct", local=0, link="unsloth/gemma-3-1b-it-GGUF", type="gemma")
-        ms = MagicMock()
-        ms.build_base_models.return_value = [fresh]
-        ms.build_derived_models.return_value = []
-
-        res = Database_Seeder().resync_remote_catalog(db, ms)
+        res = Database_Seeder().reconcile_remote_catalog(db, [fresh], [])
 
         assert res["resynced"] is True
         rows = {r.link: r.local for r in db.query(Llm).all()}
@@ -254,11 +250,11 @@ class TestRemoteCatalogResync:
         assert rows["/data/models/9"] == 1
         assert rows["repo/wip-GGUF"] == 2
 
-    def test_derived_requant_of_base_is_deduped(self, test_db_session):
+    def test_derived_requant_of_base_is_deduped(self):
+        """build_fresh_catalog (shared with the build-time snapshot generator) drops
+        derived rows that are just another quant of a base model, keeps finetunes."""
         from unittest.mock import MagicMock
-        from src.entities.Llm import Llm
 
-        db = test_db_session
         base = self._llm(name="Gemma 3 1B Instruct", local=0, link="unsloth/gemma-3-1b-it-GGUF", type="gemma")
         # another quant of the SAME base (normalizes to gemma-3-1b-it) → must drop
         requant = self._llm(name="dup", local=0, link="bartowski/google_gemma-3-1b-it-GGUF", type="gemma")
@@ -268,78 +264,71 @@ class TestRemoteCatalogResync:
         ms.build_base_models.return_value = [base]
         ms.build_derived_models.return_value = [requant, finetune]
 
-        Database_Seeder().resync_remote_catalog(db, ms)
-        links = {r.link for r in db.query(Llm).filter(Llm.local == 0).all()}
+        fresh_base, fresh_derived = Database_Seeder().build_fresh_catalog(ms)
+        links = {m.link for m in fresh_base + fresh_derived}
         assert "unsloth/gemma-3-1b-it-GGUF" in links          # base kept
         assert "bartowski/google_gemma-3-1b-it-GGUF" not in links  # re-quant of base dropped
         assert "cognitivecomputations/dolphin-gemma-3-1b-GGUF" in links  # finetune kept
 
-    def test_empty_fetch_does_not_wipe_catalog(self, test_db_session):
-        from unittest.mock import MagicMock
+    def test_baseless_snapshot_does_not_wipe_catalog(self, test_db_session, monkeypatch):
+        """A snapshot with no base models (broken/partial artifact) must not wipe
+        the existing catalog — the reconcile no-ops."""
+        from src.database import catalog_snapshot as snap_mod
         from src.entities.Llm import Llm
 
         db = test_db_session
         db.add(self._llm(name="Keep Me", local=0, link="keep/me-GGUF"))
         db.commit()
 
-        ms = MagicMock()
-        ms.build_base_models.return_value = []
-        ms.build_derived_models.return_value = []
+        monkeypatch.setattr(config, "LLM_Engine", type("_Eng", (), {"FORMAT_TAG": "gguf"}))
+        monkeypatch.setattr(snap_mod, "load_catalog_snapshot",
+                            lambda tag: [{"name": "d", "link": "x/d-GGUF", "type": "x",
+                                          "param_size": 1.0, "is_base": False}])
 
-        res = Database_Seeder().resync_remote_catalog(db, ms)
+        res = Database_Seeder().reconcile_catalog_from_snapshot(db)
         assert res["resynced"] is False
         assert db.query(Llm).filter(Llm.link == "keep/me-GGUF").count() == 1
 
-    def test_resync_keeps_ids_stable_in_place(self, test_db_session):
-        """#123: a model still on HF keeps its catalog id across resyncs (in-place
-        update), and its fields are refreshed — no delete+reinsert id churn."""
-        from unittest.mock import MagicMock
+    def test_reconcile_keeps_ids_stable_in_place(self, test_db_session):
+        """#123: a model still in the snapshot keeps its catalog id across reconciles
+        (in-place update), and its fields are refreshed — no delete+reinsert churn."""
         from src.entities.Llm import Llm
 
         db = test_db_session
-        ms = MagicMock()
-        ms.build_base_models.return_value = [
+        Database_Seeder().reconcile_remote_catalog(db, [
             self._llm(name="Gemma 3 1B Instruct", local=0,
                       link="unsloth/gemma-3-1b-it-GGUF", type="gemma", param_size=1.0)
-        ]
-        ms.build_derived_models.return_value = []
-        Database_Seeder().resync_remote_catalog(db, ms)
+        ], [])
         first_id = db.query(Llm).filter(Llm.link == "unsloth/gemma-3-1b-it-GGUF").one().id
 
-        # Second resync: SAME link, refreshed name + param_size.
-        ms.build_base_models.return_value = [
+        # Second reconcile: SAME link, refreshed name + param_size.
+        Database_Seeder().reconcile_remote_catalog(db, [
             self._llm(name="Gemma 3 1B Instruct (refreshed)", local=0,
                       link="unsloth/gemma-3-1b-it-GGUF", type="gemma", param_size=1.5)
-        ]
-        Database_Seeder().resync_remote_catalog(db, ms)
+        ], [])
 
         again = db.query(Llm).filter(Llm.link == "unsloth/gemma-3-1b-it-GGUF").one()
         assert again.id == first_id                       # id stable → in-place update
         assert again.name == "Gemma 3 1B Instruct (refreshed)"
         assert again.param_size == 1.5
 
-    def test_resync_inserts_new_and_deletes_disappeared(self, test_db_session):
-        """#123: only new models are inserted, only models gone from HF are deleted,
-        and survivors keep their ids."""
-        from unittest.mock import MagicMock
+    def test_reconcile_inserts_new_and_deletes_disappeared(self, test_db_session):
+        """#123: only new models are inserted, only models gone from the fresh set
+        are deleted, and survivors keep their ids."""
         from src.entities.Llm import Llm
 
         db = test_db_session
-        ms = MagicMock()
-        ms.build_base_models.return_value = [
+        Database_Seeder().reconcile_remote_catalog(db, [
             self._llm(name="Keep", local=0, link="org/keep-GGUF", type="gemma"),
             self._llm(name="Gone", local=0, link="org/gone-GGUF", type="gemma"),
-        ]
-        ms.build_derived_models.return_value = []
-        Database_Seeder().resync_remote_catalog(db, ms)
+        ], [])
         keep_id = db.query(Llm).filter(Llm.link == "org/keep-GGUF").one().id
 
-        # Next fetch: 'gone' disappeared, 'fresh' appeared, 'keep' survives.
-        ms.build_base_models.return_value = [
+        # Next fresh set: 'gone' disappeared, 'fresh' appeared, 'keep' survives.
+        Database_Seeder().reconcile_remote_catalog(db, [
             self._llm(name="Keep", local=0, link="org/keep-GGUF", type="gemma"),
             self._llm(name="Fresh", local=0, link="org/fresh-GGUF", type="gemma"),
-        ]
-        Database_Seeder().resync_remote_catalog(db, ms)
+        ], [])
 
         rows = {r.link: r.id for r in db.query(Llm).filter(Llm.local == 0).all()}
         assert "org/gone-GGUF" not in rows            # disappeared → deleted
@@ -347,148 +336,88 @@ class TestRemoteCatalogResync:
         assert rows["org/keep-GGUF"] == keep_id       # survivor → id unchanged
 
 
-class TestNonBlockingCatalogRefresh:
-    """refresh_remote_catalog runs the slow HF resync in the BACKGROUND (#109): it
-    never blocks boot, stamps last_seeded_at on success, and swallows errors."""
-
-    def _run(self):
-        import asyncio
-        return asyncio.run(Database_Seeder().refresh_remote_catalog())
-
-    def test_skips_when_offline(self, monkeypatch):
-        from unittest.mock import MagicMock
-        from src.database import seed as seed_mod
-        fake_db = MagicMock()
-        monkeypatch.setattr(seed_mod, "is_online", lambda: False)
-        monkeypatch.setattr(seed_mod, "SessionLocal", lambda: fake_db)
-        assert self._run() == {"resynced": False}
-        fake_db.close.assert_called_once()
-
-    def test_resyncs_and_stamps_when_online(self, monkeypatch):
-        from unittest.mock import MagicMock
-        from src.database import seed as seed_mod
-        fake_db = MagicMock()
-        sv = MagicMock()
-        fake_db.query.return_value.first.return_value = sv
-        monkeypatch.setattr(seed_mod, "is_online", lambda: True)
-        monkeypatch.setattr(seed_mod, "get_hf_api", lambda: object())
-        monkeypatch.setattr(seed_mod, "SessionLocal", lambda: fake_db)
-        monkeypatch.setattr(seed_mod, "Model_Seeder", lambda *a, **k: MagicMock())
-        monkeypatch.setattr(Database_Seeder, "resync_remote_catalog",
-                            lambda self, d, ms: {"resynced": True, "base_models_added": 5, "derived_models_added": 9})
-        res = self._run()
-        assert res["resynced"] is True
-        assert sv.models_seeded is True       # stamped on success
-        fake_db.commit.assert_called()
-        fake_db.close.assert_called_once()
-
-    def test_swallows_errors(self, monkeypatch):
-        from unittest.mock import MagicMock
-        from src.database import seed as seed_mod
-
-        def _boom(self, d, ms):
-            raise RuntimeError("boom")
-        fake_db = MagicMock()
-        monkeypatch.setattr(seed_mod, "is_online", lambda: True)
-        monkeypatch.setattr(seed_mod, "get_hf_api", lambda: object())
-        monkeypatch.setattr(seed_mod, "SessionLocal", lambda: fake_db)
-        monkeypatch.setattr(seed_mod, "Model_Seeder", lambda *a, **k: MagicMock())
-        monkeypatch.setattr(Database_Seeder, "resync_remote_catalog", _boom)
-        res = self._run()
-        assert res["resynced"] is False and "error" in res
-        fake_db.close.assert_called_once()
-
-
 class TestPlaceholderSeedIsBestEffort:
-    """A missing/broken offline fallback JSON must NOT crash boot (#109). The
-    first-boot placeholder is best-effort; online, the background refresh fills the
-    catalog. Regression: the packaged backend lacked the JSON and boot crashed."""
+    """A missing/broken snapshot or offline fallback JSON must NOT crash boot.
+    The catalog reconcile is snapshot-only (#131/#163) and the first-boot fallback
+    is best-effort. Regression: the packaged backend lacked the JSON and crashed."""
 
-    def test_online_first_boot_tolerates_missing_fallback(self, test_db_session, monkeypatch):
+    def _stub_side_steps(self, monkeypatch, seed_mod):
+        """Keep the unrelated startup steps cheap + DB-only."""
+
+        class _NoCleanup:
+            def __init__(self, *a, **k):
+                pass
+
+            def cleanup_all_unfinished_jobs(self):
+                return {}
+
+        class _NoHw:
+            def __init__(self, *a, **k):
+                pass
+
+            def initialize_if_needed(self):
+                return False
+
+        monkeypatch.setattr(seed_mod, "Job_Cleanup_Service", _NoCleanup)
+        monkeypatch.setattr(seed_mod, "Hardware_Initializer", _NoHw)
+
+    def test_boot_tolerates_missing_snapshot_and_fallback(self, test_db_session, monkeypatch):
         import asyncio
         from src.database import seed as seed_mod
+        from src.database import catalog_snapshot as snap_mod
         from src.database.seed import Llm
 
         # Force the empty-catalog first-boot path.
         test_db_session.query(Llm).filter(Llm.local == 0).delete()
         test_db_session.commit()
 
-        monkeypatch.setattr(seed_mod, "is_online", lambda: True)
+        # No snapshot → the reconcile no-ops…
+        monkeypatch.setattr(config, "LLM_Engine", type("_Eng", (), {"FORMAT_TAG": "gguf"}))
+        monkeypatch.setattr(snap_mod, "load_catalog_snapshot", lambda tag: [])
 
-        # No snapshot and no fallback JSON → seed_initial_catalog returns 0 (its
-        # internal best-effort, tested in test_catalog_snapshot). Boot must not crash.
+        # …and no fallback JSON either → seed_initial_catalog returns 0 (its
+        # internal best-effort, tested in test_catalog_snapshot). Must not crash.
         class _EmptySeeder:
             def __init__(self, *a, **k):
                 pass
+
             def seed_initial_catalog(self):
                 return 0
         monkeypatch.setattr(seed_mod, "Model_Seeder", _EmptySeeder)
+        self._stub_side_steps(monkeypatch, seed_mod)
 
-        # Keep the unrelated startup steps cheap + DB-only.
-        class _NoCleanup:
-            def __init__(self, *a, **k):
-                pass
-            def cleanup_all_unfinished_jobs(self):
-                return {}
-
-        class _NoHw:
-            def __init__(self, *a, **k):
-                pass
-            def initialize_if_needed(self):
-                return False
-        monkeypatch.setattr(seed_mod, "Job_Cleanup_Service", _NoCleanup)
-        monkeypatch.setattr(seed_mod, "Hardware_Initializer", _NoHw)
-
-        # Must NOT raise — the placeholder failure is swallowed, refresh deferred.
         res = asyncio.run(Database_Seeder().populate_startup_data(db=test_db_session))
-        assert res["needs_background_refresh"] is True
+        assert "needs_background_refresh" not in res  # background resync is gone
         assert res["base_models_added"] == 0
 
-    def test_boot_is_snapshot_first_and_never_calls_is_online(self, test_db_session, monkeypatch):
-        """#151 — boot seeds the bundled snapshot and defers the resync WITHOUT the
-        blocking is_online() network call. Connectivity is decided later by the
-        background task, so a slow/offline network never delays or blocks boot."""
+    def test_boot_reconciles_snapshot_with_zero_network(self, test_db_session, monkeypatch):
+        """#131/#163 — boot reconciles the catalog from the bundled snapshot with
+        ZERO network: no is_online() probe, no HF client, no background task."""
         import asyncio
         from src.database import seed as seed_mod
+        from src.database import catalog_snapshot as snap_mod
         from src.database.seed import Llm
 
         # Force the empty-catalog first-boot path.
         test_db_session.query(Llm).filter(Llm.local == 0).delete()
         test_db_session.commit()
 
-        def _boom():
-            raise AssertionError("is_online() must not run on the boot path (#151)")
+        def _boom(*a, **k):
+            raise AssertionError("no network call may run on the boot path (#131/#163)")
 
         monkeypatch.setattr(seed_mod, "is_online", _boom)
+        monkeypatch.setattr(seed_mod, "get_hf_api", _boom)
 
-        class _CountingSeeder:
-            def __init__(self, *a, **k):
-                pass
-
-            def seed_initial_catalog(self):
-                return 7
-
-        class _NoCleanup:
-            def __init__(self, *a, **k):
-                pass
-
-            def cleanup_all_unfinished_jobs(self):
-                return {}
-
-        class _NoHw:
-            def __init__(self, *a, **k):
-                pass
-
-            def initialize_if_needed(self):
-                return False
-
-        monkeypatch.setattr(seed_mod, "Model_Seeder", _CountingSeeder)
-        monkeypatch.setattr(seed_mod, "Job_Cleanup_Service", _NoCleanup)
-        monkeypatch.setattr(seed_mod, "Hardware_Initializer", _NoHw)
+        monkeypatch.setattr(config, "LLM_Engine", type("_Eng", (), {"FORMAT_TAG": "gguf"}))
+        monkeypatch.setattr(snap_mod, "load_catalog_snapshot", lambda tag: [
+            {"name": "A", "link": "org/a-GGUF", "type": "x", "param_size": 1.0, "is_base": True},
+            {"name": "B", "link": "org/b-GGUF", "type": "x", "param_size": 1.0, "is_base": False},
+        ])
+        self._stub_side_steps(monkeypatch, seed_mod)
 
         res = asyncio.run(Database_Seeder().populate_startup_data(db=test_db_session))
-        assert res["needs_background_refresh"] is True  # always defer
-        assert res["base_models_added"] == 7  # snapshot seeded regardless of network
+        assert "needs_background_refresh" not in res  # nothing left to schedule
+        assert res["base_models_added"] == 2          # snapshot applied at boot
         assert res.get("offline_mode") is False
 
 
