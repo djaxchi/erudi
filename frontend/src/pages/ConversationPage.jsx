@@ -136,7 +136,9 @@ export default function ConversationPage() {
           temperature: newSettings.temperature,
           top_p: newSettings.topP,
           max_tokens: newSettings.maxTokens,
-          custom_prompt: newCustomPrompt || customPrompt,
+          // ?? (not ||): an explicit empty string means "clear the prompt"
+          // and must be persisted as-is, not swallowed by the state fallback.
+          custom_prompt: newCustomPrompt ?? customPrompt,
         }),
       });
     } catch (error) {
@@ -739,7 +741,12 @@ export default function ConversationPage() {
         isOpen={showPromptModal}
         onClose={() => setShowPromptModal(false)}
         customPrompt={customPrompt}
-        onSave={(newPrompt) => setCustomPrompt(newPrompt)}
+        onSave={(newPrompt) => {
+          // Saving in the modal persists immediately — closing without
+          // clicking Apply in the header must not lose the prompt (#136).
+          setCustomPrompt(newPrompt);
+          saveConversationParameters(settings, newPrompt);
+        }}
         title="Customize System Prompt"
       />
     </div>
