@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Desktop app that runs open-source LLMs locally. Two processes:
 
-- **Backend** — Python **3.12** FastAPI server (3.12 is required: `pgserver` only ships wheels up to cp312), launched by `backend/run.py`, listens on `127.0.0.1:8765` by default. Routes are mounted under the `/erudi` prefix.
+- **Backend** — Python **3.12** FastAPI server (3.12 is required: `pgserver` only ships wheels up to cp312), launched by `backend/run.py`, listens on `127.0.0.1:27182` by default. Routes are mounted under the `/erudi` prefix.
 - **Frontend** — Electron + React + Tailwind, packaged with electron-forge. In production the main process spawns the bundled PyInstaller backend executable; in dev it expects the backend to be running already.
 
 Hardware backend is selected at startup by `BaseEngine.get_engine()` (`backend/src/engines/base_engine.py:507`): `MLX_Engine` on macOS ARM, `CUDA_Engine` on Linux/Windows with NVIDIA, `CPU_Engine` otherwise. Set `ERUDI_FORCE_CPU=1` to bypass GPU detection.
@@ -29,10 +29,10 @@ bash scripts/dev/backend/build-llamacpp-cpu-macos-silicon.sh
 # Run dev server (from repo root). run.py supervises uvicorn and emits
 # newline-delimited JSON lifecycle events on stdout — do not replace it
 # with a raw `uvicorn` call when testing the Electron integration.
-cd backend && source venv/bin/activate && python run.py --port 8765
+cd backend && source venv/bin/activate && python run.py --port 27182
 
 # Alternative: uvicorn with reload (skips JSON events, fine for API-only work)
-cd backend && source venv/bin/activate && PYTHONPATH=. uvicorn src.main:app --reload --port 8765
+cd backend && source venv/bin/activate && PYTHONPATH=. uvicorn src.main:app --reload --port 27182
 
 # Tests
 cd backend && pytest tests/                              # full suite (local Mac)
@@ -68,7 +68,7 @@ npm run dist:win         # Windows x64 via electron-builder
 
 ### Combined dev workflow
 
-`bash scripts/dev/dev-start.sh` opens two Terminal windows (backend + frontend, macOS only) and kills anything on `BACKEND_PORT` first. Set `BACKEND_PORT` to override 8765.
+`bash scripts/dev/dev-start.sh` opens two Terminal windows (backend + frontend, macOS only) and kills anything on `BACKEND_PORT` first. Set `BACKEND_PORT` to override 27182.
 
 ### Production build
 
@@ -93,7 +93,7 @@ backend/src/
 └── utils/               file_processor (training), kb_utils (hybrid retrieval façade), prompt_utils
 ```
 
-Domains exposed under `/erudi`: `llms`, `training`, `hardware`, `arena`, `knowledge_base`, `conversations`, `health`, `startup`. The frontend hits `http://127.0.0.1:8765/erudi/...` (see `frontend/src/config/api.js`).
+Routers mounted under `/erudi` (in `core/api.py:register_routers`): `llms`, `hardware`, `arena`, `knowledge_base`, `conversations`, `startup` (from `domains/`) plus `health` (from `core/health.py`, not a domain). There is no `training` router — training lives in `utils/file_processor` and is driven through the `llms` domain. The frontend hits `http://127.0.0.1:27182/erudi/...` (see `frontend/src/config/api.js`).
 
 **Engine singleton.** `BaseEngine` keeps `_model`, `_tokenizer`, `_model_id`, `_last_used` as class attributes shared across requests, guarded by `_lock`. A 300s idle cleanup task (`start_cleanup_task`) is registered in `lifespan`. Don't instantiate engines — call class methods on the result of `BaseEngine.get_engine()`. Selected engine lives in `src.core.config.LLM_Engine`.
 
@@ -103,7 +103,7 @@ Domains exposed under `/erudi`: `llms`, `training`, `hardware`, `arena`, `knowle
 
 ### Launcher contract
 
-`backend/run.py` is **not** a thin wrapper — it's the production entrypoint expected by the Electron main process and emits newline-delimited JSON events on stdout: `starting`, `ready`, `shutdown`, `startup_error` (codes: `PORT_IN_USE`, `CRASH_BEFORE_READY`, `PORT_TIMEOUT`, `IMPORT_ERROR`, `DATA_PREP_ERROR`, `NO_PORT_AVAILABLE`, `UNEXPECTED_ERROR`, `POLLING_ERROR`). It scans ports `8765-8799` and falls back to killing PID on 8777 if all are busy. Preserve this protocol if you touch the file.
+`backend/run.py` is **not** a thin wrapper — it's the production entrypoint expected by the Electron main process and emits newline-delimited JSON events on stdout: `starting`, `ready`, `shutdown`, `startup_error` (codes: `PORT_IN_USE`, `CRASH_BEFORE_READY`, `PORT_TIMEOUT`, `IMPORT_ERROR`, `DATA_PREP_ERROR`, `NO_PORT_AVAILABLE`, `UNEXPECTED_ERROR`, `POLLING_ERROR`). It scans ports `27182-27199` (canonical port 27182 — the digits of e; the scan stops short of the inference pools at 27200+) and falls back to killing the PID on the middle of the window if all are busy. Preserve this protocol if you touch the file.
 
 ### Frontend layering
 
@@ -119,7 +119,7 @@ frontend/src/
 ├── components/          shared UI (Tailwind + lucide-react + framer-motion)
 ├── contexts/            React contexts (KnowledgeBase, DownloadModal)
 ├── services/api/client.js  fetch wrapper with retry + timeout + error normalization
-├── config/api.js        API_BASE_URL = http://127.0.0.1:8765/erudi
+├── config/api.js        API_BASE_URL = http://127.0.0.1:27182/erudi
 └── utils/               logger, hardwareTransform
 ```
 
@@ -128,6 +128,7 @@ frontend/src/
 ## Conventions
 
 - **Python**: `snake_case` files/functions, `Capitalized_Snake_Case` classes (yes, with underscores — see `MLX_Engine`, `CUDA_Engine`), absolute imports from `src.*`. Use `pathlib.Path`, never string paths. Logging via `from src.core.logging import logger` — no `print()` in production paths.
+- **ASCII-only where it executes or gets parsed**: log-message literals (`logger.*(...)` strings) and machine-parsed bundled data files (e.g. `alembic.ini`) must stay ASCII-only — no `→`, `—`, accents (see #168/#149). Non-ASCII is fine in comments and docstrings (Python reads source as UTF-8 regardless of locale).
 - **Async-first.** Don't block the event loop with synchronous I/O in endpoints/services.
 - **Ruff config** (`backend/ruff.toml`) only enforces `F` + `E7`. `E501`/`E402`/`F841`/`E701` are intentionally ignored — don't reintroduce them as blockers. Black uses `--line-length=100` via pre-commit.
 - **Frontend**: ESLint + Prettier are enforced by CI (`lint:check`, `format:check`).

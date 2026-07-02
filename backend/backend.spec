@@ -389,10 +389,19 @@ if IS_WIN:
 
 pyz = PYZ(a.pure)
 
+# Interpreter options for the frozen runtime. PyInstaller's bootloader
+# pre-initializes CPython itself and IGNORES PYTHONUTF8 from the environment
+# (documented PyInstaller behavior), so UTF-8 mode must be forced here.
+# Without it sys.stdout/stderr inherit the locale code page (cp1252 on
+# Windows), and any Unicode character in a log line kills the console log
+# handler with "--- Logging error ---" (#168). open() also defaults to UTF-8
+# under this mode, which is the systemic guard #149/#150 intended.
+_interpreter_options = [("X utf8_mode=1", None, "OPTION")]
+
 exe = EXE(
     pyz,
     a.scripts,
-    [],
+    _interpreter_options,
     exclude_binaries=True,
     name="backend",
     debug=False,

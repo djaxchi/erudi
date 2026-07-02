@@ -245,10 +245,12 @@ const startRealBackend = () => {
 
     // Storage paths (embedded PostgreSQL data dir, model cache) are resolved
     // by the backend itself (src/launcher/runtime_paths.py) — nothing to pass.
-    // PYTHONUTF8=1 forces the frozen interpreter into UTF-8 mode so it reads
-    // bundled data files (e.g. alembic.ini) as UTF-8 regardless of the locale.
-    // A macOS app launched from Finder inherits no LANG, so open() would default
-    // to ASCII and crash on any non-ASCII byte at boot (see #149).
+    // PYTHONUTF8=1 only affects the NON-frozen (dev) interpreter: PyInstaller's
+    // bootloader pre-initializes CPython and ignores this env var, so the
+    // packaged build gets UTF-8 mode from the spec's interpreter OPTIONS instead
+    // (see backend/backend.spec, #168). We still set it here because in dev it
+    // makes open() read bundled data files (e.g. alembic.ini) as UTF-8 regardless
+    // of the locale — a macOS app launched from Finder inherits no LANG (see #149).
     const backendEnv = { ...process.env, PYTHONUTF8: "1" };
 
     backendProcess = spawn(
