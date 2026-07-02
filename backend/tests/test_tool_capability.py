@@ -156,6 +156,26 @@ def test_compute_supports_tools_graceful_on_load_failure():
 
 
 @pytest.mark.unit
+def test_compute_supports_tools_load_failure_logs_the_cause(monkeypatch):
+    # The swallowed exception must reach the log (exc_info): a dependency
+    # missing from the frozen bundle (the gguf package, #171) hid behind this
+    # warning for a whole build, indistinguishable from an unreadable model.
+    from src.engines import base_engine as mod
+
+    captured = {}
+
+    def fake_warning(msg, *args, **kwargs):
+        captured["msg"] = msg
+        captured.update(kwargs)
+
+    monkeypatch.setattr(mod.logger, "warning", fake_warning)
+
+    assert _BrokenEngine.compute_supports_tools("/any/path") is False
+    assert captured["exc_info"] is True
+    assert "not tool-capable" in captured["msg"]
+
+
+@pytest.mark.unit
 def test_compute_supports_tools_graceful_on_none_tokenizer():
     assert _NoneEngine.compute_supports_tools("/any/path") is False
 
