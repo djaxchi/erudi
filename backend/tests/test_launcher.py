@@ -121,6 +121,74 @@ def test_configure_stdio_survives_streams_without_reconfigure(monkeypatch):
     run.configure_stdio()  # must not raise
 
 
+@pytest.mark.unit
+def test_stdin_watch_enabled_reads_env(monkeypatch):
+    # Opt-in: only ERUDI_WATCH_STDIN=1 turns the stdin-EOF watcher on. Anything
+    # else (unset, "0", "true") leaves it off so dev runs and the subprocess
+    # launcher test never grow a stdin reader.
+    import run
+
+    monkeypatch.delenv("ERUDI_WATCH_STDIN", raising=False)
+    assert run.stdin_watch_enabled() is False
+
+    monkeypatch.setenv("ERUDI_WATCH_STDIN", "0")
+    assert run.stdin_watch_enabled() is False
+
+    monkeypatch.setenv("ERUDI_WATCH_STDIN", "1")
+    assert run.stdin_watch_enabled() is True
+
+
+@pytest.mark.unit
+def test_stdin_eof_watcher_sets_should_exit(monkeypatch):
+    # An EOF on stdin (parent closed the pipe) must flip uvicorn's exit flag so
+    # the FastAPI lifespan shutdown runs — the Windows equivalent of the SIGTERM
+    # relay, since Windows has no SIGTERM to catch.
+    import run
+
+    class FakeStdin:
+        class buffer:
+            @staticmethod
+            def read():
+                return b""  # immediate EOF
+
+    class FakeServer:
+        should_exit = False
+
+    monkeypatch.setattr(sys, "stdin", FakeStdin())
+    server = FakeServer()
+
+    thread = run.start_stdin_eof_watcher(server)
+    thread.join(timeout=2.0)
+
+    assert not thread.is_alive()
+    assert server.should_exit is True
+
+
+@pytest.mark.unit
+def test_stdin_eof_watcher_survives_broken_stdin(monkeypatch):
+    # A stdin whose read() raises must not crash the launcher (the thread just
+    # exits) and must leave the exit flag untouched.
+    import run
+
+    class BrokenStdin:
+        class buffer:
+            @staticmethod
+            def read():
+                raise OSError("stdin is broken")
+
+    class FakeServer:
+        should_exit = False
+
+    monkeypatch.setattr(sys, "stdin", BrokenStdin())
+    server = FakeServer()
+
+    thread = run.start_stdin_eof_watcher(server)
+    thread.join(timeout=2.0)
+
+    assert not thread.is_alive()
+    assert server.should_exit is False
+
+
 def test_json_event_emission():
     import time
 
