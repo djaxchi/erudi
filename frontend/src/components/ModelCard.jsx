@@ -124,6 +124,13 @@ function ModelCard({
               >
                 <MessageSquare className="w-4 h-4 text-white" />
               </button>
+              <button
+                className="p-1 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                onClick={() => onInfo && onInfo(model)}
+                title="Info"
+              >
+                <Info className="w-4 h-4 text-white" />
+              </button>
             </>
           ) : (
             <>
