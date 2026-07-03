@@ -29,7 +29,7 @@ import { rankByFit, pickFlagships, applyCatalogFilters } from "../utils/hardware
 export default function LandingPage() {
   const log = createLogger("LandingPage");
 
-  const { open } = useDownloadModal();
+  const { open, completionCount } = useDownloadModal();
   const navigate = useNavigate();
   const [showWelcome, setShowWelcome] = useState(false);
   const [showLoadingPopup, setShowLoadingPopup] = useState(false);
@@ -215,6 +215,22 @@ export default function LandingPage() {
       setModelsLoading(false);
     }
   };
+
+  // A completed download bumps the context's completionCount, whichever entry
+  // point started it and even if this page mounted after the download began.
+  // Refresh the installed lists on every tick so the models show up without a
+  // manual reload — the per-download onComplete callback alone misses the cases
+  // where the ref was overwritten or the registering page had unmounted (#205).
+  useEffect(() => {
+    if (!completionCount) {
+      return;
+    }
+    reloadLocalModels();
+    if (localModelsRef.current) {
+      localModelsRef.current.reloadLocalModels();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completionCount]);
 
   // Derived: Base vs Community (backend is_base), hardware-fit window, and the
   // best-fitting base models for the recommendation rail (#122 redesign).
