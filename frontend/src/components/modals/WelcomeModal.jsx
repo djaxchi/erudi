@@ -30,22 +30,20 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
   };
 
   // Helper function to get dynamic recommendations
-  const getRecommendations = (inferenceScore, finetuningScore) => {
-    const avgScore = (inferenceScore + finetuningScore) / 2;
-
-    if (avgScore >= 75) {
+  const getRecommendations = (inferenceScore) => {
+    if (inferenceScore >= 75) {
       return {
         title: "Excellent Hardware! 🚀",
         description:
           "Your system can handle any model from 1B to 12B parameters with ease. We recommend trying the power of Mistral 8B or Gemma 12B for the best experience. We're also working on adding support for much larger models—stay tuned!",
       };
-    } else if (avgScore >= 50) {
+    } else if (inferenceScore >= 50) {
       return {
         title: "Great Performance! ✨",
         description:
           "Your hardware supports models from 1B to 12B parameters. You'll get smooth performance with Mistral 8B and Gemma 12B. Perfect for experiencing the full capabilities of modern AI!",
       };
-    } else if (avgScore >= 25) {
+    } else if (inferenceScore >= 25) {
       return {
         title: "Good Setup 👍",
         description:
@@ -61,7 +59,7 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
   };
 
   const recommendations = hardwareInfo
-    ? getRecommendations(hardwareInfo.global_inference_score, hardwareInfo.global_finetuning_score)
+    ? getRecommendations(hardwareInfo.global_inference_score)
     : null;
 
   return (
@@ -159,22 +157,6 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                               className={`px-2 py-1 rounded-full text-xs font-medium ${getColorForLabel(hardwareInfo.global_inference_label)}`}
                             >
                               {hardwareInfo.global_inference_label || "Unknown"}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-400 text-sm">Training Performance</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-lg sm:text-xl font-bold text-white">
-                              {Math.round(hardwareInfo.global_finetuning_score)}%
-                            </span>
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-medium ${getColorForLabel(hardwareInfo.global_finetuning_label)}`}
-                            >
-                              {hardwareInfo.global_finetuning_label || "Unknown"}
                             </span>
                           </div>
                         </div>

@@ -127,7 +127,7 @@ class Hardware_Repository:
         Args:
             hardware_data: Dictionary with hardware specs from engine.
                 Must include: backend_type, cpu_model, total_memory_gb,
-                global_inference_score, global_finetuning_score, etc.
+                global_inference_score, etc.
 
         Returns:
             HardwareProfile: Newly created profile entity.
