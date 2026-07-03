@@ -237,6 +237,9 @@ export default function LandingPage() {
     bandwidth: machineDetail?.memory_bandwidth_gbs
       ? Math.round(machineDetail.memory_bandwidth_gbs)
       : null,
+    // Only the CUDA hardware branch carries vram_total_gb; null everywhere else
+    // so MachineReadout only renders the VRAM stat on NVIDIA machines (#202).
+    vramGb: machineDetail?.vram_total_gb ? Math.round(machineDetail.vram_total_gb) : null,
     inferenceLabel: hardwareInfo?.global_inference_label,
     inferenceScore: hardwareInfo?.global_inference_score,
     range,
