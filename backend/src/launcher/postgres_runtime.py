@@ -213,6 +213,16 @@ def _get_server_with_recovery(data_dir: Path):
             "background - waiting for it to finish before retrying"
         )
         if _wait_for_postmaster_ready(data_dir, RECOVERY_WAIT_SECONDS):
+            # pgserver caches the instance in _instances BEFORE starting the
+            # server (postgres_server.py:62 precedes ensure_postgres_running at
+            # :64), so after the TimeoutExpired a half-built object with
+            # _postmaster_info=None is still cached — and get_server would hand
+            # that corpse back, crashing on get_uri()'s assert despite the
+            # successful recovery (#215). Evict it so the retry runs the full
+            # constructor and rejoins the live postmaster. (The stale object's
+            # atexit cleanup is harmless: with _postmaster_info=None it never
+            # stops the server.)
+            _pg_server_mod.PostgresServer._instances.pop(data_dir, None)
             return pgserver.get_server(str(data_dir))
         raise
 
