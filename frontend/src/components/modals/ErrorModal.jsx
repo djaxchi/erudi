@@ -2,6 +2,7 @@ import React from "react";
 import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, AlertTriangle } from "lucide-react";
+import grainOverlay from "../../assets/images/textures/grain-overlay.png";
 
 ErrorModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
@@ -47,8 +48,7 @@ export default function ErrorModal({ errorMessage, onClose }) {
                 aria-hidden
                 className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
                 style={{
-                  backgroundImage:
-                    'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")',
+                  backgroundImage: `url("${grainOverlay}")`,
                   backgroundSize: "200px 200px",
                 }}
               />
