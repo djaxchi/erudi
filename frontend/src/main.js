@@ -10,6 +10,7 @@ const { confirmBackendHealth } = require("./utils/backendHealth");
 const { classifyStderrLine } = require("./utils/backendStderr");
 const { shouldRetrySpawn } = require("./utils/backendRetry");
 const { buildBackendSpawnOptions } = require("./utils/backendSpawn");
+const { gracefulShutdown } = require("./utils/backendShutdown");
 
 // electron-updater: only loaded in production to avoid dev noise.
 // Reads latest.yml / latest-mac.yml from GitHub Releases and handles
@@ -51,6 +52,9 @@ const RENDERER_DEV_URL = "http://localhost:3000/";
 let backendProcess = null;
 let mainWindow = null;
 let isCreatingWindow = false;
+// Set once a quit-time graceful shutdown is in flight so before-quit runs its
+// (async) teardown exactly once — the app.quit() it re-issues must fall through.
+let shuttingDown = false;
 // Backend readiness state, published to the renderer (covers the race where
 // readiness happens before the renderer attaches its event listener — the
 // renderer queries `backend:getInfo` on mount).
@@ -251,7 +255,10 @@ const startRealBackend = () => {
     // (see backend/backend.spec, #168). We still set it here because in dev it
     // makes open() read bundled data files (e.g. alembic.ini) as UTF-8 regardless
     // of the locale — a macOS app launched from Finder inherits no LANG (see #149).
-    const backendEnv = { ...process.env, PYTHONUTF8: "1" };
+    // ERUDI_WATCH_STDIN=1 opts the launcher into watching stdin for EOF: on quit
+    // we close stdin so the backend shuts down gracefully (stop_postgres), which
+    // Windows otherwise never got because taskkill /F /T skips the lifespan (#216).
+    const backendEnv = { ...process.env, PYTHONUTF8: "1", ERUDI_WATCH_STDIN: "1" };
 
     backendProcess = spawn(
       backendPath,
@@ -539,14 +546,16 @@ const createApplicationMenu = () => {
                 // User clicked "Delete All Data"
                 log("User confirmed data deletion. Clearing all data...");
 
-                // Kill backend process first
+                // Stop the backend first — graceful so Postgres runs
+                // stop_postgres and releases the data-dir locks we are about to
+                // delete; killBackend is the hard tree-kill fallback (#216).
                 if (backendProcess) {
                   log("Stopping backend process...");
-                  killBackend(backendProcess);
+                  await gracefulShutdown(backendProcess, { killFn: killBackend });
                   backendProcess = null;
                 }
 
-                // Wait a bit for backend to shut down
+                // Wait a bit for the OS to release any lingering file handles
                 await new Promise((resolve) => setTimeout(resolve, 1000));
 
                 // Delete the data directory
@@ -710,7 +719,9 @@ ipcMain.on("renderer-log", (_event, entry) => {
 });
 ipcMain.handle("backend:restart", async () => {
   log("Renderer requested a backend restart.");
-  killBackend(backendProcess);
+  // Graceful first (stop_postgres releases the data-dir locks) so the respawn
+  // isn't racing an orphaned postmaster; killBackend is the hard fallback (#216).
+  await gracefulShutdown(backendProcess, { killFn: killBackend });
   backendProcess = null;
   backendIsReady = false;
   resolvedPort = null;
@@ -787,17 +798,17 @@ ipcMain.handle("data:clearAll", async () => {
       // User clicked "Delete All Data"
       log("User confirmed data deletion. Clearing all data...");
 
-      // Kill backend process first — the whole tree (killBackend), not a bare
-      // SIGTERM: on Windows that only hits the parent, leaving llama-server and
-      // the embedded Postgres alive holding locks on the very data dir we are
-      // about to delete (#147).
+      // Stop the backend BEFORE deleting the data dir it holds open. Graceful
+      // first so the embedded Postgres runs stop_postgres and releases its
+      // locks; killBackend is the hard fallback that tears down the whole tree
+      // (not a bare SIGTERM, which on Windows only hits the parent — #147/#216).
       if (backendProcess) {
         log("Stopping backend process...");
-        killBackend(backendProcess);
+        await gracefulShutdown(backendProcess, { killFn: killBackend });
         backendProcess = null;
       }
 
-      // Wait a bit for backend to shut down
+      // Wait a bit for the OS to release any lingering file handles
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Delete the data directory
@@ -943,22 +954,27 @@ app.on("activate", () => {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
-    // On non-macOS, closing all windows means quit — kill backend and exit.
-    if (backendProcess) {
-      log("Shutting down backend process...");
-      killBackend(backendProcess);
-      backendProcess = null;
-    }
+    // On non-macOS, closing all windows means quit. Let before-quit own the
+    // backend teardown (graceful, then hard fallback) — just ask to quit.
     app.quit();
   }
   // On macOS: app stays alive in the dock after window close (standard convention).
   // Keep the backend running so re-clicking the dock icon reconnects instantly.
 });
 
-app.on("before-quit", () => {
-  if (backendProcess) {
+app.on("before-quit", (e) => {
+  // Graceful backend shutdown before we actually quit: close stdin and give the
+  // backend up to 8s to run its lifespan (checkpointer close, stop_postgres),
+  // else killBackend hard-kills the tree (#216). Deferring the quit once (via
+  // preventDefault) is the only way to await this; the re-issued app.quit()
+  // finds shuttingDown=true and this handler falls through.
+  if (!shuttingDown && backendProcess) {
+    e.preventDefault();
+    shuttingDown = true;
     log("Stopping backend process before quit...");
-    killBackend(backendProcess);
-    backendProcess = null;
+    gracefulShutdown(backendProcess, { killFn: killBackend }).finally(() => {
+      backendProcess = null;
+      app.quit();
+    });
   }
 });
