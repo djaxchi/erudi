@@ -27,7 +27,17 @@ from src.domains.conversations.schemas import (
 
 
 class _FakeEngine(BaseEngine):
-    """Engine stub exposing generation_guard without spawning a real model."""
+    """Engine stub exposing generation_guard without spawning a real model.
+
+    Inherits the ``BaseEngine.model_supports_vision`` default, so
+    ``detect_supports_vision`` resolves to ``None`` (unknown capability).
+    """
+
+
+# Exact user-facing line prepended when the current turn carries images but the
+# model is not positively vision-capable (#212). Hardcoded on purpose: the test
+# pins the wire/persistence contract, not the constant's name.
+_VISION_NOTICE = "*This model doesn't support images — your image was ignored.*\n\n"
 
 
 def _fake_chat_model(*texts):
@@ -368,9 +378,14 @@ class TestConversationService:
         self, test_db_session, mock_llm, monkeypatch
     ):
         """An attached image rides the model call as multimodal content, but the
-        DB stores only a short ``[image]`` placeholder (never the base64)."""
+        DB stores only a short ``[image]`` placeholder (never the base64).
+        Vision detection is pinned to True: this test covers the VLM
+        pass-through path, not the #212 strip/notice."""
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
         monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("A red square."))
+        monkeypatch.setattr(
+            "src.domains.conversations.services.detect_supports_vision", lambda _link: True
+        )
         service = ConversationService(test_db_session, InMemorySaver())
         conversation = service.create_conversation(
             llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024
@@ -404,6 +419,91 @@ class TestConversationService:
         assert messages[0].content == "What is this? [image]"
         assert "base64" not in messages[0].content
         assert len(messages[0].content) < 100
+
+    async def test_query_stream_unknown_vision_prepends_notice(
+        self, test_db_session, mock_llm, monkeypatch
+    ):
+        """Current-turn images + unknown vision capability (None): the stream
+        starts with the italic notice and the notice is persisted with the
+        assistant message (#212)."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("A red square."))
+        service = ConversationService(test_db_session, InMemorySaver())
+        conversation = service.create_conversation(
+            llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024
+        )
+
+        payload = ConversationQuery(
+            question="What is this?", images=["data:image/png;base64,AAA"]
+        )
+        result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
+
+        assert "".join(result) == _VISION_NOTICE + "A red square."
+
+        messages = service.message_repo.get_messages_by_conversation(conversation.id)
+        assert messages[1].sender == "llm"
+        assert messages[1].content == _VISION_NOTICE + "A red square."
+
+    async def test_query_stream_no_images_no_notice(self, test_db_session, mock_llm, monkeypatch):
+        """No images this turn: no notice, even with unknown vision capability."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("Hello."))
+        service = ConversationService(test_db_session, InMemorySaver())
+        conversation = service.create_conversation(
+            llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024
+        )
+
+        payload = ConversationQuery(question="Say hello")
+        result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
+
+        assert "".join(result) == "Hello."
+        assert not "".join(result).startswith(_VISION_NOTICE)
+
+    async def test_query_stream_vision_true_no_notice(self, test_db_session, mock_llm, monkeypatch):
+        """Images + a positively vision-capable model: no notice."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("A red square."))
+        monkeypatch.setattr(
+            "src.domains.conversations.services.detect_supports_vision", lambda _link: True
+        )
+        service = ConversationService(test_db_session, InMemorySaver())
+        conversation = service.create_conversation(
+            llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024
+        )
+
+        payload = ConversationQuery(
+            question="What is this?", images=["data:image/png;base64,AAA"]
+        )
+        result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
+
+        assert "".join(result) == "A red square."
+
+    async def test_query_stream_history_images_do_not_trigger_notice(
+        self, test_db_session, mock_llm, monkeypatch
+    ):
+        """Turn 1 carries an image (notice fires); turn 2 is text-only: the
+        notice must NOT reappear — only CURRENT-turn images count (#212)."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        # One iterator SHARED across turns (``_fake_chat_model`` would restart
+        # from the first message on the second ``build_chat_model`` call).
+        msgs = iter([AIMessage(content="A red square."), AIMessage(content="It was red.")])
+        monkeypatch.setattr(
+            agent_runner,
+            "build_chat_model",
+            lambda llm, **kw: ToolableFakeChatModel(messages=msgs),
+        )
+        service = ConversationService(test_db_session, InMemorySaver())
+        conversation = service.create_conversation(
+            llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024
+        )
+
+        turn1 = ConversationQuery(question="What is this?", images=["data:image/png;base64,AAA"])
+        result1 = [t async for t in service.query_and_respond_stream(conversation.id, turn1)]
+        assert "".join(result1).startswith(_VISION_NOTICE)
+
+        turn2 = ConversationQuery(question="What color was it?")
+        result2 = [t async for t in service.query_and_respond_stream(conversation.id, turn2)]
+        assert "".join(result2) == "It was red."
 
     def test_user_display_content_placeholder(self):
         assert ConversationService._user_display_content("hi", None) == "hi"

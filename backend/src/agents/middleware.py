@@ -126,15 +126,16 @@ class _StripStaleImagesMiddleware(AgentMiddleware):
 
 
 class _StripImagesForTextModel(AgentMiddleware):
-    """Flatten ALL image content when the model can't see images (#133).
+    """Flatten ALL image content when the model is not known to see images (#133).
 
     A text-only model (no MLX ``vision_config`` / no llama.cpp ``mmproj``) would
-    either crash or silently ignore image parts, so for a non-vision model every
-    ``image_url`` part — the current turn included — collapses to an ``[image]``
-    text marker before the request reaches the model server. The answer stays
-    clean text instead of broken inference. The caller adds this only on an
-    explicit ``supports_vision is False`` (None/True leave images intact, so a
-    real VLM is never blocked by a detection miss).
+    either crash or silently ignore image parts, so every ``image_url`` part —
+    the current turn included — collapses to an ``[image]`` text marker before
+    the request reaches the model server. The answer stays clean text instead of
+    broken inference. The caller adds this whenever ``supports_vision is not
+    True`` (#212): unknown capability (None) strips too — the services prepend a
+    user-facing notice — and only a positively-detected vision model keeps its
+    images.
     """
 
     def _strip(self, request):

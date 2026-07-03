@@ -26,7 +26,7 @@ from src.core.logutils import truncate_for_log
 from src.utils.prompt_utils import get_prompting_strategy
 from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
 from src.agents.kb_mode import plan_turn
-from src.agents.runner import AgentRunner, GenParams
+from src.agents.runner import AgentRunner, GenParams, IMAGES_IGNORED_NOTICE
 from src.domains.arena.repository import ArenaRepository
 from src.domains.llms.repository import detect_supports_vision
 from src.domains.arena.schemas import ArenaQueryPayload
@@ -148,10 +148,15 @@ class ArenaService:
             max_tokens=payload.max_new_tokens,
         )
 
-        # Safety net (#133): a text-only model never receives image content.
+        # Safety net (#133/#212): unless the model is positively vision-capable,
+        # the runner strips images before inference — tell the user up front
+        # instead of silently dropping the attachment.
         supports_vision = await run_in_threadpool(detect_supports_vision, llm.link)
 
         response = ""
+        if payload.images and supports_vision is not True:
+            response += IMAGES_IGNORED_NOTICE
+            yield IMAGES_IGNORED_NOTICE
         async for token in self.runner.astream_text(
             llm=llm,
             user_message=self._build_user_message(payload.question, payload.images),

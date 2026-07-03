@@ -21,7 +21,7 @@ from fastapi.concurrency import run_in_threadpool
 from src.core.logging import logger
 from src.core.logutils import truncate_for_log
 from src.agents.kb_mode import plan_turn
-from src.agents.runner import AgentRunner, GenParams, ERROR_MESSAGE
+from src.agents.runner import AgentRunner, GenParams, ERROR_MESSAGE, IMAGES_IGNORED_NOTICE
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.llms.repository import detect_supports_vision
 from src.domains.conversations.schemas import ConversationQuery
@@ -248,10 +248,14 @@ class ConversationService:
                 max_tokens=payload.max_new_tokens or conversation.max_tokens or 1024,
             )
 
-            # Safety net (#133): if the model can't see images, drop them before
-            # inference so a text-only model never breaks or hallucinates on an
-            # attachment. None/True leave images intact (a real VLM is untouched).
+            # Safety net (#133/#212): unless the model is positively vision-
+            # capable, the runner strips images before inference — surface that
+            # up front instead of silently dropping the attachment. The notice
+            # is persisted with the assistant message (deliberate).
             supports_vision = await run_in_threadpool(detect_supports_vision, llm.link)
+            if payload.images and supports_vision is not True:
+                assistant_response += IMAGES_IGNORED_NOTICE
+                yield IMAGES_IGNORED_NOTICE
 
             async for token in self.runner.astream_text(
                 llm=llm,
