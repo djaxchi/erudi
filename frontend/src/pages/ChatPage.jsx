@@ -95,26 +95,26 @@ export default function ChatPage() {
     fetchConversations();
   }, []);
 
-  // Handle URL parameter for model selection
+  // Preselect the model referenced by the ?model= URL parameter (#223).
+  // Producers pass either the numeric id or the exact name; the id from the
+  // backend is a number while the URL value is a string, so compare through
+  // String(). Match the id first, then the decoded name. An unknown reference
+  // keeps the default selection (first local model).
   useEffect(() => {
     const modelParam = searchParams.get("model");
-    if (modelParam && models.length > 0) {
-      // Find the model by name or id
-      const foundModel = models.find(
-        (model) =>
-          model.name === modelParam ||
-          model.id === modelParam ||
-          model.name.toLowerCase() === modelParam.toLowerCase()
-      );
+    if (!modelParam || models.length === 0) return;
 
-      if (foundModel) {
-        log.log("Setting model from URL parameter:", foundModel);
-        setSelectedModel(foundModel.name);
-      } else {
-        log.warn("Model not found for parameter:", modelParam);
-      }
+    const foundModel =
+      models.find((model) => String(model.id) === modelParam) ??
+      models.find((model) => model.name === modelParam);
+
+    if (foundModel) {
+      log.log("Setting model from URL parameter:", foundModel);
+      setSelectedModel(foundModel.name);
+    } else {
+      log.warn("Model not found for URL parameter:", modelParam);
     }
-  }, [searchParams, models]); // Re-run when searchParams or models change
+  }, [searchParams, models]); // Re-run when the models list arrives (#211 lesson)
 
   const handleConversationClick = (id) => {
     navigate(conversationPath(id));
