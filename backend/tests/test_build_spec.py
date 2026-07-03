@@ -29,3 +29,16 @@ def test_spec_forces_utf8_mode():
     # the locale code page and Unicode log lines kill the handler (#168).
     text = SPEC.read_text(encoding="utf-8")
     assert "X utf8_mode=1" in text, "backend.spec must keep the utf8_mode option (#168)"
+
+
+@pytest.mark.unit
+def test_spec_ships_the_gguf_package_metadata():
+    # The gguf MODULE alone is not enough: transformers gates its GGUF path
+    # through is_gguf_available(), which reads the package version via
+    # importlib.metadata. Without the dist-info the version is 'N/A' and
+    # version.parse() raises — same product symptom as the missing module:
+    # tool-calling detection dead, agentic KB mode never activates (#206).
+    text = SPEC.read_text(encoding="utf-8")
+    assert 'copy_metadata("gguf")' in text, (
+        "backend.spec must ship gguf's dist-info via copy_metadata (#206)"
+    )

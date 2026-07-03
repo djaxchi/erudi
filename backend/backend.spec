@@ -19,7 +19,12 @@ import os
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_all,
+    collect_data_files,
+    collect_submodules,
+    copy_metadata,
+)
 
 IS_MAC = sys.platform == "darwin"
 IS_WIN = sys.platform == "win32"
@@ -322,6 +327,11 @@ else:
     # agentic KB mode can never activate (#171). Not on macOS: the MLX env does
     # not install gguf (requirements/meta/cpu.txt is not in mac-silicon-prod).
     hiddenimports += ["gguf"]
+    # The module alone is NOT enough: transformers gates the GGUF path through
+    # is_gguf_available(), which reads the package VERSION via importlib.metadata.
+    # Without the dist-info the version resolves to 'N/A' and version.parse()
+    # raises InvalidVersion — same product symptom as the missing module (#206).
+    datas += copy_metadata("gguf")
 # Alembic loads its dialect ddl (alembic.ddl.postgresql) and other submodules
 # dynamically — collect them so the startup migration runs in the frozen build.
 hiddenimports += collect_submodules("alembic")
