@@ -245,6 +245,9 @@ _hidden_common = [
     "langchain_core.messages",
     "langchain_core.tools",
     "langchain_openai",
+    # Ingestion splitters: imported at FUNCTION scope only (#160 lazy
+    # imports, src/ingestion/chunking.py) — pinned for the same reason.
+    "langchain_text_splitters",
     "langgraph.checkpoint.postgres",
         "langgraph.checkpoint.postgres.aio",
         "psycopg",
@@ -304,7 +307,9 @@ _hidden_macos = [
     "mlx_vlm.server",           # uvicorn loads "mlx_vlm.server:app"
 ]
 
-hiddenimports = _hidden_common
+# += (NOT =): hiddenimports already carries pgserver's collect_all submodules
+# gathered above — a plain reassignment silently discarded them (#181).
+hiddenimports += _hidden_common
 if IS_WIN:
     hiddenimports += _hidden_windows
 if IS_MAC:

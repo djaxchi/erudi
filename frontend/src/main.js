@@ -787,10 +787,13 @@ ipcMain.handle("data:clearAll", async () => {
       // User clicked "Delete All Data"
       log("User confirmed data deletion. Clearing all data...");
 
-      // Kill backend process first
+      // Kill backend process first — the whole tree (killBackend), not a bare
+      // SIGTERM: on Windows that only hits the parent, leaving llama-server and
+      // the embedded Postgres alive holding locks on the very data dir we are
+      // about to delete (#147).
       if (backendProcess) {
         log("Stopping backend process...");
-        backendProcess.kill("SIGTERM");
+        killBackend(backendProcess);
         backendProcess = null;
       }
 

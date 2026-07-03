@@ -1,18 +1,27 @@
-"""Boot must not pay for the agent LangChain stack (issue #160, partial scope).
+"""Boot must not pay for deferred heavyweight stacks (issue #160, partial scope).
 
-``import src.main`` (what uvicorn does before serving anything) must not pull
-the agent-layer LangChain packages — ``langchain`` (create_agent, middleware,
-tools) and ``langchain_openai`` (ChatOpenAI) — into ``sys.modules``. Nothing
-needs them before the FIRST conversation/arena turn, so their imports are
-deferred to function scope in ``src.agents.{runner,model_factory,kb_mode}``.
+``import src.main`` (what uvicorn does before serving anything) must not pull:
+
+1. The agent-layer LangChain packages — ``langchain`` (create_agent,
+   middleware, tools) and ``langchain_openai`` (ChatOpenAI). Nothing needs
+   them before the FIRST conversation/arena turn, so their imports are
+   deferred to function scope in ``src.agents.{runner,model_factory,kb_mode}``.
+
+2. The ingestion ML stack — ``langchain_text_splitters`` and everything it
+   drags in at module level (``sentence_transformers`` → ``torch`` +
+   ``sklearn``, plus ``transformers``). It was reached at boot through
+   seed → src.utils → kb_utils → src.ingestion.chunking and cost ~80 % of
+   the remaining import time (2.9–4.4 s measured). The splitters are only
+   needed at KB ingestion time, so ``chunking.py`` imports them in function
+   scope. ``transformers`` (AutoTokenizer) is likewise function-scoped in
+   chunking/engines, and ``sentence_transformers`` in ``embeddings.py``.
 
 Deliberately OUT of this guard (still boot-loaded, out of #160-partial scope):
-  - ``langchain_core`` / ``langchain_text_splitters`` — pulled at module level
-    by ``src.ingestion`` (embeddings/chunking) via the seed path, along with
-    sentence_transformers/torch (the dominant boot cost, ~4.3 s measured).
-  - ``langchain_postgres`` — pulled by ``src.ingestion.vector_store``.
-  - ``langgraph`` — the checkpointer is opened IN the lifespan, so deferring
-    its import gains nothing at boot.
+  - ``langchain_core`` — cheap (~10 ms), pulled by ``src.ingestion.embeddings``
+    for the ``Embeddings`` interface.
+  - ``langchain_postgres`` — pulled by ``src.ingestion.vector_store``, whose
+    ``init_kb_store`` runs IN the lifespan, so deferring gains nothing.
+  - ``langgraph`` — the checkpointer is opened IN the lifespan, same reason.
 
 The check runs in a subprocess so this test is immune to whatever the pytest
 session itself has already imported.
@@ -37,7 +46,7 @@ print({_MARKER!r} + json.dumps(sorted(sys.modules)))
 """
 
 
-def test_import_src_main_does_not_load_agent_langchain_stack():
+def _boot_modules() -> list[str]:
     proc = subprocess.run(
         [sys.executable, "-c", _PROBE],
         capture_output=True,
@@ -48,17 +57,34 @@ def test_import_src_main_does_not_load_agent_langchain_stack():
     assert proc.returncode == 0, f"import src.main failed:\n{proc.stderr}"
     payload = [ln for ln in proc.stdout.splitlines() if ln.startswith(_MARKER)]
     assert payload, f"probe marker line missing in stdout:\n{proc.stdout}"
-    modules = json.loads(payload[-1][len(_MARKER):])
+    return json.loads(payload[-1][len(_MARKER):])
 
-    offenders = [
-        m
-        for m in modules
-        if m == "langchain"
-        or m.startswith("langchain.")
-        or m == "langchain_openai"
-        or m.startswith("langchain_openai.")
-    ]
+
+def _offenders(modules: list[str], packages: tuple[str, ...]) -> list[str]:
+    return [m for m in modules if any(m == p or m.startswith(p + ".") for p in packages)]
+
+
+def test_import_src_main_does_not_load_agent_langchain_stack():
+    offenders = _offenders(_boot_modules(), ("langchain", "langchain_openai"))
     assert offenders == [], (
         "boot (import src.main) must not load the agent LangChain stack; "
+        f"loaded: {offenders}"
+    )
+
+
+def test_import_src_main_does_not_load_ingestion_ml_stack():
+    offenders = _offenders(
+        _boot_modules(),
+        (
+            "langchain_text_splitters",
+            "sentence_transformers",
+            "torch",
+            "sklearn",
+            "transformers",
+        ),
+    )
+    assert offenders == [], (
+        "boot (import src.main) must not load the ingestion ML stack "
+        "(splitters/tokenizer/embedder are KB-ingestion-time only); "
         f"loaded: {offenders}"
     )
