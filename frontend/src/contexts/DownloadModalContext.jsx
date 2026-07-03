@@ -45,6 +45,13 @@ export function DownloadModalProvider({ children }) {
   const [timeLeft, setTimeLeft] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [jobId, setJobId] = useState(null);
+  // Completion exposed as observable context STATE, not only as a stored callback.
+  // A per-download onComplete can be overwritten by another opener (the ref is a
+  // singleton) or lost when the page that registered it unmounts mid-download.
+  // A monotonic counter lets any mounted consumer react to "a download finished"
+  // regardless of who started it or whether it remounted since (#205).
+  const [completionCount, setCompletionCount] = useState(0);
+  const [lastCompletedAt, setLastCompletedAt] = useState(null);
 
   const intervalRef = useRef(null);
   const callbacksRef = useRef({ onComplete: null, onError: null });
@@ -89,6 +96,8 @@ export function DownloadModalProvider({ children }) {
         clearInterval(intervalRef.current);
         setIsDownloading(false);
         if (data.status === "completed") {
+          setCompletionCount((c) => c + 1);
+          setLastCompletedAt(Date.now());
           callbacksRef.current.onComplete?.();
         } else if (data.status === DOWNLOAD_CANCELLED) {
           callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
@@ -205,6 +214,8 @@ export function DownloadModalProvider({ children }) {
       value={{
         open,
         isDownloading,
+        completionCount,
+        lastCompletedAt,
       }}
     >
       {children}
