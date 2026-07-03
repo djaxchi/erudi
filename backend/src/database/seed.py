@@ -966,8 +966,6 @@ class Hardware_Initializer:
                 "disk_available_gb": 50.0,
                 "global_inference_score": 20.0,
                 "global_inference_label": "Poor",
-                "global_finetuning_score": 15.0,
-                "global_finetuning_label": "Poor",
                 "cpu_score": 30.0,
                 "memory_score": 25.0,
                 "system_platform": "Unknown"

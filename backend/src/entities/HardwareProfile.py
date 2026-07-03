@@ -62,8 +62,6 @@ class HardwareProfile(Base):
         disk_available_gb: Available disk space in GB.
         global_inference_score: Inference performance score (0-100).
         global_inference_label: Inference label (Poor/Medium/Good/Very Good).
-        global_finetuning_score: Fine-tuning performance score (0-100).
-        global_finetuning_label: Fine-tuning label (Poor/Medium/Good/Very Good).
         cpu_score: CPU-specific score (0-100).
         memory_score: Memory-specific score (0-100).
         system_platform: OS platform (Darwin/Linux/Windows).
@@ -137,8 +135,6 @@ class HardwareProfile(Base):
     # Performance scores (0-100)
     global_inference_score = Column(Float, nullable=False)
     global_inference_label = Column(String, nullable=False)
-    global_finetuning_score = Column(Float, nullable=False)
-    global_finetuning_label = Column(String, nullable=False)
     cpu_score = Column(Float, nullable=False)
     memory_score = Column(Float, nullable=False)
     

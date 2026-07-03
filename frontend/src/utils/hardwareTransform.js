@@ -20,11 +20,8 @@ export function transformAppStartupInfo(data) {
   if (!data) {
     return {
       backend_type: "unknown",
-      global_finetuning_score: 0,
-      global_finetuning_label: "Unknown",
       global_inference_score: 0,
       global_inference_label: "Unknown",
-      raw_finetuning_score: 0,
       raw_inference_score: 0,
       recommended_param_min: null,
       recommended_param_max: null,
@@ -33,13 +30,10 @@ export function transformAppStartupInfo(data) {
 
   return {
     backend_type: data.backend_type,
-    // Boosted scores for UI display
-    global_finetuning_score: data.global_finetuning_score,
-    global_finetuning_label: data.global_finetuning_label,
+    // Boosted score for UI display
     global_inference_score: data.global_inference_score,
     global_inference_label: data.global_inference_label,
-    // Raw scores for transparency
-    raw_finetuning_score: data.raw_finetuning_score,
+    // Raw score for transparency
     raw_inference_score: data.raw_inference_score,
     // Hardware-fit model size window (billions of params) for "Models For You" (#86)
     recommended_param_min: data.recommended_param_min,

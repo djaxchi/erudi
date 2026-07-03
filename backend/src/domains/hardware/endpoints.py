@@ -58,9 +58,7 @@ def _build_backend_specific_schema(profile: HardwareProfile, scores: dict):
         "disk_total_gb": profile.disk_total_gb,
         "disk_available_gb": profile.disk_available_gb,
         "raw_inference_score": scores["raw_inference_score"],
-        "raw_finetuning_score": scores["raw_finetuning_score"],
         "global_inference_label": profile.global_inference_label,
-        "global_finetuning_label": profile.global_finetuning_label,
         "cpu_score": scores["cpu_score"],
         "memory_score": scores["memory_score"],
         "architecture": profile.architecture,
@@ -130,14 +128,11 @@ def get_app_startup_info(db: Session = Depends(get_db)):
     Response structure:
         {
             "backend_type": "cuda",
-            "global_finetuning_score": 95.0,    # Boosted (raw 75 + 20)
-            "global_finetuning_label": "Excellent",
             "global_inference_score": 100.0,     # Boosted, capped at 100
             "global_inference_label": "Excellent",
-            "raw_finetuning_score": 75.0,        # Actual hardware score
-            "raw_inference_score": 82.0
+            "raw_inference_score": 82.0          # Actual hardware score
         }
-    
+
     Raises:
         HTTPException: 500 if hardware detection fails
     """
@@ -145,14 +140,11 @@ def get_app_startup_info(db: Session = Depends(get_db)):
         service = _get_service(db)
         profile = service.get_or_create_profile()
         scores = service.calculate_boosted_scores(profile)
-        
+
         response = HardwareAppStartupInfo(
             backend_type=profile.backend_type,
-            global_finetuning_score=scores["boosted_finetuning_score"],
-            global_finetuning_label=scores["global_finetuning_label"],
             global_inference_score=scores["boosted_inference_score"],
             global_inference_label=scores["global_inference_label"],
-            raw_finetuning_score=scores["raw_finetuning_score"],
             raw_inference_score=scores["raw_inference_score"],
             recommended_param_min=scores["recommended_param_min"],
             recommended_param_max=scores["recommended_param_max"],
@@ -187,13 +179,12 @@ def get_detailed_hardware_info(db: Session = Depends(get_db)):
         {
             "hardware": { ...full backend-specific fields... },
             "performance_breakdown": { ...typed scores... },
-            "boosted_inference_score": 85.0,
-            "boosted_finetuning_score": 75.0
+            "boosted_inference_score": 85.0
         }
-    
+
     Note:
-        Raw scores available in hardware.raw_inference_score / hardware.raw_finetuning_score
-    
+        Raw score available in hardware.raw_inference_score
+
     Raises:
         HTTPException: 500 if hardware detection fails
     """
@@ -209,7 +200,6 @@ def get_detailed_hardware_info(db: Session = Depends(get_db)):
             hardware=backend_schema,
             performance_breakdown=perf_breakdown,
             boosted_inference_score=scores["boosted_inference_score"],
-            boosted_finetuning_score=scores["boosted_finetuning_score"],
         )
         
         db.commit()
