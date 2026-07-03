@@ -145,6 +145,26 @@ class TestOrgDiscovery:
         assert links.count("Qwen/Qwen3-8B") == 1   # same repo across pipelines → once
         assert "Qwen/Qwen3-VL-8B" in links          # multimodal foundation included
 
+    def test_filters_ocr_and_florence_but_keeps_chat_models(self):
+        # #203: OCR / Florence-2 are vision-TASK models that list under image-text-to-text
+        # (like real chat VLMs) yet cannot be chatted with. They must be dropped while a
+        # plain chat model and a real chat VLM in the same passes survive. The 'ocr' token
+        # is a substring so it also catches the fused 'olmOCR' slug (no dash before OCR).
+        seeder = self._seeder_by_pipeline({
+            "text-generation": [("Qwen/Qwen3-8B", 900000)],          # keep: plain chat
+            "image-text-to-text": [
+                ("deepseek-ai/DeepSeek-OCR-2", 500000),      # drop: OCR
+                ("allenai/olmOCR-2-7B-1025", 400000),        # drop: OCR (fused token)
+                ("microsoft/Florence-2-large-ft", 300000),   # drop: vision-task foundation
+                ("Qwen/Qwen3-VL-8B-Instruct", 200000),       # keep: real chat VLM
+            ],
+            "any-to-any": [],
+        })
+        links = [c.link for c in seeder.discover_instruct_models("org", "x", min_downloads=1000)]
+        assert "Qwen/Qwen3-8B" in links and "Qwen/Qwen3-VL-8B-Instruct" in links
+        assert not any("ocr" in link.lower() for link in links)       # no OCR leaks (#203)
+        assert not any("florence" in link.lower() for link in links)  # no vision-task leak
+
 
 class TestRunnabilityPredicate:
     """is_runnable is now KNOWN_BROKEN-only: catalog entries are engine-format by

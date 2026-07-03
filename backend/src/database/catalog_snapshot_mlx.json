@@ -671,28 +671,6 @@
   "category": "reasoning"
  },
  {
-  "name": "DeepSeek OCR 2",
-  "link": "mlx-community/DeepSeek-OCR-2-4bit",
-  "type": "deepseek",
-  "quantized": true,
-  "model_metadata": "Model ID: deepseek-ai/DeepSeek-OCR-2\nAuthor: deepseek-ai\nCreated: 2026-01-27 02:56:54+00:00\nDownloads: 3298384 \nLikes: 1023\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~2.4 GB\nParameters: Unknown\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, deepseek_vl_v2, feature-extraction, deepseek, vision-language, ocr, custom_code, image-text-to-text, multilingual...\nSHA: aaa02f3811945a91062062994c5c4a3f4c0af2b0\nLast Modified: 2026-02-03 00:33:19+00:00",
-  "param_size": 3.39,
-  "supports_tools": null,
-  "is_base": true,
-  "category": "vision"
- },
- {
-  "name": "DeepSeek OCR",
-  "link": "mlx-community/DeepSeek-OCR-4bit",
-  "type": "deepseek",
-  "quantized": true,
-  "model_metadata": "Model ID: deepseek-ai/DeepSeek-OCR\nAuthor: deepseek-ai\nCreated: 2025-10-17 06:22:05+00:00\nDownloads: 2307679 \nLikes: 3295\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~2.3 GB\nParameters: Unknown\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, deepseek_vl_v2, feature-extraction, deepseek, vision-language, ocr, custom_code, image-text-to-text, multilingual...\nSHA: 9f30c71f441d010e5429c532364a86705536c53a\nLast Modified: 2025-11-04 02:36:12+00:00",
-  "param_size": 3.34,
-  "supports_tools": null,
-  "is_base": true,
-  "category": "vision"
- },
- {
   "name": "Deepseek Vl2 Tiny",
   "link": "mlx-community/deepseek-vl2-tiny-4bit",
   "type": "deepseek",
@@ -897,17 +875,6 @@
   "quantized": true,
   "model_metadata": "Model ID: microsoft/Phi-3.5-vision-instruct\nAuthor: microsoft\nCreated: 2024-08-16 23:48:22+00:00\nDownloads: 1300939 \nLikes: 736\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~2.2 GB\nParameters: Unknown\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, phi3_v, text-generation, nlp, code, vision, image-text-to-text, conversational, custom_code...\nSHA: 12b77fb40b63a2c73c68243d3f767aab688a1b2a\nLast Modified: 2025-12-10 20:24:07+00:00",
   "param_size": 4.15,
-  "supports_tools": null,
-  "is_base": true,
-  "category": "vision"
- },
- {
-  "name": "Florence 2 Large Ft",
-  "link": "mlx-community/Florence-2-large-ft-4bit",
-  "type": "phi",
-  "quantized": true,
-  "model_metadata": "Model ID: microsoft/Florence-2-large-ft\nAuthor: microsoft\nCreated: 2024-06-15 00:57:45+00:00\nDownloads: 21973 \nLikes: 387\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~0.5 GB\nParameters: Unknown\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, pytorch, safetensors, florence2, image-text-to-text, vision, custom_code, arxiv:2311.06242, license:mit, endpoints_compatible...\nSHA: 4a12a2b54b7016a48a22037fbd62da90cd566f2a\nLast Modified: 2025-08-04 17:11:22+00:00",
-  "param_size": 0.77,
   "supports_tools": null,
   "is_base": true,
   "category": "vision"
@@ -1208,17 +1175,6 @@
   "supports_tools": null,
   "is_base": true,
   "category": "general"
- },
- {
-  "name": "GLM OCR",
-  "link": "mlx-community/GLM-OCR-4bit",
-  "type": "glm",
-  "quantized": true,
-  "model_metadata": "Model ID: zai-org/GLM-OCR\nAuthor: zai-org\nCreated: 2026-01-30 04:24:21+00:00\nDownloads: 3110163 \nLikes: 1885\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~1.2 GB\nParameters: Unknown\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, glm_ocr, image-text-to-text, conversational, zh, en, fr, es, ru...\nSHA: ca5d8b3e287e52589e37c28385d9655ee4372f9d\nLast Modified: 2026-05-19 12:28:43+00:00",
-  "param_size": 1.33,
-  "supports_tools": null,
-  "is_base": true,
-  "category": "vision"
  },
  {
   "name": "GLM 4.1V 9B Thinking",
@@ -1843,17 +1799,6 @@
   "quantized": true,
   "model_metadata": "Model ID: allenai/Molmo2-8B\nAuthor: allenai\nCreated: 2025-12-14 22:59:12+00:00\nDownloads: 626144 \nLikes: 189\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~6.0 GB\nParameters: 8B\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, molmo2, image-text-to-text, multimodal, olmo, molmo, conversational, custom_code, en...\nSHA: e28fa28597e5ec5e0cca2201dd8ab33d48bc4a1b\nLast Modified: 2026-01-23 01:02:55+00:00",
   "param_size": 8.66,
-  "supports_tools": null,
-  "is_base": true,
-  "category": "vision"
- },
- {
-  "name": "OlmOCR 2 7B 1025",
-  "link": "mlx-community/olmOCR-2-7B-1025-mlx-4bit",
-  "type": "olmo",
-  "quantized": true,
-  "model_metadata": "Model ID: allenai/olmOCR-2-7B-1025\nAuthor: allenai\nCreated: 2025-10-06 21:16:59+00:00\nDownloads: 33331 \nLikes: 152\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~5.3 GB\nParameters: 7B\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, qwen2_5_vl, image-text-to-text, conversational, en, base_model:Qwen/Qwen2.5-VL-7B-Instruct, base_model:finetune:Qwen/Qwen2.5-VL-7B-Instruct, license:apache-2.0, text-generation-inference...\nSHA: e52d6f090b7a9007afffbbd6ce510876222fea93\nLast Modified: 2025-10-22 15:31:06+00:00",
-  "param_size": 8.29,
   "supports_tools": null,
   "is_base": true,
   "category": "vision"
@@ -2607,17 +2552,6 @@
   "category": "general"
  },
  {
-  "name": "E5 Mistral 7B Instruct Mlx",
-  "link": "mlx-community/e5-mistral-7b-instruct-mlx",
-  "type": "mistral",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/e5-mistral-7b-instruct-mlx\nAuthor: Unknown\nCreated: 2024-01-04 11:31:53+00:00\nDownloads: 240 \nLikes: 10\nLibrary: mlx-llm\nPipeline: feature-extraction\nSize: ~13.0-14.0 GB\nParameters: 7B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx-llm, mistral, e5-mistral-7b-instruct, mlx, feature-extraction, embeddings, en, arxiv:2401.00368, license:mit, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
   "name": "Mistral 7B v0.2 4bit",
   "link": "mlx-community/Mistral-7B-v0.2-4bit",
   "type": "mistral",
@@ -3223,17 +3157,6 @@
   "category": "general"
  },
  {
-  "name": "Granite Docling 258M Mlx",
-  "link": "ibm-granite/granite-docling-258M-mlx",
-  "type": "granite",
-  "quantized": true,
-  "model_metadata": "Model ID: ibm-granite/granite-docling-258M-mlx\nAuthor: Unknown\nCreated: 2025-07-08 18:38:25+00:00\nDownloads: 2963 \nLikes: 99\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~0.5-0.6 GB\nParameters: 258M\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, idefics3, image-text-to-text, mlx, conversational, en, arxiv:2501.17887, base_model:ibm-granite/granite-docling-258M, base_model:finetune:ibm-granite/granite-docling-258M...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 0.258,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "vision"
- },
- {
   "name": "GLM 5.2 DQ4plus Q8",
   "link": "mlx-community/GLM-5.2-DQ4plus-q8",
   "type": "glm",
@@ -3333,17 +3256,6 @@
   "category": "reasoning"
  },
  {
-  "name": "GLM OCR 4bit G32 Mxfp4 Mixed_4_8 Mlx",
-  "link": "EZCon/GLM-OCR-4bit-g32-mxfp4-mixed_4_8-mlx",
-  "type": "glm",
-  "quantized": true,
-  "model_metadata": "Model ID: EZCon/GLM-OCR-4bit-g32-mxfp4-mixed_4_8-mlx\nAuthor: Unknown\nCreated: 2026-02-05 03:21:03+00:00\nDownloads: 410 \nLikes: 5\nLibrary: mlx\nPipeline: image-text-to-text\nSize: ~8.1-9.9 GB\nParameters: 4B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, glm_ocr, image-text-to-text, conversational, zh, en, fr, es, ru...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 4.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "vision"
- },
- {
   "name": "GLM 4.7 Flash 8bit Gs32",
   "link": "mlx-community/GLM-4.7-Flash-8bit-gs32",
   "type": "glm",
@@ -3399,28 +3311,6 @@
   "category": "general"
  },
  {
-  "name": "Privacy Filter Nemotron Mlx 8bit",
-  "link": "OpenMed/privacy-filter-nemotron-mlx-8bit",
-  "type": "nemotron",
-  "quantized": true,
-  "model_metadata": "Model ID: OpenMed/privacy-filter-nemotron-mlx-8bit\nAuthor: Unknown\nCreated: 2026-04-27 22:06:35+00:00\nDownloads: 2588 \nLikes: 6\nLibrary: openmed\nPipeline: token-classification\nSize: ~16.2-19.8 GB\nParameters: 8B\nQuantized: False\nPrivate: False\nGated: None\nTags: openmed, openai_privacy_filter, mlx, apple-silicon, token-classification, pii, de-identification, medical, clinical, privacy-filter...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 8.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "Nemotron 3.5 Asr Streaming 0.6B",
-  "link": "mlx-community/nemotron-3.5-asr-streaming-0.6b",
-  "type": "nemotron",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/nemotron-3.5-asr-streaming-0.6b\nAuthor: Unknown\nCreated: 2026-06-04 22:37:45+00:00\nDownloads: 1777 \nLikes: 10\nLibrary: mlx-audio\nPipeline: automatic-speech-recognition\nSize: ~1.2-1.5 GB\nParameters: 0.6B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx-audio, safetensors, nemotron_asr, mlx, speech-to-text, asr, stt, transcription, streaming, fastconformer...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 0.6,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
   "name": "NVIDIA Nemotron 3 Super 120B A12B MLX Q4.5",
   "link": "inferencerlabs/NVIDIA-Nemotron-3-Super-120B-A12B-MLX-Q4.5",
   "type": "nemotron",
@@ -3465,17 +3355,6 @@
   "category": "general"
  },
  {
-  "name": "Nemotron Speech Streaming En 0.6B Mlx",
-  "link": "animaslabs/nemotron-speech-streaming-en-0.6b-mlx",
-  "type": "nemotron",
-  "quantized": true,
-  "model_metadata": "Model ID: animaslabs/nemotron-speech-streaming-en-0.6b-mlx\nAuthor: Unknown\nCreated: 2026-01-06 00:00:42+00:00\nDownloads: 175 \nLikes: 5\nLibrary: mlx\nPipeline: automatic-speech-recognition\nSize: ~1.2-1.5 GB\nParameters: 0.6B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, speech-recognition, cache-aware ASR, automatic-speech-recognition, streaming-asr, speech, audio, FastConformer, RNNT...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 0.6,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
   "name": "Nemotron Cascade 2 30B A3B JANG_2L CRACK",
   "link": "dealignai/Nemotron-Cascade-2-30B-A3B-JANG_2L-CRACK",
   "type": "nemotron",
@@ -3496,17 +3375,6 @@
   "supports_tools": null,
   "is_base": false,
   "category": "reasoning"
- },
- {
-  "name": "OlmOCR 7B 0725 8bit",
-  "link": "mlx-community/olmOCR-7B-0725-8bit",
-  "type": "olmo",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/olmOCR-7B-0725-8bit\nAuthor: Unknown\nCreated: 2025-07-25 09:41:03+00:00\nDownloads: 163 \nLikes: 5\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~14.2-17.3 GB\nParameters: 7B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, qwen2_5_vl, image-text-to-text, mlx, conversational, en, dataset:allenai/olmOCR-mix-0225, base_model:Qwen/Qwen2.5-VL-7B-Instruct, base_model:quantized:Qwen/Qwen2.5-VL-7B-Instruct...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "vision"
  },
  {
   "name": "SmolLM 135M Instruct 4bit",
@@ -3564,66 +3432,11 @@
   "category": "vision"
  },
  {
-  "name": "Parakeet Tdt 0.6B v2",
-  "link": "mlx-community/parakeet-tdt-0.6b-v2",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/parakeet-tdt-0.6b-v2\nAuthor: Unknown\nCreated: 2025-05-06 14:30:22+00:00\nDownloads: 1439753 \nLikes: 43\nLibrary: mlx\nPipeline: automatic-speech-recognition\nSize: ~1.2-1.5 GB\nParameters: 0.6B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, automatic-speech-recognition, speech, audio, FastConformer, Conformer, Parakeet, base_model:nvidia/parakeet-tdt-0.6b-v2, base_model:finetune:nvidia/parakeet-tdt-0.6b-v2...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 0.6,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "Parakeet Tdt 0.6B v3",
-  "link": "mlx-community/parakeet-tdt-0.6b-v3",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/parakeet-tdt-0.6b-v3\nAuthor: Unknown\nCreated: 2025-08-16 04:58:50+00:00\nDownloads: 1187541 \nLikes: 46\nLibrary: mlx\nPipeline: automatic-speech-recognition\nSize: ~1.2-1.5 GB\nParameters: 0.6B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, automatic-speech-recognition, speech, audio, FastConformer, Conformer, Parakeet, en, es...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 0.6,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
   "name": "Kimi K2.5",
   "link": "mlx-community/Kimi-K2.5",
   "type": "community",
   "quantized": true,
   "model_metadata": "Model ID: mlx-community/Kimi-K2.5\nAuthor: Unknown\nCreated: 2026-01-27 18:15:58+00:00\nDownloads: 231794 \nLikes: 38\nLibrary: mlx\nPipeline: text-generation\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, kimi_k25, text-generation, conversational, custom_code, base_model:moonshotai/Kimi-K2.5, base_model:quantized:moonshotai/Kimi-K2.5, license:other, 4-bit...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "PersonaPlex 7B MLX 4bit",
-  "link": "aufklarer/PersonaPlex-7B-MLX-4bit",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: aufklarer/PersonaPlex-7B-MLX-4bit\nAuthor: Unknown\nCreated: 2026-02-22 13:30:54+00:00\nDownloads: 206505 \nLikes: 36\nLibrary: mlx\nPipeline: audio-to-audio\nSize: ~14.2-17.3 GB\nParameters: 7B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, personaplex, speech-to-speech, full-duplex, apple-silicon, moshi, audio-to-audio, en, arxiv:2504.07966, base_model:nvidia/personaplex-7b-v1...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "Whisper Large v3 Mlx",
-  "link": "mlx-community/whisper-large-v3-mlx",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/whisper-large-v3-mlx\nAuthor: Unknown\nCreated: 2024-01-07 19:22:56+00:00\nDownloads: 55362 \nLikes: 93\nLibrary: mlx\nPipeline: automatic-speech-recognition\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, whisper, automatic-speech-recognition, license:mit, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "Whisper Large v3 Turbo",
-  "link": "mlx-community/whisper-large-v3-turbo",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/whisper-large-v3-turbo\nAuthor: Unknown\nCreated: 2024-10-01 11:47:42+00:00\nDownloads: 48496 \nLikes: 93\nLibrary: mlx\nPipeline: automatic-speech-recognition\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, whisper, automatic-speech-recognition, region:us\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 7.0,
   "supports_tools": null,
   "is_base": false,
@@ -3639,28 +3452,6 @@
   "supports_tools": null,
   "is_base": false,
   "category": "general"
- },
- {
-  "name": "Whisper Small Mlx",
-  "link": "mlx-community/whisper-small-mlx",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/whisper-small-mlx\nAuthor: Unknown\nCreated: 2024-03-08 23:41:22+00:00\nDownloads: 38048 \nLikes: 5\nLibrary: mlx\nPipeline: automatic-speech-recognition\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, whisper, automatic-speech-recognition, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "Diffusiongemma 26B A4B Instruct 4bit",
-  "link": "mlx-community/diffusiongemma-26B-A4B-it-4bit",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/diffusiongemma-26B-A4B-it-4bit\nAuthor: Unknown\nCreated: 2026-06-10 16:39:43+00:00\nDownloads: 26238 \nLikes: 32\nLibrary: mlx\nPipeline: image-text-to-text\nSize: ~52.6-64.4 GB\nParameters: 26B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, diffusion_gemma, image-text-to-text, conversational, base_model:google/diffusiongemma-26B-A4B-it, base_model:quantized:google/diffusiongemma-26B-A4B-it, license:apache-2.0, 4-bit, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 26.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "vision"
  },
  {
   "name": "Ministral 3 3B Instruct 2512 4bit",
@@ -3694,17 +3485,6 @@
   "supports_tools": null,
   "is_base": false,
   "category": "reasoning"
- },
- {
-  "name": "Qwen3 Embedding 0.6B 4bit DWQ",
-  "link": "mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ\nAuthor: Unknown\nCreated: 2025-06-06 08:09:46+00:00\nDownloads: 16540 \nLikes: 9\nLibrary: mlx\nPipeline: text-generation\nSize: ~0.8-1.2 GB\nParameters: 0.6B\nQuantized: False\nPrivate: False\nGated: None\nTags: mlx, safetensors, qwen3, text-generation, transformers, sentence-transformers, sentence-similarity, feature-extraction, conversational, base_model:Qwen/Qwen3-Embedding-0.6B...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 0.6,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
  },
  {
   "name": "Qwen3.5 9B OptiQ 4bit",
