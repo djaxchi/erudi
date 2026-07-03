@@ -42,6 +42,12 @@ export default function MachineReadout({ machine, loading }) {
   const range = m.range || {};
   const hasRange = typeof range.min === "number" && typeof range.max === "number";
 
+  // Apple Silicon shares one pool between CPU and GPU ("Unified memory"); CPU and
+  // CUDA machines expose it as plain system "RAM", and CUDA adds a separate VRAM
+  // stat from vram_total_gb (#202).
+  const isCuda = m.backend === "CUDA";
+  const memoryLabel = m.backend === "MLX" ? "Unified memory" : "RAM";
+
   return (
     <div className="relative overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] rise">
       {/* faint corner glow toward the recommendation — the one thing to look at */}
@@ -61,7 +67,8 @@ export default function MachineReadout({ machine, loading }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
-          <Stat value={m.memoryGb} unit="GB" label="Unified memory" />
+          <Stat value={m.memoryGb} unit="GB" label={memoryLabel} />
+          {isCuda && <Stat value={m.vramGb} unit="GB" label="VRAM" />}
           <Stat value={m.gpuCores} label="GPU cores" />
           <Stat value={m.bandwidth} unit="GB/s" label="Bandwidth" />
           <Stat value={m.inferenceLabel || "n/a"} unit={`· ${score}`} label="Inference" />
