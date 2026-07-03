@@ -422,7 +422,8 @@ def detect_supports_vision(local_path: Optional[str]) -> Optional[bool]:
 
     Deterministic, no model load (mmproj presence for llama.cpp, ``config.json``
     for MLX). Returns None when the engine/path is unavailable or detection
-    fails; callers treat None as permissive and gate only on an explicit False.
+    fails; the runtime treats None as not vision-capable (#212): images are
+    stripped and the user is notified unless the capability is an explicit True.
     """
     engine = config.LLM_Engine
     if engine is None or not local_path:

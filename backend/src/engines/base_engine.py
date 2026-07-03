@@ -262,8 +262,9 @@ class BaseEngine(ABC, metaclass=EngineMeta):
 
         Deterministic, no model load: llama.cpp engines look for an ``mmproj``
         projector, MLX reads ``config.json``. Returns ``None`` when the engine
-        cannot decide; callers treat ``None`` as permissive and only act on an
-        explicit ``False`` so a detection miss never blocks a real VLM.
+        cannot decide; the runtime treats ``None`` as not vision-capable (#212):
+        images are stripped unless the capability is an explicit ``True``,
+        and the user is notified when the current turn carried an image.
         """
         return None
 

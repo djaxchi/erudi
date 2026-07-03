@@ -453,8 +453,9 @@ _IMG = {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0
 
 
 async def test_astream_accepts_multimodal_user_message(monkeypatch):
-    """A list user_message (text + image_url parts) reaches the model as a
-    HumanMessage whose content keeps the image part."""
+    """A list user_message (text + image_url parts) reaches a vision model as a
+    HumanMessage whose content keeps the image part (supports_vision=True is
+    required since #212: anything else strips images)."""
     fake = _RecordingModel(messages=iter([AIMessage(content="a red square")]))
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=InMemorySaver())
@@ -462,6 +463,7 @@ async def test_astream_accepts_multimodal_user_message(monkeypatch):
     async for _ in runner.astream_text(
         llm=_Llm(), user_message=[{"type": "text", "text": "what is this?"}, _IMG],
         system_prompt="sys", params=_PARAMS, thread_id="c-img", summarize=False,
+        supports_vision=True,
     ):
         pass
 
@@ -482,6 +484,7 @@ async def test_kb_merge_preserves_image_parts(monkeypatch):
         llm=_Llm(), user_message=[{"type": "text", "text": "Quel préavis ?"}, _IMG],
         system_prompt="sys", params=_PARAMS, thread_id="c-kb-img",
         kb_context_block=_BLOCK_1, kb_language_line="Réponds en français.",
+        supports_vision=True,
     ):
         pass
 
@@ -503,14 +506,18 @@ async def test_stale_images_stripped_on_followup(monkeypatch):
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=InMemorySaver())
 
+    # supports_vision=True so ONLY the stale-image middleware is exercised
+    # (anything else would add _StripImagesForTextModel too since #212).
     async for _ in runner.astream_text(
         llm=_Llm(), user_message=[{"type": "text", "text": "see this"}, _IMG],
         system_prompt="s", params=_PARAMS, thread_id="c-strip", summarize=True,
+        supports_vision=True,
     ):
         pass
     async for _ in runner.astream_text(
         llm=_Llm(), user_message="and now?", system_prompt="s",
         params=_PARAMS, thread_id="c-strip", summarize=True,
+        supports_vision=True,
     ):
         pass
 
@@ -564,6 +571,30 @@ async def test_images_kept_for_vision_model(monkeypatch):
     last = fake.received[-1][-1]
     assert isinstance(last.content, list)
     assert any(p.get("type") == "image_url" for p in last.content)
+
+
+async def test_images_stripped_when_vision_capability_unknown(monkeypatch):
+    """Unknown vision capability (supports_vision=None) strips images too (#212):
+    only a positively-detected vision model receives image parts, so a
+    maybe-text-only model never breaks on an attachment."""
+    fake = _RecordingModel(messages=iter([AIMessage(content="ok")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=None)
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message=[{"type": "text", "text": "what is this"}, _IMG],
+        system_prompt="s", params=_PARAMS, supports_vision=None,
+    ):
+        pass
+
+    sent = fake.received[-1]
+    for m in sent:
+        if isinstance(m.content, list):
+            assert all(p.get("type") != "image_url" for p in m.content)
+    human = [m for m in sent if m.type == "human"][0]
+    assert isinstance(human.content, str)
+    assert "[image]" in human.content
+    assert "what is this" in human.content
 
 
 # ===================== Agentic KB tool (issue #84) =====================

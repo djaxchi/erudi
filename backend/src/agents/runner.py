@@ -68,6 +68,13 @@ ERROR_MESSAGE = (
     "a response. Please try asking your question again."
 )
 
+# Prepended (and persisted with the assistant message) by the conversation and
+# arena services when the CURRENT turn carries images but the model is not
+# positively vision-capable (#212): ``_StripImagesForTextModel`` drops the image
+# parts, and the user is told explicitly instead of silently. Markdown italics —
+# the frontend renders streamed answers as markdown.
+IMAGES_IGNORED_NOTICE = "*This model doesn't support images — your image was ignored.*\n\n"
+
 
 @dataclass
 class GenParams:
@@ -130,9 +137,12 @@ class AgentRunner:
                         *middleware,
                         _KbContextMiddleware(kb_context_block, kb_language_line),
                     ]
-                if supports_vision is False:
-                    # Outermost, so images are gone before the KB merge re-reads
-                    # the last user message: a non-vision model never sees an image.
+                if supports_vision is not True:
+                    # Unless the model is POSITIVELY vision-capable, strip images
+                    # (#212): unknown capability (None) is treated like False, so
+                    # a maybe-text-only model never breaks on an attachment (the
+                    # services prepend a user-facing notice). Outermost, so images
+                    # are gone before the KB merge re-reads the last user message.
                     middleware = [_StripImagesForTextModel(), *middleware]
                 effective_tools = tools if tools is not None else _default_tools()
                 agent = create_agent(
