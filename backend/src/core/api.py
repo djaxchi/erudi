@@ -105,10 +105,13 @@ class RequestLoggingMiddleware:
     - Stores the id in ``request_id_var`` so every log line emitted while
       handling the request is tagged with it (see src.core.logging).
     - Echoes the id back as the ``X-Request-ID`` response header.
-    - After the response body completes, logs exactly one line:
-      ``HTTP <METHOD> <path> -> <status> in <ms>ms`` at INFO — DEBUG for
-      polling endpoints (paths containing ``/health`` or ending in
-      ``/status``) to keep the log readable.
+    - When the response body completes (final ``http.response.body`` chunk),
+      logs exactly one line: ``HTTP <METHOD> <path> -> <status> in <ms>ms`` at
+      INFO — DEBUG for polling endpoints (paths containing ``/health`` or
+      ending in ``/status``) to keep the log readable. Logging at body-complete
+      rather than after the ASGI app returns keeps starlette's post-response
+      BackgroundTasks out of the reported duration (#204); a slow background
+      tail (>1s) is noted separately at DEBUG.
     """
 
     def __init__(self, app):
@@ -128,6 +131,22 @@ class RequestLoggingMiddleware:
         path = scope.get("path", "-")
         start = time.perf_counter()
         status_code = 500  # overwritten on http.response.start
+        # CORS preflights carry no QA signal — keep them out of the INFO stream.
+        quiet = _is_polling_path(path) or method == "OPTIONS"
+        logged = False
+        body_complete_ms = 0.0
+
+        def _log_access() -> None:
+            # The access line must land when the response body is done, NOT when
+            # the ASGI app returns: starlette runs BackgroundTasks after the body
+            # is sent but before returning, so logging after the app call folded
+            # minutes of background work (e.g. a model download) into the request
+            # duration and delayed the line just as long (#204).
+            nonlocal logged, body_complete_ms
+            body_complete_ms = (time.perf_counter() - start) * 1000
+            log = logger.debug if quiet else logger.info
+            log(f"HTTP {method} {path} -> {status_code} in {body_complete_ms:.1f}ms")
+            logged = True
 
         async def send_wrapper(message):
             nonlocal status_code
@@ -137,6 +156,15 @@ class RequestLoggingMiddleware:
                 headers = MutableHeaders(scope=message)
                 headers.append("X-Request-ID", request_id)
             await send(message)
+            # Log once the final body chunk is out. Streaming/SSE responses end
+            # with a chunk whose more_body is falsy, so the line lands at
+            # end-of-stream -- the real response duration, unchanged behavior.
+            if (
+                not logged
+                and message["type"] == "http.response.body"
+                and not message.get("more_body")
+            ):
+                _log_access()
 
         try:
             await self.app(scope, receive, send_wrapper)
@@ -148,11 +176,19 @@ class RequestLoggingMiddleware:
                 f"HTTP {method} {path} -> 500 in {duration_ms:.1f}ms (unhandled exception)"
             )
             raise
-        duration_ms = (time.perf_counter() - start) * 1000
-        # CORS preflights carry no QA signal — keep them out of the INFO stream.
-        quiet = _is_polling_path(path) or method == "OPTIONS"
-        log = logger.debug if quiet else logger.info
-        log(f"HTTP {method} {path} -> {status_code} in {duration_ms:.1f}ms")
+        if not logged:
+            # Defensive: an app that returned without ever sending a body still
+            # gets exactly one access line.
+            _log_access()
+            return
+        # Body was already logged. If the app then spent real time on
+        # BackgroundTasks (>1s past body-complete), note the long tail at DEBUG
+        # so the total is still discoverable without skewing the access line.
+        total_ms = (time.perf_counter() - start) * 1000
+        if total_ms - body_complete_ms > 1000:
+            logger.debug(
+                f"HTTP {method} {path} background work finished in {total_ms:.1f}ms"
+            )
 
     @staticmethod
     def _incoming_request_id(scope) -> str | None:

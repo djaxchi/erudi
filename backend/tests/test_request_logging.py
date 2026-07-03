@@ -61,6 +61,59 @@ def _http_records(caplog):
     return [rec for rec in caplog.records if rec.getMessage().startswith("HTTP ")]
 
 
+_MS_RE = re.compile(r"in ([0-9.]+)ms")
+
+
+def _parse_ms(message: str) -> float:
+    """Pull the millisecond value out of an access / background log line."""
+    match = _MS_RE.search(message)
+    assert match, f"no duration found in: {message!r}"
+    return float(match.group(1))
+
+
+def _access_records(caplog):
+    """The single 'HTTP <m> <p> -> <s> in <ms>ms' line(s), excluding the
+    optional background-tail and the unhandled-exception variants."""
+    return [
+        rec
+        for rec in caplog.records
+        if rec.getMessage().startswith("HTTP ")
+        and "background work finished" not in rec.getMessage()
+        and "unhandled exception" not in rec.getMessage()
+    ]
+
+
+def _background_records(caplog):
+    return [rec for rec in caplog.records if "background work finished" in rec.getMessage()]
+
+
+class _ManualClock:
+    """Deterministic ``time.perf_counter`` stand-in.
+
+    The fake ASGI app advances it explicitly, so body-send time and the
+    post-response background time are exact values instead of wall-clock
+    measurements. This removes every source of timing jitter from the duration
+    assertions below — the numbers are computed, not raced.
+    """
+
+    def __init__(self, start: float = 1000.0):
+        self.now = start
+
+    def perf_counter(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+async def _null_receive():
+    return {"type": "http.request", "body": b"", "more_body": False}
+
+
+async def _null_send(message):
+    return None
+
+
 # ---------------------------------------------------------------------------
 # X-Request-ID propagation
 # ---------------------------------------------------------------------------
@@ -246,3 +299,128 @@ def test_options_preflight_logs_at_debug(logging_client, caplog):
     assert len(records) == 1
     assert records[0].levelno == logging.DEBUG
     assert "HTTP OPTIONS /ping" in records[0].getMessage()
+
+
+# ---------------------------------------------------------------------------
+# Background tasks vs. request duration (#204)
+#
+# starlette runs a response's BackgroundTasks AFTER the body is sent but BEFORE
+# the ASGI call returns. Logging the access line at body-complete (rather than
+# after the app returns) keeps that background work out of the reported request
+# duration. A ManualClock makes the timings exact, so these assertions never
+# race the wall clock.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_access_line_logs_at_body_complete_not_after_background(monkeypatch, caplog):
+    """The endpoint answers instantly, then a 5 s BackgroundTask runs. The
+    access line must report the 50 ms body-send time, and the 5 s tail must be
+    a separate DEBUG line (the field bug logged the whole ~16 min as duration)."""
+    clock = _ManualClock()
+    monkeypatch.setattr("src.core.api.time", clock)
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        clock.advance(0.05)  # assembling / flushing the body: 50 ms
+        await send({"type": "http.response.body", "body": b"{}", "more_body": False})
+        clock.advance(5.0)  # starlette runs the BackgroundTask here: 5 s
+
+    wrapped = RequestLoggingMiddleware(app)
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/erudi/llms/28/download",
+        "headers": [],
+    }
+
+    with caplog.at_level(logging.DEBUG, logger="erudi"):
+        await wrapped(scope, _null_receive, _null_send)
+
+    access = _access_records(caplog)
+    assert len(access) == 1
+    assert access[0].levelno == logging.INFO
+    assert "HTTP POST /erudi/llms/28/download -> 200 in " in access[0].getMessage()
+    # Body-send time (50 ms), NOT body + 5 s of background work.
+    assert _parse_ms(access[0].getMessage()) == pytest.approx(50.0, abs=1.0)
+
+    background = _background_records(caplog)
+    assert len(background) == 1
+    assert background[0].levelno == logging.DEBUG
+    assert "HTTP POST /erudi/llms/28/download background work finished in " in (
+        background[0].getMessage()
+    )
+    # The tail line carries the full elapsed time (body + background = 5050 ms).
+    assert _parse_ms(background[0].getMessage()) == pytest.approx(5050.0, abs=1.0)
+
+
+@pytest.mark.unit
+def test_normal_request_emits_no_background_line(logging_client, caplog):
+    """A request with no background work: exactly one access line, no tail."""
+    with caplog.at_level(logging.DEBUG, logger="erudi"):
+        logging_client.get("/ping")
+    assert len(_access_records(caplog)) == 1
+    assert _background_records(caplog) == []
+
+
+@pytest.mark.unit
+async def test_streaming_logs_once_at_last_chunk(monkeypatch, caplog):
+    """A three-chunk stream logs one line, at end-of-stream, with no tail: the
+    reported duration is the time to the LAST chunk, not the first."""
+    clock = _ManualClock()
+    monkeypatch.setattr("src.core.api.time", clock)
+
+    async def app(scope, receive, send):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/plain")],
+            }
+        )
+        for i in range(3):
+            clock.advance(0.1)  # 100 ms per chunk
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": f"c{i}".encode(),
+                    "more_body": i < 2,
+                }
+            )
+
+    wrapped = RequestLoggingMiddleware(app)
+    scope = {"type": "http", "method": "GET", "path": "/stream", "headers": []}
+
+    with caplog.at_level(logging.DEBUG, logger="erudi"):
+        await wrapped(scope, _null_receive, _null_send)
+
+    access = _access_records(caplog)
+    assert len(access) == 1
+    # 3 chunks x 100 ms -> logged at 300 ms (end-of-stream), not 100 ms.
+    assert _parse_ms(access[0].getMessage()) == pytest.approx(300.0, abs=1.0)
+    assert _background_records(caplog) == []
+
+
+@pytest.mark.unit
+async def test_response_without_body_still_logs_once(monkeypatch, caplog):
+    """Defensive fallback: an app that returns without ever sending a body chunk
+    still yields exactly one access line (logged after the app returns)."""
+    clock = _ManualClock()
+    monkeypatch.setattr("src.core.api.time", clock)
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 204, "headers": []})
+        clock.advance(0.2)
+        # returns without any http.response.body message
+
+    wrapped = RequestLoggingMiddleware(app)
+    scope = {"type": "http", "method": "GET", "path": "/nobody", "headers": []}
+
+    with caplog.at_level(logging.DEBUG, logger="erudi"):
+        await wrapped(scope, _null_receive, _null_send)
+
+    access = _access_records(caplog)
+    assert len(access) == 1
+    assert "HTTP GET /nobody -> 204 in " in access[0].getMessage()
+    assert _parse_ms(access[0].getMessage()) == pytest.approx(200.0, abs=1.0)
+    assert _background_records(caplog) == []
