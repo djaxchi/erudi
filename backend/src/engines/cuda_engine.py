@@ -3,7 +3,7 @@
 This module implements the CUDA backend for local LLM inference on systems
 with NVIDIA GPUs. It provides:
 - Hardware detection via PyTorch CUDA and NVML
-- Performance evaluation for inference and fine-tuning
+- Performance evaluation for inference
 - GPU warm-up for optimal benchmarking
 - Cross-platform support (Windows and Linux)
 
@@ -18,7 +18,7 @@ Architecture:
     │ get_performance_evaluation()                              │
     │  1. Calculate TFLOPS (FP32, FP16, BF16)                   │
     │  2. Measure memory bandwidth                              │
-    │  3. Score inference & fine-tuning performance             │
+    │  3. Score inference performance                           │
     └───────────────────────────────────────────────────────────┘
                             ↓
     ┌───────────────────────────────────────────────────────────┐
@@ -38,13 +38,6 @@ Performance Scoring:
         - Memory bandwidth (30%): GB/s throughput
         - VRAM capacity (15%): GPU memory size
         - CPU performance (5%): Multi-core GHz
-        - System RAM (5%): Host memory
-        - PCIe bandwidth (5%): Bus capacity
-    
-    Fine-tuning weights:
-        - VRAM capacity (45%): Critical for batch size
-        - GPU compute (35%): Training throughput
-        - Memory bandwidth (10%): Data transfer speed
         - System RAM (5%): Host memory
         - PCIe bandwidth (5%): Bus capacity
 
@@ -149,24 +142,6 @@ class CUDA_Engine(BaseLlamaCppEngine):
         "cpu_ghz": 3.6,        # 3.6 GHz single-core reference
         "ram": 24,             # 24 GB (comfortable for multi-tasking)
         "pcie": 32,            # Gen3 x16 or Gen4 x8
-    }
-
-    # Performance scoring weights for fine-tuning workload (sum = 1.0)
-    _FINETUNE_WEIGHTS = {
-        "gpu_compute": 0.35,
-        "gpu_vram": 0.45,      # Critical for batch size
-        "gpu_bw": 0.10,
-        "sys_ram": 0.05,
-        "pcie": 0.05,
-    }
-
-    # Normalization factors for fine-tuning scoring
-    _FINETUNE_NORM = {
-        "tflops": 600,         # High-end training GPU reference
-        "vram": 96,            # 2x48 GB (dual GPU training)
-        "bandwidth": 1200,     # 1.2 TB/s (H100 reference)
-        "ram": 64,             # 64 GB host memory
-        "pcie": 32,            # Gen3 x16
     }
 
     # USES_GGUF and MODEL_MAPPING (the public-GGUF catalog) are inherited from
@@ -963,9 +938,9 @@ class CUDA_Engine(BaseLlamaCppEngine):
         """Calculate comprehensive performance metrics for NVIDIA CUDA backend.
         
         Evaluates hardware capabilities and returns normalized performance scores
-        for inference and fine-tuning workloads. Scoring based on TFLOPS, memory
-        bandwidth, VRAM capacity, and system resources.
-        
+        for inference workloads. Scoring based on TFLOPS, memory bandwidth, VRAM
+        capacity, and system resources.
+
         Scoring methodology:
             Inference (0-100 scale):
                 - GPU compute (40%): Tensor TFLOPS (BF16/FP16)
@@ -974,14 +949,7 @@ class CUDA_Engine(BaseLlamaCppEngine):
                 - CPU performance (5%): Multi-core units
                 - System RAM (5%): Host memory
                 - PCIe capacity (5%): Bus bandwidth
-            
-            Fine-tuning (0-100 scale):
-                - VRAM capacity (45%): Critical for batch size
-                - GPU compute (35%): Training throughput
-                - Memory bandwidth (10%): Data transfer
-                - System RAM (5%): Host memory
-                - PCIe capacity (5%): Bus bandwidth
-        
+
         Returns:
             Dict containing performance metrics and scores:
             {
@@ -1001,8 +969,6 @@ class CUDA_Engine(BaseLlamaCppEngine):
                 "architecture": str,
                 "global_inference_score": float,
                 "global_inference_label": str,
-                "global_finetuning_score": float,
-                "global_finetuning_label": str,
                 "gpu_score": float,
                 "cpu_score": float,
                 "memory_score": float,
@@ -1024,7 +990,6 @@ class CUDA_Engine(BaseLlamaCppEngine):
             >>> eval_result = CUDA_Engine.get_performance_evaluation()
             >>> print(f"Inference: {eval_result['global_inference_score']}/100")
             >>> print(f"Label: {eval_result['global_inference_label']}")
-            >>> print(f"Fine-tuning: {eval_result['global_finetuning_score']}/100")
         """
         try:
 
@@ -1128,20 +1093,6 @@ class CUDA_Engine(BaseLlamaCppEngine):
                 cls._WEIGHTS_INFERENCE["pcie"] * pcie_score
             )
             
-            # Calculate weighted fine-tuning score (normalized to different factors)
-            vram_score_ft = min(100, (vram_gb / cls._FINETUNE_NORM["vram"]) * 100) if cuda_available else 0
-            gpu_score_ft = min(100, (estimated_tflops / cls._FINETUNE_NORM["tflops"]) * 100)
-            bw_score_ft = min(100, (bandwidth_gbs / cls._FINETUNE_NORM["bandwidth"]) * 100) if cuda_available else 0
-            ram_score_ft = min(100, (sys_ram_gb / cls._FINETUNE_NORM["ram"]) * 100)
-            
-            finetuning_score = (
-                cls._FINETUNE_WEIGHTS["gpu_compute"] * gpu_score_ft +
-                cls._FINETUNE_WEIGHTS["gpu_vram"] * vram_score_ft +
-                cls._FINETUNE_WEIGHTS["gpu_bw"] * bw_score_ft +
-                cls._FINETUNE_WEIGHTS["sys_ram"] * ram_score_ft +
-                cls._FINETUNE_WEIGHTS["pcie"] * pcie_score
-            )
-            
             # Generate labels
             def get_label(score: float) -> str:
                 if score >= 90: return "Amazing"
@@ -1156,8 +1107,7 @@ class CUDA_Engine(BaseLlamaCppEngine):
                 else: return "Terrible"
             
             inference_label = get_label(inference_score)
-            finetuning_label = get_label(finetuning_score)
-            
+
             # Build performance breakdown
             performance_breakdown = {
                 "gpu_compute_score": round(gpu_score, 2),
@@ -1167,9 +1117,7 @@ class CUDA_Engine(BaseLlamaCppEngine):
                 "system_ram_score": round(ram_score, 2),
                 "pcie_score": round(pcie_score, 2),
                 "weights_inference": cls._WEIGHTS_INFERENCE,
-                "weights_finetuning": cls._FINETUNE_WEIGHTS,
-                "normalization_inference": cls._NORM_INFERENCE,
-                "normalization_finetuning": cls._FINETUNE_NORM
+                "normalization_inference": cls._NORM_INFERENCE
             }
             
             # Build complete evaluation result
@@ -1208,8 +1156,6 @@ class CUDA_Engine(BaseLlamaCppEngine):
                 # Performance scores (0-100)
                 "global_inference_score": round(inference_score, 2),
                 "global_inference_label": inference_label,
-                "global_finetuning_score": round(finetuning_score, 2),
-                "global_finetuning_label": finetuning_label,
                 "gpu_score": round(gpu_score, 2),
                 "cpu_score": round(cpu_score, 2),
                 "memory_score": round(vram_score, 2),
@@ -1224,10 +1170,9 @@ class CUDA_Engine(BaseLlamaCppEngine):
             }
             
             logger.info(
-                f"Performance evaluation: Inference={inference_score:.1f}/100 ({inference_label}), "
-                f"Fine-tuning={finetuning_score:.1f}/100 ({finetuning_label})"
+                f"Performance evaluation: Inference={inference_score:.1f}/100 ({inference_label})"
             )
-            
+
             return eval_result
             
         except Exception as e:

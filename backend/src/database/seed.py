@@ -280,10 +280,15 @@ class Model_Seeder:
         "adapter", "onnx", "pt", "pretrain", "draft", "mtp", "qat", "unquantized",
         "embedding", "reranker", "reward", "rm", "prm", "assistant", "fp8", "nvfp4",
     })
-    # Non-chat task families published under foundation orgs (TTS / OCR / encoder).
+    # Non-chat task families published under foundation orgs (TTS / OCR / vision-task
+    # / encoder). Matched as a lowercase substring of the slug, so 'ocr' also catches
+    # the fused 'olmocr'/'paddleocr'/'got-ocr' and 'embed' catches 'embedding' — a
+    # token boundary would miss those. Tokens are therefore chosen NOT to collide with
+    # any real chat-model slug (both shipped snapshots audited for #203/#122).
     NONCHAT_FAMILIES: tuple = (
         "docling", "vibevoice", "whisper", "clip", "reformer", "rerank",
         "siglip", "t5gemma", "biogpt", "dialogpt", "embed", "diffusion",
+        "ocr", "florence",
     )
     # Pipelines we draw the Base catalog from: plain text chat + (per #122) the
     # multimodal VLMs whose primary pipeline is image-text-to-text / any-to-any.
@@ -961,8 +966,6 @@ class Hardware_Initializer:
                 "disk_available_gb": 50.0,
                 "global_inference_score": 20.0,
                 "global_inference_label": "Poor",
-                "global_finetuning_score": 15.0,
-                "global_finetuning_label": "Poor",
                 "cpu_score": 30.0,
                 "memory_score": 25.0,
                 "system_platform": "Unknown"

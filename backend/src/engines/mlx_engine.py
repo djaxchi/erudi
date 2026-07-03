@@ -709,15 +709,13 @@ class MLX_Engine(BaseChatServerEngine):
         """Calculate comprehensive performance metrics for Apple Silicon.
         
         Evaluates hardware capabilities and returns performance scores for
-        inference and fine-tuning workloads. Scoring optimized for Apple
-        Silicon unified memory architecture.
-        
+        inference workloads. Scoring optimized for Apple Silicon unified memory
+        architecture.
+
         Scoring methodology:
             - Inference: GPU compute (35%), memory bandwidth (30%), memory (20%),
               Neural Engine (10%), CPU (5%)
-            - Fine-tuning: Memory capacity (40%), GPU compute (25%),
-              memory bandwidth (20%), Neural Engine (10%), CPU (5%)
-        
+
         Returns:
             Dict containing performance metrics and scores (0-100 scale):
             {
@@ -736,8 +734,6 @@ class MLX_Engine(BaseChatServerEngine):
                 "architecture": str,
                 "global_inference_score": float,
                 "global_inference_label": str,
-                "global_finetuning_score": float,
-                "global_finetuning_label": str,
                 "gpu_score": float,
                 "cpu_score": float,
                 "memory_score": float,
@@ -798,15 +794,6 @@ class MLX_Engine(BaseChatServerEngine):
                 cpu_score * 0.05
             )
             
-            # Calculate weighted fine-tuning score
-            finetuning_score = (
-                memory_capacity_score * 0.40 +
-                gpu_score * 0.25 +
-                mem_bandwidth_score * 0.20 +
-                neural_score * 0.10 +
-                cpu_score * 0.05
-            )
-            
             # Generate labels based on scores
             def get_label(score: float) -> str:
                 if score >= 80: return "Excellent"
@@ -816,8 +803,7 @@ class MLX_Engine(BaseChatServerEngine):
                 else: return "Weak"
             
             inference_label = get_label(inference_score)
-            finetuning_label = get_label(finetuning_score)
-            
+
             # Build performance breakdown
             performance_breakdown = {
                 "gpu_compute_score": round(gpu_score, 2),
@@ -829,13 +815,6 @@ class MLX_Engine(BaseChatServerEngine):
                     "gpu_compute": 0.35,
                     "memory_bandwidth": 0.30,
                     "memory_capacity": 0.20,
-                    "neural_engine": 0.10,
-                    "cpu": 0.05
-                },
-                "weights_finetuning": {
-                    "memory_capacity": 0.40,
-                    "gpu_compute": 0.25,
-                    "memory_bandwidth": 0.20,
                     "neural_engine": 0.10,
                     "cpu": 0.05
                 }
@@ -870,8 +849,6 @@ class MLX_Engine(BaseChatServerEngine):
                 # Performance scores (0-100)
                 "global_inference_score": round(inference_score, 2),
                 "global_inference_label": inference_label,
-                "global_finetuning_score": round(finetuning_score, 2),
-                "global_finetuning_label": finetuning_label,
                 "gpu_score": round(gpu_score, 2),
                 "cpu_score": round(cpu_score, 2),
                 "memory_score": round(memory_capacity_score, 2),
@@ -885,7 +862,7 @@ class MLX_Engine(BaseChatServerEngine):
                 "performance_breakdown": performance_breakdown
             }
             
-            logging.info(f"Performance evaluation: Inference={inference_score:.1f}/100 ({inference_label}), Fine-tuning={finetuning_score:.1f}/100 ({finetuning_label})")
+            logging.info(f"Performance evaluation: Inference={inference_score:.1f}/100 ({inference_label})")
             return eval_result
             
         except Exception as e:

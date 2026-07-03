@@ -737,28 +737,6 @@
   "category": "code"
  },
  {
-  "name": "DeepSeek OCR 2",
-  "link": "sabafallah/DeepSeek-OCR-2-GGUF",
-  "type": "deepseek",
-  "quantized": true,
-  "model_metadata": "Model ID: deepseek-ai/DeepSeek-OCR-2\nAuthor: deepseek-ai\nCreated: 2026-01-27 02:56:54+00:00\nDownloads: 3298384 \nLikes: 1023\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~11.5 GB\nParameters: Unknown\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, deepseek_vl_v2, feature-extraction, deepseek, vision-language, ocr, custom_code, image-text-to-text, multilingual...\nSHA: aaa02f3811945a91062062994c5c4a3f4c0af2b0\nLast Modified: 2026-02-03 00:33:19+00:00",
-  "param_size": 3.39,
-  "supports_tools": null,
-  "is_base": true,
-  "category": "vision"
- },
- {
-  "name": "DeepSeek OCR",
-  "link": "ggml-org/DeepSeek-OCR-GGUF",
-  "type": "deepseek",
-  "quantized": true,
-  "model_metadata": "Model ID: deepseek-ai/DeepSeek-OCR\nAuthor: deepseek-ai\nCreated: 2025-10-17 06:22:05+00:00\nDownloads: 2307679 \nLikes: 3295\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~3.3 GB\nParameters: Unknown\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, deepseek_vl_v2, feature-extraction, deepseek, vision-language, ocr, custom_code, image-text-to-text, multilingual...\nSHA: 9f30c71f441d010e5429c532364a86705536c53a\nLast Modified: 2025-11-04 02:36:12+00:00",
-  "param_size": 3.34,
-  "supports_tools": null,
-  "is_base": true,
-  "category": "vision"
- },
- {
   "name": "Janus Pro 7B",
   "link": "mradermacher/Janus-Pro-7B-GGUF",
   "type": "deepseek",
@@ -1318,17 +1296,6 @@
   "supports_tools": null,
   "is_base": true,
   "category": "general"
- },
- {
-  "name": "GLM OCR",
-  "link": "ggml-org/GLM-OCR-GGUF",
-  "type": "glm",
-  "quantized": true,
-  "model_metadata": "Model ID: zai-org/GLM-OCR\nAuthor: zai-org\nCreated: 2026-01-30 04:24:21+00:00\nDownloads: 3110163 \nLikes: 1885\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~3.0 GB\nParameters: Unknown\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, glm_ocr, image-text-to-text, conversational, zh, en, fr, es, ru...\nSHA: ca5d8b3e287e52589e37c28385d9655ee4372f9d\nLast Modified: 2026-05-19 12:28:43+00:00",
-  "param_size": 1.33,
-  "supports_tools": null,
-  "is_base": true,
-  "category": "vision"
  },
  {
   "name": "GLM 4.1V 9B Thinking",
@@ -2156,17 +2123,6 @@
   "category": "vision"
  },
  {
-  "name": "OlmOCR 2 7B 1025",
-  "link": "lmstudio-community/olmOCR-2-7B-1025-GGUF",
-  "type": "olmo",
-  "quantized": true,
-  "model_metadata": "Model ID: allenai/olmOCR-2-7B-1025\nAuthor: allenai\nCreated: 2025-10-06 21:16:59+00:00\nDownloads: 33331 \nLikes: 152\nLibrary: transformers\nPipeline: image-text-to-text\nSize: ~19.0 GB\nParameters: 7B\nQuantized: True\nPrivate: False\nGated: False\nTags: transformers, safetensors, qwen2_5_vl, image-text-to-text, conversational, en, base_model:Qwen/Qwen2.5-VL-7B-Instruct, base_model:finetune:Qwen/Qwen2.5-VL-7B-Instruct, license:apache-2.0, text-generation-inference...\nSHA: e52d6f090b7a9007afffbbd6ce510876222fea93\nLast Modified: 2025-10-22 15:31:06+00:00",
-  "param_size": 8.29,
-  "supports_tools": null,
-  "is_base": true,
-  "category": "vision"
- },
- {
   "name": "SmolLM2 135M",
   "link": "QuantFactory/SmolLM2-135M-GGUF",
   "type": "smollm",
@@ -2970,28 +2926,6 @@
   "category": "general"
  },
  {
-  "name": "Qwen Image Edit 2511 GGUF",
-  "link": "unsloth/Qwen-Image-Edit-2511-GGUF",
-  "type": "qwen",
-  "quantized": true,
-  "model_metadata": "Model ID: unsloth/Qwen-Image-Edit-2511-GGUF\nAuthor: Unknown\nCreated: 2025-12-20 02:31:59+00:00\nDownloads: 225002 \nLikes: 524\nLibrary: Unknown\nPipeline: image-to-image\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, quantized, unsloth, qwen, image-to-image, en, zh, arxiv:2508.02324, base_model:Qwen/Qwen-Image-Edit-2511, base_model:quantized:Qwen/Qwen-Image-Edit-2511...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "Qwen3 Embedding 0.6B GGUF",
-  "link": "Qwen/Qwen3-Embedding-0.6B-GGUF",
-  "type": "qwen",
-  "quantized": true,
-  "model_metadata": "Model ID: Qwen/Qwen3-Embedding-0.6B-GGUF\nAuthor: Unknown\nCreated: 2025-06-05 08:34:51+00:00\nDownloads: 224058 \nLikes: 539\nLibrary: Unknown\nPipeline: Unknown\nSize: ~0.8-1.2 GB\nParameters: 0.6B\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, arxiv:2506.05176, base_model:Qwen/Qwen3-0.6B-Base, base_model:quantized:Qwen/Qwen3-0.6B-Base, license:apache-2.0, endpoints_compatible, region:us, conversational\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 0.6,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
   "name": "Qwen3.5 27B Claude 4.6 Opus Reasoning Distilled GGUF",
   "link": "Jackrong/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-GGUF",
   "type": "qwen",
@@ -3773,17 +3707,6 @@
   "category": "reasoning"
  },
  {
-  "name": "Qwen Image Edit Rapid AIO GGUF",
-  "link": "Phil2Sat/Qwen-Image-Edit-Rapid-AIO-GGUF",
-  "type": "phi",
-  "quantized": true,
-  "model_metadata": "Model ID: Phil2Sat/Qwen-Image-Edit-Rapid-AIO-GGUF\nAuthor: Unknown\nCreated: 2025-10-16 11:32:49+00:00\nDownloads: 30264 \nLikes: 238\nLibrary: comfyUI\nPipeline: text-to-image\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: comfyUI, gguf, qwen, qwen-edit, t2i, i2i, text-to-image, base_model:Phr00t/Qwen-Image-Edit-Rapid-AIO, base_model:quantized:Phr00t/Qwen-Image-Edit-Rapid-AIO, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
   "name": "Phi 4 Reasoning Plus GGUF",
   "link": "lmstudio-community/Phi-4-reasoning-plus-GGUF",
   "type": "phi",
@@ -3933,17 +3856,6 @@
   "quantized": true,
   "model_metadata": "Model ID: TheBloke/Phind-CodeLlama-34B-Python-v1-GGUF\nAuthor: Unknown\nCreated: 2023-08-26 09:28:26+00:00\nDownloads: 1304 \nLikes: 13\nLibrary: transformers\nPipeline: Unknown\nSize: ~68.9-84.2 GB\nParameters: 34B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, gguf, llama, code llama, base_model:Phind/Phind-CodeLlama-34B-Python-v1, base_model:quantized:Phind/Phind-CodeLlama-34B-Python-v1, license:llama2, model-index, region:us\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 34.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "T5XXL Unchained GGUF",
-  "link": "Phil2Sat/T5XXL-Unchained-GGUF",
-  "type": "phi",
-  "quantized": true,
-  "model_metadata": "Model ID: Phil2Sat/T5XXL-Unchained-GGUF\nAuthor: Unknown\nCreated: 2025-11-04 05:22:08+00:00\nDownloads: 1270 \nLikes: 11\nLibrary: Unknown\nPipeline: translation\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, summarization, translation, en, fr, ro, de, base_model:Kaoru8/T5XXL-Unchained, base_model:quantized:Kaoru8/T5XXL-Unchained, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
   "supports_tools": null,
   "is_base": false,
   "category": "general"
@@ -4279,17 +4191,6 @@
   "category": "reasoning"
  },
  {
-  "name": "Granite Embedding 107M Multilingual GGUF",
-  "link": "bartowski/granite-embedding-107m-multilingual-GGUF",
-  "type": "granite",
-  "quantized": true,
-  "model_metadata": "Model ID: bartowski/granite-embedding-107m-multilingual-GGUF\nAuthor: Unknown\nCreated: 2024-12-18 16:53:53+00:00\nDownloads: 5746 \nLikes: 5\nLibrary: Unknown\nPipeline: text-generation\nSize: ~0.2-0.3 GB\nParameters: 107M\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, language, granite, embeddings, multilingual, text-generation, en, ar, cs, de...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 0.107,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
   "name": "Granite 4.0 H Micro GGUF",
   "link": "unsloth/granite-4.0-h-micro-GGUF",
   "type": "granite",
@@ -4367,34 +4268,12 @@
   "category": "general"
  },
  {
-  "name": "Granite Speech 4.1 2B GGUF",
-  "link": "cstr/granite-speech-4.1-2b-GGUF",
-  "type": "granite",
-  "quantized": true,
-  "model_metadata": "Model ID: cstr/granite-speech-4.1-2b-GGUF\nAuthor: Unknown\nCreated: 2026-04-30 15:36:07+00:00\nDownloads: 1095 \nLikes: 5\nLibrary: Unknown\nPipeline: Unknown\nSize: ~4.0-5.0 GB\nParameters: 2B\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, asr, speech, crispasr, en, fr, de, es, pt, ja...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 2.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
   "name": "Granite 4.0 1B GGUF",
   "link": "unsloth/granite-4.0-1b-GGUF",
   "type": "granite",
   "quantized": true,
   "model_metadata": "Model ID: unsloth/granite-4.0-1b-GGUF\nAuthor: Unknown\nCreated: 2025-10-28 11:09:03+00:00\nDownloads: 1085 \nLikes: 8\nLibrary: transformers\nPipeline: Unknown\nSize: ~2.0-2.5 GB\nParameters: 1B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, gguf, language, unsloth, granite-4.0, arxiv:0000.00000, base_model:ibm-granite/granite-4.0-1b, base_model:quantized:ibm-granite/granite-4.0-1b, license:apache-2.0, endpoints_compatible...\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 1.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "Granite Docling 258M GGUF",
-  "link": "ibm-granite/granite-docling-258M-GGUF",
-  "type": "granite",
-  "quantized": true,
-  "model_metadata": "Model ID: ibm-granite/granite-docling-258M-GGUF\nAuthor: Unknown\nCreated: 2025-10-23 15:23:06+00:00\nDownloads: 1067 \nLikes: 11\nLibrary: Unknown\nPipeline: Unknown\nSize: ~0.5-0.6 GB\nParameters: 258M\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, endpoints_compatible, region:us, conversational\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 0.258,
   "supports_tools": null,
   "is_base": false,
   "category": "general"
@@ -4439,17 +4318,6 @@
   "quantized": true,
   "model_metadata": "Model ID: huihui-ai/Huihui-granite-4.1-3b-abliterated\nAuthor: Unknown\nCreated: 2026-05-03 09:47:40+00:00\nDownloads: 727 \nLikes: 5\nLibrary: transformers\nPipeline: text-generation\nSize: ~6.1-7.4 GB\nParameters: 3B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, safetensors, gguf, granite, text-generation, language, granite-4.1, abliterated, uncensored, conversational...\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 3.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "Granite Embedding 278M Multilingual GGUF",
-  "link": "bartowski/granite-embedding-278m-multilingual-GGUF",
-  "type": "granite",
-  "quantized": true,
-  "model_metadata": "Model ID: bartowski/granite-embedding-278m-multilingual-GGUF\nAuthor: Unknown\nCreated: 2024-12-18 16:54:32+00:00\nDownloads: 718 \nLikes: 8\nLibrary: Unknown\nPipeline: text-generation\nSize: ~0.6-0.7 GB\nParameters: 278M\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, language, granite, embeddings, multilingual, text-generation, en, ar, cs, de...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 0.278,
   "supports_tools": null,
   "is_base": false,
   "category": "general"
@@ -5011,17 +4879,6 @@
   "quantized": true,
   "model_metadata": "Model ID: bartowski/Llama-3_1-Nemotron-51B-Instruct-GGUF\nAuthor: Unknown\nCreated: 2024-09-23 17:08:50+00:00\nDownloads: 1848 \nLikes: 5\nLibrary: Unknown\nPipeline: text-generation\nSize: ~103.3-126.2 GB\nParameters: 51B\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, nvidia, llama-3, text-generation, en, base_model:nvidia/Llama-3_1-Nemotron-51B-Instruct, base_model:quantized:nvidia/Llama-3_1-Nemotron-51B-Instruct, license:other, endpoints_compatible, region:us...\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 51.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "Nemotron 3.5 Asr Streaming GGUF",
-  "link": "cstr/nemotron-3.5-asr-streaming-GGUF",
-  "type": "nemotron",
-  "quantized": true,
-  "model_metadata": "Model ID: cstr/nemotron-3.5-asr-streaming-GGUF\nAuthor: Unknown\nCreated: 2026-06-13 08:30:06+00:00\nDownloads: 1807 \nLikes: 6\nLibrary: Unknown\nPipeline: automatic-speech-recognition\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, asr, speech-recognition, streaming, fastconformer, rnnt, multilingual, crispasr, automatic-speech-recognition, ar...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
   "supports_tools": null,
   "is_base": false,
   "category": "general"
@@ -5687,17 +5544,6 @@
   "category": "general"
  },
  {
-  "name": "OlmOCR 7B 0225 Preview GGUF",
-  "link": "lmstudio-community/olmOCR-7B-0225-preview-GGUF",
-  "type": "olmo",
-  "quantized": true,
-  "model_metadata": "Model ID: lmstudio-community/olmOCR-7B-0225-preview-GGUF\nAuthor: Unknown\nCreated: 2025-02-25 15:58:12+00:00\nDownloads: 288 \nLikes: 13\nLibrary: Unknown\nPipeline: image-text-to-text\nSize: ~14.2-17.3 GB\nParameters: 7B\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, image-text-to-text, en, dataset:allenai/olmOCR-mix-0225, base_model:allenai/olmOCR-7B-0225-preview, base_model:quantized:allenai/olmOCR-7B-0225-preview, license:apache-2.0, endpoints_compatible, region:us, conversational\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "vision"
- },
- {
   "name": "SmolLM2 135M Instruct GGUF",
   "link": "unsloth/SmolLM2-135M-Instruct-GGUF",
   "type": "smollm",
@@ -6149,28 +5995,6 @@
   "category": "general"
  },
  {
-  "name": "Mxbai Embed Large v1",
-  "link": "mixedbread-ai/mxbai-embed-large-v1",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: mixedbread-ai/mxbai-embed-large-v1\nAuthor: Unknown\nCreated: 2024-03-07 15:45:34+00:00\nDownloads: 5783296 \nLikes: 813\nLibrary: sentence-transformers\nPipeline: feature-extraction\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: sentence-transformers, onnx, safetensors, openvino, gguf, bert, feature-extraction, mteb, transformers.js, transformers...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "Embeddinggemma 300M GGUF",
-  "link": "ggml-org/embeddinggemma-300M-GGUF",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: ggml-org/embeddinggemma-300M-GGUF\nAuthor: Unknown\nCreated: 2025-09-04 16:14:00+00:00\nDownloads: 2344396 \nLikes: 33\nLibrary: Unknown\nPipeline: Unknown\nSize: ~0.6-0.7 GB\nParameters: 300M\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, base_model:google/embeddinggemma-300m, base_model:quantized:google/embeddinggemma-300m, endpoints_compatible, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 0.3,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
   "name": "Qwythos 9B Claude Mythos 5 1M GGUF",
   "link": "empero-ai/Qwythos-9B-Claude-Mythos-5-1M-GGUF",
   "type": "community",
@@ -6180,17 +6004,6 @@
   "supports_tools": null,
   "is_base": false,
   "category": "vision"
- },
- {
-  "name": "Sulphur 2 Base",
-  "link": "SulphurAI/Sulphur-2-base",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: SulphurAI/Sulphur-2-base\nAuthor: Unknown\nCreated: 2026-05-03 00:33:24+00:00\nDownloads: 735044 \nLikes: 1832\nLibrary: diffusers\nPipeline: text-to-video\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: diffusers, safetensors, gguf, text-to-video, base_model:Lightricks/LTX-2.3, base_model:quantized:Lightricks/LTX-2.3, endpoints_compatible, region:us, conversational\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
  },
  {
   "name": "Models Moved",
@@ -6204,56 +6017,12 @@
   "category": "general"
  },
  {
-  "name": "PaddleOCR VL 1.6 GGUF",
-  "link": "PaddlePaddle/PaddleOCR-VL-1.6-GGUF",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: PaddlePaddle/PaddleOCR-VL-1.6-GGUF\nAuthor: Unknown\nCreated: 2026-05-29 09:33:38+00:00\nDownloads: 683694 \nLikes: 37\nLibrary: Unknown\nPipeline: Unknown\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, arxiv:2606.03264, license:apache-2.0, endpoints_compatible, region:us, conversational\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "vision"
- },
- {
-  "name": "Wan2.1",
-  "link": "DeepBeepMeep/Wan2.1",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: DeepBeepMeep/Wan2.1\nAuthor: Unknown\nCreated: 2025-02-28 09:39:06+00:00\nDownloads: 378188 \nLikes: 41\nLibrary: diffusion-single-file\nPipeline: Unknown\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: diffusion-single-file, onnx, safetensors, gguf, i2v, base_model:Wan-AI/Wan2.1-T2V-1.3B, base_model:quantized:Wan-AI/Wan2.1-T2V-1.3B, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "Snowflake Arctic Embed M v1.5",
-  "link": "Snowflake/snowflake-arctic-embed-m-v1.5",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: Snowflake/snowflake-arctic-embed-m-v1.5\nAuthor: Unknown\nCreated: 2024-07-03 18:46:29+00:00\nDownloads: 372609 \nLikes: 72\nLibrary: sentence-transformers\nPipeline: sentence-similarity\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: sentence-transformers, onnx, safetensors, gguf, bert, feature-extraction, sentence-similarity, mteb, arctic, snowflake-arctic-embed...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
   "name": "Jan v3.5 4B Gguf",
   "link": "janhq/Jan-v3.5-4B-gguf",
   "type": "community",
   "quantized": true,
   "model_metadata": "Model ID: janhq/Jan-v3.5-4B-gguf\nAuthor: Unknown\nCreated: 2026-03-23 08:25:59+00:00\nDownloads: 319169 \nLikes: 22\nLibrary: transformers\nPipeline: text-generation\nSize: ~8.1-9.9 GB\nParameters: 4B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, gguf, math, identity, text-generation, en, base_model:janhq/Jan-v3-4B-base-instruct, base_model:quantized:janhq/Jan-v3-4B-base-instruct, license:apache-2.0, endpoints_compatible...\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 4.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "LTX 2.3 GGUF",
-  "link": "unsloth/LTX-2.3-GGUF",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: unsloth/LTX-2.3-GGUF\nAuthor: Unknown\nCreated: 2026-03-05 17:47:55+00:00\nDownloads: 298636 \nLikes: 487\nLibrary: ggml\nPipeline: image-to-video\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: ggml, gguf, image-to-video, unsloth, text-to-video, video-to-video, image-text-to-video, audio-to-video, text-to-audio, video-to-audio...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
   "supports_tools": null,
   "is_base": false,
   "category": "general"
@@ -6281,17 +6050,6 @@
   "category": "general"
  },
  {
-  "name": "Diffusiongemma 26B A4B Instruct GGUF",
-  "link": "unsloth/diffusiongemma-26B-A4B-it-GGUF",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: unsloth/diffusiongemma-26B-A4B-it-GGUF\nAuthor: Unknown\nCreated: 2026-06-10 14:19:12+00:00\nDownloads: 279871 \nLikes: 346\nLibrary: Unknown\nPipeline: image-text-to-text\nSize: ~52.6-64.4 GB\nParameters: 26B\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, gemma4, unsloth, gemma, google, diffusion_gemma, image-text-to-text, base_model:google/diffusiongemma-26B-A4B-it, base_model:quantized:google/diffusiongemma-26B-A4B-it, license:apache-2.0...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 26.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "vision"
- },
- {
   "name": "Sugoi 32B Ultra GGUF",
   "link": "sugoitoolkit/Sugoi-32B-Ultra-GGUF",
   "type": "community",
@@ -6309,39 +6067,6 @@
   "quantized": true,
   "model_metadata": "Model ID: deepreinforce-ai/Ornith-1.0-9B-GGUF\nAuthor: Unknown\nCreated: 2026-06-25 04:56:13+00:00\nDownloads: 255123 \nLikes: 393\nLibrary: transformers\nPipeline: text-generation\nSize: ~18.2-22.3 GB\nParameters: 9B\nQuantized: False\nPrivate: False\nGated: None\nTags: transformers, gguf, text-generation, license:mit, endpoints_compatible, region:us, conversational\nSHA: Unknown\nLast Modified: Unknown",
   "param_size": 9.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "LTX 2",
-  "link": "DeepBeepMeep/LTX-2",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: DeepBeepMeep/LTX-2\nAuthor: Unknown\nCreated: 2026-01-06 08:19:36+00:00\nDownloads: 250450 \nLikes: 22\nLibrary: diffusion-single-file\nPipeline: Unknown\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: diffusion-single-file, onnx, safetensors, gguf, base_model:Lightricks/LTX-2, base_model:quantized:Lightricks/LTX-2, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "FLUX.2 Klein 4B GGUF",
-  "link": "unsloth/FLUX.2-klein-4B-GGUF",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: unsloth/FLUX.2-klein-4B-GGUF\nAuthor: Unknown\nCreated: 2026-01-15 17:14:51+00:00\nDownloads: 246009 \nLikes: 170\nLibrary: ggml\nPipeline: image-to-image\nSize: ~8.1-9.9 GB\nParameters: 4B\nQuantized: False\nPrivate: False\nGated: None\nTags: ggml, gguf, text-to-image, unsloth, image-editing, flux, diffusion-single-file, image-to-image, en, base_model:black-forest-labs/FLUX.2-klein-4B...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 4.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "LTX 2.3 Test Gguf",
-  "link": "smthem/LTX-2.3-test-gguf",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: smthem/LTX-2.3-test-gguf\nAuthor: Unknown\nCreated: 2026-03-08 04:01:24+00:00\nDownloads: 234219 \nLikes: 13\nLibrary: Unknown\nPipeline: Unknown\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, license:mit, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
   "supports_tools": null,
   "is_base": false,
   "category": "general"
@@ -6413,28 +6138,6 @@
   "category": "vision"
  },
  {
-  "name": "Sentence Bert Swedish Cased",
-  "link": "KBLab/sentence-bert-swedish-cased",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: KBLab/sentence-bert-swedish-cased\nAuthor: Unknown\nCreated: 2022-03-02 23:29:04+00:00\nDownloads: 185767 \nLikes: 33\nLibrary: sentence-transformers\nPipeline: sentence-similarity\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: sentence-transformers, pytorch, safetensors, gguf, bert, feature-extraction, sentence-similarity, transformers, sv, arxiv:2004.09813...\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
- },
- {
-  "name": "PaddleOCR VL 1.5 GGUF",
-  "link": "PaddlePaddle/PaddleOCR-VL-1.5-GGUF",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: PaddlePaddle/PaddleOCR-VL-1.5-GGUF\nAuthor: Unknown\nCreated: 2026-02-26 08:10:50+00:00\nDownloads: 185100 \nLikes: 37\nLibrary: Unknown\nPipeline: Unknown\nSize: ~0.0 GB\nParameters: Unknown\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, arxiv:2601.21957, license:apache-2.0, endpoints_compatible, region:us, conversational\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 7.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "vision"
- },
- {
   "name": "SmolVLM 500M Instruct GGUF",
   "link": "ggml-org/SmolVLM-500M-Instruct-GGUF",
   "type": "community",
@@ -6455,16 +6158,5 @@
   "supports_tools": null,
   "is_base": false,
   "category": "vision"
- },
- {
-  "name": "Wan2.2 I2V A14B GGUF",
-  "link": "QuantStack/Wan2.2-I2V-A14B-GGUF",
-  "type": "community",
-  "quantized": true,
-  "model_metadata": "Model ID: QuantStack/Wan2.2-I2V-A14B-GGUF\nAuthor: Unknown\nCreated: 2025-07-28 14:21:18+00:00\nDownloads: 181460 \nLikes: 361\nLibrary: gguf\nPipeline: image-to-video\nSize: ~28.4-34.7 GB\nParameters: 14B\nQuantized: False\nPrivate: False\nGated: None\nTags: gguf, image-to-video, en, zh, base_model:Wan-AI/Wan2.2-I2V-A14B, base_model:quantized:Wan-AI/Wan2.2-I2V-A14B, license:apache-2.0, region:us\nSHA: Unknown\nLast Modified: Unknown",
-  "param_size": 14.0,
-  "supports_tools": null,
-  "is_base": false,
-  "category": "general"
  }
 ]

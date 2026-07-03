@@ -384,18 +384,14 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         """Calculate comprehensive performance metrics and scores for this backend.
         
         Evaluates hardware capabilities and returns performance scores for
-        inference and fine-tuning workloads. Scoring methodology varies by backend
-        but results are normalized to 0-100 scale for cross-platform comparison.
-        
+        inference workloads. Scoring methodology varies by backend but results
+        are normalized to 0-100 scale for cross-platform comparison.
+
         Scoring Components:
             - **Inference Score**: Optimized for generation speed and latency.
               Weights: GPU/accelerator compute (35-60%), memory bandwidth (20-30%),
               memory capacity (10-30%), CPU (5-10%).
-              
-            - **Fine-tuning Score**: Optimized for training throughput and memory.
-              Weights: Memory capacity (40-50%), GPU compute (25-35%),
-              memory bandwidth (20%), CPU (5%).
-        
+
         Returns:
             Dict containing performance metrics and scores:
             {
@@ -427,8 +423,6 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 # Performance scores (0-100)
                 "global_inference_score": float,
                 "global_inference_label": str,  # "Very Good", "Good", "Medium", "Poor"
-                "global_finetuning_score": float,
-                "global_finetuning_label": str,
                 "gpu_score": float,
                 "cpu_score": float,
                 "memory_score": float,
@@ -461,7 +455,6 @@ class BaseEngine(ABC, metaclass=EngineMeta):
             >>> engine.warm_up_accelerator(1.5)
             >>> eval_result = engine.get_performance_evaluation()
             >>> print(f"Inference: {eval_result['global_inference_score']}/100")
-            >>> print(f"Fine-tuning: {eval_result['global_finetuning_score']}/100")
 
         """
         pass
@@ -487,8 +480,6 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 "disk_available_gb": float,
                 "global_inference_score": float,
                 "global_inference_label": str,
-                "global_finetuning_score": float,
-                "global_finetuning_label": str,
                 "cpu_score": float,
                 "memory_score": float,
                 "gpu_score": float,

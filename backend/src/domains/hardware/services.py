@@ -240,37 +240,28 @@ class Hardware_Service:
                 "raw_inference_score": 65.0,
                 "boosted_inference_score": 85.0,  # min(65 + 20, 100)
                 "global_inference_label": "Excellent",  # Based on boosted
-                "raw_finetuning_score": 55.0,
-                "boosted_finetuning_score": 75.0,
-                "global_finetuning_label": "Good",
                 ...
             }
         """
         logger.debug("Calculating raw and boosted scores")
-        
-        # Raw scores (actual hardware capability)
+
+        # Raw score (actual hardware capability)
         raw_inf = profile.global_inference_score
-        raw_ft = profile.global_finetuning_score
-        
-        # Boosted scores for UI (+ 20 points, capped at 100)
+
+        # Boosted score for UI (+ 20 points, capped at 100)
         boosted_inf = min(100.0, raw_inf + 20.0)
-        boosted_ft = min(100.0, raw_ft + 20.0)
-        
+
         result = {
-            # Raw scores (engine output, no modification)
+            # Raw score (engine output, no modification)
             "raw_inference_score": raw_inf,
-            "raw_finetuning_score": raw_ft,
-            
-            # Boosted scores for UI display
+
+            # Boosted score for UI display
             "boosted_inference_score": boosted_inf,
-            "boosted_finetuning_score": boosted_ft,
             "global_inference_score": boosted_inf,  # Alias for backward compat
-            "global_finetuning_score": boosted_ft,  # Alias for backward compat
-            
-            # Labels based on boosted scores
+
+            # Label based on boosted score
             "global_inference_label": self._get_label(boosted_inf),
-            "global_finetuning_label": self._get_label(boosted_ft),
-            
+
             # Component scores (raw, no boost needed for internal metrics)
             "cpu_score": profile.cpu_score,
             "memory_score": profile.memory_score,
@@ -284,8 +275,7 @@ class Hardware_Service:
         result["recommended_param_max"] = param_max
         
         logger.debug(
-            f"Scores calculated: raw_inf={raw_inf:.1f}, boosted_inf={boosted_inf:.1f}, "
-            f"raw_ft={raw_ft:.1f}, boosted_ft={boosted_ft:.1f}"
+            f"Scores calculated: raw_inf={raw_inf:.1f}, boosted_inf={boosted_inf:.1f}"
         )
         return result
 
