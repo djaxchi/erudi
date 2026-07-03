@@ -13,6 +13,7 @@ import pytest
 import psycopg
 from sqlalchemy.orm import sessionmaker
 
+from src.domains.knowledge_base.repository import COPIED_FIELDS
 from src.domains.knowledge_base.services import KB_Service
 from src.entities.KnowledgeBase import KnowledgeBase
 from src.entities.KnowledgeDocument import KnowledgeDocument
@@ -47,6 +48,46 @@ class TestAssistantLifecycle:
         assert job.base_model_id == mock_llm.id
         assert job.new_model_id == llm_id
         assert job.kb_id == specialized.kb_id
+
+    def test_specialized_llm_inherits_all_descriptive_metadata(
+        self, test_db_session, mock_llm
+    ):
+        # Regression for #209: create_specialized_llm used to copy only a
+        # hand-picked subset of the base's columns, so the assistant's landing
+        # card rendered generic/empty (category, model_metadata were dropped) and
+        # downstream capability reads got wrong nulls. Every descriptive column
+        # must be inherited; asserting the whole COPIED_FIELDS set keeps this
+        # honest as the list grows.
+        mock_llm.category = "code"
+        mock_llm.model_metadata = '{"context_length": 32768}'
+        mock_llm.supports_tools = True
+        mock_llm.type = "qwen"
+        mock_llm.param_size = 14.0
+        mock_llm.quantized = False
+        test_db_session.flush()
+
+        service = KB_Service()
+        llm_id, _ = service.create_kb_assistant(
+            db=test_db_session,
+            base_llm_id=mock_llm.id,
+            model_name="Metadata-rich assistant",
+            description="Assistant desc",
+            file_paths=["/tmp/whatever.pdf"],
+        )
+
+        specialized = test_db_session.query(Llm).get(llm_id)
+        # Every descriptive column mirrors the base, whatever the list grows to.
+        for field in COPIED_FIELDS:
+            assert getattr(specialized, field) == getattr(mock_llm, field), field
+
+        # Identity/state stays assistant-specific, never copied from the base.
+        assert specialized.id != mock_llm.id
+        assert specialized.name == "Metadata-rich assistant"
+        assert specialized.description == "Assistant desc"
+        assert specialized.local == 1
+        assert specialized.is_attached_to_kb
+        assert specialized.is_base is False
+        assert specialized.kb_id != mock_llm.kb_id
 
     def test_kb_assistant_inherits_supports_tools(self, test_db_session, mock_llm):
         # A KB assistant built from a tool-capable base model must stay
