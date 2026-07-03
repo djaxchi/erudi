@@ -3,12 +3,18 @@ import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, HelpCircle, SlidersHorizontal } from "lucide-react";
 import Tooltip from "./Tooltip";
+import grainOverlay from "../assets/images/textures/grain-overlay.png";
 
 export default function HeaderBar({
   initialTemperature = 0.2,
   initialTopP = 0.2,
   initialMaxTokens = 1024,
   onApply,
+  // Optional live callback (#218): when provided, every slider/token edit is
+  // pushed to the parent immediately, so the displayed value is the value used
+  // at send time. onApply stays intact for consumers (ConversationPage) that
+  // deliberately commit-and-persist on an explicit Apply instead.
+  onLiveChange,
   onCustomizePrompt,
   disabled = false,
   models = [],
@@ -204,8 +210,7 @@ export default function HeaderBar({
         aria-hidden
         className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
         style={{
-          backgroundImage:
-            'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")',
+          backgroundImage: `url("${grainOverlay}")`,
           backgroundSize: "200px 200px",
         }}
       />
@@ -324,7 +329,11 @@ export default function HeaderBar({
                         max="1"
                         step="0.01"
                         value={temperature}
-                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value);
+                          setTemperature(value);
+                          onLiveChange?.({ temperature: value, topP, maxTokens });
+                        }}
                         className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
                         style={sliderBg(temperature)}
                       />
@@ -353,7 +362,11 @@ export default function HeaderBar({
                         max="1"
                         step="0.01"
                         value={topP}
-                        onChange={(e) => setTopP(parseFloat(e.target.value))}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value);
+                          setTopP(value);
+                          onLiveChange?.({ temperature, topP: value, maxTokens });
+                        }}
                         className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
                         style={sliderBg(topP)}
                       />
@@ -388,7 +401,11 @@ export default function HeaderBar({
                           min="1"
                           max="2000"
                           value={maxTokens}
-                          onChange={(e) => setMaxTokens(parseInt(e.target.value || "0", 10))}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value || "0", 10);
+                            setMaxTokens(value);
+                            onLiveChange?.({ temperature, topP, maxTokens: value });
+                          }}
                           className={`bg-transparent border-0 outline-none ${numberWidth} text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                         />
                       </div>
@@ -467,6 +484,7 @@ HeaderBar.propTypes = {
   initialTopP: PropTypes.number,
   initialMaxTokens: PropTypes.number,
   onApply: PropTypes.func.isRequired,
+  onLiveChange: PropTypes.func,
   onCustomizePrompt: PropTypes.func.isRequired,
   disabled: PropTypes.bool,
   models: PropTypes.arrayOf(
