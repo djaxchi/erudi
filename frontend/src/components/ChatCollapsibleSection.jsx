@@ -74,6 +74,10 @@ export default function ChatCollapsibleSection({
     }
   };
 
+  // Ownership contract (#228): THIS child owns the DELETE mutation. It issues the
+  // single DELETE request, then calls onDelete for post-delete UI only. Parents'
+  // onDelete callbacks must NOT repeat the DELETE (state/navigation only), or the
+  // request fires twice ~10ms apart with distinct request ids.
   const deleteConversation = async (id) => {
     try {
       const res = await tracedFetch(`${API_BASE_URL}/conversations/${id}`, {

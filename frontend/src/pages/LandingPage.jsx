@@ -29,7 +29,7 @@ import { rankByFit, pickFlagships, applyCatalogFilters } from "../utils/hardware
 export default function LandingPage() {
   const log = createLogger("LandingPage");
 
-  const { open } = useDownloadModal();
+  const { open, completionCount } = useDownloadModal();
   const navigate = useNavigate();
   const [showWelcome, setShowWelcome] = useState(false);
   const [showLoadingPopup, setShowLoadingPopup] = useState(false);
@@ -216,6 +216,22 @@ export default function LandingPage() {
     }
   };
 
+  // A completed download bumps the context's completionCount, whichever entry
+  // point started it and even if this page mounted after the download began.
+  // Refresh the installed lists on every tick so the models show up without a
+  // manual reload — the per-download onComplete callback alone misses the cases
+  // where the ref was overwritten or the registering page had unmounted (#205).
+  useEffect(() => {
+    if (!completionCount) {
+      return;
+    }
+    reloadLocalModels();
+    if (localModelsRef.current) {
+      localModelsRef.current.reloadLocalModels();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completionCount]);
+
   // Derived: Base vs Community (backend is_base), hardware-fit window, and the
   // best-fitting base models for the recommendation rail (#122 redesign).
   const { base: baseModels, community: communityModels } = splitByBase(remoteModels);
@@ -237,6 +253,9 @@ export default function LandingPage() {
     bandwidth: machineDetail?.memory_bandwidth_gbs
       ? Math.round(machineDetail.memory_bandwidth_gbs)
       : null,
+    // Only the CUDA hardware branch carries vram_total_gb; null everywhere else
+    // so MachineReadout only renders the VRAM stat on NVIDIA machines (#202).
+    vramGb: machineDetail?.vram_total_gb ? Math.round(machineDetail.vram_total_gb) : null,
     inferenceLabel: hardwareInfo?.global_inference_label,
     inferenceScore: hardwareInfo?.global_inference_score,
     range,
