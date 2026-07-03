@@ -639,6 +639,15 @@ const createWindow = () => {
         : undefined,
   });
 
+  // External links (window.open / target="_blank") must reach the system
+  // browser instead of spawning a bare second Electron window.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("https://") || url.startsWith("http://")) {
+      shell.openExternal(url);
+    }
+    return { action: "deny" };
+  });
+
   mainWindow.on("closed", () => {
     log("Main window closed");
     mainWindow = null;
