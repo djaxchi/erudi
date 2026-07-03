@@ -35,6 +35,9 @@ export default function ConversationPage() {
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState([]);
   const [currentModel, setCurrentModel] = useState("");
+  // The conversation's assigned model id, recorded when the conversation loads.
+  // The header picker's selected value is derived from this + `models` below.
+  const [conversationLlmId, setConversationLlmId] = useState(null);
   const [settings, setSettings] = useState({
     temperature: 0.2,
     topP: 0.5,
@@ -83,22 +86,32 @@ export default function ConversationPage() {
     };
   }, [messages]);
 
+  // Load the available models list. The header picker's selected value is
+  // hydrated by the dedicated effect below, not here: the models list and the
+  // conversation's assigned model arrive from two independent fetches and
+  // either can win the race.
   useEffect(() => {
     tracedFetch(`${API_BASE_URL}/llms/local`)
       .then((res) => res.json())
       .then((data) => {
         setModels(data);
-        if (conversations.length > 0) {
-          const conv = conversations.find((c) => c.id === Number(id));
-          if (conv) {
-            const model = data.find((m) => m.id === conv.llm_id);
-            if (model) {
-              setCurrentModel(model.name);
-            }
-          }
-        }
       });
   }, []);
+
+  // Hydrate the header model picker's selected value once BOTH the models list
+  // and the conversation's assigned llm_id are known. They come from two
+  // independent effects with no guaranteed order, so deriving here (instead of
+  // inside either loader) makes hydration order-independent and keeps the
+  // picker populated on reopen and during generation (#217).
+  useEffect(() => {
+    if (conversationLlmId === null || models.length === 0) {
+      return;
+    }
+    const model = models.find((m) => m.id === conversationLlmId);
+    if (model) {
+      setCurrentModel(model.name);
+    }
+  }, [conversationLlmId, models]);
 
   const handleModelChange = async (modelName) => {
     setCurrentModel(modelName);
@@ -106,6 +119,8 @@ export default function ConversationPage() {
     if (!model) {
       return;
     }
+    // Keep the derived-picker source of truth aligned with the new selection.
+    setConversationLlmId(model.id);
     // Call API to update conversation's llm_id
     await tracedFetch(`${API_BASE_URL}/conversations/${id}`, {
       method: "PATCH",
@@ -401,13 +416,11 @@ export default function ConversationPage() {
           });
           setCustomPrompt(conversation.custom_prompt || "");
 
-          // Set current model
-          if (models.length > 0) {
-            const model = models.find((m) => m.id === conversation.llm_id);
-            if (model) {
-              setCurrentModel(model.name);
-            }
-          }
+          // Record the conversation's assigned model; the header picker's
+          // selected value is derived from this + the models list in the
+          // dedicated effect above, so hydration no longer depends on which
+          // of the two fetches lands first (#217).
+          setConversationLlmId(conversation.llm_id);
         }
       } catch (err) {
         log.error("Failed to fetch conversations", err);

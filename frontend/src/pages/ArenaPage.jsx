@@ -10,6 +10,7 @@ import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import MarkdownRenderer from "../components/MarkdownRenderer";
 import apiClient from "../services/api/client";
 import { createLogger } from "../utils/logger";
+import grainOverlay from "../assets/images/textures/grain-overlay.png";
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
@@ -257,6 +258,10 @@ export default function ArenaPage() {
             initialTemperature={panel.temperature}
             initialTopP={panel.topP}
             initialMaxTokens={panel.maxTokens}
+            // #218: settings take effect at send time. Slider/token edits flow
+            // straight into the panel state via onLiveChange, so the displayed
+            // value is the value the next run sends - no silent Apply divergence.
+            onLiveChange={(s) => handleSettingsChange(panel.id, s)}
             onApply={(s) => handleSettingsChange(panel.id, s)}
             onCustomizePrompt={() => handleCustomizePrompt(panel.id, true)}
             disabled={loading}
@@ -418,8 +423,7 @@ export default function ArenaPage() {
                 aria-hidden
                 className="pointer-events-none absolute inset-0 rounded-full opacity-20 mix-blend-overlay"
                 style={{
-                  backgroundImage:
-                    'url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABVUlEQVRYR+2WvQ3CMAyFPxF0AB1AB1ABN0AHcAF0gA3QATpN0lInyY5kUVqSk4TsSIv8P2RNFpBf6h8Bi5TBSW0AVbAAmwBpjqgA3wD1fYwHzwFR3QAdwDvl7T2JQG4C7gA/H8LwAVtFznGKnyD20PnKQqa5wzwwM3Vl8r9mQwZP4RFL9XPs35SHJxKcVd5jTwK9K1u4ErfJUF2XblI8g4BtMSSYlLQF41f+WAbc42t7CM6ikgs6Y2oT64y8G8BuEorQFrirN4i0cK4erQblIDmI+F6kAD0fYp2RchEot1Hc6S/T/lNa8T1nDjMDPxgg7wM8S+P8Gn8UH2Piu0mV9K/VLBbq+508Quy_ngGBrhV98yYzeBdOL4SqyGoccEqbE6+ZjKlj19qCxgY6N8lH3dy5zvY1/drdEw2d+uHMDuHwrK0Yas7PwAxRxmKJl0VokAAAAASUVORK5CYII=")',
+                  backgroundImage: `url("${grainOverlay}")`,
                   backgroundSize: "200px 200px",
                 }}
               />
