@@ -36,6 +36,8 @@ CUDA, MLX, and CPU builds.
     * Guard startup with readiness polling (127.0.0.1:PORT), crash detection, and a
       first-run-aware timeout (longer on first boot, which pays a one-time initdb).
     * Support all build variants (CPU, CUDA, MLX) transparently via ERUDI_BUILD_VARIANT env var.
+    * Watch stdin for EOF when ERUDI_WATCH_STDIN=1 (Electron's Windows graceful-quit
+      signal, since there is no SIGTERM to relay) and turn it into a clean uvicorn shutdown.
 
 **Usage:**
     Development:
@@ -283,6 +285,46 @@ def run_server(server: "uvicorn.Server") -> None:
         sys.exit(1)
 
 
+def stdin_watch_enabled() -> bool:
+    """True when Electron asked the launcher to watch stdin for shutdown (opt-in).
+
+    Electron sets ERUDI_WATCH_STDIN=1 when it spawns the backend. Leaving it
+    unset (dev runs, the subprocess launcher tests) keeps stdin untouched, so
+    the watcher is a no-op there.
+    """
+    return os.environ.get("ERUDI_WATCH_STDIN") == "1"
+
+
+def start_stdin_eof_watcher(server: "uvicorn.Server") -> threading.Thread:
+    """Request a graceful shutdown when the controlling stdin pipe closes.
+
+    Windows has no SIGTERM to relay, so Electron signals a clean quit by
+    closing the backend's stdin. A blocking read returns b"" at EOF (the pipe
+    closed because Electron closed it or died); the watcher then flips
+    uvicorn's exit flag, exactly like the POSIX signal relay, so the FastAPI
+    lifespan shutdown (checkpointer close, embedded PostgreSQL stop) runs
+    before the process exits. Runs on a daemon thread and swallows any stdin
+    error: a broken or absent stdin must never crash the launcher.
+    """
+
+    def _watch() -> None:
+        try:
+            sys.stdin.buffer.read()  # blocks until EOF (parent closed the pipe)
+        except Exception:
+            return  # broken/absent stdin: nothing to watch, leave shutdown to signals
+        try:
+            from src.core.logging import logger
+
+            logger.info("Parent closed stdin; requesting graceful shutdown")
+        except Exception:
+            pass  # logging must never gate the shutdown flag below
+        server.should_exit = True
+
+    thread = threading.Thread(target=_watch, name="stdin-eof-watcher", daemon=True)
+    thread.start()
+    return thread
+
+
 def main() -> None:
     """Launch the backend, supervising readiness and emitting lifecycle events."""
     args = parse_args()
@@ -399,6 +441,12 @@ def main() -> None:
 
     signal.signal(signal.SIGTERM, _request_graceful_shutdown)
     signal.signal(signal.SIGINT, _request_graceful_shutdown)
+
+    # Windows has no SIGTERM: Electron signals a graceful quit by closing our
+    # stdin instead (opt-in via ERUDI_WATCH_STDIN). Watch for that EOF so the
+    # lifespan shutdown still runs and the embedded Postgres stops cleanly (#216).
+    if stdin_watch_enabled():
+        start_stdin_eof_watcher(server)
 
     server_thread = threading.Thread(target=run_server, args=(server,), daemon=True)
     server_thread.start()

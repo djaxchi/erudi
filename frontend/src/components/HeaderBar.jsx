@@ -10,6 +10,11 @@ export default function HeaderBar({
   initialTopP = 0.2,
   initialMaxTokens = 1024,
   onApply,
+  // Optional live callback (#218): when provided, every slider/token edit is
+  // pushed to the parent immediately, so the displayed value is the value used
+  // at send time. onApply stays intact for consumers (ConversationPage) that
+  // deliberately commit-and-persist on an explicit Apply instead.
+  onLiveChange,
   onCustomizePrompt,
   disabled = false,
   models = [],
@@ -324,7 +329,11 @@ export default function HeaderBar({
                         max="1"
                         step="0.01"
                         value={temperature}
-                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value);
+                          setTemperature(value);
+                          onLiveChange?.({ temperature: value, topP, maxTokens });
+                        }}
                         className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
                         style={sliderBg(temperature)}
                       />
@@ -353,7 +362,11 @@ export default function HeaderBar({
                         max="1"
                         step="0.01"
                         value={topP}
-                        onChange={(e) => setTopP(parseFloat(e.target.value))}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value);
+                          setTopP(value);
+                          onLiveChange?.({ temperature, topP: value, maxTokens });
+                        }}
                         className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
                         style={sliderBg(topP)}
                       />
@@ -388,7 +401,11 @@ export default function HeaderBar({
                           min="1"
                           max="2000"
                           value={maxTokens}
-                          onChange={(e) => setMaxTokens(parseInt(e.target.value || "0", 10))}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value || "0", 10);
+                            setMaxTokens(value);
+                            onLiveChange?.({ temperature, topP, maxTokens: value });
+                          }}
                           className={`bg-transparent border-0 outline-none ${numberWidth} text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                         />
                       </div>
@@ -467,6 +484,7 @@ HeaderBar.propTypes = {
   initialTopP: PropTypes.number,
   initialMaxTokens: PropTypes.number,
   onApply: PropTypes.func.isRequired,
+  onLiveChange: PropTypes.func,
   onCustomizePrompt: PropTypes.func.isRequired,
   disabled: PropTypes.bool,
   models: PropTypes.arrayOf(

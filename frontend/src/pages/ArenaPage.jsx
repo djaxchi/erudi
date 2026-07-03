@@ -258,6 +258,10 @@ export default function ArenaPage() {
             initialTemperature={panel.temperature}
             initialTopP={panel.topP}
             initialMaxTokens={panel.maxTokens}
+            // #218: settings take effect at send time. Slider/token edits flow
+            // straight into the panel state via onLiveChange, so the displayed
+            // value is the value the next run sends - no silent Apply divergence.
+            onLiveChange={(s) => handleSettingsChange(panel.id, s)}
             onApply={(s) => handleSettingsChange(panel.id, s)}
             onCustomizePrompt={() => handleCustomizePrompt(panel.id, true)}
             disabled={loading}
