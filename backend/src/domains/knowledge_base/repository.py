@@ -26,6 +26,31 @@ from src.entities.KBJob import KBJobModel
 from src.core.logging import logger
 
 
+# Descriptive Llm columns a KB assistant must inherit from its base model so its
+# landing card renders identically (family/type, capability category, size,
+# quantization, tool-calling, and the raw model_metadata / link the card and the
+# derived supports_vision read from). Kept as one explicit allow-list, copied in
+# a loop, INSTEAD of a hand-written kwarg list: the previous per-field copy
+# rotted every time a descriptive column was added (category and model_metadata
+# were both forgotten -> generic/empty cards and wrong supports_vision nulls,
+# #209). When you add a new *descriptive* column to Llm, add it HERE.
+#
+# Deliberately excluded because they are identity/state, not description, and
+# must stay assistant-specific: id (fresh pk), name/description (the assistant's
+# own), local (forced to 1 -- the assistant is ready to use), is_base (a catalog
+# flag; an assistant is a derived row, never a curated base), is_attached_to_kb
+# and kb_id (the KB wiring set below).
+COPIED_FIELDS = (
+    "link",
+    "type",
+    "category",
+    "param_size",
+    "quantized",
+    "supports_tools",
+    "model_metadata",
+)
+
+
 class KB_Repository:
     """Repository for Knowledge Base domain database operations."""
 
@@ -170,32 +195,30 @@ class KB_Repository:
     ) -> Llm:
         """Create specialized LLM attached to Knowledge Base.
 
-        Copies attributes from base LLM and sets is_attached_to_kb=1.
+        Inherits every descriptive column of the base model (COPIED_FIELDS) so
+        the assistant's landing card matches the base, then overrides the
+        assistant-specific identity/state (name, description, local=1, KB wiring).
+        Notably supports_tools is inherited so plan_turn routes the assistant to
+        the agentic KB path just like its base (#84).
 
         Args:
             db: Database session.
             name: Name for specialized LLM.
             description: Description for specialized LLM.
-            base_llm: Base LLM to copy attributes from.
+            base_llm: Base LLM to copy descriptive attributes from.
             kb_id: KnowledgeBase foreign key.
 
         Returns:
             Created Llm instance with ID assigned.
         """
+        inherited = {field: getattr(base_llm, field) for field in COPIED_FIELDS}
         specialized_llm = Llm(
             name=name,
             description=description,
             local=1,
-            link=base_llm.link,
-            type=base_llm.type,
             is_attached_to_kb=1,
             kb_id=kb_id,
-            param_size=base_llm.param_size,
-            quantized=base_llm.quantized,
-            # Inherit tool-calling capability from the base model: a KB assistant
-            # shares the base weights/template, so plan_turn must see the same
-            # supports_tools to route it to the agentic KB path (#84).
-            supports_tools=base_llm.supports_tools,
+            **inherited,
         )
         db.add(specialized_llm)
         db.flush()
