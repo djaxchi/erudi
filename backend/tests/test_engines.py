@@ -36,12 +36,10 @@ class TestEngineFlatHardwareData:
             "disk_available_gb",
             "global_inference_score",
             "global_inference_label",
-            "global_finetuning_score",
-            "global_finetuning_label",
             "cpu_score",
             "memory_score",
         ]
-        
+
         for key in required_keys:
             assert key in data, f"Missing required key: {key}"
     
@@ -60,7 +58,6 @@ class TestEngineFlatHardwareData:
         # Check score ranges (0-100)
         score_keys = [
             "global_inference_score",
-            "global_finetuning_score",
             "cpu_score",
             "memory_score",
         ]
@@ -124,6 +121,4 @@ class TestEngineFlatHardwareData:
         assert isinstance(data["total_memory_gb"], (int, float))
         assert isinstance(data["available_memory_gb"], (int, float))
         assert isinstance(data["global_inference_score"], (int, float))
-        assert isinstance(data["global_finetuning_score"], (int, float))
         assert isinstance(data["global_inference_label"], str)
-        assert isinstance(data["global_finetuning_label"], str)

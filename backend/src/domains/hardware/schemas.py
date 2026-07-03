@@ -69,10 +69,8 @@ class BaseHardwareInfo(BaseModel):
     
     # Performance scores (raw, without UI boost)
     raw_inference_score: float = Field(..., description="Raw inference score (0-100)")
-    raw_finetuning_score: float = Field(..., description="Raw fine-tuning score (0-100)")
     global_inference_label: str = Field(..., description="Qualitative inference rating")
-    global_finetuning_label: str = Field(..., description="Qualitative fine-tuning rating")
-    
+
     # Component scores
     cpu_score: float = Field(..., description="CPU component score (0-100)")
     memory_score: float = Field(..., description="Memory component score (0-100)")
@@ -134,15 +132,12 @@ class HardwareAppStartupInfo(BaseModel):
     Raw scores preserved for debugging.
     """
     backend_type: Literal["mlx", "cuda", "cpu"]
-    
-    # Boosted scores for UI display (raw + 20 points, capped at 100)
-    global_finetuning_score: float = Field(..., description="UI-boosted fine-tuning score")
-    global_finetuning_label: str
+
+    # Boosted score for UI display (raw + 20 points, capped at 100)
     global_inference_score: float = Field(..., description="UI-boosted inference score")
     global_inference_label: str
-    
-    # Raw scores for comparison/debugging
-    raw_finetuning_score: float = Field(..., description="Actual hardware score without boost")
+
+    # Raw score for comparison/debugging
     raw_inference_score: float = Field(..., description="Actual hardware score without boost")
 
     # Hardware-fit model size window (billions of params) — drives the UI's
@@ -164,5 +159,4 @@ class DetailedHardwareInfo(BaseModel):
     
     # Include both raw and boosted for transparency
     boosted_inference_score: float = Field(..., description="UI-boosted inference score")
-    boosted_finetuning_score: float = Field(..., description="UI-boosted fine-tuning score")
 

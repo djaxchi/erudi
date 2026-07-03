@@ -35,8 +35,6 @@ class TestHardwareService:
             "disk_available_gb": 250.0,
             "global_inference_score": 50.0,
             "global_inference_label": "Medium",
-            "global_finetuning_score": 45.0,
-            "global_finetuning_label": "Medium",
             "cpu_score": 40.0,
             "memory_score": 60.0,
             "gpu_score": 0.0,
@@ -90,8 +88,6 @@ class TestHardwareService:
             "disk_available_gb": 500.0,
             "global_inference_score": 85.0,
             "global_inference_label": "Excellent",
-            "global_finetuning_score": 80.0,
-            "global_finetuning_label": "Good",
             "cpu_score": 75.0,
             "memory_score": 90.0,
             "gpu_score": 85.0,
@@ -126,8 +122,6 @@ class TestHardwareService:
             "disk_available_gb": 1000.0,
             "global_inference_score": 90.0,
             "global_inference_label": "Excellent",
-            "global_finetuning_score": 88.0,
-            "global_finetuning_label": "Excellent",
             "cpu_score": 70.0,
             "memory_score": 85.0,
             "gpu_score": 95.0,
@@ -150,40 +144,34 @@ class TestHardwareService:
             mock_repository.create_profile.assert_called_once_with(mock_data)
     
     def test_calculate_boosted_scores_adds_20_points(self, service):
-        """Test that boosted scores correctly add 20 points."""
+        """Test that the boosted score correctly adds 20 points."""
         mock_profile = Mock(spec=HardwareProfile)
         mock_profile.global_inference_score = 65.0
-        mock_profile.global_finetuning_score = 55.0
         mock_profile.cpu_score = 40.0
         mock_profile.memory_score = 60.0
         mock_profile.gpu_score = 70.0
-        
+
         result = service.calculate_boosted_scores(mock_profile)
-        
+
         assert result["raw_inference_score"] == 65.0
         assert result["boosted_inference_score"] == 85.0  # 65 + 20
-        assert result["raw_finetuning_score"] == 55.0
-        assert result["boosted_finetuning_score"] == 75.0  # 55 + 20
-    
+
     def test_calculate_boosted_scores_caps_at_100(self, service):
-        """Test that boosted scores are capped at 100."""
+        """Test that the boosted score is capped at 100."""
         mock_profile = Mock(spec=HardwareProfile)
         mock_profile.global_inference_score = 85.0
-        mock_profile.global_finetuning_score = 90.0
         mock_profile.cpu_score = 40.0
         mock_profile.memory_score = 60.0
         mock_profile.gpu_score = 70.0
-        
+
         result = service.calculate_boosted_scores(mock_profile)
 
         assert result["boosted_inference_score"] == 100.0  # min(85 + 20, 100)
-        assert result["boosted_finetuning_score"] == 100.0  # min(90 + 20, 100)
 
     def test_calculate_boosted_scores_includes_recommended_param_range(self, service):
         """Boosted scores carry the hardware-fit model size window (#86)."""
         mock_profile = Mock(spec=HardwareProfile)
         mock_profile.global_inference_score = 65.0   # boosted 85 -> top tier (>= 75)
-        mock_profile.global_finetuning_score = 55.0
         mock_profile.cpu_score = 40.0
         mock_profile.memory_score = 60.0
         mock_profile.gpu_score = 70.0
@@ -214,7 +202,6 @@ class TestBuildBackendSpecificSchema:
 
     SCORES = {
         "raw_inference_score": 17.6,
-        "raw_finetuning_score": 10.0,
         "cpu_score": 50.0,
         "memory_score": 60.0,
         "gpu_score": 70.0,
@@ -231,8 +218,6 @@ class TestBuildBackendSpecificSchema:
             disk_available_gb=256.0,
             global_inference_score=40.0,
             global_inference_label="Medium",
-            global_finetuning_score=20.0,
-            global_finetuning_label="Poor",
             cpu_score=50.0,
             memory_score=60.0,
             architecture="x86_64",
