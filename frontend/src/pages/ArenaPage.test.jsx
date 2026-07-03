@@ -22,8 +22,19 @@ vi.mock("../components/MarkdownRenderer", () => ({
   default: ({ content }) => <div>{content}</div>,
 }));
 vi.mock("../components/modals/CustomizePromptModal", () => ({ default: () => null }));
+// #218: the panel header pushes slider/token edits live via onLiveChange (no
+// Apply step). The mock exposes a per-panel "edit" control that fires
+// onLiveChange with a distinctive settings triple so a test can prove the
+// edited value reaches the outgoing request.
 vi.mock("../components/HeaderBar", () => ({
-  default: ({ currentModel }) => <div>{`panel:${currentModel}`}</div>,
+  default: ({ currentModel, onLiveChange }) => (
+    <div>
+      <div>{`panel:${currentModel}`}</div>
+      <button onClick={() => onLiveChange?.({ temperature: 0.49, topP: 0.5, maxTokens: 256 })}>
+        {`edit:${currentModel}`}
+      </button>
+    </div>
+  ),
 }));
 // The composer is exercised through its contract: onSend(question, images,
 // imagePaths) and the canAttachImages vision gate.
@@ -92,6 +103,42 @@ describe("ArenaPage images (#136 C)", () => {
       { id: 2, name: "m2", supports_vision: false },
     ]);
     expect(screen.getByTestId("can-attach").textContent).toBe("false");
+  });
+});
+
+describe("ArenaPage live settings (#218)", () => {
+  it("sends a panel's edited settings without an Apply step, and does not leak across panels", async () => {
+    // Two distinct models so each panel's request has a distinguishable URL
+    // (/arena/<llmId>/query).
+    await renderWithModels([
+      { id: 1, name: "m1", supports_vision: true },
+      { id: 2, name: "m2", supports_vision: true },
+    ]);
+
+    // Edit only the first panel (model m1 -> llmId 1). No Apply is clicked.
+    fireEvent.click(screen.getByText("edit:m1"));
+
+    fireEvent.click(screen.getByText("SEND_PLAIN"));
+
+    await waitFor(() => expect(tracedFetchMock).toHaveBeenCalledTimes(2));
+
+    const bodyByUrl = Object.fromEntries(
+      tracedFetchMock.mock.calls.map(([url, options]) => [url, JSON.parse(options.body)])
+    );
+    const bodyFor = (llmId) =>
+      Object.entries(bodyByUrl).find(([url]) => url.includes(`/arena/${llmId}/query`))[1];
+
+    // The edited panel's request carries the live-edited values...
+    const edited = bodyFor(1);
+    expect(edited.temperature).toBe(0.49);
+    expect(edited.top_p).toBe(0.5);
+    expect(edited.max_new_tokens).toBe(256);
+
+    // ...while the untouched panel keeps the arena defaults (no cross-panel leak).
+    const untouched = bodyFor(2);
+    expect(untouched.temperature).toBe(1.0);
+    expect(untouched.top_p).toBe(0.95);
+    expect(untouched.max_new_tokens).toBe(512);
   });
 });
 
