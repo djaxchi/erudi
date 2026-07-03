@@ -574,13 +574,12 @@ class CPU_Engine(BaseLlamaCppEngine):
         """Calculate comprehensive performance metrics for CPU-only backend.
         
         Evaluates hardware capabilities and returns performance scores for
-        inference and fine-tuning workloads. Scoring acknowledges CPU limitations
-        compared to GPU-accelerated backends.
-        
+        inference workloads. Scoring acknowledges CPU limitations compared to
+        GPU-accelerated backends.
+
         Scoring methodology:
             - Inference: CPU cores (40%), memory capacity (30%), memory bandwidth est. (20%), disk (10%)
-            - Fine-tuning: Memory capacity (50%), CPU cores (30%), disk (15%), memory bandwidth (5%)
-        
+
         Normalization:
             - CPU cores: 64 cores = 100 points
             - Memory: 128GB = 100 points
@@ -598,8 +597,6 @@ class CPU_Engine(BaseLlamaCppEngine):
                 "cpu_performance_units": int,
                 "global_inference_score": float,
                 "global_inference_label": str,
-                "global_finetuning_score": float,
-                "global_finetuning_label": str,
                 "cpu_score": float,
                 "memory_score": float,
                 "performance_breakdown": PerformanceBreakdown,
@@ -635,10 +632,7 @@ class CPU_Engine(BaseLlamaCppEngine):
             # === SCORING WEIGHTS ===
             # Inference: CPU (40%), Memory Capacity (30%), Memory BW (20%), Disk (10%)
             INF_WEIGHTS = {"cpu": 0.40, "memory_capacity": 0.30, "memory_bandwidth": 0.20, "disk": 0.10}
-            
-            # Fine-tuning: Memory Capacity (50%), CPU (30%), Disk (15%), Memory BW (5%)
-            FT_WEIGHTS = {"memory_capacity": 0.50, "cpu": 0.30, "disk": 0.15, "memory_bandwidth": 0.05}
-            
+
             # === NORMALIZATION FACTORS ===
             NORM_CPU_CORES = 64.0      # 64 cores = 100 points
             NORM_MEMORY_GB = 128.0     # 128GB RAM = 100 points
@@ -670,19 +664,10 @@ class CPU_Engine(BaseLlamaCppEngine):
                 memory_bandwidth_score * INF_WEIGHTS["memory_bandwidth"] +
                 disk_score * INF_WEIGHTS["disk"]
             )
-            
-            # Fine-tuning Score
-            finetuning_score = (
-                memory_capacity_score * FT_WEIGHTS["memory_capacity"] +
-                cpu_score * FT_WEIGHTS["cpu"] +
-                disk_score * FT_WEIGHTS["disk"] +
-                memory_bandwidth_score * FT_WEIGHTS["memory_bandwidth"]
-            )
-            
-            # Round scores
+
+            # Round score
             inference_score = round(inference_score, 2)
-            finetuning_score = round(finetuning_score, 2)
-            
+
             # === LABELS ===
             def score_to_label(score: float) -> str:
                 """Convert 0-100 score to qualitative label."""
@@ -695,8 +680,7 @@ class CPU_Engine(BaseLlamaCppEngine):
                 else: return "Terrible"
             
             inference_label = score_to_label(inference_score)
-            finetuning_label = score_to_label(finetuning_score)
-            
+
             # === BUILD RESULT ===
             result = {
                 "backend_type": "cpu",
@@ -715,8 +699,6 @@ class CPU_Engine(BaseLlamaCppEngine):
                 "architecture": hw_info["cpu"]["architecture"],
                 "global_inference_score": inference_score,
                 "global_inference_label": inference_label,
-                "global_finetuning_score": finetuning_score,
-                "global_finetuning_label": finetuning_label,
                 "gpu_score": 0.0,  # No GPU
                 "cpu_score": round(cpu_score, 2),
                 "memory_score": round(memory_capacity_score, 2),
@@ -732,10 +714,9 @@ class CPU_Engine(BaseLlamaCppEngine):
             }
             
             logger.info(
-                f"CPU performance evaluated: Inference={inference_score:.1f} ({inference_label}), "
-                f"Fine-tuning={finetuning_score:.1f} ({finetuning_label})"
+                f"CPU performance evaluated: Inference={inference_score:.1f} ({inference_label})"
             )
-            
+
             return result
             
         except Exception as e:
@@ -760,8 +741,6 @@ class CPU_Engine(BaseLlamaCppEngine):
                 "architecture": platform.machine(),
                 "global_inference_score": round(base_score, 2),
                 "global_inference_label": "Poor",
-                "global_finetuning_score": round(base_score * 0.8, 2),
-                "global_finetuning_label": "Poor",
                 "gpu_score": 0.0,
                 "cpu_score": round(base_score, 2),
                 "memory_score": 0.0,
