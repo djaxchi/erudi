@@ -536,8 +536,12 @@ export default function ConversationPage() {
     setConversations((prev) => prev.map((c) => (c.id === cid ? { ...c, name: newName } : c)));
 
   const handleDelete = async (cid) => {
+    // Ownership contract (#228): ChatCollapsibleSection owns the DELETE request.
+    // This parent handler runs AFTER the child has deleted and does post-delete
+    // UI only — optimistic filter, server refresh, and navigating away from a
+    // now-deleted open conversation. It must NOT issue its own DELETE, or the
+    // request fires twice (~10ms apart, distinct request ids).
     setConversations((prev) => prev.filter((conv) => conv.id !== cid));
-    await tracedFetch(`${API_BASE_URL}/conversations/${cid}`, { method: "DELETE" });
     await fetchMessagesAndConversations();
     if (cid === Number(id)) {
       navigate("/erudi/chat");
