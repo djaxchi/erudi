@@ -306,23 +306,19 @@ def make_callback(job: DownloadTracker) -> Callback:
         >>> callback = make_callback(tracker)
         >>> fs.get_file("repo/file.safetensors", "local.safetensors", callback)
     """
+    # prev tracks the last cumulative value seen for the current file.
+    # `value` is per-file cumulative (resets to 0 at the start of each file),
+    # so when it drops below prev we know a new file started and reset.
+    state = {"prev": 0}
+
     def after_chunk(size: int, value: int, **kwargs) -> None:
-        """Update download progress after receiving a chunk from HuggingFace.
-        
-        Nested callback invoked by huggingface_hub after each file chunk transfer.
-        Calculates delta bytes and updates the DownloadTracker with progress.
-        
-        Args:
-            size: Total file size in bytes.
-            value: Cumulative bytes downloaded so far.
-            **kwargs: Additional metadata from huggingface_hub (ignored).
-        
-        Returns:
-            None
-        """
-        # Calculate bytes since last update and guard against negative
-        delta = value - job.downloaded_bytes if value is not None else 0
-        job.update(max(delta, 0))
+        if value is None:
+            return
+        prev = state["prev"]
+        delta = value if value < prev else value - prev
+        if delta > 0:
+            job.update(delta)
+        state["prev"] = value
 
     return Callback(size=job.total_bytes, hooks={"transfer-chunk": after_chunk})
 
