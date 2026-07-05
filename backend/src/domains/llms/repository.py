@@ -490,15 +490,10 @@ def update_db_with_progress(job_tracker, job_id: int, model_id: int) -> None:
             session.commit()
             logger.debug(f"Job {job_id}: {dbj.progress:.2f}% complete")
 
-        # Finalize job state
-        dbj.progress = 100.0
-        dbj.status = "completed"
-        # Detect tool-calling capability once, from the freshly downloaded files,
-        # before the model becomes selectable (#84).
-        llm.supports_tools = detect_supports_tools(llm.link)
-        llm.local = 1
-        session.commit()
-        logger.info(f"Job {job_id} completed successfully")
+        # Finalization (status=completed, local=1, supports_tools) is handled by
+        # _run_download_task in its own session after download_llm returns. That
+        # guarantees completion is recorded even if this thread's session hangs.
+        logger.info(f"Job {job_id} progress tracking finished")
         
     except Exception as e:
         logger.exception(f"Job {job_id} failed during progress tracking")
