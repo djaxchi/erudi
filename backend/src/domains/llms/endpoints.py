@@ -102,6 +102,7 @@ from sqlalchemy.orm import Session
 from src.database.core import get_db, SessionLocal
 
 from src.entities.DownloadJob import DownloadJobModel
+from src.entities.Llm import Llm
 from src.domains.llms.schemas import (
     LLMCreate, LLMResponse, DownloadJobResponse, HFSearchResult, HFDownloadRequest,
 )
@@ -157,6 +158,7 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
     """Background body of a download: flip the job to running, run the download
     (which spawns its own progress updater), and mark failed on error. Module-level
     so both the by-id and by-link download routes share one implementation."""
+    from src.domains.llms.repository import detect_supports_tools, detect_supports_vision
     session = SessionLocal()
     try:
         job_obj = session.query(DownloadJobModel).get(job_id)
@@ -168,6 +170,20 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
             model_link=model_link, model_id=model_id,
             temp_save_dir=temp_save_dir, final_save_dir=final_save_dir, job_id=job_id,
         ))
+        # Mark completed here, in this session, so the job is always finalized even
+        # if update_db_with_progress's session hangs (e.g. detect_supports_tools stalling
+        # or a DB connection issue in the progress thread).
+        job_obj = session.query(DownloadJobModel).get(job_id)
+        if job_obj and job_obj.status != "cancelled":
+            llm_obj = session.query(Llm).get(model_id)
+            if llm_obj:
+                llm_obj.supports_tools = detect_supports_tools(llm_obj.link)
+                llm_obj.supports_vision = detect_supports_vision(llm_obj.link)
+                llm_obj.local = 1
+            job_obj.status = "completed"
+            job_obj.progress = 100.0
+            job_obj.updated_at = datetime.utcnow()
+            session.commit()
         logger.info(f"Download job {job_id} completed successfully")
     except Exception as e:
         logger.exception(f"Download job {job_id} failed: {e}")
