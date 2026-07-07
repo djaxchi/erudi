@@ -156,6 +156,30 @@ class TestArenaService:
 
         assert "".join(result) == "A red square."
 
+    async def test_query_llm_stream_plain_is_zero_tool(
+        self, test_db_session, mock_llm, monkeypatch
+    ):
+        """#129: an arena turn on a model without a KB attached (plain mode)
+        reaches the runner with NO tools at all — not even the calculator."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("Hello."))
+        service = ArenaService(test_db_session)
+
+        captured = {}
+        original = service.runner.astream_text
+
+        def spy(**kwargs):
+            captured.update(kwargs)
+            return original(**kwargs)
+
+        monkeypatch.setattr(service.runner, "astream_text", spy)
+
+        payload = ArenaQueryPayload(question="Say hello")
+        result = [t async for t in service.query_llm_stream(mock_llm.id, payload)]
+
+        assert "".join(result) == "Hello."
+        assert captured["tools"] == []
+
     async def test_query_llm_stream_no_images_no_notice(
         self, test_db_session, mock_llm, monkeypatch
     ):
