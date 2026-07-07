@@ -6,6 +6,8 @@ patching ``build_chat_model``. The engine is a bare ``BaseEngine`` subclass so
 ``generation_guard`` works without spawning a real model.
 """
 
+import logging
+
 import pytest
 from langchain.agents import create_agent
 from tests._helpers import ToolableFakeChatModel
@@ -15,6 +17,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from src.agents import runner as runner_module
 from src.agents.model_factory import build_chat_model
 from src.agents.runner import AgentRunner, GenParams, ERROR_SENTINEL
+from src.agents.tools import calculator
 from src.core import config
 from src.engines.base_engine import BaseEngine
 
@@ -97,6 +100,27 @@ async def test_arena_mode_runs_without_checkpointer(monkeypatch):
         )
     ]
     assert "".join(out) == "duel answer"
+
+
+async def test_tools_none_builds_zero_tool_agent(monkeypatch, caplog):
+    """#129: with no explicit tools the agent is built with NO tools at all.
+
+    Every production path goes through ``plan_turn`` and passes an explicit
+    list; ``tools=None`` must not silently sneak the calculator back in."""
+    fake = ToolableFakeChatModel(messages=iter([AIMessage(content="ok")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=None)
+
+    with caplog.at_level(logging.INFO, logger="erudi"):
+        async for _ in runner.astream_text(
+            llm=_Llm(), user_message="hi", system_prompt="s",
+            params=_PARAMS, thread_id=None, summarize=False,
+        ):
+            pass
+
+    built = [r.message for r in caplog.records if "Agent built" in r.message]
+    assert built, f"no 'Agent built' log found in: {[r.message for r in caplog.records]}"
+    assert "tools=[]" in built[0]
 
 
 async def test_construction_error_yields_sentinel(monkeypatch):
@@ -416,7 +440,10 @@ async def test_tool_call_round_trip_streams_only_final_text(monkeypatch):
     """Full agentic loop with the REAL calculator tool: the scripted model
     requests calculator(expression), the tool node executes it, and the
     model answers from the ToolMessage. The text/plain wire contract must
-    only carry the FINAL answer (tool steps emit no text tokens)."""
+    only carry the FINAL answer (tool steps emit no text tokens).
+
+    The calculator is passed explicitly (as ``plan_turn`` does on KB paths):
+    since #129 there is no implicit default-tools fallback."""
     tool_call_msg = AIMessage(
         content="",
         tool_calls=[{
@@ -436,6 +463,7 @@ async def test_tool_call_round_trip_streams_only_final_text(monkeypatch):
         async for t in runner.astream_text(
             llm=_Llm(), user_message="Additionne les quatre trimestres.",
             system_prompt="sys", params=_PARAMS, thread_id="c-calc",
+            tools=[calculator],
         )
     ]
 

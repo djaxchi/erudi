@@ -38,20 +38,6 @@ if TYPE_CHECKING:
     from langgraph.checkpoint.base import BaseCheckpointSaver
 
 
-def _default_tools() -> list:
-    """Deterministic tools carried by every chat/arena agent turn.
-
-    Models with native function calling invoke them through the standard loop;
-    models without (e.g. Gemma 3) never emit tool_calls — the server logs a
-    warning and generation proceeds normally (probed, harmless). Built lazily:
-    importing ``src.agents.tools`` pulls the LangChain ``@tool`` machinery,
-    which must not load at boot (#160).
-    """
-    from src.agents.tools import calculator
-
-    return [calculator]
-
-
 # Auto-summarization thresholds (message-count based — token triggers need a
 # model profile the local server doesn't expose). Once a conversation's agent
 # state exceeds the trigger, older turns are summarized by the same local model
@@ -144,7 +130,9 @@ class AgentRunner:
                     # services prepend a user-facing notice). Outermost, so images
                     # are gone before the KB merge re-reads the last user message.
                     middleware = [_StripImagesForTextModel(), *middleware]
-                effective_tools = tools if tools is not None else _default_tools()
+                # No implicit tools (#129): callers own the tool list (built by
+                # ``plan_turn``); ``tools=None`` means a zero-tool agent.
+                effective_tools = tools if tools is not None else []
                 agent = create_agent(
                     model,
                     tools=effective_tools,

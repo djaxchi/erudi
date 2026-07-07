@@ -6,7 +6,8 @@ The KB mode is DERIVED from the model, never a user toggle:
        model decides when to consult it (no systematic injection).
   - KB attached & tier allows & NOT tool-capable -> SYSTEMATIC: today's path,
     excerpts retrieved up front and merged request-time (unchanged).
-  - otherwise -> PLAIN.
+  - otherwise -> PLAIN: zero tools (#129) — plain chat never pays the
+    tool-scaffolding cost, whatever the model's capability.
 
 Factored here so conversation and arena share one decision. Retrieval is
 injected as a callable so each caller keeps its own failure policy
@@ -67,8 +68,8 @@ def plan_turn(
     """
     # Deferred (#160): importing the tools module pulls the LangChain ``@tool``
     # machinery, needed on turns only — never at boot. Deterministic tools are
-    # carried by every turn; the KB tool is added only in agentic mode (mirrors
-    # runner._default_tools for the non-agentic paths).
+    # carried by KB turns only (the KB tool is added in agentic mode); plain
+    # chat is zero-tool (#129).
     from src.agents.tools import KbToolContext, calculator, search_knowledge_base
 
     base_tools = [calculator]
@@ -114,11 +115,14 @@ def plan_turn(
     else:
         plain_reason = "KB retrieval returned no excerpts"
     logger.info(f"Turn mode: plain (reason={plain_reason})")
+    # Zero tools in plain mode (#129): the calculator was a demo tool whose
+    # scaffolding cost hurt every model (and wrecked small ones) for no product
+    # value outside KB turns.
     return TurnPlan(
         system_prompt=build_agent_system_prompt(
             llm, custom_prompt=custom_prompt, starred_messages=starred_messages
         ),
-        tools=list(base_tools),
+        tools=[],
         kb_context_block=None,
         kb_language_line="",
         context=None,
