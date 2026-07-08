@@ -351,18 +351,21 @@ class MessageRepository:
         conversation_id: int,
         content: str,
         sender: str,
+        trace: Optional[list] = None,
     ) -> Message:
         """
         Create a new message.
-        
+
         Args:
             conversation_id: ID of the conversation
             content: Message content
             sender: Message sender ("user" or "llm")
-            
+            trace: Optional list of the assistant turn's non-answer stream events
+                (thinking / tool_call / tool_result) for replay on reload (#90).
+
         Returns:
             The created Message object
-            
+
         Raises:
             DatabaseException: If creation fails
         """
@@ -370,7 +373,8 @@ class MessageRepository:
             message = Message(
                 conversation_id=conversation_id,
                 content=content,
-                sender=sender
+                sender=sender,
+                trace=trace,
             )
             self.db.add(message)
             self.db.flush()  # Flush to get ID, no commit

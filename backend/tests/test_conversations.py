@@ -7,6 +7,8 @@ Tests cover:
 
 All LLM_Engine operations are mocked for fast, isolated testing.
 """
+import json
+
 import pytest
 from unittest.mock import patch
 from fastapi import status
@@ -19,11 +21,34 @@ import src.agents.runner as agent_runner
 from src.core import config
 from src.engines.base_engine import BaseEngine
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
-from src.domains.conversations.services import ConversationService, _sanitize_title
+from src.domains.conversations.services import (
+    ConversationService,
+    _sanitize_title,
+    _cap_trace,
+    _ndjson,
+    TRACE_MAX_BYTES,
+)
 from src.utils.kb_utils import KbExcerpt
 from src.domains.conversations.schemas import (
     ConversationQuery
 )
+
+# ERROR sentinel (hardcoded on purpose: the tests pin the wire/DB contract, not
+# the constant's name).
+_SENTINEL = "[ERROR_MESSAGE_SYSTEM]"
+
+
+def _parse_ndjson(body):
+    """Parse an NDJSON stream body (a str or a list of yielded chunks) into a
+    list of event dicts. Each non-empty line must be a complete JSON object."""
+    if isinstance(body, (list, tuple)):
+        body = "".join(body)
+    return [json.loads(line) for line in body.splitlines() if line.strip()]
+
+
+def _answer_text(body):
+    """Concatenate the ``answer`` event text from an NDJSON stream body."""
+    return "".join(e["text"] for e in _parse_ndjson(body) if e.get("t") == "answer")
 
 
 class _FakeEngine(BaseEngine):
@@ -365,7 +390,10 @@ class TestConversationService:
 
         result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
-        assert "".join(result) == "Decorators are functions."
+        assert _answer_text(result) == "Decorators are functions."
+        # NDJSON framing: every line parses, and the terminal event is `done`.
+        events = _parse_ndjson(result)
+        assert events[-1] == {"t": "done"}
 
         messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 2
@@ -373,6 +401,8 @@ class TestConversationService:
         assert messages[0].content == "Explain Python decorators"
         assert messages[1].sender == "llm"
         assert messages[1].content == "Decorators are functions."
+        # No thinking/tools this turn -> no trace persisted.
+        assert messages[1].trace is None
 
     async def test_query_stream_with_images_multimodal_and_placeholder(
         self, test_db_session, mock_llm, monkeypatch
@@ -404,7 +434,7 @@ class TestConversationService:
         payload = ConversationQuery(question="What is this?", images=[data_url])
 
         result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
-        assert "".join(result) == "A red square."
+        assert _answer_text(result) == "A red square."
 
         # The model received multimodal content carrying the image.
         um = captured["user_message"]
@@ -438,7 +468,7 @@ class TestConversationService:
         )
         result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
-        assert "".join(result) == _VISION_NOTICE + "A red square."
+        assert _answer_text(result) == _VISION_NOTICE + "A red square."
 
         messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert messages[1].sender == "llm"
@@ -456,8 +486,8 @@ class TestConversationService:
         payload = ConversationQuery(question="Say hello")
         result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
-        assert "".join(result) == "Hello."
-        assert not "".join(result).startswith(_VISION_NOTICE)
+        assert _answer_text(result) == "Hello."
+        assert not _answer_text(result).startswith(_VISION_NOTICE)
 
     async def test_query_stream_vision_true_no_notice(self, test_db_session, mock_llm, monkeypatch):
         """Images + a positively vision-capable model: no notice."""
@@ -476,7 +506,7 @@ class TestConversationService:
         )
         result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
-        assert "".join(result) == "A red square."
+        assert _answer_text(result) == "A red square."
 
     async def test_query_stream_history_images_do_not_trigger_notice(
         self, test_db_session, mock_llm, monkeypatch
@@ -499,11 +529,11 @@ class TestConversationService:
 
         turn1 = ConversationQuery(question="What is this?", images=["data:image/png;base64,AAA"])
         result1 = [t async for t in service.query_and_respond_stream(conversation.id, turn1)]
-        assert "".join(result1).startswith(_VISION_NOTICE)
+        assert _answer_text(result1).startswith(_VISION_NOTICE)
 
         turn2 = ConversationQuery(question="What color was it?")
         result2 = [t async for t in service.query_and_respond_stream(conversation.id, turn2)]
-        assert "".join(result2) == "It was red."
+        assert _answer_text(result2) == "It was red."
 
     def test_user_display_content_placeholder(self):
         assert ConversationService._user_display_content("hi", None) == "hi"
@@ -534,7 +564,7 @@ class TestConversationService:
 
         result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
-        assert "".join(result) == "Python is versatile."
+        assert _answer_text(result) == "Python is versatile."
 
         messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 4
@@ -567,7 +597,7 @@ class TestConversationService:
             ]
             result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
-        assert "".join(result) == "27 jours."
+        assert _answer_text(result) == "27 jours."
         mock_kb.assert_called_once()
         # param_size=7 → medium tier → its KB token budget reaches retrieval.
         assert mock_kb.call_args.kwargs["token_budget"] == 1000
@@ -600,7 +630,7 @@ class TestConversationService:
             mock_kb.side_effect = RuntimeError("vector store unreachable")
             result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
-        assert "".join(result) == "Réponse sans contexte."
+        assert _answer_text(result) == "Réponse sans contexte."
 
     async def test_query_stream_agentic_mode_offers_kb_tool(
         self, test_db_session, mock_llm_with_kb, monkeypatch
@@ -631,7 +661,7 @@ class TestConversationService:
         with patch("src.domains.conversations.services.retrieve_kb_excerpts") as mock_kb:
             result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
-        assert "".join(result) == "ok"
+        assert _answer_text(result) == "ok"
         # Agentic mode does NOT retrieve up front — the model decides via the tool.
         mock_kb.assert_not_called()
         tool_names = [getattr(t, "name", None) for t in captured["tools"]]
@@ -674,15 +704,21 @@ class TestConversationService:
             ]
             result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
-        streamed = "".join(result)
-        assert "90 jours" in streamed
-        assert "[ERROR_MESSAGE_SYSTEM]" not in streamed
+        events = _parse_ndjson(result)
+        # The fallback lands as answer text (#90) and no error event is emitted.
+        assert "90 jours" in _answer_text(result)
+        assert not any(e.get("t") == "error" for e in events)
+        # The tool step is captured in the wire trace (and persisted, below).
+        assert any(e.get("t") == "tool_result" for e in events)
 
         # No crash: the user message + the fallback assistant message are persisted.
         messages = service.message_repo.get_messages_by_conversation(conversation.id)
         assert len(messages) == 2
         assert messages[1].sender == "llm"
         assert "90 jours" in messages[1].content
+        # The tool activity is persisted as a replayable trace on the assistant turn.
+        assert messages[1].trace is not None
+        assert any(e.get("t") == "tool_result" for e in messages[1].trace)
 
     async def test_delete_conversation_purges_checkpointer_thread(self, test_db_session, mock_llm, monkeypatch):
         """IT4 (BLOCKER B3): deleting a conversation purges its checkpointer thread,
@@ -723,15 +759,90 @@ class TestConversationService:
         payload = ConversationQuery(question="Trigger failure", temperature=0.7)
         result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
 
-        assert any("[ERROR_MESSAGE_SYSTEM]" in t for t in result)
+        # On the wire the sentinel is mapped to an `error` event (not an answer).
+        events = _parse_ndjson(result)
+        assert any(e.get("t") == "error" and _SENTINEL in e["text"] for e in events)
+        assert _answer_text(result) == ""
+        assert events[-1] == {"t": "done"}
         messages = service.message_repo.get_messages_by_conversation(conversation.id)
         # user message persisted up-front + the llm error message
         assert len(messages) == 2
         assert messages[0].sender == "user"
         assert messages[1].sender == "llm"
-        assert "[ERROR_MESSAGE_SYSTEM]" in messages[1].content
+        # DB persistence UNCHANGED (#225-D4): the assistant content still carries
+        # the sentinel string, and an error turn persists no trace.
+        assert _SENTINEL in messages[1].content
         assert "Traceback" not in messages[1].content
         assert "/secret/leak/path" not in messages[1].content
+        assert messages[1].trace is None
+
+
+    async def test_query_stream_persists_thinking_trace(
+        self, test_db_session, mock_llm, monkeypatch
+    ):
+        """A thinking model's ``<think>`` reasoning streams as ``thinking`` events
+        and is persisted as the assistant turn's replayable trace; the answer text
+        stays clean and is stored as the message content (#90)."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(
+            agent_runner,
+            "build_chat_model",
+            _fake_chat_model("<think>reasoning here</think>The answer."),
+        )
+        service = ConversationService(test_db_session, InMemorySaver())
+        conversation = service.create_conversation(
+            llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024
+        )
+
+        payload = ConversationQuery(question="Think then answer")
+        result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
+
+        events = _parse_ndjson(result)
+        assert events[-1] == {"t": "done"}
+        # Thinking surfaced on the wire; the answer is clean (no <think> leakage).
+        assert any(e["t"] == "thinking" for e in events)
+        assert _answer_text(result) == "The answer."
+        assert "<think>" not in _answer_text(result)
+
+        messages = service.message_repo.get_messages_by_conversation(conversation.id)
+        assert messages[1].content == "The answer."
+        # Trace persisted: the ordered thinking events, replayable on reload.
+        assert messages[1].trace is not None
+        assert all(e["t"] == "thinking" for e in messages[1].trace)
+        assert "".join(e["text"] for e in messages[1].trace) == "reasoning here"
+
+
+class TestTraceHelpers:
+    """Unit tests for the NDJSON framing + trace-cap helpers (#90)."""
+
+    def test_ndjson_is_one_ascii_line(self):
+        line = _ndjson({"t": "thinking", "text": "café"})
+        assert line.endswith("\n")
+        assert line.count("\n") == 1
+        # ensure_ascii (default): non-ASCII is escaped on the wire but round-trips.
+        assert "caf\\u00e9" in line
+        assert json.loads(line) == {"t": "thinking", "text": "café"}
+
+    def test_cap_trace_empty_is_none(self):
+        assert _cap_trace([]) is None
+
+    def test_cap_trace_small_is_unchanged(self):
+        events = [
+            {"t": "thinking", "text": "a"},
+            {"t": "tool_result", "name": "x", "text": "y"},
+        ]
+        assert _cap_trace(events) == events
+
+    def test_cap_trace_drops_oldest_and_marks_truncated(self):
+        big = "x" * 1000
+        events = [{"t": "thinking", "text": f"{i}-{big}"} for i in range(50)]
+
+        capped = _cap_trace(events)
+
+        assert len(json.dumps(capped)) <= TRACE_MAX_BYTES
+        assert capped[0] == {"t": "truncated"}
+        assert capped[-1] == events[-1]  # newest survives
+        assert events[0] not in capped   # oldest dropped
 
 
 # ============ Endpoint Tests ============
@@ -867,8 +978,10 @@ class TestConversationEndpoints:
             )
 
         assert response.status_code == status.HTTP_200_OK
-        # raw text/plain wire contract: concatenated token text, no SSE framing
-        assert response.text == "Python is awesome."
+        # NDJSON wire contract (#90): one event per line, `done` last.
+        assert response.headers["content-type"].startswith("application/x-ndjson")
+        assert _answer_text(response.text) == "Python is awesome."
+        assert _parse_ndjson(response.text)[-1] == {"t": "done"}
 
     def test_generate_title_endpoint(self, client, mock_llm):
         """Test title generation endpoint with mocked engine.

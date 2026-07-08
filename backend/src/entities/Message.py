@@ -18,7 +18,7 @@ Example:
         starred=False
     )
 """
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Text, JSON
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from src.database.core import Base
@@ -37,6 +37,8 @@ class Message(Base):
         content: Message text content (1-32768 chars, validated).
         timestamp: Message creation timestamp (server-stamped).
         starred: True if user starred for importance (used in memory injection).
+        trace: Optional JSON list of the assistant turn's non-answer stream
+            events (thinking / tool_call / tool_result), for replay on reload.
         conversation: Relationship to Conversation entity.
 
     Example:
@@ -53,6 +55,10 @@ class Message(Base):
     content = Column(Text, nullable=False)
     timestamp = Column(DateTime, server_default=func.now(), nullable=False)
     starred = Column(Boolean, default=False, nullable=False)
+    # Ordered list of non-answer stream events for an assistant turn (#90):
+    # thinking / tool_call / tool_result (and a truncated marker when capped).
+    # Nullable: user messages and turns with neither thinking nor tools have none.
+    trace = Column(JSON, nullable=True)
 
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")

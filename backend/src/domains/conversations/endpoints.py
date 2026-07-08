@@ -581,9 +581,12 @@ async def query_and_respond(
         - Uses conversation's temperature, top_p, max_tokens settings
     """
     """Query the conversation and get a streaming response."""
+    # NDJSON (#90): one JSON event per line (answer / thinking / tool_call /
+    # tool_result / error / done). The renderer splits the body on newlines and
+    # parses each line. generate_title and arena keep the plain-text protocol.
     return StreamingResponse(
         service.query_and_respond_stream(conversation_id, payload),
-        media_type="text/plain",
+        media_type="application/x-ndjson",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",

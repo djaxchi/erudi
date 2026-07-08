@@ -1,8 +1,17 @@
 """AgentRunner — the shared conversation/arena streaming primitive.
 
-One ``create_agent`` per turn, streamed as raw token text so the existing
-``StreamingResponse(media_type="text/plain")`` contract (the frontend reads a
-raw byte stream, no SSE framing) is preserved byte-for-byte.
+One ``create_agent`` per turn. The turn is captured as STRUCTURED EVENTS (#90):
+``_astream_events`` yields dicts — ``{"t":"answer",...}``, ``{"t":"thinking",...}``,
+``{"t":"tool_call",...}``, ``{"t":"tool_result",...}`` — so thinking and tool
+activity are surfaced instead of dropped. ``astream_text`` is a thin projection
+over those events with two modes selected by ``emit_events``:
+
+  - ``emit_events=True`` (conversations): yields the event dicts unchanged; the
+    conversation service frames them as NDJSON and persists a replayable trace.
+  - ``emit_events=False`` (arena / default): yields ONLY answer text as ``str``,
+    dropping thinking + tool events — byte-for-byte the old plain-text contract,
+    so arena and its wire stay untouched. Reasoning stays hidden there because
+    the same splitter strips inline ``<think>`` before the text is yielded.
 
   - Conversation: ``thread_id`` set + ``summarize=True`` + a checkpointer →
     history is restored from the checkpointer (only the new message is sent),
@@ -24,6 +33,7 @@ itself LangChain-free at import time (``ChatOpenAI`` is deferred inside it).
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
@@ -31,6 +41,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 from fastapi.concurrency import run_in_threadpool
 
 from src.agents.model_factory import build_chat_model
+from src.agents.think_splitter import ThinkSplitter
 from src.core import config
 from src.core.exceptions import EngineException
 from src.core.logging import logger
@@ -80,6 +91,72 @@ def _construction_error_message(exc: Exception) -> str:
     return ERROR_MESSAGE
 
 
+# ===================== Tool-call accumulation (#90) =====================
+# Tool-call args stream as JSON fragments across ``AIMessageChunk.tool_call_chunks``
+# (keyed by call index). Fragments are NEVER emitted raw: they accumulate here and
+# a single complete ``tool_call`` event is emitted per call once assembled (on the
+# tools node's ToolMessage, or at final flush).
+
+
+def _chunk_get(chunk: Any, key: str) -> Any:
+    """Read a field from a ``tool_call_chunk`` (a TypedDict at runtime, but be
+    defensive about object-shaped chunks from other langchain versions)."""
+    if isinstance(chunk, dict):
+        return chunk.get(key)
+    return getattr(chunk, key, None)
+
+
+def _accumulate_tool_call(pending: dict, chunk: Any) -> None:
+    """Fold one streamed ``tool_call_chunk`` into the per-index buffer.
+
+    ``name`` and ``id`` arrive once (kept on first sight); ``args`` arrive as
+    string fragments and are concatenated in order.
+    """
+    index = _chunk_get(chunk, "index")
+    if index is None:
+        index = 0
+    slot = pending.setdefault(index, {"name": None, "args": "", "id": None})
+    name = _chunk_get(chunk, "name")
+    if name:
+        slot["name"] = name
+    call_id = _chunk_get(chunk, "id")
+    if call_id:
+        slot["id"] = call_id
+    frag = _chunk_get(chunk, "args")
+    if frag:
+        slot["args"] += frag
+
+
+def _parse_tool_args(raw: str) -> dict:
+    """Accumulated args JSON -> dict when it parses to an object, else
+    ``{"raw": <string>}``. Empty args -> ``{}``. Never returns raw fragments."""
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (ValueError, TypeError):
+        return {"raw": raw}
+    return parsed if isinstance(parsed, dict) else {"raw": raw}
+
+
+def _drain_tool_calls(pending: dict) -> list:
+    """Emit one complete ``tool_call`` event per accumulated call (index order),
+    then clear the buffer so the next agent step accumulates fresh."""
+    events = []
+    for index in sorted(pending):
+        slot = pending[index]
+        events.append(
+            {
+                "t": "tool_call",
+                "name": slot["name"] or "",
+                "args": _parse_tool_args(slot["args"]),
+            }
+        )
+    pending.clear()
+    return events
+
+
 @dataclass
 class GenParams:
     """Per-request generation parameters (resolved from payload-or-conversation)."""
@@ -90,9 +167,12 @@ class GenParams:
 
 
 class AgentRunner:
-    """Streams an agent turn as raw token text. Shared by conversation and arena.
+    """Streams an agent turn as structured events. Shared by conversation and arena.
 
-    Pass a ``checkpointer`` (the app-wide ``AsyncPostgresSaver``) for stateful
+    ``_astream_events`` is the single capture loop (answer / thinking / tool_call /
+    tool_result); ``astream_text`` projects it to either event dicts or plain
+    answer text via ``emit_events`` (see the module docstring). Pass a
+    ``checkpointer`` (the app-wide ``AsyncPostgresSaver``) for stateful
     conversations; arena constructs it with ``checkpointer=None``.
     """
 
@@ -113,7 +193,65 @@ class AgentRunner:
         tools: Optional[list] = None,
         context: Optional[Any] = None,
         supports_vision: Optional[bool] = None,
-    ) -> AsyncIterator[str]:
+        emit_events: bool = False,
+    ) -> AsyncIterator:
+        """Project the turn's event stream (:meth:`_astream_events`).
+
+        ``emit_events=True`` yields the event dicts unchanged (conversations frame
+        them as NDJSON). ``emit_events=False`` (arena / default) yields ONLY answer
+        text as ``str`` -- thinking and tool events are dropped and inline
+        ``<think>`` is stripped, preserving the old plain-text wire byte-for-byte.
+        Error paths ride an ``answer`` event carrying the ERROR sentinel string, so
+        in str mode the sentinel is yielded exactly as before (the conversation
+        service maps it to an ``error`` event on the wire; DB persistence
+        unchanged).
+        """
+        async for event in self._astream_events(
+            llm=llm,
+            user_message=user_message,
+            system_prompt=system_prompt,
+            params=params,
+            thread_id=thread_id,
+            summarize=summarize,
+            kb_context_block=kb_context_block,
+            kb_language_line=kb_language_line,
+            tools=tools,
+            context=context,
+            supports_vision=supports_vision,
+        ):
+            if emit_events:
+                yield event
+            elif event["t"] == "answer":
+                yield event["text"]
+
+    async def _astream_events(
+        self,
+        *,
+        llm,
+        user_message: str | list,
+        system_prompt: str,
+        params: GenParams,
+        thread_id: Optional[str] = None,
+        summarize: bool = False,
+        kb_context_block: Optional[str] = None,
+        kb_language_line: str = "",
+        tools: Optional[list] = None,
+        context: Optional[Any] = None,
+        supports_vision: Optional[bool] = None,
+    ) -> AsyncIterator[dict]:
+        """The single capture loop: structured events for the whole turn (#90).
+
+        Yields ``{"t":"answer","text":...}`` (text outside ``<think>``),
+        ``{"t":"thinking","text":...}`` (text inside ``<think>``), one
+        ``{"t":"tool_call","name":...,"args":{...}}`` per call, and
+        ``{"t":"tool_result","name":...,"text":...}`` per ToolMessage.
+
+        Error paths (#252 construction failure, streaming failure) yield the
+        curated ERROR sentinel as an ``answer`` event -- callers map it: the
+        conversation service turns a sentinel-prefixed answer into an ``error``
+        wire event while still accumulating the sentinel STRING for persistence
+        (DB behavior unchanged per #225-D4); arena yields it as plain text.
+        """
         # Deferred (#160): first turn pays the agent-stack import, boot doesn't.
         from langchain.agents import create_agent
         from langchain_core.messages import HumanMessage
@@ -168,23 +306,30 @@ class AgentRunner:
                 )
             except Exception as exc:
                 logger.exception("Agent construction failed")
-                yield _construction_error_message(exc)
+                # #252: construction failed (model load / spawn). Emit the curated
+                # sentinel as an answer event; callers map it to an error turn.
+                yield {"t": "answer", "text": _construction_error_message(exc)}
                 return
 
             # Aggregate-only stream accounting (never log per token): start,
-            # first-token latency, then one completion line with totals.
+            # first-token latency, then one completion line with totals. Counts
+            # ANSWER text only -- thinking is separated out and must not inflate
+            # the answer accounting nor the empty-final signal below.
             stream_start_s = time.perf_counter()
             first_token_s: Optional[float] = None
             chunk_count = 0
             char_count = 0
             # Empty-final fallback bookkeeping (#90): some agentic models call a
-            # tool successfully, then emit an EMPTY final answer (observed with
+            # tool successfully, then emit an EMPTY final ANSWER (observed with
             # Gemma: calculator("1240 + 1378 + 1456") -> ToolMessage "4074" ->
-            # empty AIMessage, finish_reason=stop). Track whether any non-blank
-            # model text was streamed, and remember the last tool result so the
-            # turn can fall back to it instead of delivering nothing.
+            # empty AIMessage, finish_reason=stop). ``emitted_model_text`` tracks
+            # non-blank ANSWER text ONLY (post-splitter), so a model that only
+            # thinks then calls a tool and returns nothing still triggers the
+            # fallback -- thinking must never mask an empty answer.
             emitted_model_text = False
             last_tool_result: Optional[str] = None
+            splitter = ThinkSplitter()
+            pending_tool_calls: dict = {}
             logger.info(
                 f"Agent stream started: llm={getattr(llm, 'id', '?')}, "
                 f"thread_id={thread_id}"
@@ -197,26 +342,49 @@ class AgentRunner:
                     stream_mode="messages",
                 ):
                     if getattr(token, "type", None) == "tool":
-                        # ToolMessages ride the messages stream from the tools
-                        # node; keep the latest non-blank result for the fallback.
+                        # ToolMessage from the tools node: the model node has
+                        # finished streaming this step's tool_call_chunks, so emit
+                        # the complete tool_call event(s) first, then the result.
+                        # Keep the latest non-blank result for the #90 fallback.
                         tool_text = getattr(token, "text", "") or ""
                         if tool_text.strip():
                             last_tool_result = tool_text
+                        for tc_event in _drain_tool_calls(pending_tool_calls):
+                            yield tc_event
+                        yield {
+                            "t": "tool_result",
+                            "name": getattr(token, "name", "") or "",
+                            "text": tool_text,
+                        }
                         continue
-                    if meta.get("langgraph_node") == "model" and getattr(token, "text", ""):
-                        if first_token_s is None:
-                            first_token_s = time.perf_counter()
-                            logger.info(
-                                f"Agent first token: llm={getattr(llm, 'id', '?')}, "
-                                f"latency_ms={(first_token_s - stream_start_s) * 1000:.0f}"
-                            )
-                        if token.text.strip():
+                    if meta.get("langgraph_node") == "model":
+                        for tc_chunk in getattr(token, "tool_call_chunks", None) or []:
+                            _accumulate_tool_call(pending_tool_calls, tc_chunk)
+                        text = getattr(token, "text", "")
+                        if text:
+                            if first_token_s is None:
+                                first_token_s = time.perf_counter()
+                                logger.info(
+                                    f"Agent first token: llm={getattr(llm, 'id', '?')}, "
+                                    f"latency_ms={(first_token_s - stream_start_s) * 1000:.0f}"
+                                )
+                            chunk_count += 1
+                            for event in splitter.feed(text):
+                                if event["t"] == "answer":
+                                    if event["text"].strip():
+                                        emitted_model_text = True
+                                    char_count += len(event["text"])
+                                yield event
+                # Flush any buffered splitter text (a trailing partial tag, or an
+                # unclosed <think> -> thinking) BEFORE the empty-final decision.
+                for event in splitter.flush():
+                    if event["t"] == "answer":
+                        if event["text"].strip():
                             emitted_model_text = True
-                        chunk_count += 1
-                        char_count += len(token.text)
-                        yield token.text
+                        char_count += len(event["text"])
+                    yield event
                 # Empty/blank final answer, but a tool produced a result this
-                # turn: deliver that last tool result as the answer (#90) so a
+                # turn: deliver that last tool result AS THE ANSWER (#90) so a
                 # correct value is streamed and persisted instead of crashing the
                 # empty-content guard. No tool ran -> nothing to fall back to;
                 # keep today's behavior (a genuine empty-answer failure).
@@ -227,7 +395,11 @@ class AgentRunner:
                         f"tool_result_chars={len(last_tool_result)}"
                     )
                     char_count += len(last_tool_result)
-                    yield last_tool_result
+                    yield {"t": "answer", "text": last_tool_result}
+                # A tool call that never produced a ToolMessage this turn (rare):
+                # emit it now so the trace still records the attempt.
+                for tc_event in _drain_tool_calls(pending_tool_calls):
+                    yield tc_event
                 duration_ms = (time.perf_counter() - stream_start_s) * 1000
                 logger.info(
                     f"Agent stream completed: llm={getattr(llm, 'id', '?')}, "
@@ -238,7 +410,7 @@ class AgentRunner:
                 logger.exception("Agent streaming failed")
                 if stateful:
                     await self._repair_alternation(agent, run_config)
-                yield ERROR_MESSAGE
+                yield {"t": "answer", "text": ERROR_MESSAGE}
 
     async def astream_oneshot(
         self,

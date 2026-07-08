@@ -92,12 +92,18 @@ class MessageResponse(MessageBase):
         conversation_id: Parent conversation ID.
         timestamp: Message creation timestamp.
         starred: Whether message is bookmarked (default False).
+        trace: Optional list of the assistant turn's non-answer stream events
+            (thinking / tool_call / tool_result) for replay on reload (#90).
     """
     """Schema for message responses."""
     id: int = Field(..., description="Message ID")
     conversation_id: int = Field(..., description="Parent conversation ID")
     timestamp: datetime = Field(..., description="Message creation timestamp")
     starred: bool = Field(default=False, description="Whether message is starred")
+    trace: Optional[List[dict]] = Field(
+        default=None,
+        description="Assistant turn's non-answer stream events (thinking/tool activity), for replay (#90)",
+    )
 
     class Config:
         from_attributes = True
