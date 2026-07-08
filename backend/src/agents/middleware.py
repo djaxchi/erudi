@@ -156,6 +156,63 @@ class _StripImagesForTextModel(AgentMiddleware):
         return await handler(self._strip(request))
 
 
+class _FoldSystemIntoUserMiddleware(AgentMiddleware):
+    """Fold the system prompt into the first user turn for models with no system role.
+
+    Some chat templates reject the ``system`` role outright (Gemma's raises
+    ``System role not supported``), so passing our system prompt as a real
+    ``SystemMessage`` 500s every turn. The caller adds this middleware ONLY when
+    the model is positively detected as not system-role-capable
+    (``model_supports_system_role`` is False) — system-role-capable models keep
+    the intended behavior (a proper system message per their template).
+
+    ``create_agent`` carries the prompt as ``request.system_message`` and the
+    model node prepends it to the messages; we clear it and prepend its text to
+    the first human message instead, so the template never sees a system role.
+    Runs innermost (added last) so it folds the FINAL message list, after the KB
+    merge has shaped the last user message.
+    """
+
+    _JOIN = "\n\n"
+
+    def _fold(self, request):
+        sys_msg = getattr(request, "system_message", None)
+        if sys_msg is None:
+            return request
+        sys_text = (sys_msg.text or "").strip()
+        if not sys_text:
+            return request.override(system_message=None)
+
+        messages = list(request.messages)
+        first_human = next(
+            (i for i, m in enumerate(messages) if m.type == "human"), None
+        )
+        if first_human is None:
+            # No user turn to attach to (rare): keep the instruction as a plain
+            # user message so the model still receives it, just not as a system role.
+            return request.override(
+                system_message=None, messages=[HumanMessage(content=sys_text), *messages]
+            )
+
+        target = messages[first_human]
+        text, image_parts = _split_multimodal(target.content)
+        folded_text = f"{sys_text}{self._JOIN}{text}" if text else sys_text
+        if image_parts:
+            folded = HumanMessage(
+                content=[{"type": "text", "text": folded_text}, *image_parts]
+            )
+        else:
+            folded = HumanMessage(content=folded_text)
+        messages[first_human] = folded
+        return request.override(system_message=None, messages=messages)
+
+    def wrap_model_call(self, request, handler):
+        return handler(self._fold(request))
+
+    async def awrap_model_call(self, request, handler):
+        return await handler(self._fold(request))
+
+
 class _StripStaleKbToolMessages(AgentMiddleware):
     """Placeholder the ``search_knowledge_base`` results of PAST turns.
 

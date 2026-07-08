@@ -465,6 +465,106 @@ class TestTiedEmbeddingPatch:
         assert Model.load_weights is first  # not double-wrapped
 
 
+@pytest.mark.unit
+class TestGemmaEndOfTurnStopPatch:
+    """`_patch_gemma_end_of_turn_stop` adds Gemma's `<end_of_turn>` to the server's
+    stop-token set (#249).
+
+    mlx_vlm builds `stop_tokens` from `config.eos_token_id` only. Gemma declares
+    `eos_token` = `<eos>` (id 1) but its chat template ends turns with
+    `<end_of_turn>` (id 106), so without this patch generation runs past the answer
+    and streams the literal token + garbage. Verified live on
+    `mlx-community/gemma-3-1b-it-4bit` (2048 chunks of garbage → 7 chunks, clean).
+    """
+
+    def _install_fake_generation(self, monkeypatch, *, tokens, unk=3, base_stop=(1,)):
+        """Inject a minimal fake `mlx_vlm.server.generation` with a ResponseGenerator."""
+        import sys
+        import types
+
+        class _Tok:
+            unk_token_id = unk
+
+            def convert_tokens_to_ids(self, t):
+                return tokens.get(t, unk)
+
+        class ResponseGenerator:
+            def _initialize_model(self):
+                # Mirror the real method: eos-derived stop set + tokenizer attr.
+                self.tokenizer = _Tok()
+                self.stop_tokens = set(base_stop)
+
+        mlx_vlm = types.ModuleType("mlx_vlm")
+        server = types.ModuleType("mlx_vlm.server")
+        generation = types.ModuleType("mlx_vlm.server.generation")
+        generation.ResponseGenerator = ResponseGenerator
+        server.generation = generation
+        mlx_vlm.server = server
+        monkeypatch.setitem(sys.modules, "mlx_vlm", mlx_vlm)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.server", server)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.server.generation", generation)
+        return ResponseGenerator
+
+    def test_returns_false_when_mlx_vlm_absent(self, monkeypatch):
+        import sys
+        import types
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        bare_server = types.ModuleType("mlx_vlm.server")  # no `generation` attribute
+        monkeypatch.setitem(sys.modules, "mlx_vlm.server", bare_server)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.server.generation", None)
+        assert runner._patch_gemma_end_of_turn_stop() is False
+
+    def test_adds_end_of_turn_id_for_gemma(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        RG = self._install_fake_generation(monkeypatch, tokens={"<end_of_turn>": 106})
+        assert runner._patch_gemma_end_of_turn_stop() is True
+
+        rg = RG()
+        rg._initialize_model()
+        assert 106 in rg.stop_tokens          # the turn-ender is now a stop token
+        assert 1 in rg.stop_tokens            # the original eos survives
+
+    def test_no_op_for_non_gemma(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        # Tokenizer doesn't know <end_of_turn> → convert returns unk (3), skipped.
+        RG = self._install_fake_generation(monkeypatch, tokens={}, unk=3)
+        assert runner._patch_gemma_end_of_turn_stop() is True
+
+        rg = RG()
+        rg._initialize_model()
+        assert rg.stop_tokens == {1}          # unchanged; unk id never added
+
+    def test_patch_is_idempotent(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        RG = self._install_fake_generation(monkeypatch, tokens={"<end_of_turn>": 106})
+        assert runner._patch_gemma_end_of_turn_stop() is True
+        first = RG._initialize_model
+        assert runner._patch_gemma_end_of_turn_stop() is True
+        assert RG._initialize_model is first  # not double-wrapped
+
+    def test_runner_applies_gemma_patch_before_main(self, monkeypatch):
+        """The stop-token patch must run before the server's main() loads a model."""
+        import sys
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        order: list[str] = []
+        monkeypatch.setattr(
+            runner, "_patch_gemma_end_of_turn_stop",
+            lambda: order.append("gemma-stop") or True,
+        )
+        fake_main = MagicMock(side_effect=lambda: order.append("main"))
+        monkeypatch.setattr(runner, "_import_mlx_vlm_server_main", lambda: fake_main)
+        monkeypatch.setattr(sys, "argv", ["pytest"])
+
+        runner.run_mlx_vlm_server(["mlx_vlm.server", "--port", "9080"])
+
+        assert order.index("gemma-stop") < order.index("main")
+
+
 # =====================================================================
 # UNIT — MLX_Engine spawn argv + class attributes + payload model value
 # =====================================================================

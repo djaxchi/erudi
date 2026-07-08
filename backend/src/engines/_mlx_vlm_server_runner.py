@@ -82,6 +82,60 @@ def _patch_text_only_tied_embeddings() -> bool:
     return True
 
 
+def _patch_gemma_end_of_turn_stop() -> bool:
+    """Register Gemma's ``<end_of_turn>`` as a stop token in the mlx_vlm server (#249).
+
+    mlx_vlm builds its stop-token set solely from ``config.eos_token_id`` (see
+    ``ResponseGenerator._initialize_model``). Gemma checkpoints declare
+    ``eos_token`` = ``<eos>`` (id 1), but their chat template ends *every turn*
+    with ``<end_of_turn>`` (id 106) — which is therefore NOT in the stop set.
+    Sampling runs past the answer and streams the literal ``<end_of_turn>`` token
+    text plus multilingual garbage to the user. (The OpenAI ``stop`` request field
+    does not help: mlx_vlm's generation loop halts on token *ids* in
+    ``stop_tokens``, not on decoded strings.)
+
+    We wrap ``_initialize_model`` to add the tokenizer's ``<end_of_turn>`` id to
+    ``stop_tokens`` after the model loads — derived from the tokenizer, no
+    hardcoded id. A no-op for tokenizers that don't define the token (the id then
+    resolves to ``unk``), so non-Gemma checkpoints are untouched. Idempotent.
+
+    Returns:
+        True if the patch was applied (or already present), False if mlx-vlm's
+        server generation module could not be imported (non-MLX hosts, CI).
+    """
+    try:
+        from mlx_vlm.server import generation as _gen
+    except Exception:
+        return False
+
+    rg = getattr(_gen, "ResponseGenerator", None)
+    if rg is None or not hasattr(rg, "_initialize_model"):
+        return False
+    if getattr(rg, "_erudi_end_of_turn_patch", False):
+        return True
+
+    _orig_initialize_model = rg._initialize_model
+
+    def _initialize_model(self):
+        _orig_initialize_model(self)
+        try:
+            tok = getattr(self, "tokenizer", None)
+            stop = getattr(self, "stop_tokens", None)
+            if tok is None or stop is None:
+                return
+            unk = getattr(tok, "unk_token_id", None)
+            tid = tok.convert_tokens_to_ids("<end_of_turn>")
+            if tid is not None and tid >= 0 and tid != unk:
+                stop.add(tid)
+        except Exception:
+            # Stop-token augmentation must never break model load.
+            pass
+
+    rg._initialize_model = _initialize_model
+    rg._erudi_end_of_turn_patch = True
+    return True
+
+
 def _import_mlx_vlm_server_main():
     """Import and return `mlx_vlm.server.cli.main`.
 
@@ -111,5 +165,8 @@ def run_mlx_vlm_server(argv: List[str]) -> None:
     # Applied in-child before the server loads any model so MLX-format
     # tied-embedding text-only checkpoints (Gemma3 270m/1b) load cleanly.
     _patch_text_only_tied_embeddings()
+    # Register Gemma's <end_of_turn> as a stop token so generation halts at the
+    # end of the answer instead of streaming the literal token + garbage (#249).
+    _patch_gemma_end_of_turn_stop()
     main = _import_mlx_vlm_server_main()
     main()
