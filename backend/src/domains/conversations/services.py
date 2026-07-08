@@ -12,6 +12,7 @@ consumes them directly on the event loop); all synchronous SQLAlchemy work is
 wrapped in ``run_in_threadpool`` so DB commits never block the loop.
 """
 
+import json
 import re
 import time
 from typing import AsyncGenerator, Optional
@@ -21,7 +22,13 @@ from fastapi.concurrency import run_in_threadpool
 from src.core.logging import logger
 from src.core.logutils import truncate_for_log
 from src.agents.kb_mode import plan_turn
-from src.agents.runner import AgentRunner, GenParams, ERROR_MESSAGE, IMAGES_IGNORED_NOTICE
+from src.agents.runner import (
+    AgentRunner,
+    GenParams,
+    ERROR_MESSAGE,
+    ERROR_SENTINEL,
+    IMAGES_IGNORED_NOTICE,
+)
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.llms.repository import detect_supports_vision
 from src.domains.conversations.schemas import ConversationQuery
@@ -30,6 +37,41 @@ from src.entities.Llm import Llm
 from src.core.exceptions import ModelNotFoundException
 from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
 from src.utils.prompt_utils import get_prompting_strategy
+
+
+# Serialized-trace cap (#90): persisted traces are bounded so a runaway
+# thinking/tool turn can't bloat the messages row. Drop-oldest past the cap and
+# prepend a ``{"t":"truncated"}`` marker so the UI can show reasoning was elided.
+TRACE_MAX_BYTES = 32 * 1024
+
+
+def _ndjson(event: dict) -> str:
+    """Serialize one stream event as a single NDJSON line.
+
+    ``ensure_ascii`` defaults to True, so non-ASCII answer/thinking text is
+    ``\\uXXXX``-escaped on the wire (ASCII-safe) and decoded by the client's
+    ``JSON.parse``.
+    """
+    return json.dumps(event) + "\n"
+
+
+def _cap_trace(events: list) -> Optional[list]:
+    """Cap the serialized trace at ``TRACE_MAX_BYTES`` (drop-oldest).
+
+    Returns ``None`` for an empty trace (nothing to persist). When the trace fits,
+    it is returned unchanged. Otherwise the oldest events are dropped -- with the
+    ``{"t":"truncated"}`` marker counted in the budget -- until the marker plus the
+    remaining events fit, always keeping at least the newest event.
+    """
+    if not events:
+        return None
+    if len(json.dumps(events)) <= TRACE_MAX_BYTES:
+        return list(events)
+    marker = {"t": "truncated"}
+    capped = list(events)
+    while len(capped) > 1 and len(json.dumps([marker, *capped])) > TRACE_MAX_BYTES:
+        capped.pop(0)
+    return [marker, *capped]
 
 
 def _sanitize_title(raw: str, *, max_words: int = 6, max_chars: int = 48) -> str:
@@ -191,11 +233,24 @@ class ConversationService:
         conversation_id: int,
         payload: ConversationQuery,
     ) -> AsyncGenerator[str, None]:
-        """Stream the agent's response token-by-token (raw text/plain).
+        """Stream the agent's turn as NDJSON events (``application/x-ndjson``).
 
-        Persists the user message up front (so it shows immediately) and the
-        assistant message after streaming. The agent restores prior history from
-        the checkpointer, so only the new message is sent.
+        One JSON object per line: ``answer`` (streamed answer text), ``thinking``
+        (streamed reasoning), ``tool_call`` / ``tool_result`` (agent activity),
+        ``error`` (the mapped ERROR sentinel), then a terminal ``done`` (#90).
+
+        The answer text is accumulated exactly as before and persisted as the
+        assistant message ``content``; non-answer events are collected into an
+        ordered ``trace`` (capped, drop-oldest) and persisted alongside so the
+        panel can replay on reload. Persists the user message up front (so it
+        shows immediately); the agent restores prior history from the checkpointer.
+
+        Error mapping (#252/#225-D4): the runner yields its curated error as an
+        ``answer`` event carrying the ERROR sentinel. Here that answer is (a) still
+        appended to ``assistant_response`` so the persisted content is byte-for-byte
+        the pre-#90 error turn, and (b) re-framed on the wire as an ``error`` event
+        (the frontend renders the red bubble from ``error`` as it did from the
+        sentinel substring). Error turns persist no trace.
         """
         start_s = time.perf_counter()
         # Local-first policy: log the question content (bounded), never image
@@ -215,10 +270,13 @@ class ConversationService:
             )
         except Exception:
             logger.exception("Failed to load conversation/LLM for query")
-            yield ERROR_MESSAGE
+            # No conversation loaded -> nothing to persist; just surface the error.
+            yield _ndjson({"t": "error", "text": ERROR_MESSAGE})
+            yield _ndjson({"t": "done"})
             return
 
         assistant_response = ""
+        trace: list = []
         try:
             user_message = self._build_user_message(payload.question, payload.images)
             await run_in_threadpool(
@@ -255,9 +313,9 @@ class ConversationService:
             supports_vision = await run_in_threadpool(detect_supports_vision, llm.link)
             if payload.images and supports_vision is not True:
                 assistant_response += IMAGES_IGNORED_NOTICE
-                yield IMAGES_IGNORED_NOTICE
+                yield _ndjson({"t": "answer", "text": IMAGES_IGNORED_NOTICE})
 
-            async for token in self.runner.astream_text(
+            async for event in self.runner.astream_text(
                 llm=llm,
                 user_message=user_message,
                 system_prompt=plan.system_prompt,
@@ -269,14 +327,28 @@ class ConversationService:
                 tools=plan.tools,
                 context=plan.context,
                 supports_vision=supports_vision,
+                emit_events=True,
             ):
-                assistant_response += token
-                yield token
+                if event["t"] == "answer":
+                    text = event["text"]
+                    # Persistence is unchanged: the full answer text (including a
+                    # sentinel error string, if any) is accumulated for the DB.
+                    assistant_response += text
+                    if text.startswith(ERROR_SENTINEL):
+                        yield _ndjson({"t": "error", "text": text})
+                    else:
+                        yield _ndjson(event)
+                else:
+                    # thinking / tool_call / tool_result -> wire AND replay trace.
+                    trace.append(event)
+                    yield _ndjson(event)
+            yield _ndjson({"t": "done"})
         except Exception:
             logger.exception("Query streaming failed")
             if not assistant_response:
                 assistant_response = ERROR_MESSAGE
-                yield ERROR_MESSAGE
+                yield _ndjson({"t": "error", "text": ERROR_MESSAGE})
+            yield _ndjson({"t": "done"})
         finally:
             duration_ms = (time.perf_counter() - start_s) * 1000
             logger.info(
@@ -285,8 +357,16 @@ class ConversationService:
                 f"response_chars={len(assistant_response)}, "
                 f"preview={truncate_for_log(assistant_response, 500)}"
             )
+            # Persist the trace only on a non-error turn (error turns unchanged,
+            # no trace) and only when there is non-answer activity to replay.
+            persist_trace = None
+            if trace and ERROR_SENTINEL not in assistant_response:
+                persist_trace = _cap_trace(trace)
             await run_in_threadpool(
-                self._persist_assistant_message, conversation_id, assistant_response
+                self._persist_assistant_message,
+                conversation_id,
+                assistant_response,
+                persist_trace,
             )
 
     async def generate_title_stream(
@@ -398,9 +478,14 @@ class ConversationService:
         self.conversation_repo.update_last_message_time(conversation_id)
         self.db.commit()
 
-    def _persist_assistant_message(self, conversation_id: int, content: str) -> None:
+    def _persist_assistant_message(
+        self, conversation_id: int, content: str, trace: Optional[list] = None
+    ) -> None:
         self.message_repo.create_message(
-            conversation_id=conversation_id, sender="llm", content=content.strip()
+            conversation_id=conversation_id,
+            sender="llm",
+            content=content.strip(),
+            trace=trace,
         )
         self.conversation_repo.update_last_message_time(conversation_id)
         self.db.commit()

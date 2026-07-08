@@ -651,31 +651,47 @@ def _build_real_mlx_chat_model(llm_id, model_path, *, max_tokens):
 
 @pytest.mark.mlx_only
 class TestThinkingModelRegression:
-    """The reasoning channel must NOT leak into the visible token stream on the
-    live ChatOpenAI path. Opt-in via `mlx_thinking_model_path` (ERUDI_TEST_THINKING=1).
-    A regression that folds `delta.reasoning` into visible content would otherwise
-    be invisible.
+    """Reasoning must never leak into the ANSWER text (#90). Since the design
+    keeps ``<think>...</think>`` INLINE in the engine stream on purpose (MLX child
+    env neutralizes the server-side split), the runner's streaming splitter is
+    what separates thinking from answer -- so this regression now asserts on the
+    RUNNER's event stream, not the raw ChatOpenAI content (which now legitimately
+    carries the inline tags). Opt-in via `mlx_thinking_model_path`
+    (ERUDI_TEST_THINKING=1).
     """
 
-    async def test_reasoning_text_not_in_visible_stream(self, mlx_thinking_model_path):
-        from langchain_core.messages import HumanMessage
-        from src.core import config
+    async def test_reasoning_does_not_leak_into_answer(self, mlx_thinking_model_path):
+        from types import SimpleNamespace
 
-        model = _build_real_mlx_chat_model(
-            "qwen3-thinking", mlx_thinking_model_path, max_tokens=64
+        from langgraph.checkpoint.memory import InMemorySaver
+
+        from src.core import config
+        from src.engines.base_engine import BaseEngine
+        from src.agents.runner import AgentRunner, GenParams
+
+        config.LLM_Engine = BaseEngine.get_engine()
+        llm = SimpleNamespace(
+            id="qwen3-thinking", link=str(mlx_thinking_model_path), name="qwen3-thinking"
         )
+        runner = AgentRunner(checkpointer=InMemorySaver())
         try:
-            out = ""
-            async for chunk in model.astream(
-                [HumanMessage("What is 2+2? Reply briefly.")]
+            answer, thinking = "", ""
+            async for event in runner.astream_text(
+                llm=llm,
+                user_message="What is 2+2? Reply briefly.",
+                system_prompt="You are a helpful assistant.",
+                params=GenParams(temperature=0.0, top_p=1.0, max_tokens=128),
+                thread_id="think-regression",
+                summarize=False,
+                emit_events=True,
             ):
-                c = chunk.content
-                if isinstance(c, str):
-                    out += c
+                if event["t"] == "answer":
+                    answer += event["text"]
+                elif event["t"] == "thinking":
+                    thinking += event["text"]
             for needle in ["<think>", "</think>", "<|channel>", "<channel|>"]:
-                assert needle not in out, (
-                    f"reasoning marker {needle!r} leaked into the visible "
-                    f"ChatOpenAI stream: {out!r}"
+                assert needle not in answer, (
+                    f"reasoning marker {needle!r} leaked into the ANSWER text: {answer!r}"
                 )
         finally:
             config.LLM_Engine.cleanup()

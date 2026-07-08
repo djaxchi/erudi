@@ -831,3 +831,155 @@ async def test_stale_kb_tool_results_placeholdered_on_followup(monkeypatch):
     assert any("earlier turn omitted" in m.content for m in tool_msgs)
     # …and the current turn's KB result is intact.
     assert any("99,7" in m.text for m in tool_msgs)
+
+
+# ===================== Structured event stream (issue #90) =====================
+
+
+def _answers(events):
+    return "".join(e["text"] for e in events if e["t"] == "answer")
+
+
+def _thinking(events):
+    return "".join(e["text"] for e in events if e["t"] == "thinking")
+
+
+async def _events(runner, **kwargs):
+    return [e async for e in runner.astream_text(emit_events=True, **kwargs)]
+
+
+async def test_events_answer_only_stream(monkeypatch):
+    """A plain answer surfaces as ``answer`` events only (no thinking/tool)."""
+    fake = ToolableFakeChatModel(messages=iter([AIMessage(content="Python is awesome")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    events = await _events(
+        runner, llm=_Llm(), user_message="hi", system_prompt="s",
+        params=_PARAMS, thread_id="e1", summarize=False,
+    )
+
+    assert _answers(events) == "Python is awesome"
+    assert all(e["t"] == "answer" for e in events)
+
+
+async def test_events_split_thinking_from_answer(monkeypatch):
+    """Inline ``<think>...</think>`` is routed to ``thinking`` events; the answer
+    text stays clean (no tag leakage)."""
+    fake = ToolableFakeChatModel(
+        messages=iter([AIMessage(content="<think>reasoning here</think>Answer text")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    events = await _events(
+        runner, llm=_Llm(), user_message="hi", system_prompt="s",
+        params=_PARAMS, thread_id="e2", summarize=False,
+    )
+
+    assert _answers(events) == "Answer text"
+    assert _thinking(events) == "reasoning here"
+    assert "<think>" not in _answers(events) and "</think>" not in _answers(events)
+
+
+async def test_str_mode_drops_thinking_keeps_answer(monkeypatch):
+    """Default (str) mode -- used by arena -- yields ONLY answer text and strips
+    inline thinking, preserving the plain-text wire."""
+    fake = ToolableFakeChatModel(
+        messages=iter([AIMessage(content="<think>reasoning here</think>Answer text")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    out = [
+        t
+        async for t in runner.astream_text(
+            llm=_Llm(), user_message="hi", system_prompt="s",
+            params=_PARAMS, thread_id="e3", summarize=False,
+        )
+    ]
+
+    assert "".join(out) == "Answer text"
+    assert all(isinstance(t, str) for t in out)
+
+
+async def test_events_tool_call_then_result_then_answer(monkeypatch):
+    """A full agentic loop yields, in order: one complete ``tool_call`` (args as a
+    parsed dict, never raw fragments), one ``tool_result``, then ``answer``."""
+    tool_call_msg = AIMessage(
+        content="",
+        tool_calls=[{
+            "name": "calculator",
+            "args": {"expression": "1240 + 1378 + 1456 + 1689"},
+            "id": "call-1",
+        }],
+    )
+    fake = _RecordingModel(
+        messages=iter([tool_call_msg, AIMessage(content="Le total est 5763 k€.")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    events = await _events(
+        runner, llm=_Llm(), user_message="Additionne.", system_prompt="s",
+        params=_PARAMS, thread_id="e4", tools=[calculator],
+    )
+
+    tool_calls = [e for e in events if e["t"] == "tool_call"]
+    tool_results = [e for e in events if e["t"] == "tool_result"]
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["name"] == "calculator"
+    assert tool_calls[0]["args"] == {"expression": "1240 + 1378 + 1456 + 1689"}
+    assert len(tool_results) == 1
+    assert tool_results[0]["name"] == "calculator"
+    assert tool_results[0]["text"] == "5763"
+    assert _answers(events) == "Le total est 5763 k€."
+    # Ordering: tool_call precedes its result, which precedes the final answer.
+    kinds = [e["t"] for e in events]
+    assert kinds.index("tool_call") < kinds.index("tool_result") < kinds.index("answer")
+
+
+async def test_events_empty_final_fallback_arrives_as_answer(monkeypatch):
+    """#90: the empty-final fallback (last tool result) is emitted as an
+    ``answer`` event -- not a raw string, never an error."""
+    tool_call_msg = AIMessage(
+        content="",
+        tool_calls=[{
+            "name": "calculator",
+            "args": {"expression": "1240 + 1378 + 1456"},
+            "id": "call-1",
+        }],
+    )
+    fake = _RecordingModel(messages=iter([tool_call_msg, AIMessage(content="")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    events = await _events(
+        runner, llm=_Llm(), user_message="1240 + 1378 + 1456 ?", system_prompt="s",
+        params=_PARAMS, thread_id="e5", tools=[calculator],
+    )
+
+    assert _answers(events).strip() == "4074"
+    assert any(e["t"] == "tool_result" and e["text"] == "4074" for e in events)
+    assert all(ERROR_SENTINEL not in e.get("text", "") for e in events)
+
+
+async def test_events_construction_error_is_sentinel_answer(monkeypatch):
+    """#252: a construction failure yields a single ``answer`` event carrying the
+    curated sentinel (services later maps it to an ``error`` wire event)."""
+    def _boom(llm, **kw):
+        raise RuntimeError("model load failed: /secret/path")
+
+    monkeypatch.setattr(runner_module, "build_chat_model", _boom)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    events = await _events(
+        runner, llm=_Llm(), user_message="hi", system_prompt="s",
+        params=_PARAMS, thread_id="e6",
+    )
+
+    assert len(events) == 1
+    assert events[0]["t"] == "answer"
+    assert ERROR_SENTINEL in events[0]["text"]
+    assert "Traceback" not in events[0]["text"]
+    assert "/secret/path" not in events[0]["text"]
