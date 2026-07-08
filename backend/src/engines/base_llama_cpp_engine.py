@@ -143,6 +143,38 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         return cls._select_gguf(llm_local_path)
 
     @classmethod
+    def validate_local_artifact(cls, llm_local_path: Union[str, Path]) -> None:
+        """Integrity gate for a GGUF artifact (#88).
+
+        A llama.cpp model is loadable iff it exposes one non-``mmproj`` ``.gguf``
+        that is non-empty and carries the GGUF magic (``llama-server`` reads the
+        tokenizer + chat template out of that container). Validates the exact
+        file the engine would pick (``_select_gguf`` quant-priority), so the
+        download gate and the load gate agree. Raises :class:`EngineException`
+        with a curated, user-facing message on the first problem.
+        """
+        from src.engines import integrity
+
+        path = Path(llm_local_path)
+        if not path.exists():
+            raise EngineException(
+                message=integrity.incomplete_message("the model folder is missing")
+            )
+        if path.is_file():
+            chosen = path
+        else:
+            ggufs = [
+                g for g in path.glob("*.gguf")
+                if not g.name.lower().startswith("mmproj")
+            ]
+            if not ggufs:
+                raise EngineException(
+                    message=integrity.incomplete_message("no GGUF weights file was found")
+                )
+            chosen = cls._select_gguf(path)
+        integrity.validate_gguf_file(chosen)
+
+    @classmethod
     def _load_capability_tokenizer(cls, llm_local_path: Union[str, Path]):
         """Load the tokenizer embedded in the GGUF (metadata only, no weights).
 

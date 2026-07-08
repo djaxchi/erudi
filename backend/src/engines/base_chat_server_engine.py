@@ -109,6 +109,24 @@ class BaseChatServerEngine(BaseEngine):
         heuristic in `_select_gguf`).
         """
 
+    @classmethod
+    def validate_local_artifact(cls, llm_local_path: Union[str, Path]) -> None:
+        """Integrity gate for the on-disk artifact (#88).
+
+        Raise :class:`EngineException` with an explicit, user-facing message if
+        the model's ESSENTIAL files are missing, empty, or corrupt; return None
+        when the artifact looks loadable. Concrete engine families override this
+        to check exactly what they consume (a valid GGUF container for
+        llama.cpp; a config + tokenizer + weights snapshot for MLX).
+
+        Called BOTH after a download completes (before the model can become
+        selectable) and once more just before spawn (so a broken local model
+        yields a precise load error instead of an opaque child crash). The
+        default is a no-op so a bare ``BaseChatServerEngine`` subclass (tests)
+        needs no override.
+        """
+        return None
+
     @staticmethod
     def _payload_model_value(handle: Dict[str, Any]) -> str:
         """Value to send as the `"model"` field in `/v1/chat/completions`.
@@ -385,6 +403,10 @@ class BaseChatServerEngine(BaseEngine):
         if cls._should_not_reload_model(llm_id):
             return cls._return_cached_model_and_tokenizer()
         cls._assert_requests()
+        # Pre-spawn integrity gate (#88): surface a precise "the files are
+        # incomplete/corrupt" load error here, before the expensive spawn +
+        # probe would fail with an opaque child crash.
+        cls.validate_local_artifact(llm_local_path)
         resolved = cls._resolve_model_artifact(llm_local_path)
         # Stop previous child (also unregisters its stale atexit handler).
         cls._stop_server_if_running()
