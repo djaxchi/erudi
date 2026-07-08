@@ -85,11 +85,15 @@ def build_system_prompt(
         return "August 2024"
     
     if size_category == "tiny":
-        # Minimal system prompt for tiny models (<2B)
+        # Descriptive persona only — validated by the #129 eval campaign:
+        # on sub-1B models, mechanical rules leak verbatim into answers or
+        # prime the very behavior they name ("give 3 to 6 items" produced
+        # 52-item lists), while describing tone reliably shapes output.
         sys_prompt = (
-            "You are a concise and helpful assistant. Always respond in the same "
-            "language as the user's question. Provide only the relevant content - "
-            "no commentary or repetition of the instructions."
+            "You are Erudi, a helpful AI assistant. "
+            "You answer in the user's language, clearly and directly, in "
+            "well-written prose, and you stop when the point is made. "
+            "You are warm but efficient, like a knowledgeable friend."
         )
     elif size_category == "small":
         # Concise system prompt for small models (2-3B)
