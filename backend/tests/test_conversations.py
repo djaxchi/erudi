@@ -639,6 +639,51 @@ class TestConversationService:
         assert captured["kb_context_block"] is None
         assert captured["context"] is not None and captured["context"].kb_id == kb.id
 
+    async def test_query_stream_empty_final_persists_last_tool_result(
+        self, test_db_session, mock_llm_with_kb, monkeypatch
+    ):
+        """#90/#84: agentic KB path — the model calls search_knowledge_base, the
+        tool returns grounded text, then the model emits an EMPTY final answer
+        (the Gemma pattern). The turn must NOT crash the empty-content guard in
+        ``_persist_assistant_message``: the last tool result is streamed and
+        persisted as the assistant message so the correct answer still reaches
+        the user."""
+        llm, _kb = mock_llm_with_kb
+        llm.supports_tools = True
+        test_db_session.commit()
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+
+        tool_call = AIMessage(
+            content="",
+            tool_calls=[{"name": "search_knowledge_base", "args": {"query": "preavis"}, "id": "k1"}],
+        )
+        # Successful tool call, then an EMPTY final answer.
+        msgs = iter([tool_call, AIMessage(content="")])
+        monkeypatch.setattr(
+            agent_runner, "build_chat_model", lambda llm, **kw: ToolableFakeChatModel(messages=msgs)
+        )
+        service = ConversationService(test_db_session, InMemorySaver())
+        conversation = service.create_conversation(
+            llm_id=llm.id, temperature=0.7, top_p=0.9, max_tokens=1024
+        )
+
+        payload = ConversationQuery(question="Quel est le preavis ?")
+        with patch("src.agents.tools.retrieve_kb_excerpts") as mock_kb:
+            mock_kb.return_value = [
+                KbExcerpt(source_file="contrat.pdf", text="Le preavis est de 90 jours.")
+            ]
+            result = [t async for t in service.query_and_respond_stream(conversation.id, payload)]
+
+        streamed = "".join(result)
+        assert "90 jours" in streamed
+        assert "[ERROR_MESSAGE_SYSTEM]" not in streamed
+
+        # No crash: the user message + the fallback assistant message are persisted.
+        messages = service.message_repo.get_messages_by_conversation(conversation.id)
+        assert len(messages) == 2
+        assert messages[1].sender == "llm"
+        assert "90 jours" in messages[1].content
+
     async def test_delete_conversation_purges_checkpointer_thread(self, test_db_session, mock_llm, monkeypatch):
         """IT4 (BLOCKER B3): deleting a conversation purges its checkpointer thread,
         not just the DB rows. SQLite reuses autoincrement ids, so a stale thread

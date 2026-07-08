@@ -220,6 +220,38 @@ class TestArenaService:
         # param_size=7 → medium tier → its KB token budget reaches retrieval.
         assert mock_kb.call_args.kwargs["token_budget"] == 1000
 
+    async def test_query_llm_stream_empty_final_falls_back_to_tool_result(
+        self, test_db_session, mock_llm_with_kb, monkeypatch
+    ):
+        """#90/#84: the arena shares the conversation ``AgentRunner``, so the
+        empty-final fallback applies here too. A tool-capable model calls
+        search_knowledge_base, the tool returns grounded text, then the model
+        emits an EMPTY final answer — the last tool result must be streamed to
+        the user instead of nothing."""
+        llm, _kb = mock_llm_with_kb
+        llm.supports_tools = True
+        test_db_session.commit()
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+
+        tool_call = AIMessage(
+            content="",
+            tool_calls=[{"name": "search_knowledge_base", "args": {"query": "x"}, "id": "k1"}],
+        )
+        msgs = iter([tool_call, AIMessage(content="")])
+        monkeypatch.setattr(
+            agent_runner, "build_chat_model", lambda llm, **kw: ToolableFakeChatModel(messages=msgs)
+        )
+        service = ArenaService(test_db_session)
+        payload = ArenaQueryPayload(question="What is in the KB?", temperature=0.5)
+
+        with patch("src.agents.tools.retrieve_kb_excerpts") as mock_kb:
+            mock_kb.return_value = [KbExcerpt(source_file="notes.md", text="Relevant KB context")]
+            result = [t async for t in service.query_llm_stream(llm.id, payload)]
+
+        streamed = "".join(result)
+        assert "Relevant KB context" in streamed
+        assert ERROR_SENTINEL not in streamed
+
     async def test_query_llm_stream_custom_params(self, test_db_session, mock_llm, monkeypatch):
         # Per-request generation params must reach the model factory.
         captured = {}
