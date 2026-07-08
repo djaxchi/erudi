@@ -38,6 +38,8 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When a download **fails**, then the widget shows the error and a "Download failed. Please try again." message.
 - [ ] When I **cancel** an in-progress download, then it stops and the model returns to a not-downloaded state (no "Download failed" dialog).
 - [ ] When I delete an installed model and confirm, then it is removed and a success message shows; if the delete request fails, the list is left intact with an error.
+- [ ] When I delete a base model that **powers KB assistants**, then the confirmation dialog lists the assistants and conversation count and warns they must be re-bound; **Delete anyway** removes the base while the assistants and conversations are kept.
+- [ ] When an assistant's base model was deleted, then its card shows **"Model weights missing"**, Chat is disabled, and **Re-bind** to another installed model restores it (the card then reads "Uses the weights of <that model>").
 - [ ] When the network drops, then the connection pill switches from "Connected" to "Offline" live.
 
 ## Chat — `/erudi/chat`
@@ -86,7 +88,7 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When I delete the conversation I'm viewing, then it's removed and I'm redirected to `/erudi/chat`; deleting a different one keeps me in place.
 - [ ] When I quit and relaunch and reopen the conversation, then its full history is intact.
 - [ ] When generation **fails** or the connection **drops** mid-reply, then a red error message shows and any partial reply is kept.
-- [ ] When the conversation's assigned model was **deleted**, then the backend falls back to an available model and still answers (no hard fail).
+- [ ] When the conversation's assigned model was **deleted**, then the conversation survives with no model assigned: sending is **blocked**, the header model picker shows a red "Please select a model" attention state, and **explicitly picking** an installed model unblocks sending (no auto-fallback).
 
 ## Arena — `/erudi/arena`
 

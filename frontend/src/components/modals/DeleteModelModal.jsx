@@ -6,16 +6,35 @@ import grainOverlay from "../../assets/images/textures/grain-overlay.png";
 
 DeleteModelModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
-  modelName: PropTypes.string,
+  model: PropTypes.shape({
+    name: PropTypes.string,
+    size: PropTypes.string,
+  }),
   onConfirm: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
+  // Guarded base delete (#225): dependents of the model about to be deleted,
+  // in the shape of GET /llms/{id}/dependents. When present with at least one
+  // assistant, the dialog explains the consequences and the confirm button
+  // becomes "Delete anyway" (the DELETE then orphans the dependents).
+  dependents: PropTypes.shape({
+    assistants: PropTypes.arrayOf(
+      PropTypes.shape({
+        id: PropTypes.number,
+        name: PropTypes.string,
+      })
+    ),
+    own_conversation_count: PropTypes.number,
+    total_conversation_count: PropTypes.number,
+  }),
 };
 
-DeleteModelModal.defaultProps = {
-  modelName: "Model",
-};
+const plural = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
-export default function DeleteModelModal({ isOpen, model, onConfirm, onCancel }) {
+export default function DeleteModelModal({ isOpen, model, onConfirm, onCancel, dependents }) {
+  const assistants = dependents?.assistants || [];
+  const hasDependents = assistants.length > 0;
+  const conversationCount = dependents?.total_conversation_count ?? 0;
+  const sizeKnown = Boolean(model?.size) && model.size !== "Unknown";
   return (
     <AnimatePresence>
       {isOpen && (
@@ -83,11 +102,35 @@ export default function DeleteModelModal({ isOpen, model, onConfirm, onCancel })
                 {/* Content */}
                 <div className="p-6">
                   <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4">
-                    <p className="text-[#F2F7F4] text-sm">
-                      Are you sure you want to delete the model{" "}
-                      <span className="font-semibold text-red-400">{model?.name}</span>?
-                    </p>
-                    <p className="text-gray-300/80 text-xs mt-2">This action cannot be undone.</p>
+                    {hasDependents ? (
+                      <>
+                        <p className="text-[#F2F7F4] text-sm">
+                          <span className="font-semibold text-red-400">{model?.name}</span> powers{" "}
+                          <span className="font-semibold">
+                            {plural(assistants.length, "assistant")}
+                          </span>{" "}
+                          ({assistants.map((a) => a.name).join(", ")}) and{" "}
+                          <span className="font-semibold">
+                            {plural(conversationCount, "conversation")}
+                          </span>
+                          .{sizeKnown ? ` Deleting it frees ${model.size}.` : ""}
+                        </p>
+                        <p className="text-gray-300/80 text-xs mt-2">
+                          Assistants will remain and must be re-bound to another model;
+                          conversations are kept.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[#F2F7F4] text-sm">
+                          Are you sure you want to delete the model{" "}
+                          <span className="font-semibold text-red-400">{model?.name}</span>?
+                        </p>
+                        <p className="text-gray-300/80 text-xs mt-2">
+                          This action cannot be undone.
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -115,7 +158,7 @@ export default function DeleteModelModal({ isOpen, model, onConfirm, onCancel })
                     ].join(" ")}
                   >
                     <Trash2 className="w-4 h-4" />
-                    Delete
+                    {hasDependents ? "Delete anyway" : "Delete"}
                   </button>
                 </div>
               </div>
