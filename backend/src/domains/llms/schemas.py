@@ -78,6 +78,11 @@ class LLMResponse(LLMBase):
     param_size: Optional[float] = Field(default=4.0, gt=0, description="Parameter size must be positive")
     is_base: bool = Field(default=False, description="True=curated foundation/base model, False=derived/community quant")
     category: Optional[str] = Field(default="general", description="Capability category: general/code/reasoning/math/vision/medical/function/safety (#122)")
+    # KB-assistant identity (#225/#208): the cards need to tell assistants apart
+    # from regular models to show the weights-of-<base> wording, the orphan badge
+    # and the rebind affordance. Plain column pass-throughs from the entity.
+    is_attached_to_kb: Optional[bool] = Field(default=None, description="True when this row is a KB assistant (specialized copy bound to a Knowledge Base)")
+    kb_id: Optional[int] = Field(default=None, description="The assistant's KnowledgeBase id (None for regular models)")
 
     @computed_field
     @property
