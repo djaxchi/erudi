@@ -195,7 +195,10 @@ def get_prompting_strategy(param_size: float) -> dict:
         - ``use_kb_context``: whether to inject Knowledge Base chunks;
         - ``kb_token_budget``: max KB context size in e5 tokens.
     """
-    if param_size <= 2:
+    # An unmeasured size (#201) is treated as a small model: the conservative
+    # choice keeps the system prompt and KB budget modest rather than assuming a
+    # large context a tiny model could not honor.
+    if param_size is None or param_size <= 2:
         return {"system_prompt_size_category": "tiny", "use_kb_context": True, "kb_token_budget": 400}
     elif param_size <= 4:
         return {"system_prompt_size_category": "small", "use_kb_context": True, "kb_token_budget": 700}

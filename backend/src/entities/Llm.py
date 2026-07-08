@@ -42,14 +42,15 @@ class Llm(Base):
         description: Optional user annotation or HuggingFace description.
         model_metadata: JSON string with additional metadata (vocab size, context length).
         quantized: Boolean - False=not quantized (full precision), True=pre-quantized (MLX/GGUF format).
-        param_size: Model size in billions of parameters (2, 4, 8, 16, 70, etc.).
+        param_size: Model size in billions of parameters (2, 4, 8, 16, 70, etc.),
+            or None when the size could not be measured (#201).
         is_attached_to_kb: Boolean - False=standalone model, True=specialized KB assistant.
         kb_id: Foreign key to KnowledgeBase (if is_attached_to_kb=True).
         kb: Relationship to KnowledgeBase entity (one-to-one).
 
     Constraints:
         - local must be 0 (remote), 1 (local), or 2 (downloading).
-        - param_size must be positive.
+        - param_size must be positive when known (None allowed for unknown).
         - name must not be empty.
 
     Example:
@@ -81,7 +82,10 @@ class Llm(Base):
     # tags + slug (see src.database.catalog_classify.categorize). Groups the
     # catalog into sections in the UI. Remote rows only; defaults to "general".
     category = Column(String, default="general", nullable=False)
-    param_size = Column(Float, default=4.0, nullable=False)
+    # Nullable: a genuinely unmeasured size is stored as NULL (unknown), never a
+    # plausible constant (#201). Downstream (hardware-fit gauge, prompting strategy)
+    # treats NULL as "size unknown" rather than trusting a laundered default.
+    param_size = Column(Float, default=None, nullable=True)
     is_attached_to_kb = Column(Boolean, default=False, nullable=False)
     kb_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="SET NULL"), nullable=True)
 
@@ -130,18 +134,21 @@ class Llm(Base):
     
     @validates('param_size')
     def validate_param_size(self, key, value):
-        """Ensure param_size is positive.
-        
+        """Ensure a known param_size is positive; allow None for unknown (#201).
+
         Args:
             key: Column name being validated ('param_size').
-            value: Proposed float value for parameter size in billions.
-            
+            value: Proposed float value for parameter size in billions, or None
+                when the size could not be measured.
+
         Returns:
-            float: The validated parameter size.
-            
+            Optional[float]: The validated parameter size, or None.
+
         Raises:
-            ValueError: If param_size is zero or negative.
+            ValueError: If a non-null param_size is zero or negative.
         """
+        if value is None:
+            return None
         if value <= 0:
             raise ValueError(f"param_size must be positive, got {value}")
         return value

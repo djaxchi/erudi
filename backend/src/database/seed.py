@@ -674,17 +674,17 @@ class Model_Seeder:
         # Estimate size
         size_estimate = get_model_size_estimate(model_name, model_info.modelId)
         
-        # Extract parameters
+        # Extract parameters. When the id carries no size token, leave param_size
+        # unknown (None) rather than substituting a plausible default (#201): a
+        # defaulted number is indistinguishable from a measured one downstream and
+        # rates unmeasurable models as perfect hardware fits.
         param_count = extract_parameter_pattern(model_info.modelId)
-        if param_count:
-            if param_count.scale == ParameterScale.BILLION:
-                param_size = param_count.count
-            elif param_count.scale == ParameterScale.MILLION:
-                param_size = param_count.count / 1000.0
-            else:
-                param_size = search_config.default_param_size
+        if param_count and param_count.scale == ParameterScale.BILLION:
+            param_size = param_count.count
+        elif param_count and param_count.scale == ParameterScale.MILLION:
+            param_size = param_count.count / 1000.0
         else:
-            param_size = search_config.default_param_size
+            param_size = None
         
         # Format metadata
         metadata = format_model_info_metadata(

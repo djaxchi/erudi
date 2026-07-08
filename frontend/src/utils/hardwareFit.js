@@ -125,7 +125,14 @@ const isInstruct = (model) => /instruct|chat/i.test(model.name || "");
  */
 export function pickFlagships(models, range, count = 3) {
   const pool = models.filter(
-    (m) => m.runnable !== false && (m.category || "general") === "general" && isInstruct(m)
+    (m) =>
+      m.runnable !== false &&
+      (m.category || "general") === "general" &&
+      isInstruct(m) &&
+      // Never recommend a model whose size we couldn't measure (#201): its fit is
+      // unknowable, so it can't earn a "runs on your machine" flagship slot.
+      typeof m.param_size === "number" &&
+      m.param_size > 0
   );
   const picks = [];
   const chosen = new Set();

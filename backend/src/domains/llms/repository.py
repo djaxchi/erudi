@@ -120,7 +120,7 @@ class Llm_Repository:
         description: Optional[str] = None,
         model_metadata: Optional[str] = None,
         quantized: bool = False,
-        param_size: float = 4.0,
+        param_size: Optional[float] = None,
         link: Optional[str] = None,
         category: str = "general",
     ) -> Llm:
@@ -133,7 +133,7 @@ class Llm_Repository:
             description: Optional model description.
             model_metadata: Optional JSON metadata string.
             quantized: Quantization state (False=not quantized, True=pre-quantized).
-            param_size: Model size in billions of parameters.
+            param_size: Model size in billions of parameters, or None if unmeasured (#201).
             link: HuggingFace repo ID or local path.
 
         Returns:

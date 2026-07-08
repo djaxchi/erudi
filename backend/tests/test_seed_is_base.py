@@ -58,6 +58,27 @@ def test_derived_creator_sets_is_base_false(monkeypatch):
 
 
 @pytest.mark.unit
+def test_derived_creator_leaves_param_size_none_when_slug_has_no_size(monkeypatch):
+    # A community slug with no size token used to be laundered into a plausible
+    # default; now it stays unknown (#201) so the fit gauge can't rate it.
+    _stub_metadata_helpers(monkeypatch)
+    seeder = Model_Seeder(db=None, hf_api=_FakeHF())
+    model_info = types.SimpleNamespace(modelId="community/mystery-model-GGUF")
+    search_config = types.SimpleNamespace(model_type="test", default_param_size=7.0)
+
+    llm = seeder._create_derived_llm(model_info, search_config)
+    assert llm.param_size is None
+
+
+@pytest.mark.unit
+def test_llm_entity_accepts_none_param_size():
+    # The validator must allow None (unknown) while still rejecting <= 0 (#201).
+    assert Llm(name="x", local=0, link="org/x", type="test", param_size=None).param_size is None
+    with pytest.raises(ValueError):
+        Llm(name="y", local=0, link="org/y", type="test", param_size=0)
+
+
+@pytest.mark.unit
 def test_offline_json_creator_sets_is_base_true():
     # The offline fallback seeds base models only — they must be marked base.
     seeder = Model_Seeder(db=None, hf_api=None)

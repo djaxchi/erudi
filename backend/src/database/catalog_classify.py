@@ -140,14 +140,18 @@ def _slug_param_b(slug: str) -> Optional[float]:
     return val if m.group(2) == "b" else round(val / 1000.0, 3)
 
 
-def param_size_billions(safetensors_total: Optional[int], slug: str,
-                        default: float = 7.0) -> float:
+def param_size_billions(safetensors_total: Optional[int], slug: str) -> Optional[float]:
     """Real parameter count in billions, preferring ``safetensors.total``.
 
     ``safetensors.total`` (from list/model_info ``expand``) is the authoritative
     element count of the full-precision base. Cross-checked against the slug: if
     both exist and disagree beyond ``_PARAM_SANITY_RATIO`` (bogus MoE/VLM totals),
-    the slug wins; if only one exists, use it; else ``default``.
+    the slug wins; if only one exists, use it.
+
+    Returns ``None`` when neither source yields a count (#201). A missing size is
+    reported as unknown rather than laundered into a plausible constant: a defaulted
+    number is indistinguishable from a measured one downstream, so a frontier model
+    with no measurable size used to read as a comfortable 7B fit.
     """
     st_b = round(safetensors_total / 1e9, 2) if safetensors_total else None
     slug_b = _slug_param_b(slug)
@@ -160,4 +164,4 @@ def param_size_billions(safetensors_total: Optional[int], slug: str,
         return st_b
     if slug_b:
         return slug_b
-    return default
+    return None

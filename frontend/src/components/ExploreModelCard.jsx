@@ -61,7 +61,8 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo }) {
 
       <div className="mt-auto pt-4">
         <div className="mono text-xs text-[var(--ink-dim)] flex items-center gap-2 mb-2.5">
-          {params && <span>{params}</span>}
+          {/* Unmeasured size (#201): say so plainly rather than implying a value. */}
+          {params ? <span>{params}</span> : <span className="italic">Size unknown</span>}
           {downloads && (
             <span className="flex items-center gap-1">
               <Download className="w-3 h-3" />

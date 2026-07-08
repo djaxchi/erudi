@@ -141,7 +141,9 @@ export function DownloadModalProvider({ children }) {
                 link: model.link,
                 name: model.name,
                 type: model.type || null,
-                param_size: model.param_size || 7.0,
+                // Preserve an unmeasured size as null instead of laundering it into
+                // a plausible 7.0 (#201); the backend stores NULL = size unknown.
+                param_size: model.param_size ?? null,
                 quantized: model.quantized !== false,
                 category: model.category || "general",
               }),

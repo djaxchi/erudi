@@ -104,6 +104,14 @@ describe("pickFlagships", () => {
     const models = [M("Llama 3.3 70B Instruct", "llama", 70)];
     expect(pickFlagships(models, { min: 4, max: 8 }, 3)).toHaveLength(0);
   });
+
+  it("never recommends a model whose size is unmeasured (#201)", () => {
+    const models = [
+      M("Mystery Instruct", "llama", null),
+      M("Mystery Instruct 2", "qwen", undefined),
+    ];
+    expect(pickFlagships(models, { min: 4, max: 8 }, 3)).toHaveLength(0);
+  });
 });
 
 describe("applyCatalogFilters", () => {
