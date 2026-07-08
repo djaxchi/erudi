@@ -1,13 +1,27 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
-import { Upload, File, X, Plus, Folder } from "lucide-react";
+import { Upload, File, X, Plus, Folder, FolderPlus, AlertTriangle } from "lucide-react";
 import GradientBox from "./GradientBox";
 import { createLogger } from "../utils/logger";
 import { isSupportedKbFile, KB_ACCEPT_ATTR } from "../utils/kbFormats";
 const log = createLogger("DragDropArea");
 
+// Upper bound on how many supported files a single add (drop or pick) may
+// contribute. A dropped/selected folder can expand into thousands of files;
+// past this cap we keep the first N and surface a visible warning rather than
+// silently flood the ingestion queue.
+const MAX_FILES_PER_ADD = 500;
+
 /**
- * Drag‑and‑drop zone with optional file picker.
+ * Drag‑and‑drop zone with optional file/folder picker.
+ *
+ * Accepts plain files, multi-file selections, AND folders — dropped folders are
+ * traversed recursively in the renderer via the DataTransferItem entry API
+ * (`webkitGetAsEntry` + `createReader().readEntries`), and the folder picker
+ * uses a `webkitdirectory` input whose FileList is already recursive. Every
+ * candidate is run through the same pipeline: unsupported-format filter → cap →
+ * path resolution (path-less entries are dropped, never forwarded). Rejections
+ * are counted and shown inline instead of failing silently at ingestion (#227).
  *
  * @param {function(string[])} onFilesAdded – receives absolute paths of dropped/selected files.
  */
@@ -15,36 +29,143 @@ export default function DragDropArea({ onFilesAdded }) {
   const [isOver, setIsOver] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [, setDragCounter] = useState(0);
+  // Inline warning for the most recent add: { unsupported, capped, missingPath }
+  // (all counts), or null when the add had nothing to flag.
+  const [notice, setNotice] = useState(null);
   const inputRef = useRef(null);
+  const folderInputRef = useRef(null);
+
+  // `webkitdirectory`/`directory` aren't React-known props (they'd trip
+  // react/no-unknown-property and inconsistent casing across DOM impls), so set
+  // them imperatively once the folder input is mounted.
+  useEffect(() => {
+    const el = folderInputRef.current;
+    if (el) {
+      el.setAttribute("webkitdirectory", "");
+      el.setAttribute("directory", "");
+    }
+  }, []);
 
   /* -------------------------------- helpers -------------------------------- */
   const isAllowedFileType = (fileName) => isSupportedKbFile(fileName);
 
-  const extractPaths = (fileList) => {
-    return Array.from(fileList)
-      .filter((file) => {
-        const fileName = file.name || file.path?.split(/[/\\]/).pop() || "";
-        const isAllowed = isAllowedFileType(fileName);
-        if (!isAllowed) {
-          log.warn(`File "${fileName}" rejected: unsupported format (allowed: ${KB_ACCEPT_ATTR})`);
-        }
-        return isAllowed;
-      })
-      .map((file) => {
-        log.log("Processing file:", file);
+  // Resolve the absolute path of a File. In Electron the preload bridge wraps
+  // webUtils.getPathForFile; outside it (tests, plain browser) we can only try
+  // file.path. NOTE: never fall back to file.name — a bare name is not a path
+  // and is exactly the empty/bogus value gap 2 exists to reject.
+  const resolvePath = (file) => {
+    if (window.electron?.getFilePath) {
+      return window.electron.getFilePath(file);
+    }
+    return file.path || "";
+  };
 
-        // Use the preload API if available
-        if (window.electron?.getFilePath) {
-          log.log("Using window.electron.getFilePath");
-          const path = window.electron.getFilePath(file);
-          log.log("Got path from electron API:", path);
-          return path;
-        }
+  // Promise-wrap FileSystemFileEntry.file (callback API). Resolves null on error
+  // so one unreadable entry can't reject the whole traversal.
+  const entryToFile = (entry) =>
+    new Promise((resolve) => {
+      entry.file(
+        (file) => resolve(file),
+        () => resolve(null)
+      );
+    });
 
-        // Fallback to direct access
-        log.log("Using direct file.path access");
-        return file.path || file.name;
+  // Promise-wrap FileSystemDirectoryReader.readEntries. readEntries yields the
+  // directory in BATCHES (Chromium caps at ~100 per call), so we must loop until
+  // a call returns an empty array — a classic gotcha that otherwise silently
+  // truncates large folders.
+  const readAllEntries = (reader) =>
+    new Promise((resolve) => {
+      const collected = [];
+      const readBatch = () => {
+        reader.readEntries(
+          (batch) => {
+            if (!batch || batch.length === 0) {
+              resolve(collected);
+              return;
+            }
+            collected.push(...batch);
+            readBatch();
+          },
+          () => resolve(collected)
+        );
+      };
+      readBatch();
+    });
+
+  // Recursively flatten a FileSystemEntry into the File objects it contains.
+  const collectFilesFromEntry = async (entry) => {
+    if (!entry) return [];
+    if (entry.isFile) {
+      const file = await entryToFile(entry);
+      return file ? [file] : [];
+    }
+    if (entry.isDirectory) {
+      const entries = await readAllEntries(entry.createReader());
+      const nested = await Promise.all(entries.map(collectFilesFromEntry));
+      return nested.flat();
+    }
+    return [];
+  };
+
+  // Shared ingestion pipeline for every entry point (drop, file pick, folder
+  // pick): filter unsupported formats, cap the batch, resolve paths (dropping
+  // path-less entries), record what was skipped, then commit the survivors.
+  const addFiles = (fileList) => {
+    const files = Array.from(fileList || []);
+
+    // 1. Format filter.
+    const supported = [];
+    let unsupportedCount = 0;
+    for (const file of files) {
+      const fileName = file.name || file.path?.split(/[/\\]/).pop() || "";
+      if (isAllowedFileType(fileName)) {
+        supported.push(file);
+      } else {
+        unsupportedCount += 1;
+        log.warn(`File "${fileName}" rejected: unsupported format (allowed: ${KB_ACCEPT_ATTR})`);
+      }
+    }
+
+    // 2. Safety cap.
+    let cappedCount = 0;
+    let capped = supported;
+    if (supported.length > MAX_FILES_PER_ADD) {
+      cappedCount = supported.length - MAX_FILES_PER_ADD;
+      capped = supported.slice(0, MAX_FILES_PER_ADD);
+      log.warn(`Selection capped at ${MAX_FILES_PER_ADD}; ${cappedCount} file(s) ignored`);
+    }
+
+    // 3. Path resolution — a falsy/whitespace path must never reach selectedFiles.
+    const paths = [];
+    let missingPathCount = 0;
+    for (const file of capped) {
+      const path = resolvePath(file);
+      if (path && path.trim()) {
+        paths.push(path);
+      } else {
+        missingPathCount += 1;
+        log.warn(`Could not resolve a path for "${file.name || "(unnamed)"}"; entry dropped`);
+      }
+    }
+
+    // 4. Surface rejections inline (or clear a stale notice).
+    if (unsupportedCount || cappedCount || missingPathCount) {
+      setNotice({
+        unsupported: unsupportedCount,
+        capped: cappedCount,
+        missingPath: missingPathCount,
       });
+    } else {
+      setNotice(null);
+    }
+
+    // 5. Commit survivors.
+    if (paths.length) {
+      const newFiles = [...selectedFiles, ...paths];
+      setSelectedFiles(newFiles);
+      onFilesAdded?.(newFiles);
+    }
   };
 
   const getFileName = (path) => {
@@ -72,6 +193,7 @@ export default function DragDropArea({ onFilesAdded }) {
   };
 
   const openPicker = () => inputRef.current?.click();
+  const openFolderPicker = () => folderInputRef.current?.click();
 
   const removeFile = (indexToRemove) => {
     const updatedFiles = selectedFiles.filter((_, index) => index !== indexToRemove);
@@ -83,22 +205,60 @@ export default function DragDropArea({ onFilesAdded }) {
     }
   };
 
-  const addMoreFiles = () => {
-    inputRef.current?.click();
-  };
-
   /* ------------------------------ event handlers --------------------------- */
   const handleSelect = (e) => {
-    const paths = extractPaths(e.target.files);
-    if (paths.length) {
-      const newFiles = [...selectedFiles, ...paths];
-      setSelectedFiles(newFiles);
-      onFilesAdded?.(newFiles);
+    addFiles(e.target.files);
+    e.target.value = ""; // reset picker so re-selecting the same path re-fires
+  };
+
+  const handleDrop = async (e) => {
+    log.log("📦 REACT DROP EVENT triggered!", e.dataTransfer.files);
+    e.preventDefault();
+    setDragCounter(0);
+    setIsOver(false);
+
+    // Prefer the entry API so dropped folders can be walked. webkitGetAsEntry()
+    // must be called SYNCHRONOUSLY while the event is live — collect every entry
+    // first, then traverse (the FileSystemEntry handles stay valid across await).
+    const items = e.dataTransfer.items;
+    let files = null;
+    if (items && items.length) {
+      const entries = Array.from(items)
+        .map((item) =>
+          typeof item.webkitGetAsEntry === "function" ? item.webkitGetAsEntry() : null
+        )
+        .filter(Boolean);
+      if (entries.length) {
+        const collected = await Promise.all(entries.map(collectFilesFromEntry));
+        files = collected.flat();
+      }
     }
-    e.target.value = ""; // reset picker
+
+    // Fallback: no usable entry API (older surface / plain file list).
+    if (files === null) {
+      files = Array.from(e.dataTransfer.files);
+    }
+
+    log.log("Collected dropped files:", files.length);
+    addFiles(files);
   };
 
   /* ---------------------------------- UI ---------------------------------- */
+  const noticeParts = [];
+  if (notice?.unsupported) {
+    noticeParts.push(
+      `${notice.unsupported} unsupported file${notice.unsupported > 1 ? "s" : ""} skipped`
+    );
+  }
+  if (notice?.capped) {
+    noticeParts.push(`capped at ${MAX_FILES_PER_ADD} files (${notice.capped} more ignored)`);
+  }
+  if (notice?.missingPath) {
+    noticeParts.push(
+      `couldn't resolve a path for ${notice.missingPath} item${notice.missingPath > 1 ? "s" : ""}`
+    );
+  }
+
   return (
     <GradientBox
       data-drag-drop-area="true"
@@ -127,25 +287,7 @@ export default function DragDropArea({ onFilesAdded }) {
           return newCounter;
         });
       }}
-      onDrop={(e) => {
-        log.log("📦 REACT DROP EVENT triggered!", e.dataTransfer.files);
-        e.preventDefault();
-        setDragCounter(0);
-        setIsOver(false);
-
-        const files = Array.from(e.dataTransfer.files);
-        log.log("Files array:", files);
-
-        const paths = extractPaths(e.dataTransfer.files);
-        log.log("Extracted paths:", paths);
-
-        if (paths.length) {
-          const newFiles = [...selectedFiles, ...paths];
-          log.log("New files array:", newFiles);
-          setSelectedFiles(newFiles);
-          onFilesAdded?.(newFiles);
-        }
-      }}
+      onDrop={handleDrop}
       onClick={selectedFiles.length === 0 ? openPicker : undefined}
     >
       {selectedFiles.length === 0 ? (
@@ -164,6 +306,17 @@ export default function DragDropArea({ onFilesAdded }) {
           >
             Browse files
           </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              openFolderPicker();
+            }}
+            className="inline-flex items-center gap-1.5 text-white/60 text-sm hover:text-white transition"
+          >
+            <FolderPlus className="w-4 h-4" />
+            or select a folder
+          </button>
         </div>
       ) : (
         /* Files selected state - show file list */
@@ -177,17 +330,30 @@ export default function DragDropArea({ onFilesAdded }) {
             <h3 className="text-white text-lg font-medium">
               Selected Files ({selectedFiles.length})
             </h3>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                addMoreFiles();
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3A3A3A] border border-gray-600/50 text-white text-xs font-medium hover:bg-[#404040] hover:border-gray-500/70 transition-all duration-200"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              Add More
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openFolderPicker();
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3A3A3A] border border-gray-600/50 text-white text-xs font-medium hover:bg-[#404040] hover:border-gray-500/70 transition-all duration-200"
+              >
+                <FolderPlus className="w-3.5 h-3.5" />
+                Add Folder
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openPicker();
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3A3A3A] border border-gray-600/50 text-white text-xs font-medium hover:bg-[#404040] hover:border-gray-500/70 transition-all duration-200"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add More
+              </button>
+            </div>
           </div>
           {/* File list - scrollable with fixed height */}
           <div className="flex-1 overflow-y-auto space-y-2 max-h-[300px] custom-scroll">
@@ -246,12 +412,33 @@ export default function DragDropArea({ onFilesAdded }) {
         </div>
       )}
 
+      {/* Inline rejection notice (unsupported / capped / path-less) */}
+      {noticeParts.length > 0 && (
+        <div
+          role="alert"
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 max-w-[92%] flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs"
+        >
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span className="truncate">{noticeParts.join(" · ")}</span>
+        </div>
+      )}
+
       {/* hidden native file input */}
       <input
         ref={inputRef}
         type="file"
         multiple
         accept={KB_ACCEPT_ATTR}
+        onChange={handleSelect}
+        style={{ display: "none" }}
+      />
+
+      {/* hidden folder input (webkitdirectory set imperatively above); its
+          FileList is already the folder's files, recursively. */}
+      <input
+        ref={folderInputRef}
+        type="file"
+        multiple
         onChange={handleSelect}
         style={{ display: "none" }}
       />
