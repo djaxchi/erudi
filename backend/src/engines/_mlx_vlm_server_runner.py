@@ -136,6 +136,77 @@ def _patch_gemma_end_of_turn_stop() -> bool:
     return True
 
 
+# Unmatchable thinking markers injected by `_patch_inline_thinking`. Model text
+# can never contain a NUL byte, so these never match a marker (no split) and
+# never partially match a chunk suffix (no `_split_partial` holdback latency).
+_NEVER_OPEN_MARKER = "\x00erudi:no-thinking-split\x00"
+_NEVER_CLOSE_MARKER = "\x00/erudi:no-thinking-split\x00"
+
+
+def _patch_inline_thinking() -> bool:
+    """Keep model reasoning INLINE in ``delta.content`` (#90).
+
+    mlx-vlm 0.6.2 splits streamed thinking into a dedicated
+    ``delta.reasoning`` field via ``ThinkingStreamState`` — a channel that
+    ChatOpenAI silently drops, so the reasoning never reaches the runner. The
+    design (#90) wants the raw ``<think>...</think>`` INLINE in
+    ``delta.content`` so the runner's single streaming ThinkSplitter handles
+    MLX exactly like llama-server with ``--reasoning-format none``.
+
+    Why a monkeypatch and not configuration — on the pinned 0.6.2:
+
+      - The server CLI does not accept ``--thinking-start-token`` (strict
+        argparse: the child would die at boot), and the
+        ``MLX_VLM_THINKING_START_TOKEN`` env var only exists in 0.6.4.
+      - Even injected per-request, a sentinel start token cannot disable the
+        split: ``_build_open_close_markers`` always APPENDS the built-in
+        marker families (``<think>``, ``<|channel>thought``,
+        ``<|START_THINKING|>``) after any custom pair.
+      - ``ThinkingStreamState.__init__`` sets ``in_thinking =
+        bool(enable_thinking)``, so with thinking enabled the stream starts in
+        reasoning mode regardless of any marker. This is also why the class
+        MUST be neutralized before passing ``--enable-thinking``: a
+        non-thinking model (which never emits ``</think>``) would otherwise
+        have its ENTIRE output routed to ``delta.reasoning`` — empty answers.
+
+    So the single choke point is the class itself: force every instance to
+    start OUTSIDE thinking with unmatchable markers. ``feed()`` then falls
+    through to its plain-content branch, preserving upstream
+    ``<|START_TEXT|>`` content-marker stripping and the downstream tool-call
+    suppression untouched. The class object is mutated in place (never
+    rebound), so it is irrelevant whether callers imported it before or after
+    the patch.
+
+    Returns:
+        True if the patch was applied (or already present), False if
+        mlx-vlm's server module could not be imported (non-MLX hosts, CI).
+        Idempotent.
+    """
+    try:
+        from mlx_vlm.server import responses_state
+    except Exception:
+        return False
+
+    state_cls = getattr(responses_state, "ThinkingStreamState", None)
+    if state_cls is None:
+        return False
+    if getattr(state_cls, "_erudi_inline_thinking_patch", False):
+        return True
+
+    _orig_init = state_cls.__init__
+
+    def _init(self, *args, **kwargs):
+        _orig_init(self, *args, **kwargs)
+        self.in_thinking = False
+        self.open_close_markers = ((_NEVER_OPEN_MARKER, _NEVER_CLOSE_MARKER),)
+        self.open_markers = (_NEVER_OPEN_MARKER,)
+        self.close_markers = (_NEVER_CLOSE_MARKER,)
+
+    state_cls.__init__ = _init
+    state_cls._erudi_inline_thinking_patch = True
+    return True
+
+
 def _import_mlx_vlm_server_main():
     """Import and return `mlx_vlm.server.cli.main`.
 
@@ -168,5 +239,9 @@ def run_mlx_vlm_server(argv: List[str]) -> None:
     # Register Gemma's <end_of_turn> as a stop token so generation halts at the
     # end of the answer instead of streaming the literal token + garbage (#249).
     _patch_gemma_end_of_turn_stop()
+    # Applied in-child before the server starts so every ThinkingStreamState it
+    # builds keeps reasoning inline in delta.content (#90) — see the patch's
+    # docstring for why 0.6.2 offers no configuration path for this.
+    _patch_inline_thinking()
     main = _import_mlx_vlm_server_main()
     main()
