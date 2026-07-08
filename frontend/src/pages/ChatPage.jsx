@@ -15,7 +15,6 @@ import apiClient, { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 import { canAttachImages } from "../utils/modelCapabilities";
-import grainOverlay from "../assets/images/textures/grain-overlay.png";
 
 const log = createLogger("ChatPage");
 
@@ -264,14 +263,6 @@ export default function ChatPage() {
                         "linear-gradient(to bottom, rgba(255,180,100,0.18), rgba(255,180,100,0) 40%)",
                     }}
                   />
-                  <div
-                    aria-hidden
-                    className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
-                    style={{
-                      backgroundImage: `url("${grainOverlay}")`,
-                      backgroundSize: "200px 200px",
-                    }}
-                  />
 
                   {/* Content */}
                   <div className="relative z-10 p-6">
@@ -314,14 +305,6 @@ export default function ChatPage() {
                 style={{
                   background:
                     "linear-gradient(to bottom, rgba(255,255,255,0.18), rgba(255,255,255,0) 40%)",
-                }}
-              />
-              <div
-                aria-hidden
-                className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
-                style={{
-                  backgroundImage: `url("${grainOverlay}")`,
-                  backgroundSize: "200px 200px",
                 }}
               />
 
@@ -570,14 +553,6 @@ export default function ChatPage() {
                         style={{
                           background:
                             "linear-gradient(to bottom, rgba(255,180,100,0.18), rgba(255,180,100,0) 40%)",
-                        }}
-                      />
-                      <div
-                        aria-hidden
-                        className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
-                        style={{
-                          backgroundImage: `url("${grainOverlay}")`,
-                          backgroundSize: "200px 200px",
                         }}
                       />
 

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
-import grainOverlay from "../../assets/images/textures/grain-overlay.png";
 
 CustomizePromptModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
@@ -70,14 +69,6 @@ export default function CustomizePromptModal({
                 style={{
                   background:
                     "linear-gradient(to bottom, rgba(255,255,255,0.18), rgba(255,255,255,0) 40%)",
-                }}
-              />
-              <div
-                aria-hidden
-                className="absolute inset-0 pointer-events-none rounded-[26px] opacity-35 mix-blend-overlay"
-                style={{
-                  backgroundImage: `url("${grainOverlay}")`,
-                  backgroundSize: "200px 200px",
                 }}
               />
 
