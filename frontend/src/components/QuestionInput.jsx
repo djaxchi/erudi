@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
 import { ArrowRight, ImagePlus, X } from "lucide-react";
-import grainOverlay from "../assets/images/textures/grain-overlay.png";
 
 const MAX_IMAGES = 4;
 
@@ -150,14 +149,6 @@ export default function QuestionInput({
           style={{
             background:
               "linear-gradient(180deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.06) 28%, rgba(16,185,129,0.02) 60%, rgba(16,185,129,0) 100%)",
-          }}
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-[20px] opacity-20 mix-blend-overlay"
-          style={{
-            backgroundImage: `url("${grainOverlay}")`,
-            backgroundSize: "200px 200px",
           }}
         />
         <div

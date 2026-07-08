@@ -10,7 +10,6 @@ import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import MarkdownRenderer from "../components/MarkdownRenderer";
 import apiClient from "../services/api/client";
 import { createLogger } from "../utils/logger";
-import grainOverlay from "../assets/images/textures/grain-overlay.png";
 
 const MAX_PANELS = 4;
 const DEFAULT_SETTINGS = {
@@ -417,14 +416,6 @@ export default function ArenaPage() {
                 style={{
                   background:
                     "linear-gradient(180deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.06) 28%, rgba(16,185,129,0.02) 60%, rgba(16,185,129,0) 100%)",
-                }}
-              />
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-0 rounded-full opacity-20 mix-blend-overlay"
-                style={{
-                  backgroundImage: `url("${grainOverlay}")`,
-                  backgroundSize: "200px 200px",
                 }}
               />
               <div
