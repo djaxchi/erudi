@@ -235,6 +235,20 @@ class MLX_Engine(BaseChatServerEngine):
         return path
 
     @classmethod
+    def validate_local_artifact(cls, llm_local_path: Union[str, Path]) -> None:
+        """Integrity gate for an MLX snapshot (#88).
+
+        An MLX model is loadable iff its directory ships ``config.json`` + a
+        tokenizer file + at least one weights file, each non-empty. Raises
+        :class:`EngineException` with a curated, user-facing message on the
+        first missing/empty essential. Backs both the download-completion gate
+        and the pre-spawn load gate.
+        """
+        from src.engines import integrity
+
+        integrity.validate_hf_snapshot(llm_local_path)
+
+    @classmethod
     def _load_capability_tokenizer(cls, llm_local_path: Union[str, Path]):
         """Load the HF tokenizer from the MLX model directory (no weights, no server).
 

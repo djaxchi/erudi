@@ -155,6 +155,32 @@ def get_download_job_repository(db: Session = Depends(get_db)) -> Download_Job_R
 
 # ============ Download Helpers (shared by id-based and link-based downloads) ============
 
+def _assert_downloaded_artifact_ok(final_save_dir, temp_save_dir) -> None:
+    """Integrity gate at download completion (#88).
+
+    Validate the just-downloaded model via the ACTIVE engine (it knows which
+    files its build type actually needs) BEFORE the model can become selectable.
+    On failure, remove the downloaded artifacts -- mirroring ``delete_llm``:
+    rmtree the final model dir and the temp dir -- then re-raise so the caller
+    finalizes the job in its error state carrying the engine's explicit,
+    user-facing message. A model therefore never reaches ``local=1`` without
+    passing validation, and a bad artifact never lingers on disk.
+    """
+    validator = getattr(config.LLM_Engine, "validate_local_artifact", None)
+    if validator is None:
+        return
+    try:
+        validator(str(final_save_dir))
+    except Exception:
+        for stale_dir in (final_save_dir, temp_save_dir):
+            try:
+                if stale_dir and os.path.exists(str(stale_dir)):
+                    shutil.rmtree(str(stale_dir), ignore_errors=True)
+            except Exception:
+                logger.warning(f"Integrity cleanup could not remove {stale_dir}")
+        raise
+
+
 def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save_dir,
                        job_id: int) -> None:
     """Background body of a download: flip the job to running, run the download
@@ -177,6 +203,10 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
         # or a DB connection issue in the progress thread).
         job_obj = session.query(DownloadJobModel).get(job_id)
         if job_obj and job_obj.status != "cancelled":
+            # Integrity gate (#88): a model must never flip to local=1 without its
+            # essential files. On failure this cleans the artifacts and raises, so
+            # the except below finalizes the job as failed with an explicit message.
+            _assert_downloaded_artifact_ok(final_save_dir, temp_save_dir)
             llm_obj = session.query(Llm).get(model_id)
             if llm_obj:
                 llm_obj.supports_tools = detect_supports_tools(llm_obj.link)

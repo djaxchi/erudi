@@ -32,6 +32,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from src.agents.model_factory import build_chat_model
 from src.core import config
+from src.core.exceptions import EngineException
 from src.core.logging import logger
 
 if TYPE_CHECKING:
@@ -60,6 +61,23 @@ ERROR_MESSAGE = (
 # parts, and the user is told explicitly instead of silently. Markdown italics —
 # the frontend renders streamed answers as markdown.
 IMAGES_IGNORED_NOTICE = "*This model doesn't support images — your image was ignored.*\n\n"
+
+
+def _construction_error_message(exc: Exception) -> str:
+    """Curated, traceback-free error turn for a failed agent construction.
+
+    Agent construction is where the model is loaded (``build_chat_model`` ->
+    ``engine.get_model_and_tokenizer``). When that load fails with an
+    ``EngineException`` -- a specific, already-curated diagnostic like a missing
+    model folder, no ``.gguf`` found, a corrupt GGUF, or a child server that
+    died on spawn (#88) -- surface its message so the user learns what is
+    actually wrong and can act (re-download / pick another model). Any other
+    failure keeps the generic message. Neither path leaks a traceback:
+    ``EngineException`` messages are hand-written, not stringified stack traces.
+    """
+    if isinstance(exc, EngineException):
+        return f"{ERROR_SENTINEL} {exc}"
+    return ERROR_MESSAGE
 
 
 @dataclass
@@ -148,9 +166,9 @@ class AgentRunner:
                     f"stateful={stateful}, summarize={summarize}, "
                     f"kb_context={'yes' if kb_context_block else 'no'}"
                 )
-            except Exception:
+            except Exception as exc:
                 logger.exception("Agent construction failed")
-                yield ERROR_MESSAGE
+                yield _construction_error_message(exc)
                 return
 
             # Aggregate-only stream accounting (never log per token): start,
@@ -159,6 +177,14 @@ class AgentRunner:
             first_token_s: Optional[float] = None
             chunk_count = 0
             char_count = 0
+            # Empty-final fallback bookkeeping (#90): some agentic models call a
+            # tool successfully, then emit an EMPTY final answer (observed with
+            # Gemma: calculator("1240 + 1378 + 1456") -> ToolMessage "4074" ->
+            # empty AIMessage, finish_reason=stop). Track whether any non-blank
+            # model text was streamed, and remember the last tool result so the
+            # turn can fall back to it instead of delivering nothing.
+            emitted_model_text = False
+            last_tool_result: Optional[str] = None
             logger.info(
                 f"Agent stream started: llm={getattr(llm, 'id', '?')}, "
                 f"thread_id={thread_id}"
@@ -170,6 +196,13 @@ class AgentRunner:
                     context=context,
                     stream_mode="messages",
                 ):
+                    if getattr(token, "type", None) == "tool":
+                        # ToolMessages ride the messages stream from the tools
+                        # node; keep the latest non-blank result for the fallback.
+                        tool_text = getattr(token, "text", "") or ""
+                        if tool_text.strip():
+                            last_tool_result = tool_text
+                        continue
                     if meta.get("langgraph_node") == "model" and getattr(token, "text", ""):
                         if first_token_s is None:
                             first_token_s = time.perf_counter()
@@ -177,9 +210,24 @@ class AgentRunner:
                                 f"Agent first token: llm={getattr(llm, 'id', '?')}, "
                                 f"latency_ms={(first_token_s - stream_start_s) * 1000:.0f}"
                             )
+                        if token.text.strip():
+                            emitted_model_text = True
                         chunk_count += 1
                         char_count += len(token.text)
                         yield token.text
+                # Empty/blank final answer, but a tool produced a result this
+                # turn: deliver that last tool result as the answer (#90) so a
+                # correct value is streamed and persisted instead of crashing the
+                # empty-content guard. No tool ran -> nothing to fall back to;
+                # keep today's behavior (a genuine empty-answer failure).
+                if not emitted_model_text and last_tool_result is not None:
+                    logger.info(
+                        f"Empty final answer with a tool result; falling back to "
+                        f"the last tool result: llm={getattr(llm, 'id', '?')}, "
+                        f"tool_result_chars={len(last_tool_result)}"
+                    )
+                    char_count += len(last_tool_result)
+                    yield last_tool_result
                 duration_ms = (time.perf_counter() - stream_start_s) * 1000
                 logger.info(
                     f"Agent stream completed: llm={getattr(llm, 'id', '?')}, "
