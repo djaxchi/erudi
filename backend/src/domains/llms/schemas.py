@@ -67,7 +67,7 @@ class LLMResponse(LLMBase):
         description: Model description from HuggingFace or user annotation.
         model_metadata: JSON string with additional metadata (vocab size, context length).
         quantized: Boolean - False=not quantized, True=pre-quantized (already in 4-bit/8-bit format).
-        param_size: Model size in billions of parameters (must be positive).
+        param_size: Model size in billions of parameters (positive), or None if unmeasured (#201).
     """
     id: int
     type: Optional[str] = None
@@ -75,7 +75,7 @@ class LLMResponse(LLMBase):
     model_metadata: Optional[str] = None
     quantized: Optional[bool] = False
     supports_tools: Optional[bool] = None
-    param_size: Optional[float] = Field(default=4.0, gt=0, description="Parameter size must be positive")
+    param_size: Optional[float] = Field(default=None, gt=0, description="Parameter size in billions; None when unmeasured (#201)")
     is_base: bool = Field(default=False, description="True=curated foundation/base model, False=derived/community quant")
     category: Optional[str] = Field(default="general", description="Capability category: general/code/reasoning/math/vision/medical/function/safety (#122)")
     # KB-assistant identity (#225/#208): the cards need to tell assistants apart
@@ -162,7 +162,7 @@ class HFSearchResult(BaseModel):
     """
     link: str = Field(..., description="HuggingFace repo id, e.g. mlx-community/Foo-4bit")
     name: str
-    param_size: float = Field(default=7.0, gt=0)
+    param_size: Optional[float] = Field(default=None, gt=0, description="Billions of params; None when unmeasured (#201)")
     category: str = "general"
     downloads: int = 0
     likes: int = 0
@@ -177,7 +177,7 @@ class HFDownloadRequest(BaseModel):
     link: str = Field(..., min_length=1, description="HuggingFace repo id to download")
     name: Optional[str] = None
     type: Optional[str] = None
-    param_size: float = Field(default=7.0, gt=0)
+    param_size: Optional[float] = Field(default=None, gt=0, description="Billions of params; None when unmeasured (#201)")
     quantized: bool = True
     category: str = "general"
 

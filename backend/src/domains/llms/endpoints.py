@@ -94,7 +94,7 @@ Warning:
 import asyncio
 import os
 import shutil
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
 from fastapi import BackgroundTasks, Depends, APIRouter, status as http_status
@@ -238,7 +238,7 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
 
 
 def _start_download(*, remote_model_id: str, remote_link: str, name: str, type: str,
-                    description, model_metadata, quantized: bool, param_size: float,
+                    description, model_metadata, quantized: bool, param_size: Optional[float],
                     category: str, llm_repo: Llm_Repository,
                     job_repo: Download_Job_Repository, db: Session,
                     background_tasks: BackgroundTasks) -> DownloadJobModel:

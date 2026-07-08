@@ -98,5 +98,8 @@ class TestParamSize:
         # A "31B" assistant reporting 0.47B safetensors → trust the slug.
         assert param_size_billions(469_000_000, "gemma-4-31B-it-assistant") == 31.0
 
-    def test_default_when_nothing(self):
-        assert param_size_billions(None, "mystery-model") == 7.0
+    def test_none_when_nothing(self):
+        # No safetensors total and no size token in the slug → unknown, not a
+        # laundered default (#201). A defaulted number rated frontier models as
+        # perfect 7B fits.
+        assert param_size_billions(None, "mystery-model") is None
