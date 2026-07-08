@@ -23,8 +23,13 @@ if TYPE_CHECKING:
 # repetition_context_size=5 to EVERY generation. Dropping them on the ChatOpenAI
 # path made even tiny models (e.g. Gemma-270M) loop on trivial prompts, so they
 # are restored here.
-DEFAULT_REPETITION_PENALTY = 1.2
-DEFAULT_REPETITION_CONTEXT_SIZE = 5
+# Tuned through the #129 eval campaign (see the run journal in the issue):
+# the legacy 5-token window was blind to sentence-level cycles (small models
+# looped whole list items to the token cap), while 1.2 over a wide window
+# over-penalized token reuse and mangled proper nouns from the question.
+# 1.1 over 64 tokens kills the loops and leaves precision intact.
+DEFAULT_REPETITION_PENALTY = 1.1
+DEFAULT_REPETITION_CONTEXT_SIZE = 64
 
 
 def build_chat_model(

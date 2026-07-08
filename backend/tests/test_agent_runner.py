@@ -214,7 +214,7 @@ def test_build_chat_model_uses_engine_handle(monkeypatch):
     assert chat.temperature == 0.3
     # Repetition controls restored on the ChatOpenAI path (regression: tiny models
     # looped without them). Identity engine (no _translate_payload_kwargs) => HF names.
-    assert chat.extra_body == {"repetition_penalty": 1.2, "repetition_context_size": 5}
+    assert chat.extra_body == {"repetition_penalty": 1.1, "repetition_context_size": 64}
 
 
 def test_build_chat_model_translates_extra_body_per_engine(monkeypatch):
@@ -241,7 +241,7 @@ def test_build_chat_model_translates_extra_body_per_engine(monkeypatch):
 
     monkeypatch.setattr(config, "LLM_Engine", _LlamaEngine)
     chat = build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55)
-    assert chat.extra_body == {"repeat_penalty": 1.2, "repeat_last_n": 5}
+    assert chat.extra_body == {"repeat_penalty": 1.1, "repeat_last_n": 64}
 
 
 # ===== Integration (IT3 / IT5 / IT11) — PR1 E2E validation, runner level =====
