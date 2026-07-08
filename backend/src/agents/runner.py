@@ -256,7 +256,12 @@ class AgentRunner:
         from langchain.agents import create_agent
         from langchain_core.messages import HumanMessage
 
-        from src.agents.middleware import _KbContextMiddleware, _StripImagesForTextModel
+        from src.agents.middleware import (
+            _FoldSystemIntoUserMiddleware,
+            _KbContextMiddleware,
+            _StripImagesForTextModel,
+        )
+        from src.engines.system_role_capability import model_supports_system_role
 
         engine = config.LLM_Engine
         stateful = thread_id is not None and self.checkpointer is not None
@@ -286,6 +291,14 @@ class AgentRunner:
                     # services prepend a user-facing notice). Outermost, so images
                     # are gone before the KB merge re-reads the last user message.
                     middleware = [_StripImagesForTextModel(), *middleware]
+                if not await run_in_threadpool(
+                    model_supports_system_role, getattr(llm, "link", None)
+                ):
+                    # Model's chat template rejects a system role (Gemma): fold the
+                    # system prompt into the first user turn instead of 500ing every
+                    # turn. Innermost (added last), so it folds the FINAL messages
+                    # after the KB merge has shaped the last user message.
+                    middleware = [*middleware, _FoldSystemIntoUserMiddleware()]
                 # No implicit tools (#129): callers own the tool list (built by
                 # ``plan_turn``); ``tools=None`` means a zero-tool agent.
                 effective_tools = tools if tools is not None else []
