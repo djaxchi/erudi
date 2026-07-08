@@ -32,9 +32,10 @@ class _Llm:
         self.param_size = param_size
 
 
-def test_system_prompt_includes_model_name_and_drops_ltm():
+def test_system_prompt_uses_erudi_persona_and_drops_ltm():
     p = build_agent_system_prompt(_Llm(name="Qwen 7B", param_size=7.0))
-    assert "Qwen 7B" in p
+    # The reworked tiers speak as Erudi (#129), not as the model itself.
+    assert "You are Erudi" in p
     # Long-term memory now lives in the checkpointer, never injected here.
     assert "Summary of the conversation" not in p
 
