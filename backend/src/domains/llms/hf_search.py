@@ -26,6 +26,13 @@ _ALLOWED_PIPELINES = frozenset({"text-generation"}) | VISION_PIPELINES
 # Floor to drop dead repos; deliberately low since the user asked for this exactly.
 _MIN_DOWNLOADS = 10
 
+# Interactive search is user-facing: a human is waiting behind a client-side timeout.
+# Keep the 429 retry budget short so a rate-limited call fails fast (worst case
+# ~1s + ~2s backoff + round-trips, well under the frontend's 30s abort) instead of
+# running the bulk-resync ladder to ~32s and guaranteeing a client timeout (#210).
+_SEARCH_MAX_RETRIES = 2
+_SEARCH_MAX_BACKOFF = 4.0
+
 
 def _safetensors_total(model_info) -> Any:
     st = getattr(model_info, "safetensors", None)
@@ -57,6 +64,7 @@ def search_huggingface(query: str, limit: int = 30) -> List[Dict[str, Any]]:
         models = list(config.get_hf_api().list_models(
             filter=tag, search=query, sort="downloads", limit=max(limit * 3, 60),
             expand=["safetensors", "tags", "pipeline_tag", "gated", "downloads", "likes"],
+            _max_retries=_SEARCH_MAX_RETRIES, _max_backoff=_SEARCH_MAX_BACKOFF,
         ))
     except Exception as e:
         logger.warning(f"HF search '{query}' failed: {e}")

@@ -72,6 +72,23 @@ class TestSearchHuggingface:
                             lambda: SimpleNamespace(list_models=boom))
         assert hf_search.search_huggingface("qwen") == []
 
+    def test_passes_short_retry_budget_to_list_models(self, monkeypatch):
+        """Interactive search must fail fast, not run the bulk-resync ladder (#210)."""
+        monkeypatch.setattr(hf_search.config, "LLM_Engine", _Engine, raising=False)
+        seen = {}
+
+        def capture(**k):
+            seen.update(k)
+            return []
+
+        monkeypatch.setattr(hf_search.config, "get_hf_api",
+                            lambda: SimpleNamespace(list_models=capture))
+        hf_search.search_huggingface("qwen")
+        assert seen["_max_retries"] == hf_search._SEARCH_MAX_RETRIES
+        assert seen["_max_backoff"] == hf_search._SEARCH_MAX_BACKOFF
+        assert hf_search._SEARCH_MAX_RETRIES <= 3
+        assert hf_search._SEARCH_MAX_BACKOFF <= 10
+
 
 @pytest.mark.unit
 class TestHFDownloadEndpoint:
