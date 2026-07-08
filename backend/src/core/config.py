@@ -131,12 +131,18 @@ def _retry_after_seconds(err: HfHubHTTPError) -> Optional[float]:
         return None
 
 
-def _call_with_429_retry(fn, *args, _max_retries: int = 5, **kwargs):
+def _call_with_429_retry(fn, *args, _max_retries: int = 5, _max_backoff: float = 30.0, **kwargs):
     """Call ``fn`` and retry on HTTP 429 with exponential backoff (honoring
     Retry-After). The catalog resync fires hundreds of anonymous HF metadata
     calls in a burst; without this a 429 either aborts the whole resync or is
     silently swallowed as "no result" (dropping models). Runs inside the resync's
-    threadpool, so the blocking sleep stays off the event loop."""
+    threadpool, so the blocking sleep stays off the event loop.
+
+    ``_max_retries``/``_max_backoff`` bound the total wall-clock budget. The bulk
+    resync wants a long ladder (survive rate-limiting), but an interactive,
+    user-facing search must fail fast: a caller waiting on the request has a
+    client-side timeout, and a ladder that outlives it (#210) guarantees failure.
+    Both the exponential delay and any ``Retry-After`` are capped at ``_max_backoff``."""
     for attempt in range(_max_retries + 1):
         try:
             return fn(*args, **kwargs)
@@ -145,7 +151,8 @@ def _call_with_429_retry(fn, *args, _max_retries: int = 5, **kwargs):
             if status == 429 and attempt < _max_retries:
                 delay = _retry_after_seconds(err)
                 if delay is None:
-                    delay = min(2 ** attempt, 30)
+                    delay = 2 ** attempt
+                delay = min(delay, _max_backoff)
                 from src.core.logging import logger
                 logger.warning(
                     f"HF rate-limited (429); backing off {delay:.0f}s "
@@ -166,10 +173,13 @@ class _RetryingHfApi(HfApi):
 
     _PACE_SECONDS = 0.1
 
-    def list_models(self, *args, **kwargs):
+    def list_models(self, *args, _max_retries: int = 5, _max_backoff: float = 30.0, **kwargs):
         time.sleep(self._PACE_SECONDS)
         _super_list_models = super().list_models
-        return _call_with_429_retry(lambda: list(_super_list_models(*args, **kwargs)))
+        return _call_with_429_retry(
+            lambda: list(_super_list_models(*args, **kwargs)),
+            _max_retries=_max_retries, _max_backoff=_max_backoff,
+        )
 
     def model_info(self, *args, **kwargs):
         time.sleep(self._PACE_SECONDS)

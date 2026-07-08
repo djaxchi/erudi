@@ -71,7 +71,10 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo }) {
       setResults(rankByFit(mapped, range));
     } catch (err) {
       log.error("HF search failed:", err);
-      setError("No internet connection for the moment.");
+      // A failed fetch here is a request error (timeout, HF unreachable, 5xx),
+      // not proof the machine is offline — the genuine-offline case is caught by
+      // the navigator.onLine guard above. Don't mislabel it as "no internet" (#210).
+      setError("Search couldn’t reach Hugging Face. Check your connection and try again.");
       setResults([]);
     } finally {
       setLoading(false);

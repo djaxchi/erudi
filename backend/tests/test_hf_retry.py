@@ -73,3 +73,25 @@ class TestRetryingHfApi:
         api = cfg._RetryingHfApi(token=None)
         with pytest.raises(HfHubHTTPError):
             api.model_info("org/model")
+
+    def test_list_models_honors_short_retry_budget(self, monkeypatch):
+        """Interactive search (#210) passes a small budget so the ladder stays
+        under the client timeout instead of running the full ~32s resync ladder."""
+        calls = {"n": 0}
+        slept = []
+        monkeypatch.setattr(cfg.time, "sleep", lambda s: slept.append(s))
+
+        def fake(self, *a, **k):
+            calls["n"] += 1
+            raise _http_error(429)
+
+        monkeypatch.setattr(cfg.HfApi, "list_models", fake)
+        api = cfg._RetryingHfApi(token=None)
+        with pytest.raises(HfHubHTTPError):
+            api.list_models(filter="mlx", limit=5, _max_retries=2, _max_backoff=4.0)
+
+        # 2 retries => 3 attempts total, and the private kwargs never leak to HfApi.
+        assert calls["n"] == 3
+        backoffs = [s for s in slept if s != cfg._RetryingHfApi._PACE_SECONDS]
+        assert backoffs == [1, 2]              # 2**0, 2**1, both under the 4s cap
+        assert sum(backoffs) < 30              # far below the default resync ladder
