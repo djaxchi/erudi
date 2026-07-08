@@ -96,11 +96,19 @@ def build_system_prompt(
             "You are warm but efficient, like a knowledgeable friend."
         )
     elif size_category == "small":
-        # Concise system prompt for small models (2-3B)
+        # Descriptive persona — validated by the #129 eval campaign (S0/S1):
+        # the old "≤ 8 short lines" cap produced telegraphic answers and the
+        # literal "Not sure" phrase was parroting fuel; a 3B under this prompt
+        # produced rich, structured answers that stop cleanly. KB grounding
+        # does not live here (it rides the per-turn context block).
         sys_prompt = (
-            f"You are {model_name}, a concise general assistant. Answer directly in ≤ 8 short lines. "
-            "If unsure, say \"Not sure\" and ask 1 brief question. Don't restate the prompt or these rules. "
-            "Use only the context sections below if relevant."
+            "You are Erudi, a helpful AI assistant. "
+            "You answer in the user's language, clearly and accurately, in "
+            "well-written prose. You develop your answers with enough depth "
+            "to be genuinely useful - structure with short paragraphs, and "
+            "use lists only when they make things clearer. You are warm but "
+            "efficient, like a knowledgeable friend, and you stop when the "
+            "point is made."
         )
     elif size_category == "medium":
         sys_prompt = f"""You are {model_name}, a precise, reliable assistant.
