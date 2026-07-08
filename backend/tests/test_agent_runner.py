@@ -475,6 +475,88 @@ async def test_tool_call_round_trip_streams_only_final_text(monkeypatch):
     assert tool_messages and tool_messages[-1].text == "5763"
 
 
+async def test_empty_final_answer_falls_back_to_last_tool_result(monkeypatch):
+    """#90: the model calls the calculator (which returns 4074), then emits an
+    EMPTY final answer (the Gemma pattern: successful tool call, then a
+    ``finish_reason=stop`` message with no content). The runner must fall back
+    to the LAST tool result so a correct answer is still delivered/persisted
+    instead of yielding nothing (which would crash the empty-content guard)."""
+    tool_call_msg = AIMessage(
+        content="",
+        tool_calls=[{
+            "name": "calculator",
+            "args": {"expression": "1240 + 1378 + 1456"},
+            "id": "call-1",
+        }],
+    )
+    # Second model turn is EMPTY -> the fallback must kick in.
+    fake = _RecordingModel(messages=iter([tool_call_msg, AIMessage(content="")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    out = [
+        t
+        async for t in runner.astream_text(
+            llm=_Llm(), user_message="1240 + 1378 + 1456 ?",
+            system_prompt="sys", params=_PARAMS, thread_id="c-empty-final",
+            tools=[calculator],
+        )
+    ]
+
+    # The tool result (4074) is delivered as the answer, sober (no prefix/JSON).
+    assert "".join(out).strip() == "4074"
+    assert ERROR_SENTINEL not in "".join(out)
+
+
+async def test_empty_final_answer_no_tool_yields_nothing(monkeypatch):
+    """#90 boundary: an empty final answer with NO tool run this turn is a
+    genuine failure — there is nothing to fall back to, so the runner must NOT
+    fabricate content. Behavior is unchanged: the stream yields no text (the
+    downstream empty-content guard still applies at persistence)."""
+    fake = ToolableFakeChatModel(messages=iter([AIMessage(content="")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    out = [
+        t
+        async for t in runner.astream_text(
+            llm=_Llm(), user_message="hi", system_prompt="s",
+            params=_PARAMS, thread_id="c-empty-notool", tools=[],
+        )
+    ]
+
+    assert "".join(out) == ""
+    assert ERROR_SENTINEL not in "".join(out)
+
+
+async def test_non_empty_final_with_tool_does_not_append_tool_result(monkeypatch):
+    """#90 guard: when the model DOES produce a real final answer after a tool
+    call, the fallback must not fire — the raw tool result is never appended to
+    a valid answer."""
+    tool_call_msg = AIMessage(
+        content="",
+        tool_calls=[{"name": "calculator", "args": {"expression": "2 + 2"}, "id": "c1"}],
+    )
+    fake = _RecordingModel(
+        messages=iter([tool_call_msg, AIMessage(content="The answer is four.")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    out = "".join([
+        t
+        async for t in runner.astream_text(
+            llm=_Llm(), user_message="2 + 2 ?", system_prompt="s",
+            params=_PARAMS, thread_id="c-nonempty", tools=[calculator],
+        )
+    ])
+
+    assert out == "The answer is four."
+    # calculator("2 + 2") == "4"; if the fallback wrongly fired it would be
+    # appended here. Its absence proves the fallback stayed dormant.
+    assert "4" not in out
+
+
 # ===================== Vision input (mlx-vlm swap, image content-parts) =====================
 
 _IMG = {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgoAAAANS"}}
