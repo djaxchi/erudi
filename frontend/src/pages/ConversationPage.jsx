@@ -38,6 +38,10 @@ export default function ConversationPage() {
   // The conversation's assigned model id, recorded when the conversation loads.
   // The header picker's selected value is derived from this + `models` below.
   const [conversationLlmId, setConversationLlmId] = useState(null);
+  // Both load independently; the orphan check below only fires once each has
+  // resolved, so we never flash the "missing model" state during initial load.
+  const [conversationLoaded, setConversationLoaded] = useState(false);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
   const [settings, setSettings] = useState({
     temperature: 0.2,
     topP: 0.5,
@@ -94,7 +98,13 @@ export default function ConversationPage() {
     tracedFetch(`${API_BASE_URL}/llms/local`)
       .then((res) => res.json())
       .then((data) => {
-        setModels(data);
+        setModels(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        log.error("Failed to fetch models", err);
+      })
+      .finally(() => {
+        setModelsLoaded(true);
       });
   }, []);
 
@@ -421,6 +431,10 @@ export default function ConversationPage() {
           // dedicated effect above, so hydration no longer depends on which
           // of the two fetches lands first (#217).
           setConversationLlmId(conversation.llm_id);
+          // llm_id can be null after the model was deleted (conversations
+          // survive, no auto-fallback, #225). Marking the detail loaded lets
+          // the orphan check below decide whether to block the composer.
+          setConversationLoaded(true);
         }
       } catch (err) {
         log.error("Failed to fetch conversations", err);
@@ -572,6 +586,18 @@ export default function ConversationPage() {
     }
   };
 
+  // Orphaned conversation (#225): its assigned model was deleted (llm_id null)
+  // or no longer exists in the installed list. Sending is blocked and the header
+  // picker turns red until the user explicitly switches to an installed model.
+  // An assigned model whose weights are gone (an orphaned KB assistant,
+  // weights_available === false) can only fail, so it blocks the same way;
+  // undefined/null weights_available (remote or older backend) never blocks.
+  const assignedModel = models.find((m) => m.id === conversationLlmId);
+  const isModelOrphaned =
+    conversationLoaded &&
+    modelsLoaded &&
+    (conversationLlmId === null || !assignedModel || assignedModel.weights_available === false);
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar
@@ -621,6 +647,8 @@ export default function ConversationPage() {
             models={models}
             currentModel={currentModel}
             onModelChange={handleModelChange}
+            pickerAttention={isModelOrphaned}
+            pickerAttentionMessage="Please select a model"
           />
         </div>
 
@@ -746,7 +774,7 @@ export default function ConversationPage() {
           <div className="w-full max-w-lg">
             <QuestionInput
               onSend={handleAsk}
-              disabled={loading}
+              disabled={loading || isModelOrphaned}
               canAttachImages={canAttachImages(models.find((m) => m.name === currentModel))}
             />
           </div>

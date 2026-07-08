@@ -25,6 +25,7 @@ import { downloadErrorMessage } from "../utils/downloadStatus";
 import { createLogger } from "../utils/logger";
 import { splitByBase } from "../utils/modelCatalog";
 import { rankByFit, pickFlagships, applyCatalogFilters } from "../utils/hardwareFit";
+import { isKbAssistant, hasMissingWeights, findBaseModelName } from "../utils/modelWeights";
 
 export default function LandingPage() {
   const log = createLogger("LandingPage");
@@ -42,7 +43,11 @@ export default function LandingPage() {
   const [selectedModelInfo, setSelectedModelInfo] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
+  const [deleteConfirmation, setDeleteConfirmation] = useState({
+    show: false,
+    model: null,
+    dependents: null,
+  });
   const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
   const [communityOpen, setCommunityOpen] = useState(false);
   const [filters, setFilters] = useState({ size: "any", fitOnly: false });
@@ -108,6 +113,13 @@ export default function LandingPage() {
       lastUpdate: metadata.last_modified || "Unknown",
       isOnline: false,
       description: model.description,
+      // Orphan-model UX (#225/#208): `link` ties a KB assistant to the base
+      // model whose weights it uses; kb_id/is_attached_to_kb identify assistant
+      // rows; weights_available === false marks an orphan (weights deleted).
+      link: model.link,
+      kb_id: model.kb_id ?? null,
+      is_attached_to_kb: model.is_attached_to_kb === true,
+      weights_available: model.weights_available,
       metadata,
       rawMetadata: model.model_metadata,
     };
@@ -243,6 +255,10 @@ export default function LandingPage() {
   const filteredCommunity = applyCatalogFilters(communityModels, filters, range);
   const filtersActive = filters.size !== "any" || filters.fitOnly;
 
+  // Installed models an orphaned assistant can be re-bound to: local,
+  // non-assistant, weights still on disk (#225).
+  const rebindTargets = localModels.filter((m) => !isKbAssistant(m) && !hasMissingWeights(m));
+
   const machine = {
     chip: machineDetail?.mlx_chip_model
       ? `Apple ${machineDetail.mlx_chip_model}`
@@ -285,16 +301,40 @@ export default function LandingPage() {
   const handleChat = (model) => navigate(`/erudi/chat?model=${encodeURIComponent(model.name)}`);
   const handleKnowledgeBase = (model) =>
     navigate(`/erudi/attach_knowledge_base?model=${encodeURIComponent(model.name)}`);
-  const handleDelete = (model) => setDeleteConfirmation({ show: true, model });
+  // Guarded base delete (#225): pre-check the dependents endpoint so the
+  // confirmation dialog can list what the deletion orphans. Best-effort — if
+  // the pre-check fails the plain dialog opens and the DELETE's 409 below
+  // remains the safety net.
+  const handleDelete = async (model) => {
+    let dependents = null;
+    try {
+      const response = await tracedFetch(`${API_BASE_URL}/llms/${model.id}/dependents`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && Array.isArray(data.assistants) && data.assistants.length > 0) {
+          dependents = data;
+        }
+      }
+    } catch (error) {
+      log.warn("Dependents pre-check failed, falling back to the plain dialog:", error);
+    }
+    setDeleteConfirmation({ show: true, model, dependents });
+  };
 
   const confirmDelete = async () => {
     if (!deleteConfirmation.model) {
       return;
     }
     const modelToDelete = deleteConfirmation.model;
-    setDeleteConfirmation({ show: false, model: null });
+    // Confirming a dialog that listed dependents means "Delete anyway":
+    // the base goes, its assistants stay (orphaned) and conversations are kept.
+    const orphanDependents = Boolean(deleteConfirmation.dependents?.assistants?.length);
+    setDeleteConfirmation({ show: false, model: null, dependents: null });
     try {
-      const response = await tracedFetch(`${API_BASE_URL}/llms/${modelToDelete.id}`, {
+      const url = orphanDependents
+        ? `${API_BASE_URL}/llms/${modelToDelete.id}?orphan_dependents=true`
+        : `${API_BASE_URL}/llms/${modelToDelete.id}`;
+      const response = await tracedFetch(url, {
         method: "DELETE",
       });
       if (response.ok) {
@@ -303,6 +343,22 @@ export default function LandingPage() {
         if (localModelsRef.current) {
           localModelsRef.current.reloadLocalModels();
         }
+      } else if (response.status === 409) {
+        // Safety net: the pre-check missed dependents (raced or failed). The
+        // 409 payload carries the same dependents shape — reopen the dialog
+        // with it instead of surfacing an error.
+        let detail = null;
+        try {
+          const body = await response.json();
+          detail = body?.error?.detail ?? body?.detail ?? null;
+        } catch (parseError) {
+          log.error("Could not parse the delete-conflict payload:", parseError);
+        }
+        if (detail && Array.isArray(detail.assistants) && detail.assistants.length > 0) {
+          setDeleteConfirmation({ show: true, model: modelToDelete, dependents: detail });
+          return;
+        }
+        throw new Error(`Failed to delete model: ${response.status}`);
       } else {
         throw new Error(`Failed to delete model: ${response.status}`);
       }
@@ -314,7 +370,32 @@ export default function LandingPage() {
     }
   };
 
-  const cancelDelete = () => setDeleteConfirmation({ show: false, model: null });
+  const cancelDelete = () => setDeleteConfirmation({ show: false, model: null, dependents: null });
+
+  // Re-bind an orphaned KB assistant to another installed base model (#225):
+  // POST rebind, then refresh so the card leaves its "weights missing" state.
+  const handleRebind = async (assistant, target) => {
+    try {
+      const response = await tracedFetch(`${API_BASE_URL}/llms/${assistant.id}/rebind`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ new_base_llm_id: target.id }),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to rebind assistant: ${response.status}`);
+      }
+      setSuccessMessage(`${assistant.name} now uses the weights of ${target.name}.`);
+      await reloadLocalModels();
+      if (localModelsRef.current) {
+        localModelsRef.current.reloadLocalModels();
+      }
+    } catch (error) {
+      log.error("Failed to rebind assistant:", error);
+      setErrorMessage(
+        "Failed to re-bind the assistant. Please try again and contact the Erudi team for support."
+      );
+    }
+  };
   const handleToggleBrainSidebar = () => setBrainSidebarCollapsed(!brainSidebarCollapsed);
 
   // Left-rail Explore index scrolls the main panel to a section.
@@ -397,6 +478,11 @@ export default function LandingPage() {
                     onInfo={handleInfo}
                     onKnowledgeBase={handleKnowledgeBase}
                     onDelete={handleDelete}
+                    baseModelName={
+                      isKbAssistant(model) ? findBaseModelName(model, localModels) : null
+                    }
+                    rebindTargets={rebindTargets}
+                    onRebind={handleRebind}
                   />
                 ))}
               </div>
@@ -509,6 +595,7 @@ export default function LandingPage() {
       <DeleteModelModal
         isOpen={deleteConfirmation.show}
         model={deleteConfirmation.model}
+        dependents={deleteConfirmation.dependents}
         onConfirm={confirmDelete}
         onCancel={cancelDelete}
       />
