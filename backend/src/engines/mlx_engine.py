@@ -296,6 +296,18 @@ class MLX_Engine(BaseChatServerEngine):
             "--port", str(port),
             "--log-level", "INFO",
         ]
+        # Keep <think>...</think> INLINE in the answer stream so the runner's
+        # single streaming splitter handles reasoning uniformly across engines
+        # (#90). mlx_vlm's server-side _split_thinking is driven by the env var
+        # MLX_VLM_THINKING_START_TOKEN with <think> auto-detection; pointing it at
+        # a sentinel that can never appear in real output disables the split
+        # without patching mlx_vlm. The mp child inherits os.environ at spawn, so
+        # setting it here reaches the server. Printable-only: env values reject
+        # embedded null bytes on every platform. NOTE: needs a ~15-min
+        # confirmation on a Mac at implementation time -- the sentinel is
+        # trivially adjustable if a given mlx_vlm build reads a different
+        # variable (design #90).
+        os.environ["MLX_VLM_THINKING_START_TOKEN"] = "<<erudi:never-a-thinking-tag>>"
         proc = mp.Process(target=run_mlx_vlm_server, args=(argv,), daemon=False)
         proc.start()
         logger.info(

@@ -177,6 +177,12 @@ class CUDA_Engine(BaseLlamaCppEngine):
         ``--jinja`` enables the model's own chat template and with it
         OpenAI-style function calling (the agent's calculator tool) —
         without it llama-server never emits ``tool_calls``.
+
+        ``--reasoning-format none`` keeps ``<think>...</think>`` INLINE in the
+        answer stream (#90). The default (``auto``) extracts reasoning into a
+        dedicated ``delta.reasoning_content`` field that ChatOpenAI drops, so the
+        thinking would be silently lost. Inline, the runner's single streaming
+        splitter separates thinking from answer uniformly across engines.
         """
         return [
             str(llama_server),
@@ -188,6 +194,7 @@ class CUDA_Engine(BaseLlamaCppEngine):
             "--threads", str(threads),
             "-ngl", str(gpu_layers),
             "--jinja",
+            "--reasoning-format", "none",
         ]
 
     @classmethod
