@@ -20,6 +20,11 @@ export default function HeaderBar({
   models = [],
   currentModel = "",
   onModelChange,
+  // Attention state for the model picker (#225): when the open conversation's
+  // model was deleted, the picker turns red and a short prompt sits beside it,
+  // steering the user to pick a model before the composer will unblock.
+  pickerAttention = false,
+  pickerAttentionMessage = "",
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [temperature, setTemperature] = useState(initialTemperature);
@@ -235,7 +240,9 @@ export default function HeaderBar({
                 pillPy,
                 pillText,
                 "border transition",
-                "bg-white/5 hover:bg-white/10 border-white/10 hover:border-white/20",
+                pickerAttention
+                  ? "bg-red-500/10 hover:bg-red-500/15 border-red-500/70 hover:border-red-500"
+                  : "bg-white/5 hover:bg-white/10 border-white/10 hover:border-white/20",
                 "backdrop-blur-sm text-gray-100",
                 "max-w-[100%] cursor-pointer",
               ].join(" ")}
@@ -277,6 +284,12 @@ export default function HeaderBar({
                 </div>
               )}
             </div>
+
+            {pickerAttention && pickerAttentionMessage && (
+              <span role="alert" className="text-xs font-medium text-red-400 whitespace-nowrap">
+                {pickerAttentionMessage}
+              </span>
+            )}
           </div>
 
           <button
@@ -495,4 +508,6 @@ HeaderBar.propTypes = {
   ),
   currentModel: PropTypes.string,
   onModelChange: PropTypes.func,
+  pickerAttention: PropTypes.bool,
+  pickerAttentionMessage: PropTypes.string,
 };

@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import PropTypes from "prop-types";
 import GradientBox from "./GradientBox";
-import { Download, Info, BookOpen, MessageSquare, Plus, Trash2 } from "lucide-react";
+import { Download, Info, BookOpen, MessageSquare, Plus, Trash2, Link2 } from "lucide-react";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
+import { isKbAssistant, hasMissingWeights } from "../utils/modelWeights";
 
 /**
  * ModelCard component - displays model information with actions
@@ -14,6 +15,9 @@ import { useDownloadModal } from "../contexts/DownloadModalContext";
  * @param {Function} onKnowledgeBase - Callback when knowledge base button clicked
  * @param {Function} onDelete - Callback when delete button clicked
  * @param {Function} onClick - Callback when card clicked
+ * @param {string} baseModelName - KB assistants: name of the installed base whose weights it uses
+ * @param {Array} rebindTargets - Installed base models an orphaned assistant can be re-bound to
+ * @param {Function} onRebind - Callback (assistant, target) when a re-bind target is picked
  */
 function ModelCard({
   model,
@@ -24,9 +28,19 @@ function ModelCard({
   onKnowledgeBase,
   onDelete,
   onClick: _onClick,
+  baseModelName = null,
+  rebindTargets = [],
+  onRebind,
 }) {
   const { open } = useDownloadModal();
+  const [rebindOpen, setRebindOpen] = useState(false);
   const unavailable = model?.runnable === false;
+  // Orphan-model UX (#225/#208): a KB assistant uses its base model's weights
+  // (its own link is a copy — it owns no disk space). When those weights are
+  // gone, Chat is blocked (it can only fail) and a re-bind picker of installed
+  // base models appears.
+  const isAssistant = isKbAssistant(model);
+  const weightsMissing = type === "local" && hasMissingWeights(model);
   const handleDownload = () => {
     if (model) {
       open(model, {
@@ -63,6 +77,11 @@ function ModelCard({
               Unavailable on your hardware
             </span>
           )}
+          {weightsMissing && (
+            <span className="ml-2 flex-shrink-0 text-[10px] uppercase tracking-wide text-red-400/90 border border-red-500/40 rounded px-1.5 py-0.5">
+              Weights missing
+            </span>
+          )}
           {type === "local" && (
             <button
               className="p-1 bg-red-500/20 hover:bg-red-500/40 rounded-lg transition-colors ml-8"
@@ -83,8 +102,17 @@ function ModelCard({
             <p className="text-blue-300 font-medium mb-2 text-xs">{model.description}</p>
           )}
 
-          {/* Core metadata */}
-          <p>Size: {model.size}</p>
+          {/* Core metadata. Assistant cards own no disk space — they use the
+              base model's weights (#208), so no Size line for them. */}
+          {type === "local" && isAssistant ? (
+            weightsMissing ? (
+              <p className="text-red-400 font-medium">Model weights missing</p>
+            ) : (
+              <p>Uses the weights of {baseModelName || "its base model"}</p>
+            )
+          ) : (
+            <p>Size: {model.size}</p>
+          )}
 
           {/* Additional metadata for remote models */}
           {type !== "local" && (
@@ -118,9 +146,10 @@ function ModelCard({
                 <BookOpen className="w-4 h-4 text-white" />
               </button>
               <button
-                className="p-1 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
-                onClick={() => onChat && onChat(model)}
-                title="Chat"
+                className={`p-1 rounded-lg transition-colors ${weightsMissing ? "bg-white/5 opacity-40 cursor-not-allowed" : "bg-white/10 hover:bg-white/20"}`}
+                onClick={() => !weightsMissing && onChat && onChat(model)}
+                disabled={weightsMissing}
+                title={weightsMissing ? "Model weights missing - re-bind to chat" : "Chat"}
               >
                 <MessageSquare className="w-4 h-4 text-white" />
               </button>
@@ -131,6 +160,40 @@ function ModelCard({
               >
                 <Info className="w-4 h-4 text-white" />
               </button>
+              {isAssistant && weightsMissing && (
+                <div className="relative ml-auto">
+                  <button
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg transition-colors"
+                    onClick={() => setRebindOpen((o) => !o)}
+                    title="Re-bind to another installed model"
+                  >
+                    <Link2 className="w-3.5 h-3.5" />
+                    Re-bind
+                  </button>
+                  {rebindOpen && (
+                    <div className="absolute bottom-full right-0 mb-1 w-48 bg-[#2a2a2a] border border-white/20 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
+                      {rebindTargets.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-gray-400">
+                          No installed base model available
+                        </p>
+                      ) : (
+                        rebindTargets.map((target) => (
+                          <div
+                            key={target.id}
+                            className="px-3 py-2 text-xs hover:bg-white/10 cursor-pointer text-gray-100 border-b border-white/10 last:border-b-0"
+                            onClick={() => {
+                              setRebindOpen(false);
+                              onRebind && onRebind(model, target);
+                            }}
+                          >
+                            {target.name}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -169,6 +232,10 @@ ModelCard.propTypes = {
     parameters: PropTypes.string,
     lastUpdate: PropTypes.string,
     runnable: PropTypes.bool,
+    link: PropTypes.string,
+    kb_id: PropTypes.number,
+    is_attached_to_kb: PropTypes.bool,
+    weights_available: PropTypes.bool,
   }).isRequired,
   type: PropTypes.oneOf(["base", "local", "add"]),
   onDownload: PropTypes.func,
@@ -177,6 +244,14 @@ ModelCard.propTypes = {
   onKnowledgeBase: PropTypes.func,
   onDelete: PropTypes.func,
   onClick: PropTypes.func,
+  baseModelName: PropTypes.string,
+  rebindTargets: PropTypes.arrayOf(
+    PropTypes.shape({
+      id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+      name: PropTypes.string.isRequired,
+    })
+  ),
+  onRebind: PropTypes.func,
 };
 
 export default ModelCard;
