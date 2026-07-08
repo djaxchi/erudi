@@ -8,6 +8,7 @@ import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import { Copy, Check, Star } from "lucide-react";
 import TypingIndicator from "../components/TypingIndicator";
 import MarkdownRenderer from "../components/MarkdownRenderer";
+import TraceStrip from "../components/TraceStrip";
 import { API_BASE_URL } from "../config/api.js";
 import apiClient, { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
@@ -217,6 +218,11 @@ export default function ConversationPage() {
         id: Date.now() + 1,
         sender: "llm",
         content: "",
+        // Live NDJSON trace (#90): thinking / tool_call / tool_result events
+        // collected as they stream, replayed by the TraceStrip above the bubble.
+        // `streaming` gates the strip's expanded-while-only-content behavior.
+        trace: [],
+        streaming: true,
       };
 
       setMessages((prev) => [...prev, userMessage, assistantMessage]);
@@ -285,50 +291,130 @@ export default function ConversationPage() {
         });
 
         if (responseRes.ok) {
+          // NDJSON reader (#90): the body is one JSON event per line
+          // (application/x-ndjson). We split on "\n" and carry the trailing
+          // partial line across reads. Answer events stream into the bubble
+          // exactly as raw text did before; thinking / tool_call / tool_result
+          // accrue into the message's live trace; error maps to the red bubble;
+          // done is terminal. Unknown event types are ignored (forward compat).
+          // NOTE: the title-gen reader above is a SEPARATE plain-text loop.
           const reader = responseRes.body.getReader();
           const decoder = new TextDecoder("utf-8");
-          let fullText = "";
-          let gotFirstChunk = false;
+          let buffer = ""; // partial-line carry across reads
+          let answerText = ""; // accumulated answer bubble text
+          const traceEvents = []; // ordered thinking / tool_call / tool_result
+          let gotFirstEvent = false;
+          let sawError = false;
+          let sawDone = false;
+
+          // Push the current accumulators onto the streaming assistant message.
+          const flushMessage = () => {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessage.id
+                  ? { ...msg, content: answerText, trace: traceEvents.slice() }
+                  : msg
+              )
+            );
+          };
+
+          const handleEvent = (evt) => {
+            if (!evt || typeof evt !== "object") {
+              return;
+            }
+            switch (evt.t) {
+              case "answer":
+                answerText += evt.text || "";
+                break;
+              case "thinking":
+              case "tool_call":
+              case "tool_result":
+                traceEvents.push(evt);
+                break;
+              case "error":
+                // The wire error event replaces the old in-band sentinel; map it
+                // back to the SAME red bubble the persisted sentinel produces
+                // (getDisplayContent / bubbleClass detect the sentinel substring).
+                // The backend error text is already sentinel-prefixed.
+                sawError = true;
+                answerText =
+                  evt.text ||
+                  "[ERROR_MESSAGE_SYSTEM] I apologize, but I encountered an error while generating a response. Please try asking your question again.";
+                break;
+              case "done":
+                sawDone = true;
+                break;
+              default:
+                // Unknown event type: ignore for forward compatibility.
+                break;
+            }
+          };
+
+          const processLine = (rawLine) => {
+            const line = rawLine.trim();
+            if (!line) {
+              return;
+            }
+            let evt;
+            try {
+              evt = JSON.parse(line);
+            } catch (parseError) {
+              log.error("Failed to parse NDJSON line", parseError);
+              return;
+            }
+            handleEvent(evt);
+            if (!gotFirstEvent) {
+              gotFirstEvent = true;
+              setLoading(false);
+              setFirstReplyPending(false);
+            }
+            flushMessage();
+          };
 
           try {
             let responseDone = false;
-            while (!responseDone) {
+            while (!responseDone && !sawDone) {
               const { done, value } = await reader.read();
               responseDone = done;
               if (done) {
                 break;
               }
 
-              const chunk = decoder.decode(value, { stream: true });
-              fullText += chunk;
-
-              if (!gotFirstChunk) {
-                gotFirstChunk = true;
-                setLoading(false);
-                setFirstReplyPending(false);
+              buffer += decoder.decode(value, { stream: true });
+              let newlineIdx;
+              while (!sawDone && (newlineIdx = buffer.indexOf("\n")) !== -1) {
+                const rawLine = buffer.slice(0, newlineIdx);
+                buffer = buffer.slice(newlineIdx + 1);
+                processLine(rawLine);
               }
-
-              const currentText = fullText;
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessage.id ? { ...msg, content: currentText } : msg
-                )
-              );
+            }
+            // Defensive flush of any trailing line (NDJSON ends every line with
+            // "\n", so this normally no-ops).
+            if (!sawDone && buffer.trim()) {
+              processLine(buffer);
+              buffer = "";
             }
           } catch (streamError) {
             log.error("Streaming error during response generation", streamError);
-            fullText +=
+            answerText +=
               "\n\n[ERROR_MESSAGE_SYSTEM] Connection interrupted while generating response.";
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === assistantMessage.id ? { ...msg, content: fullText } : msg
-              )
-            );
+            sawError = true;
+            flushMessage();
           } finally {
-            assistantMessage.content = fullText;
+            assistantMessage.content = answerText;
+            // Turn is over: stop the live strip (it settles to the collapsed
+            // summary) and drop the trace on an error turn to match persisted
+            // history (the backend persists no trace for error turns).
             setMessages((prev) =>
               prev.map((msg) =>
-                msg.id === assistantMessage.id ? { ...msg, content: fullText } : msg
+                msg.id === assistantMessage.id
+                  ? {
+                      ...msg,
+                      content: answerText,
+                      trace: sawError ? null : traceEvents.slice(),
+                      streaming: false,
+                    }
+                  : msg
               )
             );
           }
@@ -348,7 +434,9 @@ export default function ConversationPage() {
             "[ERROR_MESSAGE_SYSTEM] I apologize, but I encountered an error while generating a response. Please try asking your question again.";
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === assistantMessage.id ? { ...msg, content: assistantMessage.content } : msg
+              msg.id === assistantMessage.id
+                ? { ...msg, content: assistantMessage.content, trace: null, streaming: false }
+                : msg
             )
           );
         }
@@ -664,18 +752,31 @@ export default function ConversationPage() {
           <div className="flex flex-col gap-6">
             {messages.map((msg) => {
               const isUser = msg.sender === "user";
+              const isError = !isUser && msg.content.includes("[ERROR_MESSAGE_SYSTEM]");
               const alignmentClass = isUser ? "items-end" : "items-start";
               const bubbleClass = isUser
                 ? "bg-[#191919] ml-auto rounded-tr-none text-white"
-                : msg.content.includes("[ERROR_MESSAGE_SYSTEM]")
+                : isError
                   ? "text-red-400 mr-auto rounded-tl-none"
                   : " text-white mr-auto rounded-tl-none";
 
-              // Show TypingIndicator for assistant messages that are loading
-              const showTypingIndicator = !isUser && loading && !msg.content;
+              // Reasoning/trace strip (#90): only for assistant turns that carried
+              // non-answer activity, never for error turns (they have no trace,
+              // matching persisted history). `traceLive` is true while the strip
+              // is the only content (streaming, no answer yet) -> expanded; it
+              // flips false on the first answer event -> auto-collapse.
+              const traceEvents = !isUser ? msg.trace : null;
+              const showTrace =
+                !isUser && !isError && Array.isArray(traceEvents) && traceEvents.length > 0;
+              const traceLive = showTrace && !!msg.streaming && !msg.content;
+
+              // Show TypingIndicator for assistant messages that are loading, but
+              // not once the live trace strip has taken over the pre-answer wait.
+              const showTypingIndicator = !isUser && loading && !msg.content && !showTrace;
 
               return (
                 <div key={msg.id} className={`group flex flex-col mb-2 ${alignmentClass}`}>
+                  {showTrace && <TraceStrip events={traceEvents} live={traceLive} />}
                   <div
                     className={`break-words w-fit max-w-[75%] p-4 rounded-2xl overflow-wrap break-word ${bubbleClass}`}
                   >
