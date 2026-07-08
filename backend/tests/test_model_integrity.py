@@ -21,6 +21,7 @@ import pytest
 from src.core import config
 from src.core.exceptions import EngineException
 from src.engines import integrity
+from src.utils.hf_model_metadata import measure_dir_size_gb
 
 pytestmark = pytest.mark.unit
 
@@ -240,6 +241,82 @@ class TestDownloadCompletionGate:
         # Must not raise and must not delete anything when the engine has no gate.
         _assert_downloaded_artifact_ok(final_dir, tmp_path / "temp")
         assert final_dir.exists()
+
+
+# =====================================================================
+# UNIT -- download completion rewrites the displayed size from disk (#220)
+# =====================================================================
+
+class TestDownloadCompletionSize:
+    """After a (fake) download passes the #88 gate, the model's displayed size is
+    the REAL on-disk footprint, not the catalog-time guess. Drives the actual
+    ``_run_download_task`` with in-memory rows (SessionLocal is not DB-bound in
+    tests) so the exact finalization path is exercised."""
+
+    def test_run_download_task_rewrites_size_from_disk(self, tmp_path, monkeypatch):
+        from src.domains.llms import endpoints
+        from src.domains.llms import repository
+        from src.engines.cpu_engine import CPU_Engine
+        from src.entities.Llm import Llm
+        from src.entities.DownloadJob import DownloadJobModel
+
+        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
+        # Keep capability detection hermetic and fast (no real model load).
+        monkeypatch.setattr(repository, "detect_supports_tools", lambda link: None)
+        monkeypatch.setattr(repository, "detect_supports_vision", lambda link: None)
+
+        # A "completed" download: a valid GGUF on disk so the #88 gate passes.
+        final_dir = _write_gguf_dir(tmp_path)
+        temp_dir = tmp_path / "temp"
+        temp_dir.mkdir()
+
+        llm = Llm(
+            name="Model", local=2, type="qwen", param_size=7.0,
+            link=str(final_dir),
+            model_metadata="Model ID: org/model\nSize: ~40.2 GB\nParameters: 7B",
+        )
+        job = DownloadJobModel(
+            remote_model_id="org/model", local_model_id=1,
+            remote_model_link="org/model",
+            temp_local_model_link=str(temp_dir),
+            final_local_model_link=str(final_dir),
+            status="running",
+        )
+
+        class _FakeQuery:
+            def __init__(self, obj):
+                self._obj = obj
+
+            def get(self, _id):
+                return self._obj
+
+        class _FakeSession:
+            def query(self, model):
+                return _FakeQuery(job if model is DownloadJobModel else llm)
+
+            def commit(self):
+                pass
+
+            def close(self):
+                pass
+
+        monkeypatch.setattr(endpoints, "SessionLocal", lambda: _FakeSession())
+
+        async def _fake_download(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(endpoints, "download_llm", _fake_download)
+
+        endpoints._run_download_task("org/model", 1, temp_dir, final_dir, job_id=1)
+
+        # Finalized ready, with the catalog guess replaced by the measured size.
+        assert llm.local == 1
+        assert job.status == "completed"
+        assert "40.2" not in llm.model_metadata          # catalog guess gone
+        assert "Disk Size GB:" in llm.model_metadata      # numeric field added
+        assert "Parameters: 7B" in llm.model_metadata     # other lines preserved
+        measured = measure_dir_size_gb(final_dir)
+        assert f"Disk Size GB: {measured:.2f}" in llm.model_metadata
 
 
 # =====================================================================

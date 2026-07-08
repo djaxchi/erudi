@@ -74,7 +74,8 @@ Notes:
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Dict, Tuple
+from pathlib import Path
+from typing import Optional, Dict, Tuple, Union
 from huggingface_hub import ModelInfo
 
 from src.core.logging import logger
@@ -453,11 +454,15 @@ def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
     """
     try:
         logger.debug(f"Fetching disk size for quantized repo: {link_hf_quant_repo}")
-        
+
         hf_api = get_hf_api()
         repo_info = hf_api.repo_info(link_hf_quant_repo, files_metadata=True)
-        total_size_bytes = sum(file.size for file in repo_info.siblings if file.size)
-        
+        # Sum ONLY the artifact the downloader would actually fetch, not the whole
+        # repo (#220/#170): a GGUF multi-quant repo can be 20-40 GB while we pull a
+        # single ~1.8 GB quant. Single-artifact repos (mlx-community) select every
+        # file, so the whole-repo sum is preserved for them.
+        total_size_bytes = _chosen_artifact_bytes(repo_info)
+
         # Convert to GB with high precision
         size_gb = total_size_bytes / (1024**3)
         
@@ -777,6 +782,112 @@ Last Modified: {model_info.last_modified or 'Unknown'}"""
         return error_msg
 
 
+# ============ On-disk size (measured reality, #220) ============
+
+def _chosen_artifact_bytes(repo_info) -> int:
+    """Total bytes of the files the downloader would actually fetch from a repo.
+
+    Mirrors the download path's file selection (``_select_download_files`` /
+    ``pick_best_gguf`` in ``domains.llms.services``, the #170 fix) so catalog-time
+    size matches the installed size: for GGUF multi-quant repos this is the single
+    best quant (+ mmproj + small aux), NOT the whole repo. For single-artifact
+    repos (e.g. mlx-community) the selection is every file, so the whole-repo sum
+    is preserved. Falls back to the whole-repo sum when nothing is selectable
+    (e.g. a "gguf" repo with no .gguf) rather than reporting zero.
+
+    The selection helpers are imported lazily to keep this utility module free of a
+    top-level dependency on the llms domain (utils sits below domains in the layering).
+    """
+    from src.domains.llms.services import _select_download_files, FILES_TO_EXCLUDE
+    from src.core import config
+
+    file_sizes = {
+        s.rfilename: s.size
+        for s in repo_info.siblings
+        if getattr(s, "size", None) and s.rfilename not in FILES_TO_EXCLUDE
+    }
+    all_repo_files = [s.rfilename for s in repo_info.siblings]
+    uses_gguf = bool(getattr(config.LLM_Engine, "USES_GGUF", False))
+    selection = _select_download_files(all_repo_files, file_sizes, uses_gguf)
+    chosen = [f for f in selection.files if f in file_sizes]
+    if not chosen:
+        return sum(file_sizes.values())
+    return sum(file_sizes.get(f, 0) for f in chosen)
+
+
+def measure_dir_size_gb(path: Union[str, Path]) -> float:
+    """Measure the real on-disk footprint of a model directory, recursively, in GB.
+
+    Sums the size of every regular file under ``path`` (base-1024 GB, matching the
+    ``~X.X GB`` catalog format). Defensive by design: a missing path returns 0.0 and
+    a per-file stat error is skipped, so an orphaned/removed model dir never crashes
+    the caller (orphans are legitimate since #225/#208).
+
+    Args:
+        path: Directory (or single file) to measure.
+
+    Returns:
+        Size in gigabytes (0.0 if the path does not exist or is empty).
+    """
+    root = Path(path)
+    if not root.exists():
+        return 0.0
+    if root.is_file():
+        try:
+            return root.stat().st_size / (1024**3)
+        except OSError:
+            return 0.0
+    total_bytes = 0
+    for entry in root.rglob("*"):
+        try:
+            if entry.is_file():
+                total_bytes += entry.stat().st_size
+        except OSError:
+            continue
+    return total_bytes / (1024**3)
+
+
+def rewrite_size_in_metadata(metadata_str: Optional[str], size_gb: float) -> str:
+    """Return ``metadata_str`` with its size rewritten to a measured value (#220).
+
+    The metadata is the multi-line "Key: value" STRING the frontend parses
+    (``parseMetadata`` in LandingPage.jsx). This replaces the ``Size:`` line in
+    place with ``Size: ~X.X GB`` (same human format), and maintains a numeric
+    ``Disk Size GB: X.XX`` line for future consumers. Both lines are appended when
+    absent; every other line is preserved in order.
+
+    Args:
+        metadata_str: Existing metadata string (may be None/empty).
+        size_gb: Measured on-disk size in gigabytes.
+
+    Returns:
+        The rewritten metadata string.
+    """
+    size_line = f"Size: ~{size_gb:.1f} GB"
+    disk_line = f"Disk Size GB: {size_gb:.2f}"
+    if not metadata_str:
+        return f"{size_line}\n{disk_line}"
+
+    out = []
+    saw_size = False
+    saw_disk = False
+    for line in metadata_str.split("\n"):
+        key = line.split(":", 1)[0].strip().lower() if ":" in line else ""
+        if key == "size":
+            out.append(size_line)
+            saw_size = True
+        elif key == "disk size gb":
+            out.append(disk_line)
+            saw_disk = True
+        else:
+            out.append(line)
+    if not saw_size:
+        out.append(size_line)
+    if not saw_disk:
+        out.append(disk_line)
+    return "\n".join(out)
+
+
 # ============ Module Exports ============
 
 __all__ = [
@@ -789,6 +900,9 @@ __all__ = [
     "get_disk_size_after_quant",
     "get_model_size_estimate",
     "format_model_info_metadata",
+    # On-disk size (measured reality)
+    "measure_dir_size_gb",
+    "rewrite_size_in_metadata",
     # Helper functions
     "parse_quantization_type",
     "calculate_size_from_parameters",

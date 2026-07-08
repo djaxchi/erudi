@@ -111,7 +111,9 @@ from src.domains.llms.services import download_llm, cancel_download_job
 from src.domains.llms.hf_search import search_huggingface
 from src.domains.llms.repository import Llm_Repository, Download_Job_Repository
 from src.domains.knowledge_base.repository import COPIED_FIELDS
-from src.utils.hf_model_metadata import humanize_model_name
+from src.utils.hf_model_metadata import (
+    humanize_model_name, measure_dir_size_gb, rewrite_size_in_metadata,
+)
 
 from src.core.logging import logger
 from src.core import config
@@ -211,6 +213,13 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
             if llm_obj:
                 llm_obj.supports_tools = detect_supports_tools(llm_obj.link)
                 llm_obj.supports_vision = detect_supports_vision(llm_obj.link)
+                # Rewrite the displayed size from the REAL on-disk footprint (#220):
+                # the catalog value was a whole-repo/estimate guess, never measured.
+                # KB assistants inherit the corrected value via COPIED_FIELDS.
+                measured_gb = measure_dir_size_gb(final_save_dir)
+                if measured_gb > 0:
+                    llm_obj.model_metadata = rewrite_size_in_metadata(
+                        llm_obj.model_metadata, measured_gb)
                 llm_obj.local = 1
             job_obj.status = "completed"
             job_obj.progress = 100.0

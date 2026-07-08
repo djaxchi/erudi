@@ -55,6 +55,7 @@ import re
 import shutil
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 from dataclasses import dataclass
 
@@ -77,6 +78,8 @@ from src.utils.hf_model_metadata import (
     format_model_info_metadata,
     extract_parameter_pattern,
     humanize_model_name,
+    measure_dir_size_gb,
+    rewrite_size_in_metadata,
     ParameterScale,
 )
 from src.domains.hardware.repository import Hardware_Repository
@@ -1204,6 +1207,55 @@ class Database_Seeder:
                 db.commit()
         return res
 
+    def backfill_local_model_sizes(self, db: Session) -> int:
+        """One-shot: correct already-downloaded models' displayed size from disk (#220).
+
+        Legacy local rows carry a catalog-time size guess (whole-repo sum or an
+        FP16-ish estimate) that was NEVER measured. For every local (local==1)
+        model whose weights still exist, measure the real on-disk footprint and
+        rewrite ``metadata.size`` / ``disk_size_gb`` only when it diverges from the
+        stored value. A handful of local dirs -> a cheap filesystem walk, so boot
+        is not slowed measurably. Defensive: missing dirs are skipped silently
+        (orphans are legitimate since #225/#208) and any per-row error is
+        swallowed so the backfill never blocks boot.
+
+        Returns:
+            Number of rows whose metadata was corrected.
+        """
+        corrected = 0
+        measured_cache: Dict[str, float] = {}
+        try:
+            local_models = db.query(Llm).filter(Llm.local == 1).all()
+        except Exception as e:
+            logger.warning(f"Model-size backfill skipped (query failed): {e}")
+            return 0
+
+        for llm in local_models:
+            try:
+                link = llm.link
+                if not link or not Path(link).is_dir():
+                    continue
+                measured = measured_cache.get(link)
+                if measured is None:
+                    measured = measure_dir_size_gb(link)
+                    measured_cache[link] = measured
+                if measured <= 0:
+                    continue
+                new_meta = rewrite_size_in_metadata(llm.model_metadata, measured)
+                if new_meta != llm.model_metadata:
+                    llm.model_metadata = new_meta
+                    corrected += 1
+            except Exception as e:
+                logger.warning(
+                    f"Model-size backfill skipped for LLM {getattr(llm, 'id', '?')}: {e}"
+                )
+                continue
+
+        if corrected:
+            db.commit()
+        logger.info(f"Model-size backfill: {corrected} local model(s) corrected from disk")
+        return corrected
+
     async def populate_startup_data(
         self,
         db: Optional[Session] = None
@@ -1266,7 +1318,12 @@ class Database_Seeder:
             logger.info("Cleaning up unfinished jobs...")
             job_cleanup = Job_Cleanup_Service(db)
             results["jobs_cleaned"] = job_cleanup.cleanup_all_unfinished_jobs()
-            
+
+            # Correct already-downloaded models' displayed size from disk (#220):
+            # the catalog value was a guess, never measured. Runs after orphan
+            # cleanup so a to-be-removed dir is never measured; cheap and defensive.
+            self.backfill_local_model_sizes(db)
+
             # Initialize hardware
             logger.info("Initializing hardware info...")
             hw_init = Hardware_Initializer(db)

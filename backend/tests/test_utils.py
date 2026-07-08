@@ -17,16 +17,27 @@ from src.utils.prompt_utils import (
 )
 
 # HF metadata utils
+from src.core import config
 from src.utils.hf_model_metadata import (
     get_disk_size_after_quant,
     get_model_size_estimate,
     extract_parameter_pattern,
     format_model_info_metadata,
+    measure_dir_size_gb,
+    rewrite_size_in_metadata,
     ModelSize,
     ParameterCount,
     ParameterScale,
     QuantizationType,
 )
+
+
+def _sibling(rfilename, size):
+    """Build a fake HF repo sibling (rfilename + size) for repo_info mocks."""
+    s = Mock()
+    s.rfilename = rfilename
+    s.size = size
+    return s
 
 
 # ============ Prompt Utils Tests ============
@@ -214,19 +225,20 @@ class TestHFMetadataUtils:
         
         Should return ModelSize from API when available.
         """
-        # Mock HF API response
+        # Mock HF API response. Real rfilenames are required now that sizing sums
+        # only the chosen artifact (#220); these non-gguf names mean the whole-repo
+        # sum is used regardless of the active engine format.
         mock_hf_api = Mock()
         mock_repo_info = Mock()
-        mock_file1 = Mock()
-        mock_file1.size = 1_000_000_000  # 1 GB
-        mock_file2 = Mock()
-        mock_file2.size = 500_000_000  # 0.5 GB
-        mock_repo_info.siblings = [mock_file1, mock_file2]
+        mock_repo_info.siblings = [
+            _sibling("model-00001-of-00002.safetensors", 1_000_000_000),  # 1 GB
+            _sibling("config.json", 500_000_000),                          # 0.5 GB
+        ]
         mock_hf_api.repo_info.return_value = mock_repo_info
         mock_get_hf_api.return_value = mock_hf_api
-        
+
         size = get_disk_size_after_quant("mlx-community/Test-Model-4bit")
-        
+
         assert isinstance(size, ModelSize)
         assert size.source == "api"
         assert not size.is_estimate
@@ -491,6 +503,137 @@ class TestHFMetadataUtils:
         
         params_m = ParameterCount(count=350.0, scale=ParameterScale.MILLION, is_estimate=False)
         assert abs(params_m.total_billions - 0.35) < 0.01
+
+
+# ============ Chosen-artifact catalog sizing (#220 secondary) ============
+
+class TestGetDiskSizeChosenArtifact:
+    """get_disk_size_after_quant must sum ONLY the artifact the downloader fetches.
+
+    For a GGUF multi-quant repo that is the single best quant (+ mmproj + small
+    aux), NOT the 20-40 GB whole repo (#220/#170). Single-artifact repos keep the
+    whole-repo sum. The active engine format drives the branch.
+    """
+
+    @patch('src.utils.hf_model_metadata.get_hf_api')
+    def test_gguf_multiquant_sums_only_chosen_quant(self, mock_get_hf_api, monkeypatch):
+        class _GgufEngine:
+            USES_GGUF = True
+
+        monkeypatch.setattr(config, "LLM_Engine", _GgufEngine)
+        siblings = [
+            _sibling("model-F16.gguf", 8_000_000_000),
+            _sibling("model-Q8_0.gguf", 3_000_000_000),
+            _sibling("model-Q4_K_M.gguf", 800_000_000),
+            _sibling("mmproj-model-f16.gguf", 600_000_000),
+            _sibling("config.json", 2_000),
+        ]
+        repo_info = Mock()
+        repo_info.siblings = siblings
+        mock_api = Mock()
+        mock_api.repo_info.return_value = repo_info
+        mock_get_hf_api.return_value = mock_api
+
+        size = get_disk_size_after_quant("bartowski/Model-GGUF")
+
+        # Chosen = best quant (Q4_K_M) + mmproj + small aux (config.json).
+        expected_gb = (800_000_000 + 600_000_000 + 2_000) / (1024**3)
+        whole_repo_gb = sum(s.size for s in siblings) / (1024**3)
+        assert abs(size.size_gb - expected_gb) < 1e-6
+        assert size.size_gb < whole_repo_gb        # NOT the whole-repo sum
+        assert size.source == "api"
+
+    @patch('src.utils.hf_model_metadata.get_hf_api')
+    def test_single_artifact_repo_keeps_whole_repo_sum(self, mock_get_hf_api, monkeypatch):
+        class _MlxEngine:
+            USES_GGUF = False
+
+        monkeypatch.setattr(config, "LLM_Engine", _MlxEngine)
+        siblings = [
+            _sibling("model.safetensors", 1_800_000_000),
+            _sibling("config.json", 2_000),
+        ]
+        repo_info = Mock()
+        repo_info.siblings = siblings
+        mock_api = Mock()
+        mock_api.repo_info.return_value = repo_info
+        mock_get_hf_api.return_value = mock_api
+
+        size = get_disk_size_after_quant("mlx-community/Model-4bit")
+
+        expected_gb = sum(s.size for s in siblings) / (1024**3)
+        assert abs(size.size_gb - expected_gb) < 1e-6
+        assert size.source == "api"
+
+
+# ============ Measured on-disk size + metadata rewrite (#220 helpers) ============
+
+class TestMeasureDirSize:
+    """measure_dir_size_gb: real recursive byte count, defensive on missing paths."""
+
+    def test_sums_nested_files(self, tmp_path):
+        (tmp_path / "a.bin").write_bytes(b"\x00" * (1024**3 // 2))     # 0.5 GB
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "b.bin").write_bytes(b"\x00" * (1024**3 // 4))          # 0.25 GB
+        assert abs(measure_dir_size_gb(tmp_path) - 0.75) < 1e-6
+
+    def test_missing_dir_returns_zero(self, tmp_path):
+        assert measure_dir_size_gb(tmp_path / "does-not-exist") == 0.0
+
+    def test_empty_dir_returns_zero(self, tmp_path):
+        assert measure_dir_size_gb(tmp_path) == 0.0
+
+    def test_single_file_path(self, tmp_path):
+        f = tmp_path / "w.bin"
+        f.write_bytes(b"\x00" * (1024**3 // 2))                        # 0.5 GB
+        assert abs(measure_dir_size_gb(f) - 0.5) < 1e-6
+
+
+class TestRewriteSizeInMetadata:
+    """rewrite_size_in_metadata: replace/append Size, add disk_size_gb, keep rest."""
+
+    def test_replaces_existing_size_line(self):
+        meta = (
+            "Model ID: org/x\nSize: ~117.6 GB\nParameters: 8B\n"
+            "Last Modified: 2024-09-25 17:00:57+00:00"
+        )
+        out = rewrite_size_in_metadata(meta, 1.834)
+        lines = out.split("\n")
+        assert "Size: ~1.8 GB" in lines
+        assert "Disk Size GB: 1.83" in lines
+        # The old (wrong) size is gone and not duplicated.
+        assert sum(1 for line in lines if line.startswith("Size:")) == 1
+        assert "117.6" not in out
+        # Other lines (including value-side colons) are preserved verbatim.
+        assert "Model ID: org/x" in lines
+        assert "Parameters: 8B" in lines
+        assert "Last Modified: 2024-09-25 17:00:57+00:00" in lines
+
+    def test_appends_when_size_absent(self):
+        out = rewrite_size_in_metadata("Author: foo", 2.0)
+        assert out == "Author: foo\nSize: ~2.0 GB\nDisk Size GB: 2.00"
+
+    def test_none_and_empty_metadata(self):
+        expected = "Size: ~1.8 GB\nDisk Size GB: 1.83"
+        assert rewrite_size_in_metadata(None, 1.834) == expected
+        assert rewrite_size_in_metadata("", 1.834) == expected
+
+    def test_idempotent(self):
+        meta = "Model ID: org/x\nSize: ~40.2 GB\nParameters: 7B"
+        once = rewrite_size_in_metadata(meta, 3.14)
+        twice = rewrite_size_in_metadata(once, 3.14)
+        assert once == twice
+
+    def test_frontend_key_parity(self):
+        """Keys must survive the frontend parser (lower + spaces->underscores)."""
+        out = rewrite_size_in_metadata(None, 1.834)
+        parsed = {}
+        for line in out.split("\n"):
+            key, _, value = line.partition(":")
+            parsed[key.strip().lower().replace(" ", "_")] = value.strip()
+        assert parsed["size"] == "~1.8 GB"
+        assert parsed["disk_size_gb"] == "1.83"
 
 
 # ============ Integration Tests ============
