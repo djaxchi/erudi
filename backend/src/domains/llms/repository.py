@@ -157,6 +157,50 @@ class Llm_Repository:
         logger.info(f"Created LLM {llm.id}: {llm.name}")
         return llm
 
+    def get_dependent_assistants(self, base_llm: Llm) -> List[Llm]:
+        """KB assistants that share this model's weights (COPIED link, #209).
+
+        Dependents = local rows with is_attached_to_kb truthy and the SAME
+        ``link``, excluding the model itself. Deleting the base leaves their
+        link dangling, so callers surface them first. Empty when the model has
+        no link (nothing to share).
+
+        Args:
+            base_llm: The base model whose dependents to find.
+
+        Returns:
+            List[Llm]: Dependent assistants ordered by id (possibly empty).
+        """
+        if not base_llm.link:
+            return []
+        return (
+            self.db.query(Llm)
+            .filter(
+                Llm.id != base_llm.id,
+                Llm.is_attached_to_kb.is_(True),
+                Llm.link == base_llm.link,
+            )
+            .order_by(Llm.id)
+            .all()
+        )
+
+    def count_conversations(self, llm_id: int) -> int:
+        """Number of conversations currently bound to this model.
+
+        Args:
+            llm_id: The model id to count conversations for.
+
+        Returns:
+            int: Count of conversations with this llm_id.
+        """
+        from src.entities.Conversation import Conversation
+
+        return (
+            self.db.query(Conversation)
+            .filter(Conversation.llm_id == llm_id)
+            .count()
+        )
+
     def update(self, llm: Llm, **kwargs) -> Llm:
         """Update LLM fields (partial update).
 

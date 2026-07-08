@@ -86,7 +86,11 @@ class Llm(Base):
     kb_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="SET NULL"), nullable=True)
 
     kb = relationship("KnowledgeBase", back_populates="llm", uselist=False)
-    conversations = relationship("Conversation", back_populates="llm", cascade="all, delete-orphan")
+    # No delete cascade: conversations survive model deletion (#225). The
+    # conversations.llm_id FK is ON DELETE SET NULL; passive_deletes lets
+    # PostgreSQL null the FK server-side instead of the ORM loading and
+    # rewriting every child row.
+    conversations = relationship("Conversation", back_populates="llm", passive_deletes=True)
     
     @validates('name')
     def validate_name(self, key, value):
