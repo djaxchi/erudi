@@ -278,6 +278,11 @@ class TestCleanupAndCache:
         """Switching to a different llm_id must terminate the previous proc."""
         new_dir = tmp_path / "new"
         new_dir.mkdir()
+        # Minimal valid snapshot: the pre-spawn integrity gate (#88) runs before
+        # _start_server and rejects an empty model dir.
+        (new_dir / "config.json").write_text('{"model_type": "test"}')
+        (new_dir / "tokenizer.json").write_text("{}")
+        (new_dir / "model.safetensors").write_bytes(b"x")
         resolved_new = new_dir.resolve()
 
         old_proc = MagicMock()

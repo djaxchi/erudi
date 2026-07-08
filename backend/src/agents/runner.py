@@ -32,6 +32,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from src.agents.model_factory import build_chat_model
 from src.core import config
+from src.core.exceptions import EngineException
 from src.core.logging import logger
 
 if TYPE_CHECKING:
@@ -60,6 +61,23 @@ ERROR_MESSAGE = (
 # parts, and the user is told explicitly instead of silently. Markdown italics —
 # the frontend renders streamed answers as markdown.
 IMAGES_IGNORED_NOTICE = "*This model doesn't support images — your image was ignored.*\n\n"
+
+
+def _construction_error_message(exc: Exception) -> str:
+    """Curated, traceback-free error turn for a failed agent construction.
+
+    Agent construction is where the model is loaded (``build_chat_model`` ->
+    ``engine.get_model_and_tokenizer``). When that load fails with an
+    ``EngineException`` -- a specific, already-curated diagnostic like a missing
+    model folder, no ``.gguf`` found, a corrupt GGUF, or a child server that
+    died on spawn (#88) -- surface its message so the user learns what is
+    actually wrong and can act (re-download / pick another model). Any other
+    failure keeps the generic message. Neither path leaks a traceback:
+    ``EngineException`` messages are hand-written, not stringified stack traces.
+    """
+    if isinstance(exc, EngineException):
+        return f"{ERROR_SENTINEL} {exc}"
+    return ERROR_MESSAGE
 
 
 @dataclass
@@ -148,9 +166,9 @@ class AgentRunner:
                     f"stateful={stateful}, summarize={summarize}, "
                     f"kb_context={'yes' if kb_context_block else 'no'}"
                 )
-            except Exception:
+            except Exception as exc:
                 logger.exception("Agent construction failed")
-                yield ERROR_MESSAGE
+                yield _construction_error_message(exc)
                 return
 
             # Aggregate-only stream accounting (never log per token): start,
