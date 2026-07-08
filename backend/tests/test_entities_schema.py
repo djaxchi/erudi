@@ -6,8 +6,9 @@ Covers the entity reshape of the Postgres migration:
   (UNIQUE(kb_id, content_hash_sha256), ON DELETE CASCADE).
 - KBJob / DownloadJob reference llms / knowledge_base through Integer FKs
   (ON DELETE SET NULL) instead of free-form String columns.
-- Message / Conversation cascades are enforced SERVER-side (raw SQL DELETE,
-  no ORM cascade involved).
+- Message cascade + Conversation llm_id SET NULL are enforced SERVER-side
+  (raw SQL DELETE, no ORM cascade involved): a conversation survives its
+  model's deletion with a nulled FK (#225).
 - created_at / timestamp columns are stamped by the server (func.now()),
   not by client-side Python defaults.
 """
@@ -209,20 +210,23 @@ class TestServerSideCascades:
         assert remaining == 0
 
     @pytest.mark.integration
-    def test_conversations_cascade_on_sql_delete_of_llm(self, test_db_session):
+    def test_conversation_survives_sql_delete_of_llm_with_null_fk(self, test_db_session):
+        """A conversation is never permanently bound to one model (#225):
+        deleting its llm SETs NULL on conversations.llm_id (server-side) instead
+        of cascading the conversation away. The row survives, unbound."""
         llm = _make_llm(test_db_session)
-        conv = Conversation(llm_id=llm.id, name="cascade test")
+        conv = Conversation(llm_id=llm.id, name="survives test")
         test_db_session.add(conv)
         test_db_session.commit()
-        # Capture ids before the raw DELETE: refreshing the expired ORM
-        # objects afterwards would raise ObjectDeletedError (cascade worked).
         llm_id, conv_id = llm.id, conv.id
 
         test_db_session.execute(text("DELETE FROM llms WHERE id = :i"), {"i": llm_id})
-        remaining = test_db_session.execute(
-            text("SELECT COUNT(*) FROM conversations WHERE id = :i"), {"i": conv_id}
-        ).scalar()
-        assert remaining == 0
+        row = test_db_session.execute(
+            text("SELECT llm_id FROM conversations WHERE id = :i"), {"i": conv_id}
+        ).one_or_none()
+        # Conversation still present, but its FK is nulled.
+        assert row is not None
+        assert row.llm_id is None
 
 
 class TestServerDefaults:

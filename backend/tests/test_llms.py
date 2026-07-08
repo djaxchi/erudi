@@ -991,3 +991,249 @@ class TestDownloadJob_Entity_Validations:
             )
             test_db_session.add(job)
             test_db_session.flush()
+
+
+# ============ Dependents / Guarded Delete / Rebind (#225, #208) ============
+
+class TestModelDeletionAndRebind:
+    """Conversations survive model deletion; a base delete is guarded when KB
+    assistants depend on its weights; orphaned assistants are re-bindable."""
+
+    def _make_base_with_files(self, db, tmp_path, name="Base Model", subdir="42"):
+        """Base model whose ``link`` points at real on-disk weights."""
+        model_dir = tmp_path / "models" / subdir
+        model_dir.mkdir(parents=True)
+        (model_dir / "weights.safetensors").write_bytes(b"fake weights")
+        base = Llm(
+            name=name, local=1, type="gemma", link=str(model_dir), param_size=0.27,
+        )
+        db.add(base)
+        db.flush()
+        return base, model_dir
+
+    def _make_assistant(self, db, base, name="Assistant RH"):
+        """KB assistant that COPIES the base's link (#209) + its own KnowledgeBase."""
+        from src.entities.KnowledgeBase import KnowledgeBase
+        from src.entities.KnowledgeDocument import KnowledgeDocument
+
+        kb = KnowledgeBase()
+        db.add(kb)
+        db.flush()
+        db.add(
+            KnowledgeDocument(
+                kb_id=kb.id, name="doc.md",
+                content_hash_sha256="f" * 64, size_bytes=10,
+            )
+        )
+        assistant = Llm(
+            name=name, local=1, type="gemma",
+            link=base.link,  # copied from the base model
+            is_attached_to_kb=True, kb_id=kb.id, param_size=0.27,
+        )
+        db.add(assistant)
+        db.flush()
+        return assistant, kb
+
+    def test_dependents_endpoint_reports_assistants_and_counts(
+        self, client, test_db_session, tmp_path
+    ):
+        from src.entities.Conversation import Conversation
+
+        base, _ = self._make_base_with_files(test_db_session, tmp_path)
+        a1, _ = self._make_assistant(test_db_session, base, name="A1")
+        a2, _ = self._make_assistant(test_db_session, base, name="A2")
+        test_db_session.flush()
+        # 2 conversations on the base, 1 on A1, 0 on A2.
+        test_db_session.add_all([
+            Conversation(llm_id=base.id, name="b1"),
+            Conversation(llm_id=base.id, name="b2"),
+            Conversation(llm_id=a1.id, name="a1c1"),
+        ])
+        test_db_session.commit()
+        base_id = base.id
+
+        resp = client.get(f"/erudi/llms/{base_id}/dependents")
+
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        by_name = {a["name"]: a for a in data["assistants"]}
+        assert set(by_name) == {"A1", "A2"}
+        assert by_name["A1"]["conversation_count"] == 1
+        assert by_name["A2"]["conversation_count"] == 0
+        assert all(a["kb_id"] is not None for a in data["assistants"])
+        assert data["own_conversation_count"] == 2
+        assert data["total_conversation_count"] == 3
+
+    def test_dependents_endpoint_empty_for_model_without_dependents(
+        self, client, test_db_session, tmp_path
+    ):
+        base, _ = self._make_base_with_files(test_db_session, tmp_path)
+        test_db_session.commit()
+
+        resp = client.get(f"/erudi/llms/{base.id}/dependents")
+
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        assert data["assistants"] == []
+        assert data["own_conversation_count"] == 0
+        assert data["total_conversation_count"] == 0
+
+    def test_delete_base_with_dependents_returns_409_with_payload(
+        self, client, test_db_session, tmp_path
+    ):
+        base, model_dir = self._make_base_with_files(test_db_session, tmp_path)
+        assistant, _ = self._make_assistant(test_db_session, base)
+        test_db_session.commit()
+        base_id, assistant_id = base.id, assistant.id
+
+        resp = client.delete(f"/erudi/llms/{base_id}")
+
+        assert resp.status_code == status.HTTP_409_CONFLICT
+        detail = resp.json()["error"]["detail"]
+        assert [a["id"] for a in detail["assistants"]] == [assistant_id]
+        assert detail["assistants"][0]["name"] == "Assistant RH"
+        assert detail["total_conversation_count"] == 0
+        # Nothing deleted without opt-in: base row + files intact.
+        assert (model_dir / "weights.safetensors").exists()
+        assert test_db_session.query(Llm).filter_by(id=base_id).first() is not None
+
+    def test_delete_base_orphan_dependents_keeps_assistant_and_nulls_base_conversations(
+        self, client, test_db_session, tmp_path
+    ):
+        from sqlalchemy import text
+        from src.entities.Conversation import Conversation
+
+        base, model_dir = self._make_base_with_files(test_db_session, tmp_path)
+        assistant, _ = self._make_assistant(test_db_session, base)
+        test_db_session.flush()
+        base_conv = Conversation(llm_id=base.id, name="base conv")
+        asst_conv = Conversation(llm_id=assistant.id, name="assistant conv")
+        test_db_session.add_all([base_conv, asst_conv])
+        test_db_session.commit()
+        base_id, assistant_id = base.id, assistant.id
+        base_conv_id, asst_conv_id = base_conv.id, asst_conv.id
+
+        resp = client.delete(f"/erudi/llms/{base_id}?orphan_dependents=true")
+
+        assert resp.status_code == status.HTTP_200_OK
+        # Base row + its files are gone.
+        assert test_db_session.query(Llm).filter_by(id=base_id).first() is None
+        assert not (model_dir / "weights.safetensors").exists()
+
+        # Assistant remains; its weights now dangle -> weights_available False.
+        assistant_resp = client.get(f"/erudi/llms/{assistant_id}")
+        assert assistant_resp.status_code == status.HTTP_200_OK
+        assert assistant_resp.json()["weights_available"] is False
+
+        # Base's own conversation survives, unbound (llm_id NULL). Read raw SQL:
+        # passive_deletes lets PostgreSQL null the FK, so the ORM copy is stale.
+        assert test_db_session.execute(
+            text("SELECT COUNT(*) FROM conversations WHERE id = :i"),
+            {"i": base_conv_id},
+        ).scalar() == 1
+        assert test_db_session.execute(
+            text("SELECT llm_id FROM conversations WHERE id = :i"),
+            {"i": base_conv_id},
+        ).scalar() is None
+        # The assistant survives, so ITS conversation stays bound to it: SET NULL
+        # only fires for rows referencing the deleted base (the assistant's own
+        # conversations null only when the assistant itself is deleted).
+        assert test_db_session.execute(
+            text("SELECT llm_id FROM conversations WHERE id = :i"),
+            {"i": asst_conv_id},
+        ).scalar() == assistant_id
+
+    def test_delete_assistant_survives_its_conversations_with_null_fk(
+        self, client, test_db_session, tmp_path
+    ):
+        from sqlalchemy import text
+        from src.entities.Conversation import Conversation
+        from src.entities.KnowledgeBase import KnowledgeBase
+
+        base, model_dir = self._make_base_with_files(test_db_session, tmp_path)
+        assistant, kb = self._make_assistant(test_db_session, base)
+        test_db_session.flush()
+        conv = Conversation(llm_id=assistant.id, name="assistant conv")
+        test_db_session.add(conv)
+        test_db_session.commit()
+        assistant_id, kb_id, base_id, conv_id = assistant.id, kb.id, base.id, conv.id
+
+        resp = client.delete(f"/erudi/llms/{assistant_id}")
+
+        assert resp.status_code == status.HTTP_200_OK
+        # Assistant + its KB gone; base + its shared files untouched.
+        assert test_db_session.query(Llm).filter_by(id=assistant_id).first() is None
+        assert test_db_session.query(KnowledgeBase).filter_by(id=kb_id).first() is None
+        assert (model_dir / "weights.safetensors").exists()
+        assert test_db_session.query(Llm).filter_by(id=base_id).first() is not None
+        # The assistant's conversation survives, unbound (llm_id NULL).
+        assert test_db_session.execute(
+            text("SELECT COUNT(*) FROM conversations WHERE id = :i"), {"i": conv_id},
+        ).scalar() == 1
+        assert test_db_session.execute(
+            text("SELECT llm_id FROM conversations WHERE id = :i"), {"i": conv_id},
+        ).scalar() is None
+
+    def test_rebind_recopies_link_and_metadata_from_new_base(
+        self, client, test_db_session, tmp_path
+    ):
+        from src.entities.KnowledgeBase import KnowledgeBase
+
+        old_base, old_dir = self._make_base_with_files(
+            test_db_session, tmp_path, name="Old Base", subdir="old",
+        )
+        assistant, kb = self._make_assistant(test_db_session, old_base)
+        # New base with real weights and distinctive descriptive metadata.
+        new_dir = tmp_path / "models" / "new"
+        new_dir.mkdir(parents=True)
+        (new_dir / "weights.safetensors").write_bytes(b"new weights")
+        new_base = Llm(
+            name="New Base", local=1, type="qwen", link=str(new_dir),
+            param_size=1.5, quantized=False, category="code",
+            model_metadata='{"ctx": 4096}',
+        )
+        test_db_session.add(new_base)
+        test_db_session.flush()
+        # Orphan the assistant: remove the old base's shared files.
+        shutil.rmtree(old_dir)
+        test_db_session.commit()
+        assistant_id, kb_id, new_base_id = assistant.id, kb.id, new_base.id
+        assistant_name = assistant.name
+
+        resp = client.post(
+            f"/erudi/llms/{assistant_id}/rebind",
+            json={"new_base_llm_id": new_base_id},
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        # Link + descriptive fields re-copied from the new base...
+        assert data["link"] == str(new_dir)
+        assert data["type"] == "qwen"
+        assert data["category"] == "code"
+        assert data["param_size"] == 1.5
+        assert data["model_metadata"] == '{"ctx": 4096}'
+        assert data["weights_available"] is True
+        # ...while identity + KB wiring are preserved.
+        assert data["name"] == assistant_name
+        refreshed = test_db_session.query(Llm).filter_by(id=assistant_id).first()
+        assert refreshed.is_attached_to_kb is True
+        assert refreshed.kb_id == kb_id
+        assert test_db_session.query(KnowledgeBase).filter_by(id=kb_id).first() is not None
+
+    def test_rebind_rejects_target_without_weights(
+        self, client, test_db_session, tmp_path
+    ):
+        base, _ = self._make_base_with_files(test_db_session, tmp_path)
+        assistant, _ = self._make_assistant(test_db_session, base)
+        # A remote (not downloaded) model is an invalid rebind target.
+        remote = Llm(name="Remote", local=0, type="qwen", link="org/repo", param_size=1.0)
+        test_db_session.add(remote)
+        test_db_session.commit()
+
+        resp = client.post(
+            f"/erudi/llms/{assistant.id}/rebind",
+            json={"new_base_llm_id": remote.id},
+        )
+
+        assert resp.status_code == status.HTTP_409_CONFLICT

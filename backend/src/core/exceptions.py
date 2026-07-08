@@ -112,7 +112,7 @@ See Also:
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from fastapi import status
-from typing import Optional
+from typing import Any, Optional
 from src.core.logging import logger
 from src.core.request_context import get_request_id
 
@@ -128,24 +128,30 @@ class AppBaseException(Exception):
         message: Human-readable error description with support information.
         status_code: HTTP status code for the error response.
         erudi_code: Custom error code for client-side diagnostics.
+        detail: Optional structured payload surfaced verbatim in the JSON
+            response so a client can render a decision UI (e.g. the dependent
+            KB assistants of a base model targeted for deletion). None omits it.
 
     """
-    
+
     def __init__(
             self,
             message: str = "An unexpected error occured.",
             status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
             erudi_code: Optional[str] = None,
             trace: Optional[str] = None,
+            detail: Optional[Any] = None,
     ):
         """Initialize the exception with error details.
-        
+
         Args:
             message: Human-readable error description.
             status_code: HTTP status code (default: 500).
             erudi_code: Custom error code for diagnostics (default: "INTERNAL_SERVER_ERROR").
             trace: Optional stack trace or additional context.
-            
+            detail: Optional JSON-serializable payload returned in the response
+                body (under error.detail) for the client to act on.
+
         Note:
             The message is automatically extended with support contact information.
             All errors are logged via the structured logger. Severity follows
@@ -156,6 +162,7 @@ class AppBaseException(Exception):
         self.message = message + "\nPlease report the bug on the dedicted section. You are welcome to contact erudipro@gmail.com for further support."
         self.status_code = status_code
         self.erudi_code = erudi_code or "INTERNAL_SERVER_ERROR"
+        self.detail = detail
         log = logger.error if status_code >= 500 else logger.warning
         log(f"- Status Code: {status_code}\n- Erudi Custom Code: {erudi_code}\n- Message: {message}\n- Trace: {trace}")
         super().__init__(message)
@@ -224,16 +231,33 @@ class StateConflictException(AppBaseException):
             raise StateConflictException("Cannot delete LLM while downloading")
 
     """
-    
-    def __init__(self, message: str, trace: Optional[str] = None):
+
+    def __init__(
+            self,
+            message: str,
+            trace: Optional[str] = None,
+            status_code: int = status.HTTP_400_BAD_REQUEST,
+            detail: Optional[Any] = None,
+    ):
         """Initialize state conflict exception.
-        
+
         Args:
             message: Description of the state conflict.
             trace: Optional stack trace or additional context.
+            status_code: HTTP status (default 400). Pass 409 for a resource
+                conflict the client can resolve by opting in (e.g. deleting a
+                base model that has dependent KB assistants).
+            detail: Optional structured payload for the client (e.g. the
+                dependents to render in a confirmation dialog).
 
         """
-        super().__init__(message=message, status_code=status.HTTP_400_BAD_REQUEST, erudi_code="STATE_CONFLICT", trace=trace)
+        super().__init__(
+            message=message,
+            status_code=status_code,
+            erudi_code="STATE_CONFLICT",
+            trace=trace,
+            detail=detail,
+        )
 
 
 class DatabaseException(AppBaseException):
@@ -791,14 +815,19 @@ async def app_base_exception_handler(request: Request, exc: AppBaseException):
     """
     log = logger.error if exc.status_code >= 500 else logger.warning
     log(f"- Path: {request.url}")
+    error: dict = {
+        "type": exc.erudi_code,
+        "message": exc.message,
+    }
+    # Structured payload for clients to act on (e.g. the choice dialog on a
+    # guarded base-model delete). Omitted entirely when unset.
+    if getattr(exc, "detail", None) is not None:
+        error["detail"] = exc.detail
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "success": False,
-            "error": {
-                "type": exc.erudi_code,
-                "message": exc.message
-            }
+            "error": error,
         }
     )
 

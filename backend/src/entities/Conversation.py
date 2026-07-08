@@ -38,7 +38,9 @@ class Conversation(Base):
 
     Attributes:
         id: Primary key (auto-increment).
-        llm_id: Foreign key to Llm (server-side CASCADE on model delete).
+        llm_id: Foreign key to Llm, NULLABLE (server-side SET NULL on model
+            delete). A conversation survives the deletion of its model and can
+            be switched to another one (#225).
         created_at: Conversation creation timestamp (server-stamped).
         updated_at: Last modification timestamp (server-stamped, auto-updated).
         temperature: Sampling temperature (0.0-2.0, validated).
@@ -58,7 +60,10 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id = Column(Integer, primary_key=True, index=True)
-    llm_id = Column(Integer, ForeignKey("llms.id", ondelete="CASCADE"), nullable=False)
+    # NULLABLE + ON DELETE SET NULL: a conversation is never permanently bound
+    # to one model (#225). Deleting the model nulls this FK server-side (the
+    # conversation survives, unbound) instead of cascading the conversation away.
+    llm_id = Column(Integer, ForeignKey("llms.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
