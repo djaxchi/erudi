@@ -202,6 +202,10 @@ class ConversationResponse(ConversationBase):
         custom_prompt: Current system prompt.
     """
     id: int
+    # Overrides the required llm_id from ConversationBase: NULL once the bound
+    # model is deleted (#225). The conversation survives, unbound, awaiting a
+    # switch to another model -- so reads must not 500 on a null FK.
+    llm_id: Optional[int] = None
     created_at: datetime
     last_message_time: datetime
     name: str

@@ -105,10 +105,12 @@ from src.entities.DownloadJob import DownloadJobModel
 from src.entities.Llm import Llm
 from src.domains.llms.schemas import (
     LLMCreate, LLMResponse, DownloadJobResponse, HFSearchResult, HFDownloadRequest,
+    DependentsResponse, RebindRequest,
 )
 from src.domains.llms.services import download_llm, cancel_download_job
 from src.domains.llms.hf_search import search_huggingface
 from src.domains.llms.repository import Llm_Repository, Download_Job_Repository
+from src.domains.knowledge_base.repository import COPIED_FIELDS
 from src.utils.hf_model_metadata import humanize_model_name
 
 from src.core.logging import logger
@@ -265,6 +267,35 @@ def _start_download(*, remote_model_id: str, remote_link: str, name: str, type: 
     return job
 
 
+# ============ Dependents Helper ============
+
+def _dependents_payload(llm_repo: Llm_Repository, base_llm: Llm) -> dict:
+    """Build the dependents payload for a model (assistants + conversation counts).
+
+    Shared by GET /{id}/dependents and the guarded base delete so both always
+    agree on the exact shape the frontend renders. ``assistants`` are the KB
+    assistants sharing the model's weights (COPIED link, #209); counts cover the
+    conversations a delete would orphan.
+    """
+    assistants = llm_repo.get_dependent_assistants(base_llm)
+    entries = [
+        {
+            "id": a.id,
+            "name": a.name,
+            "kb_id": a.kb_id,
+            "conversation_count": llm_repo.count_conversations(a.id),
+        }
+        for a in assistants
+    ]
+    own = llm_repo.count_conversations(base_llm.id)
+    total = own + sum(e["conversation_count"] for e in entries)
+    return {
+        "assistants": entries,
+        "own_conversation_count": own,
+        "total_conversation_count": total,
+    }
+
+
 # ============ LLM CRUD Endpoints ============
 
 @router.get("/", response_model=List[LLMResponse])
@@ -370,6 +401,36 @@ async def get_llm_by_id(
         raise ModelNotFoundException(f"LLM {llm_id}")
     return llm
 
+
+@router.get("/{llm_id}/dependents", response_model=DependentsResponse)
+async def get_llm_dependents(
+    llm_id: int,
+    llm_repo: Llm_Repository = Depends(get_llm_repository),
+):
+    """List the KB assistants that depend on this model's weights, plus the
+    conversation counts a delete would orphan.
+
+    Dependents share the model's COPIED ``link`` (#209): deleting the base
+    leaves their weights dangling. A model with no dependents returns an empty
+    list with zero-or-more conversation counts. The frontend calls this before a
+    base-model delete to render the choice dialog.
+
+    Args:
+        llm_id: ID of the (base) model to inspect.
+        llm_repo: Injected LLM repository.
+
+    Returns:
+        DependentsResponse: assistants + own/total conversation counts.
+
+    Raises:
+        ModelNotFoundException: If the model is not found.
+    """
+    llm = llm_repo.get_by_id(llm_id)
+    if not llm:
+        raise ModelNotFoundException(f"LLM {llm_id}")
+    return _dependents_payload(llm_repo, llm)
+
+
 @router.put("/{llm_id}", response_model=LLMResponse)
 async def update_llm(
     llm_id: int,
@@ -414,19 +475,30 @@ async def update_llm(
 @router.delete("/{llm_id}")
 async def delete_llm(
     llm_id: int,
+    orphan_dependents: bool = False,
     llm_repo: Llm_Repository = Depends(get_llm_repository),
     db: Session = Depends(get_db),
 ):
     """Delete local LLM (permanent deletion).
 
     Regular local model: model files are removed from disk along with the
-    database record. Specialized KB assistant: its ``link`` is a COPY of the
-    base model's (set at creation) — the files belong to the base model and
-    are left untouched; the assistant's KnowledgeBase is deleted instead,
-    and server-side cascades sweep its documents and ``rag.kb_chunks``.
+    database record. If the model has dependent KB assistants (rows sharing its
+    COPIED ``link``, #209), the delete is guarded: without ``orphan_dependents``
+    it raises 409 carrying the dependents payload so the client can offer to
+    orphan them and proceed. With ``orphan_dependents=true`` the base is deleted,
+    its assistants REMAIN (their link now dangles, re-bindable via /rebind), and
+    every conversation bound to the base is nulled server-side (SET NULL, #225).
+
+    Specialized KB assistant: its ``link`` is a COPY of the base model's (set at
+    creation) — the files belong to the base model and are left untouched; the
+    assistant's KnowledgeBase is deleted instead, and server-side cascades sweep
+    its documents and ``rag.kb_chunks``. Its own conversations survive (SET NULL).
 
     Args:
         llm_id: ID of the LLM to delete.
+        orphan_dependents: When true, delete a base model that has dependent KB
+            assistants anyway (they become orphans). Ignored for assistants and
+            for base models with no dependents.
         llm_repo: Injected LLM repository.
         db: Database session for transaction control.
 
@@ -435,7 +507,9 @@ async def delete_llm(
 
     Raises:
         ModelNotFoundException: If LLM not found.
-        StateConflictException: If currently downloading.
+        StateConflictException: 400 if currently downloading; 409 (with the
+            dependents payload) if a base model has dependents and
+            ``orphan_dependents`` was not set.
         DatabaseException: If deletion fails.
 
     Warning:
@@ -453,6 +527,7 @@ async def delete_llm(
             # KB assistant: never touch the (shared) model files. Deleting
             # the KB cascades to its documents/chunks, and the ORM cascade
             # (KnowledgeBase.llm, delete-orphan) removes the assistant row.
+            # The assistant's conversations survive server-side (llm_id SET NULL).
             from src.entities.KnowledgeBase import KnowledgeBase
 
             kb = db.query(KnowledgeBase).filter(KnowledgeBase.id == llm.kb_id).first()
@@ -464,6 +539,20 @@ async def delete_llm(
             db.commit()
             logger.info(f"Deleted KB assistant {llm_id} (KB {llm.kb_id}, files kept)")
             return {"message": "LLM deleted successfully"}
+
+        # Base model: guard against silently orphaning KB assistants that share
+        # its weights. Without opt-in, surface the dependents (409) so the client
+        # can confirm; with orphan_dependents=true, proceed and let them dangle.
+        dependents = _dependents_payload(llm_repo, llm)
+        if dependents["assistants"] and not orphan_dependents:
+            raise StateConflictException(
+                f"Base model '{llm.name}' has {len(dependents['assistants'])} "
+                "dependent KB assistant(s). Retry with orphan_dependents=true to "
+                "delete it anyway; the assistants remain and can be rebound to "
+                "another base.",
+                status_code=http_status.HTTP_409_CONFLICT,
+                detail=dependents,
+            )
 
         # Delete files from disk if they exist
         if llm.link and os.path.exists(llm.link):
@@ -491,6 +580,87 @@ async def delete_llm(
             "Failed to delete LLM",
             trace=str(e)
         )
+
+
+@router.post("/{assistant_id}/rebind", response_model=LLMResponse)
+async def rebind_assistant(
+    assistant_id: int,
+    payload: RebindRequest,
+    llm_repo: Llm_Repository = Depends(get_llm_repository),
+    db: Session = Depends(get_db),
+):
+    """Re-point an orphaned KB assistant at a new base model.
+
+    Re-copies the base's weights ``link`` plus every descriptive COPIED_FIELDS
+    entry (#209) onto the assistant, keeping its own name/description and KB
+    wiring (kb_id, is_attached_to_kb). Used to recover an assistant whose base
+    was deleted (weights_available False). The target must be a local,
+    non-assistant model whose weights exist on disk.
+
+    Args:
+        assistant_id: ID of the KB assistant to rebind.
+        payload: RebindRequest with ``new_base_llm_id``.
+        llm_repo: Injected LLM repository.
+        db: Database session for transaction control.
+
+    Returns:
+        LLMResponse: The updated assistant (weights_available now True).
+
+    Raises:
+        ModelNotFoundException: 404 if the assistant or target base is missing.
+        StateConflictException: 409 if the assistant is not a KB assistant, or
+            the target is itself an assistant / not downloaded / has no weights.
+        DatabaseException: If the rebind fails.
+    """
+    try:
+        assistant = llm_repo.get_by_id(assistant_id)
+        if not assistant:
+            raise ModelNotFoundException(f"LLM {assistant_id}")
+        if not assistant.is_attached_to_kb:
+            raise StateConflictException(
+                f"Model '{assistant.name}' is not a KB assistant; only KB "
+                "assistants can be rebound to a new base.",
+                status_code=http_status.HTTP_409_CONFLICT,
+            )
+
+        new_base = llm_repo.get_by_id(payload.new_base_llm_id)
+        if not new_base:
+            raise ModelNotFoundException(f"LLM {payload.new_base_llm_id}")
+        if new_base.is_attached_to_kb:
+            raise StateConflictException(
+                f"Target model '{new_base.name}' is itself a KB assistant; pick "
+                "a standalone base model.",
+                status_code=http_status.HTTP_409_CONFLICT,
+            )
+        if new_base.local != 1:
+            raise StateConflictException(
+                f"Target model '{new_base.name}' is not downloaded; its weights "
+                "must exist to rebind onto it.",
+                status_code=http_status.HTTP_409_CONFLICT,
+            )
+        if not new_base.link or not os.path.exists(new_base.link):
+            raise StateConflictException(
+                f"Target model '{new_base.name}' weights are missing on disk; "
+                "cannot rebind onto it.",
+                status_code=http_status.HTTP_409_CONFLICT,
+            )
+
+        # Re-copy link + descriptive columns; name/description/KB wiring untouched.
+        updated = llm_repo.update(
+            assistant,
+            **{field: getattr(new_base, field) for field in COPIED_FIELDS},
+        )
+        db.commit()
+        db.refresh(updated)
+        logger.info(f"Rebound assistant {assistant_id} onto base {new_base.id}")
+        return updated
+
+    except (ModelNotFoundException, StateConflictException):
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.exception(f"Failed to rebind assistant {assistant_id}: {e}")
+        raise DatabaseException("Failed to rebind assistant", trace=str(e))
 
 
 # ============ Download Management Endpoints ============

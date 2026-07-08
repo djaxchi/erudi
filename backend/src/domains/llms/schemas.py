@@ -28,7 +28,7 @@ Example:
         return db.create(llm)
 """
 from pydantic import BaseModel, Field, computed_field
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 
 class LLMBase(BaseModel):
@@ -118,6 +118,29 @@ class LLMResponse(LLMBase):
 
         return detect_supports_vision(self.link)
 
+    @computed_field
+    @property
+    def weights_available(self) -> Optional[bool]:
+        """Whether the model's weights still exist on disk (#208).
+
+        Computed on the fly (no DB column), like ``supports_vision``: it is
+        self-healing, so a base model whose files were removed to orphan its KB
+        assistants reports False here without any migration. Only meaningful for
+        a downloaded model, so remote/downloading rows stay None. A local model
+        with a missing/empty link, or a link that no longer exists on disk,
+        reports False -- the UI reads this to prompt a rebind onto a new base.
+        """
+        if self.local != 1:
+            return None
+        if not self.link:
+            return False
+        from pathlib import Path
+
+        try:
+            return Path(self.link).exists()
+        except Exception:
+            return False
+
     class Config:
         """Pydantic configuration for LLMResponse model.
 
@@ -152,6 +175,38 @@ class HFDownloadRequest(BaseModel):
     param_size: float = Field(default=7.0, gt=0)
     quantized: bool = True
     category: str = "general"
+
+
+class DependentAssistant(BaseModel):
+    """One KB assistant that shares a base model's weights (COPIED link, #209).
+
+    Deleting the base would leave this assistant's link dangling (orphaned),
+    hence it is surfaced before the delete so the user can decide.
+    """
+    id: int
+    name: str
+    kb_id: int
+    conversation_count: int = Field(..., ge=0)
+
+
+class DependentsResponse(BaseModel):
+    """What a base-model deletion would affect (GET /llms/{id}/dependents, and
+    the payload of the 409 raised by DELETE without ``orphan_dependents``).
+
+    Attributes:
+        assistants: KB assistants sharing the model's weights (empty when none).
+        own_conversation_count: Conversations bound to the model itself.
+        total_conversation_count: own + every dependent assistant's count.
+    """
+    assistants: List[DependentAssistant]
+    own_conversation_count: int = Field(..., ge=0)
+    total_conversation_count: int = Field(..., ge=0)
+
+
+class RebindRequest(BaseModel):
+    """Body for POST /llms/{assistant_id}/rebind -- re-point an orphaned KB
+    assistant at a new base model whose weights exist."""
+    new_base_llm_id: int = Field(..., description="Id of the local base model to rebind onto")
 
 
 class DownloadJobResponse(BaseModel):
