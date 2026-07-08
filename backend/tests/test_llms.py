@@ -10,6 +10,7 @@ No real model downloads or network calls occur during tests.
 """
 import pytest
 import asyncio
+import shutil
 from unittest.mock import patch, AsyncMock
 from fastapi import status
 from datetime import datetime, timedelta
