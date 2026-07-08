@@ -42,9 +42,14 @@ Why multiprocessing instead of subprocess.Popen([sys.executable, "-m", ...])?
     target works in dev (real Python) and in prod (frozen).
 
 Why the `<|channel>thought ... <channel|>` manual filter is gone:
-    `mlx_vlm.server` surfaces reasoning text in a dedicated
-    `choices[0].delta.reasoning` field (like mlx_lm.server did) — the agent
-    layer (ChatOpenAI) simply ignores it, matching the previous in-engine filter.
+    Reasoning stays INLINE in `delta.content` as raw `<think>...</think>` (#90):
+    the child spawns with `--enable-thinking` (thinking on by default) and
+    neutralizes mlx-vlm's server-side reasoning split before the server starts
+    (`_patch_inline_thinking` in `_mlx_vlm_server_runner.py`), because the
+    dedicated `delta.reasoning` field it would otherwise emit is silently
+    dropped by ChatOpenAI. The runner's single streaming ThinkSplitter then
+    separates thinking from answer — identical to llama-server with
+    `--reasoning-format none` on the CPU/CUDA path.
 
 Why the `_MLX_EXECUTOR` thread bottleneck is gone:
     Generation now runs in a separate OS process; the GPU stream is
@@ -295,19 +300,20 @@ class MLX_Engine(BaseChatServerEngine):
             "--host", "127.0.0.1",
             "--port", str(port),
             "--log-level", "INFO",
+            # Thinking on by default for requests that don't set enable_thinking
+            # (Erudi's runner never does). Without it, mlx-vlm 0.6.2 renders the
+            # chat template with enable_thinking=False and a thinking model
+            # (e.g. Qwen3) answers directly — no reasoning ever exists (#90).
+            # Safe for non-thinking models ONLY because the child neutralizes
+            # the server-side thinking split (`_patch_inline_thinking` in
+            # _mlx_vlm_server_runner.py): unpatched, the split starts in
+            # reasoning mode and a model that never emits </think> would have
+            # its whole output routed to the dropped delta.reasoning channel.
+            # With the patch, the flag's only remaining effect is the template
+            # kwarg, which non-thinking templates ignore (hardware-verified on
+            # Qwen2.5-0.5B: byte-identical prompts and answers).
+            "--enable-thinking",
         ]
-        # Keep <think>...</think> INLINE in the answer stream so the runner's
-        # single streaming splitter handles reasoning uniformly across engines
-        # (#90). mlx_vlm's server-side _split_thinking is driven by the env var
-        # MLX_VLM_THINKING_START_TOKEN with <think> auto-detection; pointing it at
-        # a sentinel that can never appear in real output disables the split
-        # without patching mlx_vlm. The mp child inherits os.environ at spawn, so
-        # setting it here reaches the server. Printable-only: env values reject
-        # embedded null bytes on every platform. NOTE: needs a ~15-min
-        # confirmation on a Mac at implementation time -- the sentinel is
-        # trivially adjustable if a given mlx_vlm build reads a different
-        # variable (design #90).
-        os.environ["MLX_VLM_THINKING_START_TOKEN"] = "<<erudi:never-a-thinking-tag>>"
         proc = mp.Process(target=run_mlx_vlm_server, args=(argv,), daemon=False)
         proc.start()
         logger.info(
