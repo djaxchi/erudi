@@ -135,6 +135,21 @@ class TestTranslatePayloadKwargs:
         })
         assert out == {"top_k": 50, "repeat_penalty": 1.2}
 
+    def test_enable_thinking_becomes_chat_template_kwargs(self):
+        # #266: llama-server has no top-level enable_thinking field; it must
+        # travel via chat_template_kwargs to reach the Jinja chat template
+        # (templates without the kwarg ignore it harmlessly).
+        out = CPU_Engine._translate_payload_kwargs({
+            "repetition_penalty": 1.1,
+            "repetition_context_size": 64,
+            "enable_thinking": False,
+        })
+        assert out == {
+            "repeat_penalty": 1.1,
+            "repeat_last_n": 64,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+
 
 # =====================================================================
 # UNIT — config attrs

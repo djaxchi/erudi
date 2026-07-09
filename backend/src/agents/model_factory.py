@@ -40,6 +40,7 @@ def build_chat_model(
     max_tokens: int,
     repetition_penalty: float = DEFAULT_REPETITION_PENALTY,
     repetition_context_size: int = DEFAULT_REPETITION_CONTEXT_SIZE,
+    disable_thinking: bool = False,
 ) -> ChatOpenAI:
     """Resolve the engine child for ``llm`` and wrap it as a ``ChatOpenAI``.
 
@@ -67,13 +68,21 @@ def build_chat_model(
     # (repeat_penalty / repeat_last_n) via ``_translate_payload_kwargs``. Sent via
     # ChatOpenAI.extra_body so they land in the local server's chat-completions
     # body. (getattr keeps non-server engines / test stubs working via identity.)
+    raw_kwargs = {
+        "repetition_penalty": repetition_penalty,
+        "repetition_context_size": repetition_context_size,
+    }
+    # Suppress reasoning at the chat-template level (#266): one-shot utility
+    # calls (e.g. conversation titles) run on a ~12-token budget that a thinking
+    # model would burn entirely inside <think>. mlx_vlm.server reads the
+    # per-request ``enable_thinking`` field natively (it overrides the server
+    # default); llama.cpp engines translate it to ``chat_template_kwargs`` in
+    # their ``_translate_payload_kwargs``. Chat paths never pass
+    # ``disable_thinking``, so their request body stays byte-identical to today.
+    if disable_thinking:
+        raw_kwargs["enable_thinking"] = False
     translate = getattr(engine, "_translate_payload_kwargs", lambda kw: kw)
-    extra_body = translate(
-        {
-            "repetition_penalty": repetition_penalty,
-            "repetition_context_size": repetition_context_size,
-        }
-    )
+    extra_body = translate(raw_kwargs)
 
     logger.info(
         f"ChatOpenAI built: model={model_field}, base_url={handle['base_url']}/v1, "
