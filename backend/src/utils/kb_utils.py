@@ -10,7 +10,11 @@ starved panorama and cross-document questions by construction:
    above the largest similarity drop-off, so factoid questions inject a
    narrow context while panorama questions keep their whole cluster. The
    cut runs on calibrated dense cosines — NEVER on RRF scores, which are
-   rank harmonics with no semantic scale.
+   rank harmonics with no semantic scale. Two guards keep the purely
+   relative cut from starving recall (issue #221): a widest gap right after
+   the top hit is only honored when it is a true outlier, and a recall
+   floor re-extends the pool when the cut collapses it below
+   ``K_MIN_EXCERPTS``.
 3. Token budget: keep whole chunks best-first (RRF order — primacy beats
    burying, per the lost-in-the-middle literature) within the model-size
    budget from ``get_prompting_strategy``.
@@ -18,6 +22,7 @@ starved panorama and cross-document questions by construction:
 Excerpts carry their ``source_file`` so the KB prompt can attribute each
 one ("according to <document>" grounding) — see ``build_kb_system_prompt``.
 """
+import statistics
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
@@ -35,7 +40,20 @@ class KbExcerpt:
 
 # Below this, a similarity drop-off is noise, not a cut signal: e5 cosines
 # live in a compressed range, so a flat pool falls through to budget-only.
+# Field data (issue #221): real pools sit in a ~0.78-0.86 band with head
+# gaps of 0.001-0.03, so this 0.01 guard is crossed by ordinary head noise.
 MIN_SIMILARITY_GAP = 0.01
+
+# Recall floor (issue #221): the adaptive cut is purely relative with no
+# lower bound, so a widest gap right after the top hit collapses the pool to
+# a single excerpt even when hits 2-5 are strong in absolute terms. Field
+# failure: "Qui evalue ce PFE ?" -> 12 hits, top 0.8618, ONE (wrong) excerpt
+# injected -> false "not in the documents". Keep at least this many
+# candidates, re-extending from the pool within RECALL_BAND of the top
+# similarity; the token budget downstream still caps the total, so the floor
+# is near-free (the measured ~0.08 top-to-tail band sizes the 0.05 window).
+K_MIN_EXCERPTS = 2
+RECALL_BAND = 0.05
 
 
 def _adaptive_threshold(similarities: Sequence[float]) -> Optional[float]:
@@ -44,6 +62,15 @@ def _adaptive_threshold(similarities: Sequence[float]) -> Optional[float]:
     Returns ``None`` when there is no usable signal (fewer than two
     candidates, or a flat distribution): the caller keeps everything and
     lets the token budget decide alone.
+
+    Position-1 gap distrust (issue #221): a widest gap sitting at index 0
+    would cut everything after the top hit. Since e5 cosines live in a
+    compressed band where head gaps of 0.001-0.03 are ordinary noise, only
+    honor that top cut when the gap is a true outlier vs the rest of the
+    distribution (``widest > 3 * median(gaps)``, needing >= 2 gaps to judge
+    against); otherwise return ``None`` so the token budget decides. This
+    preserves the legitimate one-ultra-relevant-doc-vs-off-topic-rest case
+    while killing the keep-1 field failure.
     """
     if len(similarities) < 2:
         return None
@@ -52,7 +79,10 @@ def _adaptive_threshold(similarities: Sequence[float]) -> Optional[float]:
     widest = max(gaps)
     if widest < MIN_SIMILARITY_GAP:
         return None
-    return ordered[gaps.index(widest)]
+    cut_index = gaps.index(widest)
+    if cut_index == 0 and (len(gaps) < 2 or widest <= 3 * statistics.median(gaps)):
+        return None
+    return ordered[cut_index]
 
 
 def _truncate_to_token_budget(texts: List[str], token_budget: int) -> List[str]:
@@ -100,16 +130,36 @@ def retrieve_kb_excerpts(
     if not pool:
         return []
 
-    threshold = _adaptive_threshold([sim for _, sim in pool])
+    similarities = [sim for _, sim in pool]
+    threshold = _adaptive_threshold(similarities)
     if threshold is not None:
-        pool = [(doc, sim) for doc, sim in pool if sim >= threshold]
+        selected = [(doc, sim) for doc, sim in pool if sim >= threshold]
+    else:
+        selected = list(pool)
+
+    # Recall floor (issue #221): the adaptive cut has no lower bound, so it can
+    # collapse the pool to a single excerpt (the field false-negative). When it
+    # left fewer than K_MIN_EXCERPTS, re-extend from the ORIGINAL pool in RRF
+    # order with candidates still within RECALL_BAND of the top similarity,
+    # until the floor is met or the band is exhausted. The band keeps off-topic
+    # tail chunks out; the token budget below still caps the total.
+    if len(selected) < K_MIN_EXCERPTS:
+        floor = max(similarities) - RECALL_BAND
+        kept_ids = {id(doc) for doc, _ in selected}
+        for doc, sim in pool:
+            if len(selected) >= K_MIN_EXCERPTS:
+                break
+            if id(doc) in kept_ids or sim < floor:
+                continue
+            selected.append((doc, sim))
+            kept_ids.add(id(doc))
 
     excerpts = [
         KbExcerpt(
             source_file=doc.metadata.get("source_file", ""),
             text=doc.page_content,
         )
-        for doc, _ in pool
+        for doc, _ in selected
     ]
     # The budget keeps a prefix (best-first order), so indices line up.
     kept = _truncate_to_token_budget([e.text for e in excerpts], token_budget)

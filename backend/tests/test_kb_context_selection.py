@@ -57,6 +57,46 @@ class TestAdaptiveThreshold:
         rrf_order = [0.55, 0.92, 0.54, 0.53]
         assert _adaptive_threshold(rrf_order) == 0.92
 
+    # --- Position-1 gap distrust + real field distributions (issue #221) ---
+
+    def test_position_zero_outlier_gap_is_honored(self):
+        # Legitimate case: one ultra-relevant doc, off-topic rest. The 0.16 top
+        # gap is >> 3x the median head gap (0.01), so the keep-1 cut stands.
+        sims = [0.86, 0.70, 0.69, 0.68]
+        assert _adaptive_threshold(sims) == 0.86
+
+    def test_position_zero_non_outlier_gap_is_distrusted(self):
+        # Pathological field case (issue #221): the top gap 0.0168 sits at
+        # index 0 but is NOT a true outlier (<= 3x median 0.0060), so it would
+        # collapse the pool to the (wrong) top hit -> no cut, budget decides.
+        sims = [0.8618, 0.8450, 0.8420, 0.8380, 0.8300]
+        assert _adaptive_threshold(sims) is None
+
+    def test_two_candidate_pool_never_top_cuts(self):
+        # A single gap cannot be judged an outlier (issue #221): distrust it
+        # instead of collapsing to the top hit; the recall floor keeps both.
+        assert _adaptive_threshold([0.90, 0.40]) is None
+
+    @pytest.mark.parametrize(
+        "sims, expected_threshold, expected_kept",
+        [
+            # Captured on the live win-cpu test KB (issue #221, part 2). The
+            # deciding gap sits mid-pool (not index 0), so the cut is honored
+            # and keeps >= 2 excerpts in every case.
+            ([0.8633, 0.8611, 0.8598, 0.8270, 0.8177], 0.8598, 3),
+            ([0.8624, 0.8495, 0.8343, 0.8195, 0.7958], 0.8195, 4),
+            ([0.8233, 0.8160, 0.7899, 0.7791, 0.7784], 0.8160, 2),
+        ],
+    )
+    def test_real_field_distributions_keep_at_least_two(
+        self, sims, expected_threshold, expected_kept
+    ):
+        threshold = _adaptive_threshold(sims)
+        assert threshold == expected_threshold
+        kept = [s for s in sims if s >= threshold]
+        assert kept == sims[:expected_kept]
+        assert len(kept) >= 2
+
 
 class TestTokenBudgetTruncation:
     def test_keeps_whole_chunks_within_budget(self):
@@ -145,3 +185,57 @@ class TestRetrieveKbExcerpts:
         llm = SimpleNamespace(kb_id=None)
         with pytest.raises(KnowledgeBaseNotFoundException):
             retrieve_kb_excerpts("question", llm.kb_id, token_budget=500)
+
+    # --- Recall floor (issue #221) ---
+
+    def test_recall_floor_reextends_below_k_min(self):
+        # An outlier top gap keeps only hit 1, but hit 2 is within the 0.05
+        # recall band, so the floor re-extends to K_MIN_EXCERPTS and stops (it
+        # does not pull the whole tail back in).
+        pool = _pool(
+            [
+                ("chunk A", 0.90),
+                ("chunk B", 0.87),
+                ("chunk C", 0.869),
+                ("chunk D", 0.868),
+            ]
+        )
+        llm = SimpleNamespace(kb_id=7)
+        with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=pool):
+            excerpts = retrieve_kb_excerpts("question", llm.kb_id, token_budget=2000)
+        assert [e.text for e in excerpts] == ["chunk A", "chunk B"]
+
+    def test_recall_floor_respects_the_band(self):
+        # The floor never pulls in off-topic tail: hit 2 sits at top-0.10, past
+        # the 0.05 band, so the pool legitimately stays at a single excerpt.
+        pool = _pool(
+            [
+                ("chunk A", 0.90),
+                ("chunk B", 0.80),
+                ("chunk C", 0.79),
+                ("chunk D", 0.78),
+            ]
+        )
+        llm = SimpleNamespace(kb_id=7)
+        with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=pool):
+            excerpts = retrieve_kb_excerpts("question", llm.kb_id, token_budget=2000)
+        assert [e.text for e in excerpts] == ["chunk A"]
+
+    def test_pathological_field_case_no_longer_collapses_to_one(self):
+        # End-to-end guard for the field false-negative (issue #221): the
+        # non-outlier top gap yields no cut, so >= 2 excerpts reach the prompt
+        # instead of the single wrong one.
+        pool = _pool(
+            [
+                ("evaluation A", 0.8618),
+                ("evaluation B", 0.8450),
+                ("evaluation C", 0.8420),
+                ("planning D", 0.8380),
+                ("sujet E", 0.8300),
+            ]
+        )
+        llm = SimpleNamespace(kb_id=7)
+        with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=pool):
+            excerpts = retrieve_kb_excerpts("Qui evalue ce PFE ?", llm.kb_id, token_budget=2000)
+        assert len(excerpts) >= 2
+        assert excerpts[0].text == "evaluation A"
