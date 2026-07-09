@@ -439,6 +439,9 @@ class AgentRunner:
         Still routed through ``engine.generation_guard`` so it serializes with
         conversation/arena generations and keeps the model pinned while streaming.
         Failures are swallowed (the caller falls back to a default).
+
+        Yields ANSWER text only (#266): inline ``<think>`` reasoning is stripped
+        by a ``ThinkSplitter``, mirroring the two other streaming paths.
         """
         from langchain_core.messages import HumanMessage
 
@@ -451,18 +454,33 @@ class AgentRunner:
                     temperature=temperature,
                     top_p=top_p,
                     max_tokens=max_tokens,
+                    # One-shot calls (titles) never want reasoning -- it would
+                    # burn the whole tiny token budget inside <think>. The
+                    # splitter below is the safety net for models/engines where
+                    # chat-template-level suppression does not apply.
+                    disable_thinking=True,
                 )
             except Exception:
                 logger.exception("One-shot model construction failed")
                 return
+            splitter = ThinkSplitter()
             try:
                 async for chunk in model.astream([HumanMessage(prompt_text)]):
                     text = getattr(chunk, "text", "")
-                    if text:
-                        yield text
+                    if not text:
+                        continue
+                    for event in splitter.feed(text):
+                        if event["t"] == "answer":
+                            yield event["text"]
             except Exception:
                 logger.exception("One-shot streaming failed")
                 return
+            # Stream completed normally: drain the splitter. An unclosed
+            # <think> flushes as thinking and is dropped on purpose -- the
+            # caller then falls back to its default title.
+            for event in splitter.flush():
+                if event["t"] == "answer":
+                    yield event["text"]
 
     def _build_middleware(self, model):
         """Auto-summarization using the SAME local model, triggered by message count.

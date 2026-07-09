@@ -362,6 +362,38 @@ class TestConversationService:
         updated_conv = service.conversation_repo.get_conversation_by_id(conversation.id)
         assert updated_conv.name == "New Conversation"
 
+    async def test_generate_title_strips_inline_thinking(self, test_db_session, mock_llm, monkeypatch):
+        """#266: a thinking model's inline <think>...</think> block never reaches
+        the persisted title; only the answer text does."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(
+            agent_runner, "build_chat_model", _fake_chat_model("<think>hmm</think>AI Basics")
+        )
+        service = ConversationService(test_db_session)
+        conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
+
+        result = [t async for t in service.generate_title_stream(conversation.id, "What is AI?")]
+
+        assert "".join(result) == "AI Basics"
+        updated_conv = service.conversation_repo.get_conversation_by_id(conversation.id)
+        assert updated_conv.name == "AI Basics"
+
+    async def test_generate_title_unclosed_think_falls_back_to_default(self, test_db_session, mock_llm, monkeypatch):
+        """#266: a thinking model that burns the whole token budget inside an
+        unclosed <think> must NOT persist the literal tag as the title."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(
+            agent_runner, "build_chat_model", _fake_chat_model("<think>planning a title")
+        )
+        service = ConversationService(test_db_session)
+        conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512)
+
+        async for _ in service.generate_title_stream(conversation.id, "What is AI?"):
+            pass
+
+        updated_conv = service.conversation_repo.get_conversation_by_id(conversation.id)
+        assert updated_conv.name == "New Conversation"
+
     async def test_generate_title_sanitizes_junk_to_default(self, test_db_session, mock_llm, monkeypatch):
         """A junk title (markdown fence repetition from a tiny model) is sanitized
         away, so the conversation keeps the default name instead of '```json…'."""
