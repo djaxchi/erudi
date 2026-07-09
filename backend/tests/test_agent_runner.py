@@ -7,6 +7,7 @@ patching ``build_chat_model``. The engine is a bare ``BaseEngine`` subclass so
 """
 
 import logging
+from types import SimpleNamespace
 
 import pytest
 from langchain.agents import create_agent
@@ -242,6 +243,41 @@ def test_build_chat_model_translates_extra_body_per_engine(monkeypatch):
     monkeypatch.setattr(config, "LLM_Engine", _LlamaEngine)
     chat = build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55)
     assert chat.extra_body == {"repeat_penalty": 1.1, "repeat_last_n": 64}
+
+
+class _IdentityEngine:
+    """Engine stub with NO _translate_payload_kwargs (identity translation),
+    mirroring MLX: mlx_vlm.server reads the HF-named fields natively."""
+
+    @staticmethod
+    def get_model_and_tokenizer(llm_id, link):
+        return ({"base_url": "http://127.0.0.1:8080", "alias": f"erudi-{llm_id}"}, {})
+
+    @staticmethod
+    def _payload_model_value(handle):
+        return "default_model"
+
+
+def test_build_chat_model_disable_thinking_sets_enable_thinking_false(monkeypatch):
+    # #266: one-shot utility calls (titles) suppress reasoning at the chat
+    # template level; the flag rides extra_body next to the repetition controls.
+    monkeypatch.setattr(config, "LLM_Engine", _IdentityEngine)
+    chat = build_chat_model(
+        _Llm(), temperature=0.3, top_p=0.8, max_tokens=12, disable_thinking=True
+    )
+    assert chat.extra_body == {
+        "repetition_penalty": 1.1,
+        "repetition_context_size": 64,
+        "enable_thinking": False,
+    }
+
+
+def test_build_chat_model_default_omits_enable_thinking(monkeypatch):
+    # Regression guard (#266): chat paths never pass disable_thinking, so their
+    # request body must stay byte-identical to before (no enable_thinking key).
+    monkeypatch.setattr(config, "LLM_Engine", _IdentityEngine)
+    chat = build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55)
+    assert "enable_thinking" not in chat.extra_body
 
 
 # ===== Integration (IT3 / IT5 / IT11) — PR1 E2E validation, runner level =====
@@ -983,3 +1019,80 @@ async def test_events_construction_error_is_sentinel_answer(monkeypatch):
     assert ERROR_SENTINEL in events[0]["text"]
     assert "Traceback" not in events[0]["text"]
     assert "/secret/path" not in events[0]["text"]
+
+
+# ===== One-shot stream (#266) — thinking must never reach the title =====
+
+
+class _OneShotStreamModel:
+    """astream-only stub replaying EXACT scripted chunks.
+
+    ``ToolableFakeChatModel`` re-tokenizes content on whitespace, which cannot
+    pin a ``<think>`` tag split across chunk boundaries; this stub yields each
+    scripted delta verbatim as a chunk object exposing ``.text``.
+    """
+
+    def __init__(self, chunks):
+        self._chunks = chunks
+
+    async def astream(self, messages):
+        for text in self._chunks:
+            yield SimpleNamespace(text=text)
+
+
+async def _collect_oneshot(monkeypatch, chunks):
+    monkeypatch.setattr(
+        runner_module, "build_chat_model", lambda llm, **kw: _OneShotStreamModel(chunks)
+    )
+    runner = AgentRunner(checkpointer=None)
+    out = [
+        t
+        async for t in runner.astream_oneshot(
+            llm=_Llm(), prompt_text="Title this", temperature=0.5, top_p=0.9, max_tokens=12
+        )
+    ]
+    return "".join(out)
+
+
+async def test_oneshot_strips_think_block_spanning_chunks(monkeypatch):
+    # #266: inline reasoning is stripped; only the answer (the title) streams out.
+    collected = await _collect_oneshot(
+        monkeypatch, ["<think>reasoning", " more</think>", "Nice Title"]
+    )
+    assert collected == "Nice Title"
+
+
+async def test_oneshot_unclosed_think_collects_to_empty(monkeypatch):
+    # #266: a thinking model that burns the whole 12-token budget inside an
+    # unclosed <think> yields NOTHING (caller falls back to the default title)
+    # instead of the literal tag.
+    collected = await _collect_oneshot(monkeypatch, ["<think>budget burned entirely"])
+    assert collected == ""
+
+
+async def test_oneshot_strips_tag_split_across_chunk_boundary(monkeypatch):
+    collected = await _collect_oneshot(monkeypatch, ["<th", "ink>hidden</think>Real"])
+    assert collected == "Real"
+
+
+async def test_oneshot_without_think_tags_passes_through(monkeypatch):
+    collected = await _collect_oneshot(monkeypatch, ["A Plain", " Title"])
+    assert collected == "A Plain Title"
+
+
+async def test_oneshot_requests_thinking_suppression(monkeypatch):
+    # #266: one-shot calls ask the engine to disable thinking at the chat
+    # template level; the splitter is only the safety net.
+    captured = {}
+
+    def _capture(llm, **kw):
+        captured.update(kw)
+        return _OneShotStreamModel(["T"])
+
+    monkeypatch.setattr(runner_module, "build_chat_model", _capture)
+    runner = AgentRunner(checkpointer=None)
+    async for _ in runner.astream_oneshot(
+        llm=_Llm(), prompt_text="p", temperature=0.5, top_p=0.9, max_tokens=12
+    ):
+        pass
+    assert captured.get("disable_thinking") is True

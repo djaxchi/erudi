@@ -243,7 +243,13 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
             "repetition_penalty": "repeat_penalty",
             "repetition_context_size": "repeat_last_n",
         }
-        return {renames.get(k, k): v for k, v in kwargs.items()}
+        out = {renames.get(k, k): v for k, v in kwargs.items() if k != "enable_thinking"}
+        # llama-server has no top-level ``enable_thinking`` field (#266): it
+        # forwards ``chat_template_kwargs`` to the Jinja chat template instead,
+        # and templates without the kwarg ignore it harmlessly.
+        if "enable_thinking" in kwargs:
+            out["chat_template_kwargs"] = {"enable_thinking": kwargs["enable_thinking"]}
+        return out
 
     @classmethod
     def _spawn_child(
