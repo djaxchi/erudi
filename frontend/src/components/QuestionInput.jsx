@@ -20,6 +20,20 @@ export default function QuestionInput({
 
   const canSend = !disabled && (value.trim() !== "" || images.length > 0);
 
+  // Clipboard images have no source path, so persist their bytes to a real file
+  // and use that path; otherwise they'd be stored as a bare [image] placeholder
+  // and vanish on reload (#136). File-origin images already have a path.
+  const persistPastedImage = async (dataUrl) => {
+    if (!window.imageAPI?.savePasted) {
+      return "";
+    }
+    try {
+      return (await window.imageAPI.savePasted(dataUrl)) || "";
+    } catch {
+      return "";
+    }
+  };
+
   const addFiles = (files) => {
     // Single gate for the button, paste and drag-and-drop: a non-vision model
     // never collects an image the backend would just strip (#133).
@@ -28,11 +42,13 @@ export default function QuestionInput({
     }
     const imageFiles = Array.from(files || []).filter((f) => f.type.startsWith("image/"));
     imageFiles.forEach((file) => {
-      const filePath = window.electron?.getFilePath?.(file) || null;
+      const knownPath = window.electron?.getFilePath?.(file) || "";
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
+        // No source path (clipboard paste) -> persist to disk to obtain one.
+        const filePath = knownPath || (await persistPastedImage(reader.result));
         setImages((prev) => (prev.length >= MAX_IMAGES ? prev : [...prev, reader.result]));
-        setImagePaths((prev) => (prev.length >= MAX_IMAGES ? prev : [...prev, filePath || ""]));
+        setImagePaths((prev) => (prev.length >= MAX_IMAGES ? prev : [...prev, filePath]));
       };
       reader.readAsDataURL(file);
     });
