@@ -29,6 +29,12 @@ contextBridge.exposeInMainWorld("fsAPI", {
   readImageAsDataURL: (filePath) => ipcRenderer.invoke("fs:readImageAsDataURL", filePath),
 });
 
+// Pasted-image persistence: writes a clipboard image's bytes to disk and returns
+// its absolute path, so a pasted attachment survives reload like a file one (#136).
+contextBridge.exposeInMainWorld("imageAPI", {
+  savePasted: (dataUrl) => ipcRenderer.invoke("image:savePasted", dataUrl),
+});
+
 // Expose additional API for data management
 contextBridge.exposeInMainWorld("electronAPI", {
   openDataFolder: () => ipcRenderer.invoke("data:openFolder"),
