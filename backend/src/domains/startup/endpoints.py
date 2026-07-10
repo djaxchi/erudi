@@ -17,6 +17,7 @@ Example:
     {"has_already_displayed": false}
 """
 from fastapi import Depends, APIRouter
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from src.database.core import get_db
@@ -132,8 +133,11 @@ async def get_connection_status(
         # Get or create singleton startup variables
         vars = startup_repo.get_or_create()
         
-        # Check current internet connectivity
-        current_online_status = is_online()
+        # Check current internet connectivity. is_online() is a synchronous,
+        # potentially slow network call (no real timeout when offline); run it in a
+        # threadpool so it never blocks the event loop -- otherwise a slow offline
+        # probe could starve the cheap /health/ poll the connection pill relies on.
+        current_online_status = await run_in_threadpool(is_online)
         
         logger.debug(
             f"Connection status: offline_mode={vars.offline_mode}, "
