@@ -87,8 +87,9 @@ from src.domains.hardware.services import Hardware_Service
 from src.engines.model_resolver import resolve_quant, base_key
 from src.database.catalog_classify import (
     categorize,
+    is_conversational,
     is_derivative,
-    is_instruct,
+    is_nonchat_task,
     param_size_billions,
 )
 
@@ -283,16 +284,9 @@ class Model_Seeder:
         "adapter", "onnx", "pt", "pretrain", "draft", "mtp", "qat", "unquantized",
         "embedding", "reranker", "reward", "rm", "prm", "assistant", "fp8", "nvfp4",
     })
-    # Non-chat task families published under foundation orgs (TTS / OCR / vision-task
-    # / encoder). Matched as a lowercase substring of the slug, so 'ocr' also catches
-    # the fused 'olmocr'/'paddleocr'/'got-ocr' and 'embed' catches 'embedding' — a
-    # token boundary would miss those. Tokens are therefore chosen NOT to collide with
-    # any real chat-model slug (both shipped snapshots audited for #203/#122).
-    NONCHAT_FAMILIES: tuple = (
-        "docling", "vibevoice", "whisper", "clip", "reformer", "rerank",
-        "siglip", "t5gemma", "biogpt", "dialogpt", "embed", "diffusion",
-        "ocr", "florence",
-    )
+    # Non-chat task filtering (NONCHAT_FAMILIES substring + pipeline denylist) is
+    # shared with the community-search path and lives in catalog_classify
+    # (is_nonchat_task), so both ingestion doors use one audited list (#242).
     # Pipelines we draw the Base catalog from: plain text chat + (per #122) the
     # multimodal VLMs whose primary pipeline is image-text-to-text / any-to-any.
     TEXT_PIPELINES: tuple = ("text-generation",)
@@ -334,14 +328,18 @@ class Model_Seeder:
                         continue
                     name = m.id.split("/")[-1]
                     low = name.lower()
+                    pipeline = getattr(m, "pipeline_tag", None)
+                    tags = list(getattr(m, "tags", None) or [])
                     if set(re.split(r"[-_.]", low)) & self.ARTIFACT_TOKENS:
                         continue
-                    if any(fam in low for fam in self.NONCHAT_FAMILIES):
+                    if is_nonchat_task(name, pipeline):
                         continue
-                    tags = list(getattr(m, "tags", None) or [])
                     if is_derivative(tags):
                         continue
-                    if not is_instruct(name):
+                    # #182: the Base catalog is chat-only. Keep only conversational
+                    # (instruct/chat) releases; raw pretrains (Llama-3.2-1B,
+                    # Mistral-7B-v0.1) are dropped and reachable only via HF search.
+                    if not is_conversational(tags, name):
                         continue
                     key = base_key(m.id)
                     if key in seen:
@@ -539,6 +537,8 @@ class Model_Seeder:
             param_size=model_data['param_size'],
             # The offline fallback seeds base models only (#86).
             is_base=True,
+            # Base models are chat-ready (#182); honor the snapshot flag if present.
+            conversational=bool(model_data.get('conversational', True)),
         )
     
     def build_derived_models(
@@ -573,6 +573,13 @@ class Model_Seeder:
                     break
                 checked += 1
                 if not self._passes_quality_filters(model_info):
+                    continue
+                # #242: this path is filtered only by format tag, so ASR/embedding/
+                # OCR/media-gen community repos would otherwise enter the catalog.
+                # Reject them by name family + non-chat pipeline (needs the
+                # pipeline_tag/tags expand added to community_search_kwargs).
+                slug = model_info.modelId.split("/")[-1]
+                if is_nonchat_task(slug, getattr(model_info, "pipeline_tag", None)):
                     continue
                 # Dedup by normalized key so the same finetune from two quanters
                 # (bartowski/Foo-GGUF vs mradermacher/Foo-GGUF) appears once.
@@ -620,6 +627,9 @@ class Model_Seeder:
             # Curated foundation model (discovered from a FOUNDATION_ORG) — drives the
             # Base/Community split and "Models For You" recommendations in the UI (#86).
             is_base=True,
+            # Base discovery keeps only conversational releases (#182), so every base
+            # row is chat-ready by construction.
+            conversational=True,
             category=model_config.category,
             # Pre-download tool detection is intentionally NOT done here: it required
             # downloading a tokenizer per catalog model, which is not viable at catalog
@@ -652,6 +662,8 @@ class Model_Seeder:
             param_size=param_size,
             # Curated foundation model — see _create_base_llm (#86).
             is_base=True,
+            # Chat-ready by construction — see _create_base_llm (#182).
+            conversational=True,
             category=model_config.category,
             # Deferred to post-download (see _create_base_llm / #113).
             supports_tools=None,
@@ -692,7 +704,8 @@ class Model_Seeder:
             size_estimate,
             quantized=False
         )
-        
+
+        tags = list(getattr(model_info, "tags", None) or [])
         return Llm(
             name=humanize_model_name(model_info.modelId),
             local=0,
@@ -704,7 +717,11 @@ class Model_Seeder:
             param_size=param_size,
             # Derived/community quant (not a curated foundation model) (#86).
             is_base=False,
-            category=categorize(model_name, list(getattr(model_info, "tags", None) or []),
+            # Chat-readiness so the UI can rank IT models first even among community
+            # rows (#182). A community merge/pretrain without the tag or suffix sorts
+            # below the instruct ones rather than being dropped.
+            conversational=is_conversational(tags, model_name),
+            category=categorize(model_name, tags,
                                 getattr(model_info, "pipeline_tag", None)),
         )
 
@@ -1108,7 +1125,7 @@ class Database_Seeder:
     # Mutable catalog fields refreshed in place on a resync. supports_tools is
     # excluded on purpose: it is detected post-download and must not be clobbered.
     _RESYNC_FIELDS = ("name", "type", "param_size", "model_metadata", "quantized",
-                      "is_base", "category", "description")
+                      "is_base", "conversational", "category", "description")
 
     def reconcile_remote_catalog(
         self, db: Session, fresh_base: List[Llm], fresh_derived: List[Llm]

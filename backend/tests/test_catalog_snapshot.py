@@ -15,12 +15,12 @@ from src.entities.Llm import Llm
 def test_llm_dict_roundtrip():
     llm = Llm(local=0, name="Qwen3 8B", link="lmstudio/Qwen3-8B-MLX-4bit", type="qwen",
               quantized=True, model_metadata="meta", param_size=8.0, supports_tools=None,
-              is_base=True, category="general")
+              is_base=True, conversational=True, category="general")
     d = snap.llm_to_dict(llm)
     assert d == {
         "name": "Qwen3 8B", "link": "lmstudio/Qwen3-8B-MLX-4bit", "type": "qwen",
         "quantized": True, "model_metadata": "meta", "param_size": 8.0, "supports_tools": None,
-        "is_base": True, "category": "general",
+        "is_base": True, "conversational": True, "category": "general",
     }
     back = snap.dict_to_llm(d)
     assert (back.local, back.name, back.link, back.type, back.param_size) == (
@@ -71,7 +71,8 @@ def test_build_path_emits_classified_snapshot_entries(monkeypatch):
 
     api = MagicMock()
     api.list_models.side_effect = lambda **kw: (
-        [types.SimpleNamespace(id="Qwen/Qwen3-Coder-8B", downloads=100000)]
+        [types.SimpleNamespace(id="Qwen/Qwen3-Coder-8B", downloads=100000,
+                               tags=["conversational"])]
         if kw.get("pipeline_tag") == "text-generation" else []
     )
     api.model_info.return_value = object()

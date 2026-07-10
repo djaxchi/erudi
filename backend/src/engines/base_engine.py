@@ -118,8 +118,15 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         e.g. ``filter="mlx"`` catches non-mlx-community quants the org never holds.
         An empty ``term`` is the global pass: filter by format only, ranked by
         downloads.
+
+        ``expand`` pulls pipeline_tag + tags (alongside the downloads/likes the
+        quality floor needs) in the one call, so the non-chat task filter (#242)
+        can gate ASR/embedding/OCR/media-gen repos out of the derived catalog.
         """
-        kwargs = {"filter": cls.FORMAT_TAG}
+        kwargs = {
+            "filter": cls.FORMAT_TAG,
+            "expand": ["pipeline_tag", "tags", "downloads", "likes"],
+        }
         if term:
             kwargs["search"] = term
         return kwargs

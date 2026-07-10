@@ -60,7 +60,10 @@ class TestOrgDiscovery:
         from unittest.mock import MagicMock
         from src.database.seed import Model_Seeder
         api = MagicMock()
-        models = [SimpleNamespace(id=i, downloads=d) for i, d in ids]
+        # Real chat releases carry HF's `conversational` tag; discovery requires it
+        # for the Base catalog (#182). Fixtures model chat models, so attach it (the
+        # non-chat noise here — quants, OCR — is dropped by earlier filters anyway).
+        models = [SimpleNamespace(id=i, downloads=d, tags=["conversational"]) for i, d in ids]
 
         # Discovery now queries per pipeline_tag (text + vision passes). These fixtures
         # are plain text models, so only the text-generation pass returns them; the
@@ -113,8 +116,9 @@ class TestOrgDiscovery:
         api = MagicMock()
 
         def fake_list(**kw):
+            # Chat releases carry the `conversational` tag; discovery requires it (#182).
             return [
-                SimpleNamespace(id=i, downloads=d)
+                SimpleNamespace(id=i, downloads=d, tags=["conversational"])
                 for i, d in mapping.get(kw.get("pipeline_tag"), [])
             ]
 
@@ -164,6 +168,29 @@ class TestOrgDiscovery:
         assert "Qwen/Qwen3-8B" in links and "Qwen/Qwen3-VL-8B-Instruct" in links
         assert not any("ocr" in link.lower() for link in links)       # no OCR leaks (#203)
         assert not any("florence" in link.lower() for link in links)  # no vision-task leak
+
+    def test_drops_raw_pretrain_keeps_conversational(self):
+        # #182: the Base catalog is chat-only. A raw pretrain (no `conversational`
+        # tag, no instruct suffix) is dropped; its instruct sibling and a suffix-less
+        # chat model (tagged conversational) are kept.
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        from src.database.seed import Model_Seeder
+        api = MagicMock()
+        api.list_models.side_effect = lambda **kw: (
+            [
+                SimpleNamespace(id="meta-llama/Llama-3.2-1B", downloads=500000, tags=[]),
+                SimpleNamespace(id="meta-llama/Llama-3.2-1B-Instruct", downloads=900000,
+                                tags=["conversational"]),
+                SimpleNamespace(id="deepseek-ai/DeepSeek-V3", downloads=800000,
+                                tags=["conversational"]),
+            ] if kw.get("pipeline_tag") == "text-generation" else []
+        )
+        links = [c.link for c in
+                 Model_Seeder(db=None, hf_api=api).discover_instruct_models("x", "y", min_downloads=1)]
+        assert "meta-llama/Llama-3.2-1B" not in links            # raw pretrain dropped
+        assert "meta-llama/Llama-3.2-1B-Instruct" in links       # instruct sibling kept
+        assert "deepseek-ai/DeepSeek-V3" in links                # suffix-less chat kept via tag
 
 
 class TestRunnabilityPredicate:

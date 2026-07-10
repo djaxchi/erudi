@@ -44,6 +44,42 @@ VISION_PIPELINES = frozenset({"image-text-to-text", "any-to-any", "visual-questi
 # size/format tokens.
 PRETRAIN_MARKERS = frozenset({"base", "pt", "pretrain", "pretrained"})
 
+# Tokens that mark an instruction-tuned / chat release (vs its raw pretrain).
+INSTRUCT_MARKERS = frozenset({"it", "instruct", "instruction", "chat", "sft", "rlhf"})
+
+# Non-chat task families, matched as a lowercase SUBSTRING of the slug. Substring
+# (not token boundary) is deliberate and validated against 604 real community
+# repos (#242): the fused forms dominate — 'embed' must catch 'Qwen3-Embedding'
+# and 'embeddinggemma', 'ocr' must catch 'PaddleOCR'/'olmocr'/'GOT-OCR'. Token
+# boundary would leak ~60 of them. Tokens are chosen not to collide with real
+# chat slugs; the single observed false positive in 604 repos ('Bug-Whisperer'
+# via 'whisper') is an acceptable rounding error.
+NONCHAT_FAMILIES = frozenset({
+    "docling", "vibevoice", "whisper", "clip", "reformer", "rerank",
+    "siglip", "t5gemma", "biogpt", "dialogpt", "embed", "diffusion",
+    "ocr", "florence",
+})
+
+# HF pipeline tags whose primary task is not text/chat. Used as a denylist on the
+# community-search path, which (unlike org discovery) is not constrained to a
+# text pipeline. Complements NONCHAT_FAMILIES: it catches task models with a
+# clean name (snowflake-arctic-embed -> sentence-similarity), while the name
+# filter catches the ~26% of repos that report pipeline_tag=None. Chat pipelines
+# (text-generation, image-text-to-text, any-to-any, visual-question-answering)
+# and None are intentionally NOT here. 'image-to-text' (OCR/caption) IS non-chat;
+# 'image-text-to-text' (VLM chat, #122) is not — mind the extra '-text-'.
+NONCHAT_PIPELINES = frozenset({
+    "automatic-speech-recognition", "audio-to-audio", "audio-classification",
+    "audio-text-to-text", "voice-activity-detection", "text-to-speech",
+    "text-to-audio", "text-to-image", "text-to-video", "image-to-video",
+    "video-to-video", "image-to-image", "image-to-text", "image-classification",
+    "object-detection", "image-segmentation", "depth-estimation",
+    "feature-extraction", "sentence-similarity", "text-ranking",
+    "fill-mask", "token-classification", "text-classification",
+    "zero-shot-classification", "zero-shot-image-classification",
+    "text-to-3d", "image-to-3d", "unconditional-image-generation",
+})
+
 _REL_RE = re.compile(r"^base_model:(quantized|finetune|merge|adapter):(.+)$")
 
 
@@ -83,6 +119,41 @@ def is_instruct(name: str) -> bool:
     """
     toks = re.split(r"[-_.]", name.lower())
     return not any(tok in PRETRAIN_MARKERS for tok in toks)
+
+
+def has_instruct_suffix(name: str) -> bool:
+    """True if the slug carries an explicit instruct/chat marker token."""
+    toks = re.split(r"[-_.]", name.lower())
+    return any(tok in INSTRUCT_MARKERS for tok in toks)
+
+
+def is_conversational(tags: Optional[List[str]], name: str) -> bool:
+    """Whether a repo is a usable chat model, for the Base catalog + recommendations.
+
+    Primary signal is HuggingFace's ``conversational`` tag, which the foundation
+    orgs stamp on every instruct/chat release (Llama-3.2-1B-Instruct, DeepSeek-V3,
+    GLM-4.5, gpt-oss-20b, Qwen3-0.6B) and never on a raw pretrain (Llama-3.2-1B,
+    Mistral-7B-v0.1) — verified across the foundation orgs (#182). An explicit
+    instruct/chat slug suffix is accepted as a backstop for the rare chat release
+    that omits the tag, so recall never depends on a single field.
+    """
+    if "conversational" in (tags or []):
+        return True
+    return has_instruct_suffix(name)
+
+
+def is_nonchat_task(name: str, pipeline_tag: Optional[str] = None) -> bool:
+    """True if a repo is a non-chat task model (ASR / embedding / OCR / media-gen).
+
+    Two complementary signals (#242): a NONCHAT_FAMILIES substring in the slug
+    (catches the ~26% of community repos reporting ``pipeline_tag=None``), and a
+    non-chat ``pipeline_tag`` (catches clean-named task models the slug misses,
+    e.g. ``snowflake-arctic-embed`` -> ``sentence-similarity``).
+    """
+    low = name.lower()
+    if any(fam in low for fam in NONCHAT_FAMILIES):
+        return True
+    return pipeline_tag in NONCHAT_PIPELINES
 
 
 def _has_word(name_low: str, *words: str) -> bool:

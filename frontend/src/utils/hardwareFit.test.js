@@ -5,6 +5,7 @@ import {
   rankByFit,
   pickFlagships,
   applyCatalogFilters,
+  isChatReady,
 } from "./hardwareFit";
 
 const range = { min: 4, max: 8 };
@@ -64,6 +65,26 @@ describe("rankByFit", () => {
       "huge",
     ]);
   });
+
+  it("puts conversational (chat) models first, non-chat below (#182)", () => {
+    const models = [
+      { name: "base-ideal", param_size: 8, conversational: false },
+      { name: "chat-tight", param_size: 12, conversational: true },
+    ];
+    // Even though base-ideal fits better, the chat model leads the list.
+    expect(rankByFit(models, range).map((m) => m.name)).toEqual(["chat-tight", "base-ideal"]);
+  });
+});
+
+describe("isChatReady", () => {
+  it("trusts the backend flag over the name", () => {
+    expect(isChatReady({ name: "DeepSeek-V3", conversational: true })).toBe(true);
+    expect(isChatReady({ name: "Foo-Instruct", conversational: false })).toBe(false);
+  });
+  it("falls back to the name heuristic when the flag is absent", () => {
+    expect(isChatReady({ name: "Llama-3.2-1B-Instruct" })).toBe(true);
+    expect(isChatReady({ name: "Llama-3.2-1B" })).toBe(false);
+  });
 });
 
 describe("pickFlagships", () => {
@@ -110,6 +131,19 @@ describe("pickFlagships", () => {
       M("Mystery Instruct", "llama", null),
       M("Mystery Instruct 2", "qwen", undefined),
     ];
+    expect(pickFlagships(models, { min: 4, max: 8 }, 3)).toHaveLength(0);
+  });
+
+  it("recommends a suffix-less chat model via the conversational flag (#182)", () => {
+    // DeepSeek-V3 has no 'instruct'/'chat' in its name; the old name-only filter
+    // wrongly excluded it. The backend flag now lets it be recommended.
+    const models = [{ ...M("DeepSeek V3", "deepseek", 7), conversational: true }];
+    const picks = pickFlagships(models, { min: 4, max: 8 }, 3);
+    expect(picks.map((m) => m.name)).toEqual(["DeepSeek V3"]);
+  });
+
+  it("does not recommend a non-conversational model even if its name looks chatty", () => {
+    const models = [{ ...M("Weird Chat Base", "llama", 7), conversational: false }];
     expect(pickFlagships(models, { min: 4, max: 8 }, 3)).toHaveLength(0);
   });
 });

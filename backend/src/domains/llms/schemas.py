@@ -77,6 +77,7 @@ class LLMResponse(LLMBase):
     supports_tools: Optional[bool] = None
     param_size: Optional[float] = Field(default=None, gt=0, description="Parameter size in billions; None when unmeasured (#201)")
     is_base: bool = Field(default=False, description="True=curated foundation/base model, False=derived/community quant")
+    conversational: Optional[bool] = Field(default=None, description="True=instruction-tuned/chat model; drives IT-first recommendations and list order (#182). None=unknown")
     category: Optional[str] = Field(default="general", description="Capability category: general/code/reasoning/math/vision/medical/function/safety (#122)")
     # KB-assistant identity (#225/#208): the cards need to tell assistants apart
     # from regular models to show the weights-of-<base> wording, the orphan badge

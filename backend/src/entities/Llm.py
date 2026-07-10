@@ -77,6 +77,13 @@ class Llm(Base):
     # quant. Drives the Base vs Community split and the "Models For You" hardware-fit
     # recommendations in the UI. Remote rows only; downloaded models (local=1) ignore it.
     is_base = Column(Boolean, default=False, nullable=False)
+    # Chat-readiness (#182): True = instruction-tuned / conversational model (the
+    # official chat variant users want), False = a non-conversational release.
+    # Set at discovery from HuggingFace's `conversational` tag (instruct-suffix
+    # backstop). Recommendations lead with conversational models, and the catalog
+    # lists sort them first, because most users just want to chat and don't know
+    # the IT-vs-base distinction. NULL = unknown (pre-#182 rows, re-set on resync).
+    conversational = Column(Boolean, nullable=True)
     # Capability category (#122): general / code / reasoning / math / vision /
     # medical / function / safety. Derived at discovery from pipeline_tag + card
     # tags + slug (see src.database.catalog_classify.categorize). Groups the
