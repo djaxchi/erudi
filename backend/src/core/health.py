@@ -43,12 +43,32 @@ from fastapi import APIRouter
 router = APIRouter(prefix="/health", tags=["health"])
 
 
+def _db_state() -> str:
+    """Embedded-Postgres health as tracked by the DB watchdog (#162).
+
+    Imported lazily and defensively: the watchdog may not be started (unit
+    tests, partial boots, plain uvicorn without the lifespan), and health must
+    never crash. Defaults to "ok" when the watchdog is absent.
+    """
+    try:
+        from src.launcher.db_watchdog import get_db_state
+
+        return get_db_state()
+    except Exception:
+        return "ok"
+
+
 @router.get("/")
 async def health():
     """Health check endpoint returning basic service status.
 
+    The HTTP status is ALWAYS 200 (Electron's boot readiness must not confuse
+    a dead database with a dead backend); the ``db`` field carries the truth --
+    ``"ok" | "recovering" | "failed"`` as seen by the DB watchdog (#162).
+
     Returns:
-        dict: Status object with "ok" indicator and descriptive message.
+        dict: Status object with "ok" indicator, descriptive message, and the
+        current database state.
 
     Example:
         ::
@@ -58,4 +78,4 @@ async def health():
             response = requests.get("http://127.0.0.1:27182/erudi/health/")
             assert response.json()["status"] == "ok"
     """
-    return {"status": "ok", "message": "Backend is running"}
+    return {"status": "ok", "message": "Backend is running", "db": _db_state()}

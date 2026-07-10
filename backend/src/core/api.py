@@ -66,6 +66,7 @@ from src.database.core import init_database
 from src.database.migrations import run_migrations
 from src.database.seed import startup_populate_database
 from src.launcher.postgres_runtime import start_postgres, stop_postgres
+from src.launcher.db_watchdog import start_watchdog, stop_watchdog
 from src.ingestion.vector_store import close_kb_store, init_kb_store
 
 from src.core.exceptions import (
@@ -388,12 +389,21 @@ async def lifespan(app: FastAPI):
     # app lifetime and exposed on app.state.checkpointer.
     checkpointer_cm = open_checkpointer(app.state.postgres.psycopg_url)
     app.state.checkpointer = await checkpointer_cm.__aenter__()
+    # The DB watchdog may re-open the checkpointer on a resurrected cluster and
+    # swap this CM (#162), so publish it on app.state and let shutdown close the
+    # LIVE one rather than this now-possibly-stale local.
+    app.state.checkpointer_cm = checkpointer_cm
     config.LLM_Engine.start_cleanup_task()
+    # DB watchdog: detect a dead embedded Postgres, resurrect it, expose db
+    # state on /health (#162). Started AFTER init_database bound the live engine
+    # (the disconnect hook attaches to it) and the checkpointer is on app.state.
+    start_watchdog(app)
     yield
     logger.info("==== Shutting down... ====")
+    await stop_watchdog()
     config.LLM_Engine.stop_cleanup_task()
     config.LLM_Engine.cleanup()
-    await checkpointer_cm.__aexit__(None, None, None)
+    await app.state.checkpointer_cm.__aexit__(None, None, None)
     close_kb_store()
     # Cluster stops LAST: every DB consumer above must be closed first.
     stop_postgres(app.state.postgres)
