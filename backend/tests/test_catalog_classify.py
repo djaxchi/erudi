@@ -8,9 +8,9 @@ with a slug sanity-check. No network, no DB.
 import pytest
 
 from src.database.catalog_classify import (
-    categorize, is_derivative, is_instruct, param_size_billions,
-    relation_targets, CAT_GENERAL, CAT_CODE, CAT_REASONING, CAT_MATH,
-    CAT_VISION, CAT_MEDICAL, CAT_FUNCTION, CAT_SAFETY,
+    categorize, is_conversational, is_derivative, is_instruct, is_nonchat_task,
+    param_size_billions, relation_targets, CAT_GENERAL, CAT_CODE, CAT_REASONING,
+    CAT_MATH, CAT_VISION, CAT_MEDICAL, CAT_FUNCTION, CAT_SAFETY,
 )
 
 
@@ -103,3 +103,49 @@ class TestParamSize:
         # laundered default (#201). A defaulted number rated frontier models as
         # perfect 7B fits.
         assert param_size_billions(None, "mystery-model") is None
+
+
+class TestConversational:
+    """#182: the `conversational` tag (instruct-suffix backstop) separates chat
+    models — kept as Base and recommended first — from raw pretrains, which are
+    dropped. Verified against the foundation orgs' real tag data."""
+
+    def test_tag_marks_chat(self):
+        # Suffix-less chat models (DeepSeek-V3, GLM-4.5, gpt-oss, Qwen3-0.6B) carry
+        # the tag and must be kept even though the slug has no it/instruct/chat.
+        assert is_conversational(["conversational"], "DeepSeek-V3") is True
+        assert is_conversational(["conversational"], "gpt-oss-20b") is True
+
+    def test_suffix_backstop_without_tag(self):
+        assert is_conversational([], "Llama-3.2-1B-Instruct") is True
+        assert is_conversational(None, "Qwen2.5-7B-Chat") is True
+
+    def test_raw_pretrain_is_not_chat(self):
+        # The exact culprits from #182: no tag, no suffix → dropped from Base.
+        assert is_conversational([], "Llama-3.2-1B") is False
+        assert is_conversational(None, "Mistral-7B-v0.1") is False
+        assert is_conversational(["license:apache-2.0"], "Meta-Llama-3-8B") is False
+
+
+class TestNonChatTask:
+    """#242: reject ASR / embedding / OCR / media-gen from the community path.
+    Substring family match (fused forms) + a non-chat pipeline denylist; the two
+    are complementary because ~26% of community repos report pipeline_tag=None."""
+
+    def test_name_substring_catches_fused_task_families(self):
+        # Fused forms token-boundary matching would miss (the #242 collision finding).
+        assert is_nonchat_task("Qwen3-Embedding-0.6B") is True
+        assert is_nonchat_task("PaddleOCR-VL-1.6") is True
+        assert is_nonchat_task("embeddinggemma-300m") is True
+        assert is_nonchat_task("whisper-large-v3") is True
+
+    def test_pipeline_denylist_catches_clean_named_task_models(self):
+        # Clean slug the name filter misses, caught by the pipeline tag instead.
+        assert is_nonchat_task("snowflake-arctic-embed-m", "sentence-similarity") is True
+        assert is_nonchat_task("parakeet-tdt-0.6b", "automatic-speech-recognition") is True
+        assert is_nonchat_task("some-captioner", "image-to-text") is True
+
+    def test_keeps_chat_and_vlm(self):
+        assert is_nonchat_task("Qwen3-8B", "text-generation") is False
+        assert is_nonchat_task("gemma-4-12b-it", "image-text-to-text") is False  # VLM chat (#122)
+        assert is_nonchat_task("DeepSeek-V3") is False

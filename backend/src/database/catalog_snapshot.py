@@ -26,7 +26,7 @@ from src.entities.Llm import Llm
 # Fields persisted per entry. ``local`` is always 0 (a remote suggestion).
 _SNAPSHOT_FIELDS = (
     "name", "link", "type", "quantized", "model_metadata", "param_size", "supports_tools",
-    "is_base", "category",
+    "is_base", "conversational", "category",
 )
 
 
@@ -47,11 +47,14 @@ def dict_to_llm(entry: Dict[str, Any]) -> Llm:
         type=entry.get("type"),
         quantized=entry.get("quantized", True),
         model_metadata=entry.get("model_metadata"),
-        # Llm validates param_size > 0; snapshots always carry it, but stay defensive.
-        param_size=entry.get("param_size") or 7.0,
+        # param_size is nullable: an unmeasured size stays None (unknown), never a
+        # laundered 7.0 (#201). The column allows None, so pass it through as-is.
+        param_size=entry.get("param_size"),
         supports_tools=entry.get("supports_tools"),
         # Pre-#86 snapshots predate the flag → default to derived/community.
         is_base=entry.get("is_base", False),
+        # Pre-#182 snapshots predate the flag → None (unknown), resolved on resync.
+        conversational=entry.get("conversational"),
         # Pre-#122 snapshots carry no category (key absent or null). Keep None —
         # it is the "unclassified" sentinel the boot reconcile relies on to
         # PRESERVE the existing row's classification instead of collapsing every

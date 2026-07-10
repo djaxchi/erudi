@@ -89,14 +89,35 @@ export function fitForModel(paramSize, range) {
 }
 
 /**
- * Order models best-fit first for the "Recommended for your machine" rail:
- * ideal → good → tight → heavy, then larger-within-tier first (more capable).
+ * Whether a model is an instruction-tuned / chat model — the variant users
+ * actually want, since most don't know the IT-vs-base distinction (#182). Trusts
+ * the backend `conversational` flag; falls back to the name heuristic only when
+ * the flag is absent (pre-#182 rows, before the next catalog resync).
+ */
+export const isChatReady = (model) => {
+  // Trust an explicit backend boolean; fall back to the name only when unknown
+  // (null/undefined on pre-#182 rows, before the next catalog resync).
+  if (typeof model.conversational === "boolean") {
+    return model.conversational;
+  }
+  return /instruct|chat/i.test(model.name || "");
+};
+
+/**
+ * Order models best-fit first for the "Recommended for your machine" rail and the
+ * catalog lists: conversational (chat) models first — non-chat ones still appear
+ * but below — then ideal → good → tight → heavy, then larger-within-tier first.
  */
 const TIER_RANK = { ideal: 0, good: 1, tight: 2, heavy: 3, unknown: 4 };
 export function rankByFit(models, range) {
   return [...models]
     .map((m) => ({ m, fit: fitForModel(m.param_size, range) }))
     .sort((a, b) => {
+      // Chat models lead: a newcomer's default should be something made for chat.
+      const c = Number(isChatReady(b.m)) - Number(isChatReady(a.m));
+      if (c !== 0) {
+        return c;
+      }
       const t = TIER_RANK[a.fit.tier] - TIER_RANK[b.fit.tier];
       return t !== 0 ? t : (b.m.param_size || 0) - (a.m.param_size || 0);
     })
@@ -115,8 +136,6 @@ const FLAGSHIP_FAMILIES = [
   "glm",
 ];
 
-const isInstruct = (model) => /instruct|chat/i.test(model.name || "");
-
 /**
  * The flagship picks for the recommendation rail: one well-known, chat-ready model
  * per family (Llama, Qwen, Gemma…), each the most capable that still runs on this
@@ -128,7 +147,9 @@ export function pickFlagships(models, range, count = 3) {
     (m) =>
       m.runnable !== false &&
       (m.category || "general") === "general" &&
-      isInstruct(m) &&
+      // Only chat models — and now via the backend flag, so suffix-less chat models
+      // (DeepSeek-V3, GLM-4.5, gpt-oss, Qwen3-0.6B) are no longer excluded (#182).
+      isChatReady(m) &&
       // Never recommend a model whose size we couldn't measure (#201): its fit is
       // unknowable, so it can't earn a "runs on your machine" flagship slot.
       typeof m.param_size === "number" &&
