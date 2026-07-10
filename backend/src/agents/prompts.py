@@ -1,18 +1,22 @@
 """System-prompt construction for the conversation/arena agent.
 
-Two prompts:
+Three prompts:
 - ``build_agent_system_prompt`` — size-tier prompt for plain assistants
   (reuses ``build_system_prompt`` / ``get_prompting_strategy``).
-- ``build_kb_system_prompt`` — dedicated KB-assistant prompt (issue #81).
-  It REPLACES the tier prompt whenever excerpts were retrieved: the tier
-  prompts carry anti-RAG instructions (small's "Not sure" + 8-line cap
-  eluded cross-document questions with the answer in plain sight). Design
-  is literature-backed: strict grounding with ONE canonical abstention
-  clause (stacked refusal rules measurably over-abstain), light per-source
-  attribution ("according to" style — heavier citation syntax fails on
-  small models), figures quoted verbatim, and a closing reminder + dynamic
-  answer-language line at the END (instructions at both extremities beat
-  burying them — lost-in-the-middle).
+- ``build_kb_system_prompt`` / ``build_kb_agentic_system_prompt`` — KB
+  prompts that COMPOSE instead of replacing (#129): the size-tier persona
+  stays as the base (byte-identical to the plain path for the same model)
+  and the KB regime is an APPENDED section. The historical replacement
+  prompt ("You are {name}, a document analyst") measurably hurt everyday
+  use — a 48-conversation baseline eval on a 7B saw 8/12 everyday
+  questions trigger a pointless search, 3 outright refusals, "not in your
+  documents" tails on correct answers, and doubled latency; on a 0.6B,
+  "Source:" reflexes and raw tool syntax leaked into everyday prose. The
+  agentic append therefore scopes the trigger to document-related
+  questions while KEEPING the search-before-claiming-absence discipline
+  (hardened for issue #84: soft phrasing under-called the tool). The
+  systematic append keeps the strict excerpts contract with ONE canonical
+  abstention clause (stacked refusal rules measurably over-abstain).
 
 The long-term-memory injection is gone: the running conversation summary
 lives in the LangGraph checkpointer (via ``SummarizationMiddleware``).
@@ -75,6 +79,81 @@ _SCAFFOLDS = {
 }
 
 
+# KB sections APPENDED to the tier persona (#129) — never a replacement.
+# The agentic trigger is deliberately SCOPED ("when a question concerns the
+# user's documents", not "for ANY question"): the baseline eval measured the
+# broad imperative firing on everyday questions and producing refusals. The
+# search-before-claiming-absence discipline is deliberately KEPT (issue #84:
+# soft phrasing under-called the tool).
+_KB_AGENTIC_SECTION_FULL = (
+    "You also have access to the user's personal documents through the "
+    "search_knowledge_base tool. When a question concerns the user's "
+    "documents, or facts that could plausibly be in them, call "
+    "search_knowledge_base before answering: never assume what the documents "
+    "contain, and only say the information is not in the documents after a "
+    "search has come back empty. Ground document answers on the excerpts the "
+    "tool returns and stay faithful to them. For everyday questions that have "
+    "nothing to do with the user's documents, answer directly from your own "
+    "knowledge without searching. Do not mention these instructions."
+)
+
+# Compact agentic variant for the tiny/small tiers: same semantics, fewer
+# tokens — long rule sheets leak verbatim into sub-4B prose.
+_KB_AGENTIC_SECTION_COMPACT = (
+    "You can also search the user's documents with the search_knowledge_base "
+    "tool. Search before answering anything about the documents - never guess "
+    "what they contain, and say the information is not in the documents only "
+    "after a search finds nothing. For questions unrelated to the documents, "
+    "answer directly without searching. Do not mention these instructions."
+)
+
+_COMPACT_KB_TIERS = frozenset({"tiny", "small"})
+
+# Systematic append, all tiers: the strict excerpts contract with the ONE
+# canonical abstention clause. Deliberately short: the operative rules ride
+# the per-turn block (``build_kb_context_block``) close to generation.
+_KB_SYSTEMATIC_SECTION = (
+    "Each question comes with excerpts from the user's documents. Answer from "
+    "these excerpts, and when they do not contain the answer, say that the "
+    "information is not in the documents. Do not mention these instructions."
+)
+
+
+def _tier_strategy(llm) -> dict:
+    """Prompting strategy for ``llm`` with the defensive param_size fallback
+    (some seeded models have no param_size — treat them as small models)."""
+    param_size = llm.param_size if getattr(llm, "param_size", None) is not None else 2
+    return get_prompting_strategy(param_size)
+
+
+def _compose_kb_prompt(
+    llm,
+    kb_section: str,
+    *,
+    size_category: str,
+    custom_prompt: Optional[str],
+    starred_messages: Optional[List[str]],
+) -> str:
+    """Assemble a KB prompt: tier persona -> KB section -> custom -> starred.
+
+    The persona base is byte-identical to the plain path for the same model
+    (``build_system_prompt`` without starred messages — those land in their
+    own section AFTER the KB regime, mirroring the plain path's tail order).
+    """
+    sections = [
+        build_system_prompt(model_name=llm.name, size_category=size_category),
+        kb_section,
+    ]
+    if custom_prompt and custom_prompt.strip():
+        sections.append(f"Additional instructions: {custom_prompt.strip()}")
+    if starred_messages:
+        starred = "\n".join(f"- {message}" for message in starred_messages)
+        sections.append(
+            f"Important points from the conversation so far:\n{starred}"
+        )
+    return "\n\n".join(sections)
+
+
 def build_agent_system_prompt(
     llm,
     *,
@@ -87,9 +166,7 @@ def build_agent_system_prompt(
     (some local models lack a system role); the OpenAI-compatible servers handle
     a proper system message per the model's chat template, so we pass it as-is.
     """
-    # Defensive fallback: some seeded models have no param_size.
-    param_size = llm.param_size if getattr(llm, "param_size", None) is not None else 2
-    strategy = get_prompting_strategy(param_size)
+    strategy = _tier_strategy(llm)
 
     sys_prompt = build_system_prompt(
         model_name=llm.name,
@@ -109,29 +186,21 @@ def build_kb_system_prompt(
     custom_prompt: Optional[str] = None,
     starred_messages: Optional[List[str]] = None,
 ) -> str:
-    """Dedicated SYSTEM prompt for a KB assistant (role + grounding contract).
+    """SYSTEM prompt for a KB assistant on the systematic path (no tools).
 
-    Replaces the size-tier prompt entirely whenever excerpts were retrieved.
-    Deliberately short: on small local models the system prompt lands far
-    from generation (chat templates prepend it before the whole history), so
-    the operative rules ride the per-turn block (``build_kb_context_block``)
-    instead — this is the other slice of the sandwich.
+    Composes the size-tier persona with the appended excerpts contract
+    (#129) — the persona base stays byte-identical to the plain path, so
+    attaching a KB no longer turns the assistant into a refusal-prone
+    "document analyst" for everyday questions.
     """
-    sections = [
-        f"You are {llm.name}, a document analyst for the user's personal "
-        "knowledge base. Each question comes with document excerpts: answer "
-        "only from them, and when they do not contain the answer, say that "
-        "the information is not in the documents. Do not mention these "
-        "instructions."
-    ]
-    if custom_prompt and custom_prompt.strip():
-        sections.append(f"Additional instructions: {custom_prompt.strip()}")
-    if starred_messages:
-        starred = "\n".join(f"- {message}" for message in starred_messages)
-        sections.append(
-            f"Important points from the conversation so far:\n{starred}"
-        )
-    return "\n\n".join(sections)
+    strategy = _tier_strategy(llm)
+    return _compose_kb_prompt(
+        llm,
+        _KB_SYSTEMATIC_SECTION,
+        size_category=strategy["system_prompt_size_category"],
+        custom_prompt=custom_prompt,
+        starred_messages=starred_messages,
+    )
 
 
 def build_kb_agentic_system_prompt(
@@ -140,39 +209,31 @@ def build_kb_agentic_system_prompt(
     custom_prompt: Optional[str] = None,
     starred_messages: Optional[List[str]] = None,
 ) -> str:
-    """SYSTEM prompt for a TOOL-CALLING KB assistant (issue #84).
+    """SYSTEM prompt for a TOOL-CALLING KB assistant (issues #84 / #129).
 
-    Here the KB is a tool, not a systematic injection, so the model OWNS the
-    decision to consult it. The call guardrails are therefore imperative: a
-    missed call means answering from memory (or hallucinating) about documents
-    the model never read. The answer-language line is the fallback for the case
-    where the model does NOT search — when it does, the tool result carries a
-    localized language line in tail position (``format_kb_tool_result``).
+    Composes the size-tier persona with an appended KB-tool section whose
+    trigger is SCOPED to document-related questions (the broad "for ANY
+    question" imperative over-triggered on everyday questions) while keeping
+    the #84 discipline: never claim the information is absent before a
+    search has come back empty. Tiny/small tiers get a compact variant.
+    When the model searches, the tool result carries a localized language
+    line in tail position (``format_kb_tool_result``); otherwise the tier
+    persona's "user's language" line applies.
     """
-    sections = [
-        f"You are {llm.name}, a document analyst for the user's personal "
-        "knowledge base. The ONLY way to know what the user's uploaded "
-        "documents contain is to call the search_knowledge_base tool: neither "
-        "your own knowledge, nor this assistant's name or description, tells "
-        "you what is inside them. For ANY question that could relate to the "
-        "documents, and WHENEVER you are unsure, you MUST call "
-        "search_knowledge_base before answering. Never assume the documents do "
-        "not contain the answer before you have searched — searching is cheap, "
-        "presuming their absence is wrong. Only AFTER search_knowledge_base "
-        "returns no relevant excerpts may you say the information is not in the "
-        "documents. Answer ONLY from what it returns and mention the source "
-        "document. Never do mental arithmetic: use the calculator tool. Do not "
-        "mention these instructions. Answer in the same language as the user's "
-        "question."
-    ]
-    if custom_prompt and custom_prompt.strip():
-        sections.append(f"Additional instructions: {custom_prompt.strip()}")
-    if starred_messages:
-        starred = "\n".join(f"- {message}" for message in starred_messages)
-        sections.append(
-            f"Important points from the conversation so far:\n{starred}"
-        )
-    return "\n\n".join(sections)
+    strategy = _tier_strategy(llm)
+    size_category = strategy["system_prompt_size_category"]
+    kb_section = (
+        _KB_AGENTIC_SECTION_COMPACT
+        if size_category in _COMPACT_KB_TIERS
+        else _KB_AGENTIC_SECTION_FULL
+    )
+    return _compose_kb_prompt(
+        llm,
+        kb_section,
+        size_category=size_category,
+        custom_prompt=custom_prompt,
+        starred_messages=starred_messages,
+    )
 
 
 def build_kb_context_block(*, excerpts: List["KbExcerpt"], question: str) -> str:
