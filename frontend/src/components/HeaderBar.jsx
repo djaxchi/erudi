@@ -122,8 +122,8 @@ export default function HeaderBar({
     );
   };
 
-  const sliderBg = (value) => {
-    const pct = Math.round(value * 100);
+  const sliderBg = (value, max = 1) => {
+    const pct = Math.round((value / max) * 100);
     return {
       background: `linear-gradient(to right, #25C08A 0%, #1EAB78 ${pct}%, rgba(255,255,255,0.06) ${pct}%, rgba(255,255,255,0.06) 100%)`,
     };
@@ -319,8 +319,14 @@ export default function HeaderBar({
                         Creativity
                       </span>
                       <TooltipIcon id="temperature" side={isNarrow ? "bottom-right" : "right"} />
+                      {/* Backend accepts 0-2; values above 1.0 get an amber tint
+                          as a light "high creativity" cue (no redesign). */}
                       <span
-                        className={`ml-auto ${statText} font-semibold text-emerald-200/90 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-400/25`}
+                        className={`ml-auto ${statText} font-semibold px-2 py-0.5 rounded-md border ${
+                          temperature > 1
+                            ? "text-amber-200/90 bg-amber-500/10 border-amber-400/30"
+                            : "text-emerald-200/90 bg-emerald-500/10 border-emerald-400/25"
+                        }`}
                       >
                         {temperature.toFixed(2)}
                       </span>
@@ -330,7 +336,7 @@ export default function HeaderBar({
                       <input
                         type="range"
                         min="0"
-                        max="1"
+                        max="2"
                         step="0.01"
                         value={temperature}
                         onChange={(e) => {
@@ -339,7 +345,7 @@ export default function HeaderBar({
                           onLiveChange?.({ temperature: value, topP, maxTokens });
                         }}
                         className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
-                        style={sliderBg(temperature)}
+                        style={sliderBg(temperature, 2)}
                       />
                     </div>
                   </div>
@@ -403,7 +409,7 @@ export default function HeaderBar({
                         <input
                           type="number"
                           min="1"
-                          max="2000"
+                          max="8192"
                           value={maxTokens}
                           onChange={(e) => {
                             const value = parseInt(e.target.value || "0", 10);

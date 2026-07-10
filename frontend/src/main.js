@@ -756,6 +756,39 @@ ipcMain.handle("fs:readImageAsDataURL", async (_event, filePath) => {
   }
 });
 
+// Persist a pasted (clipboard) image to disk and return its absolute path.
+// The renderer has no fs access, and a clipboard image has no source path, so
+// it would otherwise be stored as a bare [image] placeholder and lost on reload
+// (#136). Writing it under the user-data dir gives it a real path that flows
+// through the same [image_path:...] persistence + fs:readImageAsDataURL reload
+// pipeline as any file attachment.
+ipcMain.handle("image:savePasted", async (_event, dataUrl) => {
+  try {
+    const match = /^data:image\/([a-zA-Z0-9.+-]+);base64,(.*)$/.exec(dataUrl || "");
+    if (!match) {
+      return null;
+    }
+    let ext = match[1].toLowerCase();
+    if (ext === "jpeg") {
+      ext = "jpg";
+    } else if (ext === "svg+xml") {
+      ext = "svg";
+    }
+    const bytes = Buffer.from(match[2], "base64");
+    const dir = path.join(getDataDirectory(), "pasted-images");
+    fs.mkdirSync(dir, { recursive: true });
+    const filePath = path.join(
+      dir,
+      `paste-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    );
+    fs.writeFileSync(filePath, bytes);
+    return filePath;
+  } catch (error) {
+    log(`Failed to save pasted image: ${error.message}`);
+    return null;
+  }
+});
+
 // Helper function to get the user data directory path (cross-platform)
 function getDataDirectory() {
   const appName = "erudi";
