@@ -8,14 +8,17 @@ Covers:
   anti-B1 rule (create_tables must not rely on an imported-by-value engine).
 """
 
+import platform
 import subprocess
 
 import psycopg
 import pytest
 from sqlalchemy import create_engine, inspect as sa_inspect, text
 
+from src.core.subprocess_flags import hidden_console_creationflags
 from src.launcher import postgres_runtime
 from src.launcher.postgres_runtime import (
+    _console_isolated,
     _recover_corrupt_pgdata,
     start_postgres,
     stop_postgres,
@@ -326,3 +329,87 @@ class TestRecoverySecondChance:
 
         assert postgres_runtime._get_server_with_recovery(tmp_path) is fresh
         assert calls["n"] == 2
+
+
+class TestConsoleIsolation:
+    """#162 - the postgres lineage must NOT share the backend's hidden console.
+
+    On the packaged Windows build every postgres process (pg_ctl/initdb, the
+    postmaster + its helpers) inherits the backend's single hidden conhost, so
+    that conhost's death kills the whole cluster while the backend survives - the
+    app then runs green over a dead database. The module rebinds pgserver's
+    pg_ctl/initdb with wrappers that inject creationflags=CREATE_NO_WINDOW so each
+    child gets its own console; off Windows the injected value is 0 (a no-op).
+
+    Pure-unit: the wrapper is exercised with a fake underlying command, never a
+    real cluster (the throwaway-cluster integration tests above already drive the
+    patched pg_ctl/initdb path in CI).
+    """
+
+    @pytest.mark.unit
+    def test_pg_ctl_and_initdb_are_wrapped(self):
+        # Module import rebinds both names on pgserver's postgres_server module.
+        assert getattr(
+            postgres_runtime._pg_server_mod.pg_ctl, "_erudi_console_isolated", False
+        )
+        assert getattr(
+            postgres_runtime._pg_server_mod.initdb, "_erudi_console_isolated", False
+        )
+
+    @pytest.mark.unit
+    def test_wrapper_injects_hidden_console_creationflags(self):
+        recorded = {}
+
+        def fake_command(args, pgdata=None, **kwargs):
+            recorded["args"] = args
+            recorded["pgdata"] = pgdata
+            recorded["kwargs"] = kwargs
+            return "ok"
+
+        wrapped = _console_isolated(fake_command)
+        assert wrapped(["-w", "start"], pgdata="/pg") == "ok"
+        # On Windows this is CREATE_NO_WINDOW; on the Linux CI runner it is 0.
+        assert recorded["kwargs"]["creationflags"] == hidden_console_creationflags()
+        # The wrapper is transparent to the real call arguments.
+        assert recorded["args"] == ["-w", "start"]
+        assert recorded["pgdata"] == "/pg"
+
+    @pytest.mark.unit
+    def test_wrapper_does_not_override_explicit_creationflags(self):
+        recorded = {}
+
+        def fake_command(args, pgdata=None, **kwargs):
+            recorded["kwargs"] = kwargs
+            return "ok"
+
+        wrapped = _console_isolated(fake_command)
+        wrapped([], pgdata="/pg", creationflags=0x1)  # caller is explicit
+        # setdefault semantics: a caller-provided value is never clobbered.
+        assert recorded["kwargs"]["creationflags"] == 0x1
+
+    @pytest.mark.unit
+    def test_wrapper_forwards_pgserver_kwargs(self):
+        # pgserver calls pg_ctl(..., user=..., timeout=10); those must survive.
+        recorded = {}
+
+        def fake_command(args, pgdata=None, **kwargs):
+            recorded["kwargs"] = kwargs
+            return "ok"
+
+        wrapped = _console_isolated(fake_command)
+        wrapped([], pgdata="/pg", user="postgres", timeout=10)
+        assert recorded["kwargs"]["user"] == "postgres"
+        assert recorded["kwargs"]["timeout"] == 10
+
+    @pytest.mark.unit
+    def test_injected_value_matches_platform(self):
+        # CREATE_NO_WINDOW on Windows, 0 (harmless no-op) everywhere else.
+        expected = 0x08000000 if platform.system() == "Windows" else 0
+        assert hidden_console_creationflags() == expected
+
+    @pytest.mark.unit
+    def test_console_isolated_is_idempotent(self):
+        # Re-wrapping an already-wrapped command returns it unchanged (guard attr),
+        # so a module re-run never stacks wrappers.
+        already = postgres_runtime._pg_server_mod.pg_ctl
+        assert _console_isolated(already) is already

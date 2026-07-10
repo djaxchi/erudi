@@ -36,6 +36,7 @@ from pgserver.utils import find_suitable_socket_dir as _orig_find_socket_dir
 from pgserver.utils import socket_name_length_ok
 
 from src.core.logging import logger
+from src.core.subprocess_flags import hidden_console_creationflags
 from src.launcher.events import emit_phase
 
 DB_NAME = "erudi"
@@ -73,6 +74,40 @@ def _space_safe_socket_dir(pgdata, runtime_path):
 
 # pgserver looks this name up on its own module at call time, so patch there.
 _pg_server_mod.find_suitable_socket_dir = _space_safe_socket_dir
+
+
+def _console_isolated(orig_command):
+    """Wrap a pgserver command fn so its child gets its OWN hidden console (#162).
+
+    Constraint: the postgres lineage must NOT share the backend's console. On the
+    packaged Windows build the backend is a console app whose window is hidden by
+    the Electron launcher; pgserver spawns pg_ctl/initdb (and through them the
+    postmaster + its ~10 helpers) via plain ``subprocess.run`` with no
+    ``creationflags``, so every postgres process inherits that single shared
+    conhost. Killing that one conhost then tears down the whole cluster while the
+    backend survives - the app runs green over a dead database (the #162
+    packaged-app reproduction of the 0xC000013A incident). ``CREATE_NO_WINDOW``
+    gives each child a console of its own, breaking the shared-conhost coupling.
+
+    ``setdefault`` so an explicit caller-provided ``creationflags`` always wins;
+    off Windows ``hidden_console_creationflags()`` is 0, a harmless no-op.
+    Idempotent via a guard attribute so a re-run never double-wraps.
+    """
+    if getattr(orig_command, "_erudi_console_isolated", False):
+        return orig_command
+
+    def command(args, pgdata=None, **kwargs):
+        kwargs.setdefault("creationflags", hidden_console_creationflags())
+        return orig_command(args, pgdata=pgdata, **kwargs)
+
+    command._erudi_console_isolated = True
+    return command
+
+
+# Same call-time lookup as the socket-dir patch: postgres_server resolves both
+# names on its own module, so rebind them there.
+_pg_server_mod.pg_ctl = _console_isolated(_pg_server_mod.pg_ctl)
+_pg_server_mod.initdb = _console_isolated(_pg_server_mod.initdb)
 
 
 def _prune_stale_handle_pids(data_dir: Path) -> None:
