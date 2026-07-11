@@ -92,28 +92,36 @@ class _KbContextMiddleware(AgentMiddleware):
 
 
 class _StripStaleImagesMiddleware(AgentMiddleware):
-    """Keep only the CURRENT turn's images in the model request.
+    """Carry only the MOST RECENT image forward in the model request.
 
     The checkpointer stores each turn's multimodal ``HumanMessage``, so without
     this every past screenshot would be re-sent on each follow-up and blow the
-    (small, local) VLM context. Vision is therefore single-turn: an image is
-    seen only on the turn it is sent; in later turns it collapses to an
-    ``[image]`` text marker. The current turn — the last human message, even
-    across tool-call loops where a ToolMessage is last — keeps its images.
+    (small, local) VLM context. Instead we keep the images of the most recent
+    image-bearing turn and collapse every OLDER image to an ``[image]`` text
+    marker. So a user can ask follow-ups about the image they just sent ("what
+    colour is his hair?") without re-attaching it, while the context still carries
+    at most one turn's images. When the current turn itself has an image, that is
+    the most recent one, so it is the one kept (the previous single-turn case).
     """
+
+    @staticmethod
+    def _has_images(m):
+        return isinstance(m.content, list) and any(
+            isinstance(p, dict) and p.get("type") == "image_url" for p in m.content
+        )
 
     def _strip(self, request):
         messages = list(request.messages)
-        human_idxs = [i for i, m in enumerate(messages) if m.type == "human"]
-        if not human_idxs:
+        img_idxs = [i for i, m in enumerate(messages) if self._has_images(m)]
+        if not img_idxs:
             return request
-        keep = human_idxs[-1]
+        keep = img_idxs[-1]  # most recent image-bearing turn: carry it forward
         changed = False
-        for i, m in enumerate(messages):
-            if i == keep or not isinstance(m.content, list):
+        for i in img_idxs:
+            if i == keep:
                 continue
-            messages[i] = m.model_copy(
-                update={"content": _flatten_without_images(m.content)}
+            messages[i] = messages[i].model_copy(
+                update={"content": _flatten_without_images(messages[i].content)}
             )
             changed = True
         return request.override(messages=messages) if changed else request
