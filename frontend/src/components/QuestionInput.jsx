@@ -186,20 +186,20 @@ export default function QuestionInput({
             e.target.value = "";
           }}
         />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || images.length >= MAX_IMAGES || !canAttachImages}
-          className="pl-3 md:pl-4 text-white/70 hover:text-white disabled:opacity-40 transition"
-          aria-label="Attach image"
-          title={
-            canAttachImages
-              ? "Attach image (or paste / drag and drop)"
-              : "This model can't read images — pick a Vision model"
-          }
-        >
-          <ImagePlus className="w-5 h-5" />
-        </button>
+        {/* Image attach is a vision-only affordance: a text model can't read
+            images, so the icon isn't shown at all (not just disabled). */}
+        {canAttachImages && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled || images.length >= MAX_IMAGES}
+            className="pl-3 md:pl-4 text-white/70 hover:text-white disabled:opacity-40 transition"
+            aria-label="Attach image"
+            title="Attach image (or paste / drag and drop)"
+          >
+            <ImagePlus className="w-5 h-5" />
+          </button>
+        )}
 
         <textarea
           ref={textareaRef}
