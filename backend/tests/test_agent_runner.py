@@ -642,10 +642,11 @@ async def test_kb_merge_preserves_image_parts(monkeypatch):
     assert any(p.get("type") == "image_url" for p in merged.content)
 
 
-async def test_stale_images_stripped_on_followup(monkeypatch):
-    """Turn 1 sends an image; turn 2 is text-only. Turn 2's model call must NOT
-    re-send turn 1's image (it collapses to an [image] marker), keeping the
-    small VLM context bounded — vision is single-turn."""
+async def test_latest_image_carried_forward_on_followup(monkeypatch):
+    """Turn 1 sends an image; turn 2 is text-only. Turn 2's model call STILL
+    carries turn 1's image (the most recent one), so a user can ask follow-ups
+    about it without re-attaching — while context stays bounded to one turn's
+    images (option B)."""
     fake = _RecordingModel(
         messages=iter([AIMessage(content="r1"), AIMessage(content="r2")])
     )
@@ -656,26 +657,61 @@ async def test_stale_images_stripped_on_followup(monkeypatch):
     # (anything else would add _StripImagesForTextModel too since #212).
     async for _ in runner.astream_text(
         llm=_Llm(), user_message=[{"type": "text", "text": "see this"}, _IMG],
-        system_prompt="s", params=_PARAMS, thread_id="c-strip", summarize=True,
+        system_prompt="s", params=_PARAMS, thread_id="c-carry", summarize=True,
         supports_vision=True,
     ):
         pass
     async for _ in runner.astream_text(
         llm=_Llm(), user_message="and now?", system_prompt="s",
-        params=_PARAMS, thread_id="c-strip", summarize=True,
+        params=_PARAMS, thread_id="c-carry", summarize=True,
         supports_vision=True,
     ):
         pass
 
     second_call = fake.received[-1]
-    # No image_url survives anywhere in turn 2's request.
-    for m in second_call:
-        if isinstance(m.content, list):
-            assert all(p.get("type") != "image_url" for p in m.content)
-    # Turn 1's human message kept its text + an [image] marker (flattened).
+    # Turn 1's image is carried into turn 2's request (kept, not flattened).
     past_human = [m for m in second_call if m.type == "human"][0]
-    assert "[image]" in past_human.content
-    assert "see this" in past_human.content
+    assert isinstance(past_human.content, list)
+    assert any(p.get("type") == "image_url" for p in past_human.content)
+    assert any(
+        p.get("type") == "text" and "see this" in p.get("text", "")
+        for p in past_human.content
+    )
+
+
+async def test_only_latest_image_kept_across_two_image_turns(monkeypatch):
+    """Two image-bearing turns: only the MOST RECENT image survives; the older one
+    collapses to an [image] marker, so context never accrues more than one turn's
+    images (option B, bounded)."""
+    fake = _RecordingModel(
+        messages=iter([AIMessage(content="r1"), AIMessage(content="r2")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message=[{"type": "text", "text": "first pic"}, _IMG],
+        system_prompt="s", params=_PARAMS, thread_id="c-two", summarize=True,
+        supports_vision=True,
+    ):
+        pass
+    async for _ in runner.astream_text(
+        llm=_Llm(), user_message=[{"type": "text", "text": "second pic"}, _IMG],
+        system_prompt="s", params=_PARAMS, thread_id="c-two", summarize=True,
+        supports_vision=True,
+    ):
+        pass
+
+    second_call = fake.received[-1]
+    humans = [m for m in second_call if m.type == "human"]
+    # Older image turn -> collapsed to an [image] marker (no image_url).
+    first = humans[0]
+    assert isinstance(first.content, str)
+    assert "[image]" in first.content and "first pic" in first.content
+    # Most recent image turn -> image kept.
+    last = humans[-1]
+    assert isinstance(last.content, list)
+    assert any(p.get("type") == "image_url" for p in last.content)
 
 
 async def test_images_stripped_for_non_vision_model(monkeypatch):
