@@ -78,6 +78,7 @@ from typing import Any, Dict, List, Optional, Union
 from pathlib import Path
 
 from src.engines.base_llama_cpp_engine import BaseLlamaCppEngine
+from src.engines.cpu_brand import get_cpu_brand
 from src.core.logging import logger
 from src.core.subprocess_flags import hidden_console_creationflags
 from src.core.exceptions import (
@@ -789,7 +790,6 @@ class CUDA_Engine(BaseLlamaCppEngine):
             # Import required modules
             try:
                 import psutil
-                import cpuinfo
             except ImportError as e:
                 logger.error(f"Required hardware detection dependency missing: {e}")
                 raise HardwareException(
@@ -811,8 +811,7 @@ class CUDA_Engine(BaseLlamaCppEngine):
             disk_available_gb = disk.free / (1024 ** 3)
             disk_usage_pct = disk.percent
             
-            cpu_info_data = cpuinfo.get_cpu_info()
-            cpu_model = cpu_info_data.get("brand_raw", "Unknown CPU")
+            cpu_model = get_cpu_brand() or "Unknown CPU"
             total_cores = psutil.cpu_count(logical=False) or 4
             logical_cores = psutil.cpu_count(logical=True) or 8
             

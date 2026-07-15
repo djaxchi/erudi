@@ -172,6 +172,21 @@ def test_stdin_watch_enabled_reads_env(monkeypatch):
     assert run.stdin_watch_enabled() is True
 
 
+class _FakeStdin:
+    """Stand-in for sys.stdin exposing a real fileno() for os.read (#283).
+
+    The watcher now reads the RAW fd (os.read on fileno()), never a buffered
+    object, so the fakes hand it a real OS file descriptor: the read end of an
+    os.pipe(). Closing the write end delivers EOF (os.read -> b"").
+    """
+
+    def __init__(self, fd):
+        self._fd = fd
+
+    def fileno(self):
+        return self._fd
+
+
 @pytest.mark.unit
 def test_stdin_eof_watcher_sets_should_exit(monkeypatch):
     # An EOF on stdin (parent closed the pipe) must flip uvicorn's exit flag so
@@ -179,20 +194,21 @@ def test_stdin_eof_watcher_sets_should_exit(monkeypatch):
     # relay, since Windows has no SIGTERM to catch.
     import run
 
-    class FakeStdin:
-        class buffer:
-            @staticmethod
-            def read():
-                return b""  # immediate EOF
+    read_fd, write_fd = os.pipe()
 
     class FakeServer:
         should_exit = False
 
-    monkeypatch.setattr(sys, "stdin", FakeStdin())
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(read_fd))
     server = FakeServer()
 
-    thread = run.start_stdin_eof_watcher(server)
-    thread.join(timeout=2.0)
+    try:
+        thread = run.start_stdin_eof_watcher(server)
+        # Closing the write end delivers EOF to os.read(read_fd, ...).
+        os.close(write_fd)
+        thread.join(timeout=2.0)
+    finally:
+        os.close(read_fd)
 
     assert not thread.is_alive()
     assert server.should_exit is True
@@ -200,20 +216,38 @@ def test_stdin_eof_watcher_sets_should_exit(monkeypatch):
 
 @pytest.mark.unit
 def test_stdin_eof_watcher_survives_broken_stdin(monkeypatch):
-    # A stdin whose read() raises must not crash the launcher (the thread just
-    # exits) and must leave the exit flag untouched.
+    # A stdin whose raw read raises must not crash the launcher (the thread just
+    # exits) and must leave the exit flag untouched. A closed fd makes os.read
+    # raise OSError(EBADF).
     import run
 
-    class BrokenStdin:
-        class buffer:
-            @staticmethod
-            def read():
-                raise OSError("stdin is broken")
+    read_fd, write_fd = os.pipe()
+    os.close(read_fd)
+    os.close(write_fd)  # fd is now invalid -> os.read raises
 
     class FakeServer:
         should_exit = False
 
-    monkeypatch.setattr(sys, "stdin", BrokenStdin())
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(read_fd))
+    server = FakeServer()
+
+    thread = run.start_stdin_eof_watcher(server)
+    thread.join(timeout=2.0)
+
+    assert not thread.is_alive()
+    assert server.should_exit is False
+
+
+@pytest.mark.unit
+def test_stdin_eof_watcher_survives_none_stdin(monkeypatch):
+    # No controlling stdin (sys.stdin is None, as under some frozen/detached
+    # launches) must return immediately without touching the exit flag (#283).
+    import run
+
+    class FakeServer:
+        should_exit = False
+
+    monkeypatch.setattr(sys, "stdin", None)
     server = FakeServer()
 
     thread = run.start_stdin_eof_watcher(server)

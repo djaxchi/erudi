@@ -81,6 +81,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Union
 
 from src.engines.base_llama_cpp_engine import BaseLlamaCppEngine
+from src.engines.cpu_brand import get_cpu_brand
 from src.core.exceptions import EngineException
 from src.core.logging import logger
 from src.core.config import ROOT_DIR
@@ -412,35 +413,31 @@ class CPU_Engine(BaseLlamaCppEngine):
             
         Note:
             GPU fields return None/False since this is CPU-only backend.
-            Falls back gracefully if psutil/cpuinfo unavailable.
+            Falls back gracefully if psutil unavailable.
         """
         try:
             # Import optional dependencies for hardware detection
             try:
                 import psutil
-                import cpuinfo
             except ImportError as e:
                 logger.warning(f"Optional hardware detection dependency missing: {e}")
                 psutil = None
-                cpuinfo = None
 
             # System information
             system = platform.system()
             machine = platform.machine()
             processor = platform.processor() or platform.uname().processor
-            
+
             # CPU information
             total_cores = psutil.cpu_count(logical=False) if psutil else (os.cpu_count() or 1)
             logical_cores = psutil.cpu_count(logical=True) if psutil else (os.cpu_count() or 1)
-            
-            # Enhanced CPU model detection using cpuinfo
+
+            # Enhanced CPU model detection from OS-native sources (no py-cpuinfo
+            # multiprocessing child; see src/engines/cpu_brand.py and #282)
             cpu_model = processor
-            cpu_brand = None
-            if cpuinfo:
-                cpu_info_data = cpuinfo.get_cpu_info()
-                cpu_brand = cpu_info_data.get("brand_raw")
-                if cpu_brand:
-                    cpu_model = cpu_brand
+            cpu_brand = get_cpu_brand()
+            if cpu_brand:
+                cpu_model = cpu_brand
             
             # Check if Apple Silicon (shouldn't normally reach CPU_Engine on Mac, but handle it)
             is_apple_silicon = system == "Darwin" and "arm" in machine.lower()
@@ -620,12 +617,10 @@ class CPU_Engine(BaseLlamaCppEngine):
             # Import optional dependencies
             try:
                 import psutil
-                import cpuinfo
             except ImportError as e:
                 logger.warning(f"Optional hardware detection dependency missing: {e}")
                 psutil = None
-                cpuinfo = None
-            
+
             # Get hardware info
             hw_info = cls.get_hardware_info()
             
