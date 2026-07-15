@@ -113,6 +113,7 @@ def configure_library_env() -> None:
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     os.environ.setdefault("MKL_NUM_THREADS", "1")
     os.environ.setdefault("PYTHONNOUSERSITE", "1")
+    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")  # local-first egress hygiene (#109)
 
 
 def set_event_loop_policy() -> None:

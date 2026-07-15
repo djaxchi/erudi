@@ -62,7 +62,6 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from src.core.logging import logger
-from src.core.config import get_hf_api
 from src.core import config
 from src.database import core
 from src.database.core import Base, SessionLocal
@@ -107,28 +106,38 @@ from src.entities.StartupVariables import StartupVariables
 # ============ Connectivity & Offline Mode Helpers ============
 
 def is_online() -> bool:
-    """Check if internet connection is available via HuggingFace API.
-    
-    Attempts a lightweight API call to verify connectivity. Used to determine
-    whether to seed models from HuggingFace or use offline fallback.
-    
+    """Check whether Hugging Face is reachable, with a hard, bounded timeout.
+
+    Issues a single lightweight ``HEAD https://huggingface.co`` with an explicit
+    (connect, read) timeout so the probe can NEVER hang on a captive-portal or
+    packet-black-hole network. The connectivity pill polls this ~every 45 s
+    through a threadpool; an unbounded probe (the previous ``HfApi.list_models``
+    call set no timeout despite this docstring once claiming a 5-second one)
+    would pile up stuck threads on such networks (#109).
+
+    Any failure (DNS, connect timeout, read timeout, HTTP client/proxy error)
+    is treated as offline. A slow-but-alive network may read offline for one
+    poll; the pill is tri-state and re-probes, so the residual risk is accepted.
+
     Returns:
-        bool: True if online and can reach HuggingFace, False otherwise.
-    
-    Note:
-        Uses a 5-second timeout to avoid blocking startup for too long.
-        Caches result is not needed (only called once during startup).
-    
+        bool: True only if the HEAD request completed (any response), else False.
+
     Example:
         >>> if is_online():
         ...     seed_from_huggingface()
         ... else:
         ...     seed_from_local_cache()
     """
+    import requests
+
     try:
-        api = get_hf_api()
-        # Lightweight check: Try to get model count (doesn't download anything)
-        api.list_models(limit=1).__iter__().__next__()
+        # (connect, read) timeouts in seconds. We only care that a round trip
+        # completes at all -- any HTTP status counts as "reachable".
+        requests.head(
+            "https://huggingface.co",
+            timeout=(3, 3),
+            allow_redirects=True,
+        )
         return True
     except Exception as e:
         logger.warning(f"Internet connectivity check failed: {e}")
