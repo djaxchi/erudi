@@ -70,10 +70,55 @@ from src.core.exceptions import (
     InvalidInputException,
     StateConflictException,
     UnsupportedPlatformException,
+    HuggingFaceAPIException,
 )
 
 # Environment setup
 FILES_TO_EXCLUDE = ["consolidated.safetensors"]
+
+# Friendly, ASCII-only wording surfaced when a download fails because the
+# machine has no network -- mirrors the e5 embedding-download offline path
+# (ingestion/embedding_model.OFFLINE_ERROR_MESSAGE) so a connectivity blip
+# reads as "offline" instead of the raw hf_hub "Cannot reach https://..."
+# string (#109). Kept ASCII (no em dash) for log-safety on cp1252 consoles.
+OFFLINE_DOWNLOAD_MESSAGE = (
+    "you appear to be offline - check your connection and retry"
+)
+
+# Lowercased substrings marking a no-network failure anywhere in the exception
+# chain. hf_hub/transformers re-wrap connection errors, so matching by message
+# (defensively, alongside the requests ConnectionError type) is deliberate.
+_OFFLINE_MESSAGE_MARKERS = (
+    "cannot reach https://huggingface.co",
+    "couldn't connect to 'https://huggingface.co'",
+    "we couldn't connect to 'https://huggingface.co'",
+    "offline mode is enabled",
+    "outgoing traffic has been disabled",
+    "getaddrinfo",
+    "name or service not known",
+    "temporary failure in name resolution",
+    "network is unreachable",
+    "max retries exceeded",
+    "connection error",
+)
+
+
+def _is_offline_download_error(exc: BaseException) -> bool:
+    """True if the exception chain looks like a no-network download failure (#109)."""
+    from huggingface_hub.errors import OfflineModeIsEnabled
+    from requests.exceptions import ConnectionError as RequestsConnectionError
+
+    seen: set = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (OfflineModeIsEnabled, RequestsConnectionError)):
+            return True
+        message = str(current).lower()
+        if any(marker in message for marker in _OFFLINE_MESSAGE_MARKERS):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 # Registry of active download trackers keyed by job_id for cancellation support
 _active_trackers: dict = {}
@@ -519,6 +564,9 @@ async def download_llm(
         logger.error(f"HuggingFace error for {actual_download_link}: {e}")
         raise
     except Exception as e:
+        if _is_offline_download_error(e):
+            logger.error(f"Model download failed (offline): {e}")
+            raise HuggingFaceAPIException(OFFLINE_DOWNLOAD_MESSAGE, trace=str(e))
         logger.error(f"Failed to process model: {e}")
         raise
     finally:

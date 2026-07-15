@@ -200,7 +200,9 @@ class TestReconcileCatalogFromSnapshot:
         def _no_network(*a, **k):
             raise AssertionError("HF client must never be constructed on the reconcile path")
 
-        monkeypatch.setattr(seed_mod, "get_hf_api", _no_network)
+        # seed.py no longer imports get_hf_api at module level (is_online now
+        # does a bounded requests.head, imported locally - #109); patching the
+        # probe itself plus the config-level client factory keeps the guarantee.
         monkeypatch.setattr(seed_mod, "is_online", _no_network)
         monkeypatch.setattr(config, "get_hf_api", _no_network)
 

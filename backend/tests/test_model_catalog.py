@@ -498,8 +498,11 @@ class TestPlaceholderSeedIsBestEffort:
         def _boom(*a, **k):
             raise AssertionError("no network call may run on the boot path (#131/#163)")
 
+        # seed.py no longer imports get_hf_api at module level (is_online now does
+        # a bounded requests.head, imported locally - #109); patching the probe
+        # plus the config-level factory keeps the zero-network guarantee.
         monkeypatch.setattr(seed_mod, "is_online", _boom)
-        monkeypatch.setattr(seed_mod, "get_hf_api", _boom)
+        monkeypatch.setattr(config, "get_hf_api", _boom)
 
         monkeypatch.setattr(config, "LLM_Engine", type("_Eng", (), {"FORMAT_TAG": "gguf"}))
         monkeypatch.setattr(snap_mod, "load_catalog_snapshot", lambda tag: [

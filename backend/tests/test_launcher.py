@@ -98,6 +98,40 @@ def test_configure_stdio_forces_utf8_replace(monkeypatch):
 
 
 @pytest.mark.unit
+def test_configure_library_env_sets_defaults(monkeypatch):
+    # configure_library_env pins noisy-library defaults, including
+    # HF_HUB_DISABLE_TELEMETRY=1 for local-first egress hygiene (#109).
+    import run
+
+    for key in (
+        "TOKENIZERS_PARALLELISM",
+        "OMP_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "PYTHONNOUSERSITE",
+        "HF_HUB_DISABLE_TELEMETRY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    run.configure_library_env()
+
+    assert os.environ["HF_HUB_DISABLE_TELEMETRY"] == "1"
+    assert os.environ["TOKENIZERS_PARALLELISM"] == "false"
+    assert os.environ["OMP_NUM_THREADS"] == "1"
+    assert os.environ["MKL_NUM_THREADS"] == "1"
+    assert os.environ["PYTHONNOUSERSITE"] == "1"
+
+
+@pytest.mark.unit
+def test_configure_library_env_does_not_override_existing(monkeypatch):
+    # setdefault semantics: an operator-provided telemetry setting is respected.
+    import run
+
+    monkeypatch.setenv("HF_HUB_DISABLE_TELEMETRY", "0")
+    run.configure_library_env()
+    assert os.environ["HF_HUB_DISABLE_TELEMETRY"] == "0"
+
+
+@pytest.mark.unit
 def test_configure_stdio_survives_streams_without_reconfigure(monkeypatch):
     # Some streams (bare objects, or ones that reject reconfigure kwargs) must
     # not break startup — configure_stdio guards each stream individually.
