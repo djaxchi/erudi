@@ -1,3 +1,4 @@
 # Windows-only runtime deps. Currently none: hardware detection is cross-platform
-# (CPU_Engine = psutil + py-cpuinfo, CUDA_Engine = pynvml), so `wmi` was unused and
-# removed. Kept as a placeholder for the entrypoints that `-r` this file.
+# (CPU/CUDA engines = psutil + stdlib winreg for the CPU brand, CUDA_Engine = pynvml),
+# so `wmi` was unused and removed. Kept as a placeholder for the entrypoints that
+# `-r` this file.

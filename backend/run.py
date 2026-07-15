@@ -304,13 +304,32 @@ def start_stdin_eof_watcher(server: "uvicorn.Server") -> threading.Thread:
     closed because Electron closed it or died); the watcher then flips
     uvicorn's exit flag, exactly like the POSIX signal relay, so the FastAPI
     lifespan shutdown (checkpointer close, embedded PostgreSQL stop) runs
-    before the process exits. Runs on a daemon thread and swallows any stdin
-    error: a broken or absent stdin must never crash the launcher.
+    before the process exits.
+
+    The read goes through the RAW file descriptor (os.read on
+    sys.stdin.fileno()), never sys.stdin.buffer. A blocking read on the shared
+    BufferedReader holds that object's lock for the whole time this daemon
+    thread is parked; if the interpreter finalizes while it is still parked
+    there (any exit path that is not the graceful stdin-EOF one -- e.g. a
+    PORT_TIMEOUT sys.exit), CPython's buffered-IO finalization tries to acquire
+    that same lock and aborts the process with a fatal error
+    (_enter_buffered_busy -> exit 0xC0000005). Reading the raw fd involves no
+    buffered object and therefore no lock, so every exit path stays clean
+    (#283). Runs on a daemon thread and swallows any stdin error: a broken or
+    absent stdin must never crash the launcher.
     """
 
     def _watch() -> None:
+        stdin = sys.stdin
+        if stdin is None:
+            return  # no controlling stdin: nothing to watch
         try:
-            sys.stdin.buffer.read()  # blocks until EOF (parent closed the pipe)
+            fd = stdin.fileno()
+        except Exception:
+            return  # stdin closed/detached or has no real fd: leave it to signals
+        try:
+            while os.read(fd, 4096):  # blocks; b"" at EOF ends the loop
+                pass
         except Exception:
             return  # broken/absent stdin: nothing to watch, leave shutdown to signals
         try:
