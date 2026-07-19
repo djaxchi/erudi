@@ -31,7 +31,14 @@ Row.propTypes = {
   accent: PropTypes.bool,
 };
 
-export default function ExploreIndex({ models, communityCount, hasRecommended, loading, onJump }) {
+export default function ExploreIndex({
+  models,
+  communityCount,
+  hasTested,
+  hasRecommended,
+  loading,
+  onJump,
+}) {
   const groups = groupByCategory(models);
 
   return (
@@ -46,6 +53,9 @@ export default function ExploreIndex({ models, communityCount, hasRecommended, l
         <div className="px-6 py-2 text-sm text-gray-500">Building catalog...</div>
       ) : (
         <nav className="px-4 pb-3 space-y-0.5">
+          {hasTested && (
+            <Row label="Tested by the team" accent onClick={() => onJump("explore-tested")} />
+          )}
           {hasRecommended && (
             <Row label="Recommended for you" accent onClick={() => onJump("explore-recommended")} />
           )}
@@ -78,6 +88,7 @@ export default function ExploreIndex({ models, communityCount, hasRecommended, l
 ExploreIndex.propTypes = {
   models: PropTypes.array,
   communityCount: PropTypes.number,
+  hasTested: PropTypes.bool,
   hasRecommended: PropTypes.bool,
   loading: PropTypes.bool,
   onJump: PropTypes.func.isRequired,
