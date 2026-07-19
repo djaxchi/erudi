@@ -238,9 +238,12 @@ class TestKbModeLogging:
             "Turn mode: plain" in m and "no KB attached" in m for m in messages
         ), f"no plain-mode log found in: {messages}"
 
-    def test_agentic_mode_logged(self, caplog):
+    def test_agentic_mode_logged(self, caplog, monkeypatch):
         from src.agents.kb_mode import plan_turn
+        from src.core import config
 
+        # Agentic KB is opt-in (#288); enable it to exercise the log line.
+        monkeypatch.setattr(config, "KB_AGENTIC_MODE", True)
         llm = self._llm(is_attached_to_kb=True, kb_id=7, supports_tools=True)
         with caplog.at_level(logging.INFO, logger="erudi"):
             plan_turn(llm, question="hi", retrieve=lambda: [])
