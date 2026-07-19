@@ -8,6 +8,20 @@ export function canAttachImages(model) {
   return model?.supports_vision !== false;
 }
 
+// How many images the composer allows per turn for a given model. More capable
+// models have more context to spend on image tokens, so scale the cap with the
+// model's parameter size. This is a proxy: the backend does not expose a
+// context-window field, and param_size is the closest available signal. Unknown
+// size falls back to a sensible default. Callers only reach this for
+// vision-capable models (the attach affordance is hidden otherwise).
+export function maxImagesForModel(model) {
+  const size = model?.param_size;
+  if (typeof size !== "number" || size <= 0) return 4; // unknown -> default
+  if (size < 3) return 2;
+  if (size < 8) return 4;
+  return 6;
+}
+
 // Whether a model can read image input, for the capability badge on model cards.
 // Unlike `canAttachImages` (permissive: everything except an explicit false),
 // this is a POSITIVE signal — true only when we can affirm vision support — so a
