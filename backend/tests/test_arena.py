@@ -232,6 +232,8 @@ class TestArenaService:
         llm.supports_tools = True
         test_db_session.commit()
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        # Agentic KB is opt-in (#288); this test exercises the tool path.
+        monkeypatch.setattr(config, "KB_AGENTIC_MODE", True)
 
         tool_call = AIMessage(
             content="",

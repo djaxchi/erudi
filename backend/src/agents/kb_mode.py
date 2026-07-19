@@ -71,10 +71,15 @@ def plan_turn(
     # carried by KB turns only (the KB tool is added in agentic mode); plain
     # chat is zero-tool (#129).
     from src.agents.tools import KbToolContext, calculator, search_knowledge_base
+    from src.core import config
 
     base_tools = [calculator]
 
-    if should_use_kb(llm) and getattr(llm, "supports_tools", False):
+    if (
+        config.KB_AGENTIC_MODE
+        and should_use_kb(llm)
+        and getattr(llm, "supports_tools", False)
+    ):
         budget = get_prompting_strategy(_param_size(llm))["kb_token_budget"]
         logger.info(
             f"Turn mode: agentic KB (kb_id={getattr(llm, 'kb_id', None)}, "
@@ -102,7 +107,12 @@ def plan_turn(
             system_prompt=build_kb_system_prompt(
                 llm, custom_prompt=custom_prompt, starred_messages=starred_messages
             ),
-            tools=list(base_tools),
+            # Zero tools on the systematic path (#288): the context is injected
+            # directly, so the model only has to answer. Carrying the calculator
+            # here bought nothing for document Q&A and made leak-prone models
+            # (e.g. Llama 3.1 8B) wrap the answer in a raw calculator tool-call
+            # JSON. Same #129 rationale that made plain chat zero-tool.
+            tools=[],
             kb_context_block=build_kb_context_block(excerpts=excerpts, question=question),
             kb_language_line=answer_language_line(question),
             context=None,
