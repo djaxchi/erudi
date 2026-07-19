@@ -25,6 +25,7 @@ import { downloadErrorMessage } from "../utils/downloadStatus";
 import { createLogger } from "../utils/logger";
 import { splitByBase } from "../utils/modelCatalog";
 import { rankByFit, pickFlagships, applyCatalogFilters } from "../utils/hardwareFit";
+import { isTestedModel } from "../utils/testedModels";
 import { isKbAssistant, hasMissingWeights, findBaseModelName } from "../utils/modelWeights";
 
 export default function LandingPage() {
@@ -250,7 +251,14 @@ export default function LandingPage() {
   const range = hardwareInfo
     ? { min: hardwareInfo.recommended_param_min, max: hardwareInfo.recommended_param_max }
     : null;
-  const recommended = pickFlagships(baseModels, range, 3);
+  // Recommended row leads with team-certified models (the BadgeCheck picks),
+  // then fills with hardware-fit flagships — certified models are pushed to the
+  // front here instead of getting a section of their own (#tested).
+  const flagships = pickFlagships(baseModels, range, 3);
+  const certifiedFit = rankByFit(baseModels.filter(isTestedModel), range);
+  const recommended = [...certifiedFit, ...flagships]
+    .filter((m, i, arr) => arr.findIndex((x) => (x.id ?? x.link) === (m.id ?? m.link)) === i)
+    .slice(0, 3);
   const filteredBase = applyCatalogFilters(baseModels, filters, range);
   const filteredCommunity = applyCatalogFilters(communityModels, filters, range);
   const filtersActive = filters.size !== "any" || filters.fitOnly;

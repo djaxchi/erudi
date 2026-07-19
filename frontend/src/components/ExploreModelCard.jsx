@@ -1,10 +1,11 @@
 import React from "react";
 import PropTypes from "prop-types";
-import { Download, Heart, Image as ImageIcon } from "lucide-react";
+import { BadgeCheck, Download, Heart, Image as ImageIcon } from "lucide-react";
 import GradientBox from "./GradientBox";
 import FitGauge from "./FitGauge";
 import { CATEGORY_META } from "../utils/modelCatalog";
 import { modelSupportsVision } from "../utils/modelCapabilities";
+import { isTestedModel } from "../utils/testedModels";
 
 /**
  * Explore-panel model card. Frosted-glass surface (the look the catalog has always
@@ -15,6 +16,7 @@ import { modelSupportsVision } from "../utils/modelCapabilities";
 export default function ExploreModelCard({ model, range, onDownload, onInfo }) {
   const unavailable = model?.runnable === false;
   const isVision = modelSupportsVision(model);
+  const tested = isTestedModel(model);
   const cat = CATEGORY_META[model.category];
   const params =
     typeof model.param_size === "number"
@@ -40,7 +42,17 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo }) {
       contentClassName="relative z-10 flex flex-col h-full p-4"
     >
       <div className="flex items-start justify-between gap-3 mb-3">
-        <h4 className="text-[15px] font-semibold text-[var(--ink)] leading-snug">{model.name}</h4>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <h4 className="text-[15px] font-semibold text-[var(--ink)] leading-snug">{model.name}</h4>
+          {tested && (
+            <span
+              className="flex items-center shrink-0 text-[var(--fit-good)]"
+              title="Tested by the Erudi team — verified for chat and Knowledge Base"
+            >
+              <BadgeCheck className="w-4 h-4" />
+            </span>
+          )}
+        </div>
         {cat && (
           <span className="eyebrow !text-[9px] !tracking-[0.12em] whitespace-nowrap pt-1 text-[var(--ink-faint)]">
             {cat.label}
