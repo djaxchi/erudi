@@ -358,6 +358,7 @@ class TestMlxVlmServerRunnerHelper:
             "_patch_text_only_tied_embeddings",
             lambda: order.append("patch") or True,
         )
+        monkeypatch.setattr(runner, "_patch_gemma_shared_kv_sanitize", lambda: True)
         monkeypatch.setattr(runner, "_patch_gemma_end_of_turn_stop", lambda: True)
         monkeypatch.setattr(runner, "_patch_inline_thinking", lambda: True)
         fake_main = MagicMock(side_effect=lambda: order.append("main"))
@@ -378,6 +379,7 @@ class TestMlxVlmServerRunnerHelper:
 
         order: list[str] = []
         monkeypatch.setattr(runner, "_patch_text_only_tied_embeddings", lambda: True)
+        monkeypatch.setattr(runner, "_patch_gemma_shared_kv_sanitize", lambda: True)
         monkeypatch.setattr(runner, "_patch_gemma_end_of_turn_stop", lambda: True)
         monkeypatch.setattr(
             runner,
@@ -493,6 +495,97 @@ class TestTiedEmbeddingPatch:
         assert runner._patch_text_only_tied_embeddings() is True
         first = Model.load_weights
         assert runner._patch_text_only_tied_embeddings() is True
+        assert Model.load_weights is first  # not double-wrapped
+
+
+@pytest.mark.unit
+class TestSharedKvSanitizePatch:
+    """`_patch_gemma_shared_kv_sanitize` drops leftover shared-KV weights (#193).
+
+    Gemma 4 / Gemma 3n share K/V across upper layers, so the model class omits
+    k_proj/v_proj/k_norm on those layers and its LanguageModel.sanitize drops the
+    checkpoint's unused copies. mlx_vlm.utils.load_model skips sanitize for
+    MLX-format checkpoints, so without this patch the strict weight load dies with
+    "Received 126 parameters not in model".
+    """
+
+    def _install_fake_gemma4(self, monkeypatch):
+        """Inject a minimal fake `mlx_vlm.models.gemma4` with a Model wrapper."""
+        import sys
+        import types
+
+        calls: dict = {"sanitize_in": None, "orig_load": None}
+
+        class _LanguageModel:
+            def sanitize(self, weights):
+                calls["sanitize_in"] = dict(weights)
+                # Drop-only: strip the "unused shared-KV" markers, keep the rest.
+                return {k: v for k, v in weights.items() if "unused_shared_kv" not in k}
+
+        class Model:
+            def __init__(self):
+                self.language_model = _LanguageModel()
+
+            def load_weights(self, weights, *args, **kwargs):
+                calls["orig_load"] = (
+                    list(weights.items()) if isinstance(weights, dict) else list(weights)
+                )
+                return "orig-loaded"
+
+        mlx_vlm = types.ModuleType("mlx_vlm")
+        models = types.ModuleType("mlx_vlm.models")
+        gemma4 = types.ModuleType("mlx_vlm.models.gemma4")
+        gemma4.Model = Model
+        models.gemma4 = gemma4
+        mlx_vlm.models = models
+        monkeypatch.setitem(sys.modules, "mlx_vlm", mlx_vlm)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models", models)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma4", gemma4)
+        # Keep the patch off the real gemma4_unified during the test (import fails).
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma4_unified", None)
+        return Model, calls
+
+    def test_returns_false_when_gemma4_absent(self, monkeypatch):
+        import sys
+        import types
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        bare_models = types.ModuleType("mlx_vlm.models")  # no `gemma4` attribute
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models", bare_models)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma4", None)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma4_unified", None)
+        assert runner._patch_gemma_shared_kv_sanitize() is False
+
+    def test_shared_kv_weights_are_dropped_before_load(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        Model, calls = self._install_fake_gemma4(monkeypatch)
+        assert runner._patch_gemma_shared_kv_sanitize() is True
+
+        m = Model()
+        result = m.load_weights(
+            [
+                ("language_model.model.layers.0.self_attn.q_proj.weight", 1),
+                ("language_model.model.layers.24.self_attn.unused_shared_kv.weight", 2),
+                ("vision_tower.encoder.layer.0.weight", 3),
+            ]
+        )
+
+        assert calls["sanitize_in"] is not None  # language sanitize was invoked
+        loaded_keys = [k for k, _ in calls["orig_load"]]
+        # The unused shared-KV tensor is gone; real weights (incl. vision) survive.
+        assert all("unused_shared_kv" not in k for k in loaded_keys)
+        assert "language_model.model.layers.0.self_attn.q_proj.weight" in loaded_keys
+        assert "vision_tower.encoder.layer.0.weight" in loaded_keys
+        assert result == "orig-loaded"
+
+    def test_patch_is_idempotent(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        Model, _ = self._install_fake_gemma4(monkeypatch)
+        assert runner._patch_gemma_shared_kv_sanitize() is True
+        first = Model.load_weights
+        assert runner._patch_gemma_shared_kv_sanitize() is True
         assert Model.load_weights is first  # not double-wrapped
 
 
