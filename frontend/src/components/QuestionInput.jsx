@@ -119,26 +119,36 @@ export default function QuestionInput({
 
   return (
     <div className={["relative w-full", className].join(" ")}>
-      {/* Attached-image thumbnails */}
+      {/* Attached images live in their own glass panel (matching the chat
+          header) above the composer; the text input yields beneath it. */}
       {images.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2 px-1">
-          {images.map((src, idx) => (
-            <div key={idx} className="relative">
-              <img
-                src={src}
-                alt={`attachment ${idx + 1}`}
-                className="h-16 w-16 object-cover rounded-lg border border-emerald-200/20"
-              />
-              <button
-                type="button"
-                onClick={() => removeImage(idx)}
-                aria-label="Remove image"
-                className="absolute -top-2 -right-2 rounded-full bg-black/70 p-0.5 text-white/90 hover:text-white"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
+        <div
+          className={[
+            "mb-2 w-full rounded-[20px] p-2.5",
+            "border border-white/10",
+            "bg-[rgba(22,40,36,0.45)] backdrop-blur-[18px] saturate-[1.4]",
+            "shadow-[0_10px_30px_-6px_rgba(0,0,0,0.5)]",
+          ].join(" ")}
+        >
+          <div className="flex flex-wrap gap-2">
+            {images.map((src, idx) => (
+              <div key={idx} className="relative">
+                <img
+                  src={src}
+                  alt={`attachment ${idx + 1}`}
+                  className="h-20 w-20 object-cover rounded-xl border border-white/10"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeImage(idx)}
+                  aria-label="Remove image"
+                  className="absolute -top-2 -right-2 rounded-full bg-black/70 p-0.5 text-white/90 hover:text-white"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
