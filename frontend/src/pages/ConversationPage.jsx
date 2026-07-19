@@ -28,6 +28,11 @@ export default function ConversationPage() {
   const [starredIds, setStarredIds] = useState({});
   const [conversations, setConversations] = useState([]);
   const scrollRef = useRef(null);
+  // Which conversation the current `messages` state belongs to. Session-only
+  // image bytes are preserved from `prev` on a refetch, but ONLY when prev is
+  // the same conversation — otherwise a previously-viewed chat's images bleed
+  // onto a different chat by matching index/content.
+  const loadedConvIdRef = useRef(null);
   const [, setCurrentTitle] = useState("");
 
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -183,7 +188,11 @@ export default function ConversationPage() {
       setStarredIds(starredMap);
       const convs = await convRes.json();
       convs.sort((a, b) => new Date(b.last_message_time) - new Date(a.last_message_time));
-      setMessages((prev) => msgs.map((m, i) => ({ ...m, images: prev[i]?.images || m.images })));
+      setMessages((prev) => {
+        const sameConv = loadedConvIdRef.current === id;
+        return msgs.map((m, i) => ({ ...m, images: (sameConv && prev[i]?.images) || m.images }));
+      });
+      loadedConvIdRef.current = id;
       setConversations(convs);
     } catch (err) {
       log.error("Failed to fetch messages and conversations", err);
@@ -506,7 +515,11 @@ export default function ConversationPage() {
           }
         });
         setStarredIds(starredMap);
-        setMessages((prev) => msgs.map((m, i) => ({ ...m, images: prev[i]?.images || m.images })));
+        setMessages((prev) => {
+          const sameConv = loadedConvIdRef.current === id;
+          return msgs.map((m, i) => ({ ...m, images: (sameConv && prev[i]?.images) || m.images }));
+        });
+        loadedConvIdRef.current = id;
 
         // Load conversation parameters
         if (convDetailRes.ok) {
@@ -566,11 +579,13 @@ export default function ConversationPage() {
           });
           setStarredIds(starredMap);
           setMessages((prev) => {
-            const imagesByContent = new Map(
-              prev.filter((m) => m.images?.length > 0).map((m) => [m.content, m.images])
-            );
+            const sameConv = loadedConvIdRef.current === id;
+            const imagesByContent = sameConv
+              ? new Map(prev.filter((m) => m.images?.length > 0).map((m) => [m.content, m.images]))
+              : new Map();
             return msgs.map((m) => ({ ...m, images: imagesByContent.get(m.content) || m.images }));
           });
+          loadedConvIdRef.current = id;
         } catch (err) {
           log.error("Failed to fetch messages", err);
         }
