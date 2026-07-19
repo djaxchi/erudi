@@ -50,7 +50,11 @@ export default function ConversationPage() {
   });
   const [collapsed, setCollapsed] = useState(false);
   const [firstReplyPending, setFirstReplyPending] = useState(false);
-  const [userScrolledUp, setUserScrolledUp] = useState(false);
+  // A ref, not state: the scroll handler updates it on every scroll event, and
+  // reading it from the auto-scroll effect must NOT re-run that effect. As state
+  // it did (the effect depended on it), so toggling it near the bottom snapped
+  // the view back down and the user could not scroll freely.
+  const userScrolledUpRef = useRef(false);
 
   // Refs to avoid putting messages.length in useCallback deps, which
   // would cascade into the loadConversationData useEffect and overwrite
@@ -591,7 +595,7 @@ export default function ConversationPage() {
 
       // If user scrolled up (not down), immediately stop auto-scrolling
       if (currentScrollTop < lastScrollTop) {
-        setUserScrolledUp(true);
+        userScrolledUpRef.current = true;
       }
 
       lastScrollTop = currentScrollTop;
@@ -605,11 +609,7 @@ export default function ConversationPage() {
         const isAtBottom = scrollHeight - scrollTop - clientHeight < 100; // Increased threshold to 100px
 
         // Only mark as scrolled up if user is significantly away from bottom
-        if (!isAtBottom) {
-          setUserScrolledUp(true);
-        } else {
-          setUserScrolledUp(false);
-        }
+        userScrolledUpRef.current = !isAtBottom;
       }, 100); // Small delay to debounce
     };
 
@@ -624,13 +624,13 @@ export default function ConversationPage() {
   useEffect(() => {
     // Only auto-scroll if user hasn't manually scrolled up
     // OR if loading just finished (scroll once to final position)
-    if (scrollRef.current && !userScrolledUp) {
+    if (scrollRef.current && !userScrolledUpRef.current) {
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
         behavior: "smooth",
       });
     }
-  }, [messages, userScrolledUp]);
+  }, [messages]);
 
   const handleConversationClick = (newId) => navigate(conversationPath(newId));
 
@@ -797,13 +797,19 @@ export default function ConversationPage() {
                       // attached images (this session only) render as thumbnails.
                       <div className="flex flex-col gap-2">
                         {msg.images?.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
+                          <div
+                            className={[
+                              "flex flex-wrap gap-2 rounded-2xl p-2",
+                              "border border-white/10",
+                              "bg-[rgba(22,40,36,0.45)] backdrop-blur-[18px] saturate-[1.4]",
+                            ].join(" ")}
+                          >
                             {msg.images.map((src, i) => (
                               <img
                                 key={i}
                                 src={src}
                                 alt={`attachment ${i + 1}`}
-                                className="max-h-48 rounded-lg border border-emerald-200/20"
+                                className="max-h-64 max-w-full rounded-xl border border-white/10"
                               />
                             ))}
                           </div>
