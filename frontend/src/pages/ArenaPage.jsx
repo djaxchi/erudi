@@ -3,7 +3,7 @@ import Sidebar from "../components/Sidebar";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
 import { askArena } from "../services/arenaService.js";
-import { canAttachImages } from "../utils/modelCapabilities";
+import { canAttachImages, maxImagesForModel } from "../utils/modelCapabilities";
 import { Trash, Plus, Square } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
@@ -362,6 +362,11 @@ export default function ArenaPage() {
               disabled={loading}
               canAttachImages={panels.some((p) =>
                 canAttachImages(models.find((m) => m.name === p.selectedModel))
+              )}
+              maxImages={Math.min(
+                ...panels.map((p) =>
+                  maxImagesForModel(models.find((m) => m.name === p.selectedModel))
+                )
               )}
             />
           </div>

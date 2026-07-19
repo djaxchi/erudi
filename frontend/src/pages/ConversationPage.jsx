@@ -13,7 +13,7 @@ import { API_BASE_URL } from "../config/api.js";
 import apiClient, { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
-import { canAttachImages } from "../utils/modelCapabilities";
+import { canAttachImages, maxImagesForModel } from "../utils/modelCapabilities";
 import { getDisplayContent } from "../utils/messageContent";
 
 const log = createLogger("ConversationPage");
@@ -28,6 +28,11 @@ export default function ConversationPage() {
   const [starredIds, setStarredIds] = useState({});
   const [conversations, setConversations] = useState([]);
   const scrollRef = useRef(null);
+  // Which conversation the current `messages` state belongs to. Session-only
+  // image bytes are preserved from `prev` on a refetch, but ONLY when prev is
+  // the same conversation — otherwise a previously-viewed chat's images bleed
+  // onto a different chat by matching index/content.
+  const loadedConvIdRef = useRef(null);
   const [, setCurrentTitle] = useState("");
 
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -50,7 +55,11 @@ export default function ConversationPage() {
   });
   const [collapsed, setCollapsed] = useState(false);
   const [firstReplyPending, setFirstReplyPending] = useState(false);
-  const [userScrolledUp, setUserScrolledUp] = useState(false);
+  // A ref, not state: the scroll handler updates it on every scroll event, and
+  // reading it from the auto-scroll effect must NOT re-run that effect. As state
+  // it did (the effect depended on it), so toggling it near the bottom snapped
+  // the view back down and the user could not scroll freely.
+  const userScrolledUpRef = useRef(false);
 
   // Refs to avoid putting messages.length in useCallback deps, which
   // would cascade into the loadConversationData useEffect and overwrite
@@ -179,7 +188,11 @@ export default function ConversationPage() {
       setStarredIds(starredMap);
       const convs = await convRes.json();
       convs.sort((a, b) => new Date(b.last_message_time) - new Date(a.last_message_time));
-      setMessages((prev) => msgs.map((m, i) => ({ ...m, images: prev[i]?.images || m.images })));
+      setMessages((prev) => {
+        const sameConv = loadedConvIdRef.current === id;
+        return msgs.map((m, i) => ({ ...m, images: (sameConv && prev[i]?.images) || m.images }));
+      });
+      loadedConvIdRef.current = id;
       setConversations(convs);
     } catch (err) {
       log.error("Failed to fetch messages and conversations", err);
@@ -502,7 +515,11 @@ export default function ConversationPage() {
           }
         });
         setStarredIds(starredMap);
-        setMessages((prev) => msgs.map((m, i) => ({ ...m, images: prev[i]?.images || m.images })));
+        setMessages((prev) => {
+          const sameConv = loadedConvIdRef.current === id;
+          return msgs.map((m, i) => ({ ...m, images: (sameConv && prev[i]?.images) || m.images }));
+        });
+        loadedConvIdRef.current = id;
 
         // Load conversation parameters
         if (convDetailRes.ok) {
@@ -562,11 +579,13 @@ export default function ConversationPage() {
           });
           setStarredIds(starredMap);
           setMessages((prev) => {
-            const imagesByContent = new Map(
-              prev.filter((m) => m.images?.length > 0).map((m) => [m.content, m.images])
-            );
+            const sameConv = loadedConvIdRef.current === id;
+            const imagesByContent = sameConv
+              ? new Map(prev.filter((m) => m.images?.length > 0).map((m) => [m.content, m.images]))
+              : new Map();
             return msgs.map((m) => ({ ...m, images: imagesByContent.get(m.content) || m.images }));
           });
+          loadedConvIdRef.current = id;
         } catch (err) {
           log.error("Failed to fetch messages", err);
         }
@@ -591,7 +610,7 @@ export default function ConversationPage() {
 
       // If user scrolled up (not down), immediately stop auto-scrolling
       if (currentScrollTop < lastScrollTop) {
-        setUserScrolledUp(true);
+        userScrolledUpRef.current = true;
       }
 
       lastScrollTop = currentScrollTop;
@@ -605,11 +624,7 @@ export default function ConversationPage() {
         const isAtBottom = scrollHeight - scrollTop - clientHeight < 100; // Increased threshold to 100px
 
         // Only mark as scrolled up if user is significantly away from bottom
-        if (!isAtBottom) {
-          setUserScrolledUp(true);
-        } else {
-          setUserScrolledUp(false);
-        }
+        userScrolledUpRef.current = !isAtBottom;
       }, 100); // Small delay to debounce
     };
 
@@ -624,13 +639,13 @@ export default function ConversationPage() {
   useEffect(() => {
     // Only auto-scroll if user hasn't manually scrolled up
     // OR if loading just finished (scroll once to final position)
-    if (scrollRef.current && !userScrolledUp) {
+    if (scrollRef.current && !userScrolledUpRef.current) {
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
         behavior: "smooth",
       });
     }
-  }, [messages, userScrolledUp]);
+  }, [messages]);
 
   const handleConversationClick = (newId) => navigate(conversationPath(newId));
 
@@ -774,65 +789,85 @@ export default function ConversationPage() {
               // not once the live trace strip has taken over the pre-answer wait.
               const showTypingIndicator = !isUser && loading && !msg.content && !showTrace;
 
+              // Attached images (this session) render in their OWN panel,
+              // separate from the text bubble. `displayText` is the readable
+              // text with internal attachment markers stripped.
+              const hasImages = isUser && msg.images?.length > 0;
+              const displayText = getDisplayContent(msg.content);
+
               return (
                 <div key={msg.id} className={`group flex flex-col mb-2 ${alignmentClass}`}>
                   {showTrace && <TraceStrip events={traceEvents} live={traceLive} />}
-                  <div
-                    className={`break-words w-fit max-w-[75%] p-4 rounded-2xl overflow-wrap break-word ${bubbleClass}`}
-                  >
-                    {showTypingIndicator ? (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-start pt-1">
-                          <TypingIndicator size={8} colorClass="bg-gray-400" className="-mt-1" />
+                  {/* Attached images: their OWN glass panel (chat-header
+                      material), a sibling of the text bubble, not nested in it. */}
+                  {hasImages && (
+                    <div
+                      className={[
+                        "mb-2 w-fit max-w-[75%] rounded-2xl p-2",
+                        "border border-white/10",
+                        "bg-[rgba(22,40,36,0.45)] backdrop-blur-[18px] saturate-[1.4]",
+                      ].join(" ")}
+                    >
+                      <div className="flex flex-wrap gap-2">
+                        {msg.images.map((src, i) => (
+                          <img
+                            key={i}
+                            src={src}
+                            alt={`attachment ${i + 1}`}
+                            className="max-h-64 max-w-full rounded-xl border border-white/10"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Text bubble. Skipped for an image-only user message so no
+                      empty bubble shows beneath the picture. */}
+                  {(!hasImages || displayText || showTypingIndicator) && (
+                    <div
+                      className={`break-words w-fit max-w-[75%] p-4 rounded-2xl overflow-wrap break-word ${bubbleClass}`}
+                    >
+                      {showTypingIndicator ? (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-start pt-1">
+                            <TypingIndicator size={8} colorClass="bg-gray-400" className="-mt-1" />
+                          </div>
+                          {firstReplyPending && (
+                            <div className="text-xs text-gray-400 italic mt-1">
+                              First response may take a bit longer while loading the model into
+                              memory...
+                            </div>
+                          )}
                         </div>
-                        {firstReplyPending && (
-                          <div className="text-xs text-gray-400 italic mt-1">
-                            First response may take a bit longer while loading the model into
-                            memory...
-                          </div>
-                        )}
-                      </div>
-                    ) : isUser || msg.content.includes("[ERROR_MESSAGE_SYSTEM]") ? (
-                      // Keep user messages and error messages as plain text;
-                      // attached images (this session only) render as thumbnails.
-                      <div className="flex flex-col gap-2">
-                        {msg.images?.length > 0 ? (
-                          <div className="flex flex-wrap gap-2">
-                            {msg.images.map((src, i) => (
-                              <img
-                                key={i}
-                                src={src}
-                                alt={`attachment ${i + 1}`}
-                                className="max-h-48 rounded-lg border border-emerald-200/20"
-                              />
-                            ))}
-                          </div>
-                        ) : (
-                          (() => {
-                            const fallbackCount = (
-                              msg.content.match(/\[image\]|\[image_path:[^\]]*\]/g) || []
-                            ).length;
-                            return Array.from({ length: fallbackCount }, (_, i) => (
-                              <span
-                                key={i}
-                                className="inline-flex items-center gap-1 text-xs text-[var(--ink-faint)] border border-[var(--line)] rounded px-2 py-0.5 w-fit"
-                              >
-                                🖼 image attachment
-                              </span>
-                            ));
-                          })()
-                        )}
-                        {getDisplayContent(msg.content) && (
-                          <pre className="whitespace-pre-wrap font-sans">
-                            {getDisplayContent(msg.content)}
-                          </pre>
-                        )}
-                      </div>
-                    ) : (
-                      // Assistant normal messages: render markdown
-                      <MarkdownRenderer content={msg.content} />
-                    )}
-                  </div>
+                      ) : isUser || msg.content.includes("[ERROR_MESSAGE_SYSTEM]") ? (
+                        // Keep user messages and error messages as plain text.
+                        <div className="flex flex-col gap-2">
+                          {/* Reloaded sessions without image bytes: placeholder
+                              markers, only when there are no real images above. */}
+                          {!hasImages &&
+                            (() => {
+                              const fallbackCount = (
+                                msg.content.match(/\[image\]|\[image_path:[^\]]*\]/g) || []
+                              ).length;
+                              return Array.from({ length: fallbackCount }, (_, i) => (
+                                <span
+                                  key={i}
+                                  className="inline-flex items-center gap-1 text-xs text-[var(--ink-faint)] border border-[var(--line)] rounded px-2 py-0.5 w-fit"
+                                >
+                                  🖼 image attachment
+                                </span>
+                              ));
+                            })()}
+                          {displayText && (
+                            <pre className="whitespace-pre-wrap font-sans">{displayText}</pre>
+                          )}
+                        </div>
+                      ) : (
+                        // Assistant normal messages: render markdown
+                        <MarkdownRenderer content={msg.content} />
+                      )}
+                    </div>
+                  )}
                   <div className="flex mt-1 space-x-2 opacity-0 group-hover:opacity-100">
                     {/* Copy button */}
                     <button
@@ -877,6 +912,7 @@ export default function ConversationPage() {
               onSend={handleAsk}
               disabled={loading || isModelOrphaned}
               canAttachImages={canAttachImages(models.find((m) => m.name === currentModel))}
+              maxImages={maxImagesForModel(models.find((m) => m.name === currentModel))}
             />
           </div>
         </div>
