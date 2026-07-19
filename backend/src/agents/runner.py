@@ -58,12 +58,32 @@ if TYPE_CHECKING:
 SUMMARY_TRIGGER_MESSAGES = 20
 SUMMARY_KEEP_MESSAGES = 10
 
+# Hard cap on LangGraph super-steps per turn (#277). Without it the graph
+# defaults leave a runaway agent unbounded: a small model that keeps issuing the
+# identical tool call gets the identical result back and never converges (Qwen3
+# 0.6B repeated one KB search 53 times, holding the turn for ~16 minutes before
+# emitting garbage). Each tool round is roughly two super-steps (model -> tools),
+# so this allows ~7 legitimate tool rounds before the graph raises
+# GraphRecursionError, which we then handle gracefully below instead of letting
+# the user stare at a spinner.
+AGENT_RECURSION_LIMIT = 15
+
 # Frontend detects this prefix (substring match) to render an error turn in red.
 # Keep it; the message intentionally carries NO traceback (avoids info leak).
 ERROR_SENTINEL = "[ERROR_MESSAGE_SYSTEM]"
 ERROR_MESSAGE = (
     f"{ERROR_SENTINEL} I apologize, but I encountered an error while generating "
     "a response. Please try asking your question again."
+)
+
+# Curated turn for a runaway agent that hit AGENT_RECURSION_LIMIT with nothing
+# usable to fall back to (#277). Carries the ERROR sentinel so the frontend
+# renders it in red and no traceback leaks -- there is genuinely no answer, so an
+# honest error turn beats a raw tool dump or a silent stop.
+LOOP_LIMIT_MESSAGE = (
+    f"{ERROR_SENTINEL} I couldn't reach a final answer for this request "
+    "(the model kept retrying without making progress). Please try rephrasing "
+    "your question."
 )
 
 # Prepended (and persisted with the assistant message) by the conversation and
@@ -255,6 +275,7 @@ class AgentRunner:
         # Deferred (#160): first turn pays the agent-stack import, boot doesn't.
         from langchain.agents import create_agent
         from langchain_core.messages import HumanMessage
+        from langgraph.errors import GraphRecursionError
 
         from src.agents.middleware import (
             _FoldSystemIntoUserMiddleware,
@@ -265,7 +286,11 @@ class AgentRunner:
 
         engine = config.LLM_Engine
         stateful = thread_id is not None and self.checkpointer is not None
-        run_config = {"configurable": {"thread_id": thread_id}} if stateful else {}
+        # recursion_limit bounds a runaway agent (#277); it rides at the top level
+        # of the run config, alongside (not inside) ``configurable``.
+        run_config: dict = {"recursion_limit": AGENT_RECURSION_LIMIT}
+        if stateful:
+            run_config["configurable"] = {"thread_id": thread_id}
 
         async with engine.generation_guard():
             try:
@@ -419,6 +444,34 @@ class AgentRunner:
                     f"duration_ms={duration_ms:.0f}, chunks={chunk_count} (~tokens), "
                     f"chars={char_count}"
                 )
+            except GraphRecursionError:
+                # #277: the agent hit AGENT_RECURSION_LIMIT (a small model looping
+                # on the same tool call). Degrade gracefully instead of surfacing a
+                # generic error after a long hang: flush any buffered answer text,
+                # then, if the model never produced usable text, fall back to the
+                # last tool result (like the #90 empty-final path) or a curated
+                # loop-limit turn.
+                logger.warning(
+                    "Agent hit recursion limit (%s) -- likely a tool-call loop: "
+                    "llm=%s, thread_id=%s",
+                    AGENT_RECURSION_LIMIT,
+                    getattr(llm, "id", "?"),
+                    thread_id,
+                )
+                for event in splitter.flush():
+                    if event["t"] == "answer":
+                        if event["text"].strip():
+                            emitted_model_text = True
+                        char_count += len(event["text"])
+                    yield event
+                if not emitted_model_text:
+                    if last_tool_result is not None:
+                        char_count += len(last_tool_result)
+                        yield {"t": "answer", "text": last_tool_result}
+                    else:
+                        yield {"t": "answer", "text": LOOP_LIMIT_MESSAGE}
+                if stateful:
+                    await self._repair_alternation(agent, run_config)
             except Exception:
                 logger.exception("Agent streaming failed")
                 if stateful:
