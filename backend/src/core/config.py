@@ -86,6 +86,15 @@ from src.launcher import ensure_runtime_paths_initialized
 load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN", None)
 
+# Agentic KB mode exposes the knowledge base as a ``search_knowledge_base`` tool
+# the model decides to call. On the bundled local servers this is unreliable:
+# many tool-capable models (Qwen, Llama) emit the tool call as raw text instead
+# of a structured call, so the tool never runs and the JSON leaks to the user or
+# the model answers "not in the documents" (#288). Default OFF so KB turns take
+# the systematic context-injection path, which is model-independent and reliable.
+# Opt back in with ERUDI_KB_AGENTIC=1 once local tool-calling is trustworthy.
+KB_AGENTIC_MODE = os.getenv("ERUDI_KB_AGENTIC", "0") == "1"
+
 # Restrict LangGraph checkpoint (msgpack) deserialization to known-safe types.
 # Set before any langgraph serializer is constructed.
 os.environ.setdefault("LANGGRAPH_STRICT_MSGPACK", "true")
