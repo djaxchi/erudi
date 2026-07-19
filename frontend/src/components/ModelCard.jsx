@@ -1,9 +1,19 @@
 import React, { useState } from "react";
 import PropTypes from "prop-types";
 import GradientBox from "./GradientBox";
-import { Download, Info, BookOpen, MessageSquare, Plus, Trash2, Link2 } from "lucide-react";
+import {
+  BadgeCheck,
+  Download,
+  Info,
+  BookOpen,
+  MessageSquare,
+  Plus,
+  Trash2,
+  Link2,
+} from "lucide-react";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { isKbAssistant, hasMissingWeights } from "../utils/modelWeights";
+import { isTestedModel } from "../utils/testedModels";
 
 /**
  * ModelCard component - displays model information with actions
@@ -71,7 +81,17 @@ function ModelCard({
     <GradientBox className="bg-[#1a1a1a]/60 backdrop-blur-sm border border-white/10">
       <div className="flex flex-col h-full">
         <div className="flex items-start justify-between mb-3">
-          <h3 className="text-lg font-semibold text-white">{model.name}</h3>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h3 className="text-lg font-semibold text-white">{model.name}</h3>
+            {isTestedModel(model) && (
+              <span
+                className="flex items-center shrink-0 text-emerald-400"
+                title="Tested by the Erudi team — verified for chat and Knowledge Base"
+              >
+                <BadgeCheck className="w-4 h-4" />
+              </span>
+            )}
+          </div>
           {unavailable && type !== "local" && (
             <span className="ml-2 flex-shrink-0 text-[10px] uppercase tracking-wide text-amber-500/80 border border-amber-500/30 rounded px-1.5 py-0.5">
               Unavailable on your hardware
