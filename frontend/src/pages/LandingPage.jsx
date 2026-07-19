@@ -251,9 +251,14 @@ export default function LandingPage() {
   const range = hardwareInfo
     ? { min: hardwareInfo.recommended_param_min, max: hardwareInfo.recommended_param_max }
     : null;
-  const recommended = pickFlagships(baseModels, range, 3);
-  // Team-tested picks, pinned to the very top and ranked best-fit-first (#tested).
-  const tested = rankByFit(baseModels.filter(isTestedModel), range);
+  // Recommended row leads with team-certified models (the BadgeCheck picks),
+  // then fills with hardware-fit flagships — certified models are pushed to the
+  // front here instead of getting a section of their own (#tested).
+  const flagships = pickFlagships(baseModels, range, 3);
+  const certifiedFit = rankByFit(baseModels.filter(isTestedModel), range);
+  const recommended = [...certifiedFit, ...flagships]
+    .filter((m, i, arr) => arr.findIndex((x) => (x.id ?? x.link) === (m.id ?? m.link)) === i)
+    .slice(0, 3);
   const filteredBase = applyCatalogFilters(baseModels, filters, range);
   const filteredCommunity = applyCatalogFilters(communityModels, filters, range);
   const filtersActive = filters.size !== "any" || filters.fitOnly;
@@ -437,7 +442,6 @@ export default function LandingPage() {
           <ExploreIndex
             models={filteredBase}
             communityCount={filteredCommunity.length}
-            hasTested={tested.length > 0}
             hasRecommended={recommended.length > 0}
             loading={modelsLoading}
             onJump={scrollToSection}
@@ -500,28 +504,6 @@ export default function LandingPage() {
               </p>
             )}
           </section>
-
-          {/* Tested by the team — dev-verified for chat + Knowledge Base, pinned top */}
-          {tested.length > 0 && (
-            <section id="explore-tested" className="rise scroll-mt-6">
-              <span className="eyebrow !text-[var(--fit-good)]">Tested by the team</span>
-              <p className="text-[13px] text-[var(--ink-dim)] mt-1.5 mb-4">
-                Verified end to end by the Erudi team — plain chat and Knowledge Base — so you can
-                start here with confidence.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                {tested.map((model) => (
-                  <ExploreModelCard
-                    key={`tested-${model.id ?? model.link}`}
-                    model={model}
-                    range={range}
-                    onDownload={handleDownload}
-                    onInfo={handleInfo}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
 
           {/* Recommended for your machine — flagship, instruct-only picks */}
           {recommended.length > 0 && (
