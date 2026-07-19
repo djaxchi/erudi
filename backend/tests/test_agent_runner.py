@@ -141,6 +141,73 @@ async def test_construction_error_yields_sentinel(monkeypatch):
     assert all("Traceback" not in t for t in out)
 
 
+async def test_recursion_limit_loop_falls_back_to_last_tool_result(monkeypatch):
+    """#277: a model that loops forever on the same tool call is bounded by the
+    recursion limit and degrades to the last tool result instead of hanging."""
+    import itertools
+
+    from langchain_core.tools import tool
+
+    @tool
+    def loop_tool(query: str) -> str:
+        """A tool that always returns the same result (drives the fixed point)."""
+        return "stuck result"
+
+    call = AIMessage(
+        content="",
+        tool_calls=[{"name": "loop_tool", "args": {"query": "x"}, "id": "c"}],
+    )
+    fake = ToolableFakeChatModel(messages=itertools.repeat(call))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    out = [
+        t
+        async for t in runner.astream_text(
+            llm=_Llm(), user_message="loop please", system_prompt="s",
+            params=_PARAMS, thread_id="c1", tools=[loop_tool],
+        )
+    ]
+    joined = "".join(out)
+    # It terminated (no 16-minute hang, no unhandled GraphRecursionError) and
+    # delivered what was gathered rather than the generic streaming error.
+    assert "stuck result" in joined
+    assert runner_module.ERROR_MESSAGE not in joined
+
+
+async def test_recursion_limit_loop_no_result_yields_loop_message(monkeypatch, caplog):
+    """#277: loop with nothing usable to fall back to -> curated loop-limit turn."""
+    import itertools
+
+    from langchain_core.tools import tool
+
+    @tool
+    def blank_tool(query: str) -> str:
+        """A tool that returns nothing usable."""
+        return ""
+
+    call = AIMessage(
+        content="",
+        tool_calls=[{"name": "blank_tool", "args": {"query": "x"}, "id": "c"}],
+    )
+    fake = ToolableFakeChatModel(messages=itertools.repeat(call))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    with caplog.at_level(logging.WARNING, logger="erudi"):
+        out = [
+            t
+            async for t in runner.astream_text(
+                llm=_Llm(), user_message="loop please", system_prompt="s",
+                params=_PARAMS, thread_id="c1", tools=[blank_tool],
+            )
+        ]
+    joined = "".join(out)
+    assert ERROR_SENTINEL in joined
+    assert "rephrasing" in joined
+    assert any("recursion limit" in r.message for r in caplog.records)
+
+
 async def test_repair_alternation_appends_ai_after_dangling_human(monkeypatch):
     # M2: a failed turn that left a dangling HumanMessage must be repaired so the
     # next turn doesn't send two consecutive user messages (local templates 400).
