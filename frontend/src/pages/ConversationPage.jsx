@@ -13,7 +13,7 @@ import { API_BASE_URL } from "../config/api.js";
 import apiClient, { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
-import { canAttachImages } from "../utils/modelCapabilities";
+import { canAttachImages, maxImagesForModel } from "../utils/modelCapabilities";
 import { getDisplayContent } from "../utils/messageContent";
 
 const log = createLogger("ConversationPage");
@@ -897,6 +897,7 @@ export default function ConversationPage() {
               onSend={handleAsk}
               disabled={loading || isModelOrphaned}
               canAttachImages={canAttachImages(models.find((m) => m.name === currentModel))}
+              maxImages={maxImagesForModel(models.find((m) => m.name === currentModel))}
             />
           </div>
         </div>

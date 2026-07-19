@@ -1,8 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
-import { ArrowRight, ImagePlus, X } from "lucide-react";
+import { ArrowRight, ImagePlus, Plus, X } from "lucide-react";
 
-const MAX_IMAGES = 4;
+const DEFAULT_MAX_IMAGES = 4;
+// Raster formats the vision pipeline can actually decode. SVG and other vector
+// or exotic types are rejected up front: the backend image decoder can't read
+// them, so letting one through would fail the whole turn.
+const SUPPORTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp"];
+const SUPPORTED_ACCEPT = SUPPORTED_IMAGE_TYPES.join(",");
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB per image
 
 export default function QuestionInput({
   placeholder = "Ask a question…",
@@ -10,11 +16,13 @@ export default function QuestionInput({
   disabled = false,
   className = "",
   canAttachImages = true,
+  maxImages = DEFAULT_MAX_IMAGES,
 }) {
   const [value, setValue] = useState("");
   const [images, setImages] = useState([]);
   const [imagePaths, setImagePaths] = useState([]);
   const [dragging, setDragging] = useState(false);
+  const [attachError, setAttachError] = useState("");
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -40,15 +48,41 @@ export default function QuestionInput({
     if (!canAttachImages) {
       return;
     }
-    const imageFiles = Array.from(files || []).filter((f) => f.type.startsWith("image/"));
-    imageFiles.forEach((file) => {
+    // Validate before anything touches disk or the model: reject unsupported
+    // formats (e.g. SVG) and oversized files instead of failing the turn later.
+    const supported = [];
+    let message = "";
+    for (const file of Array.from(files || [])) {
+      if (!SUPPORTED_IMAGE_TYPES.includes(file.type)) {
+        message = "That format isn't supported. Use PNG, JPG, WebP, GIF or BMP.";
+      } else if (file.size > MAX_IMAGE_BYTES) {
+        message = "That image is too large (max 20 MB).";
+      } else {
+        supported.push(file);
+      }
+    }
+    // Cap at the per-model budget; tell the user if they picked more than fits.
+    const remaining = Math.max(0, maxImages - images.length);
+    const toAdd = supported.slice(0, remaining);
+    if (supported.length > remaining) {
+      message = `You can attach up to ${maxImages} image${maxImages === 1 ? "" : "s"} with this model.`;
+    }
+    setAttachError(message);
+
+    toAdd.forEach((file) => {
       const knownPath = window.electron?.getFilePath?.(file) || "";
       const reader = new FileReader();
+      reader.onerror = () => setAttachError("That image could not be read. Try another file.");
       reader.onload = async () => {
+        const result = reader.result;
+        if (typeof result !== "string" || !result.startsWith("data:image/")) {
+          setAttachError("That image could not be read. Try another file.");
+          return;
+        }
         // No source path (clipboard paste) -> persist to disk to obtain one.
-        const filePath = knownPath || (await persistPastedImage(reader.result));
-        setImages((prev) => (prev.length >= MAX_IMAGES ? prev : [...prev, reader.result]));
-        setImagePaths((prev) => (prev.length >= MAX_IMAGES ? prev : [...prev, filePath]));
+        const filePath = knownPath || (await persistPastedImage(result));
+        setImages((prev) => (prev.length >= maxImages ? prev : [...prev, result]));
+        setImagePaths((prev) => (prev.length >= maxImages ? prev : [...prev, filePath]));
       };
       reader.readAsDataURL(file);
     });
@@ -57,6 +91,7 @@ export default function QuestionInput({
   const removeImage = (idx) => {
     setImages((prev) => prev.filter((_, i) => i !== idx));
     setImagePaths((prev) => prev.filter((_, i) => i !== idx));
+    setAttachError("");
   };
 
   const handleSend = () => {
@@ -121,7 +156,7 @@ export default function QuestionInput({
     <div className={["relative w-full", className].join(" ")}>
       {/* Attached images live in their own glass panel (matching the chat
           header) above the composer; the text input yields beneath it. */}
-      {images.length > 0 && (
+      {(images.length > 0 || attachError) && (
         <div
           className={[
             "mb-2 w-full rounded-[20px] p-2.5",
@@ -130,25 +165,45 @@ export default function QuestionInput({
             "shadow-[0_10px_30px_-6px_rgba(0,0,0,0.5)]",
           ].join(" ")}
         >
-          <div className="flex flex-wrap gap-2">
-            {images.map((src, idx) => (
-              <div key={idx} className="relative">
-                <img
-                  src={src}
-                  alt={`attachment ${idx + 1}`}
-                  className="h-20 w-20 object-cover rounded-xl border border-white/10"
-                />
+          {images.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {images.map((src, idx) => (
+                <div key={idx} className="relative">
+                  <img
+                    src={src}
+                    alt={`attachment ${idx + 1}`}
+                    className="h-20 w-20 object-cover rounded-xl border border-white/10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(idx)}
+                    aria-label="Remove image"
+                    className="absolute -top-2 -right-2 rounded-full bg-black/70 p-0.5 text-white/90 hover:text-white"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+              {/* Add-another tile: opens the same picker as the composer icon. */}
+              {canAttachImages && images.length < maxImages && (
                 <button
                   type="button"
-                  onClick={() => removeImage(idx)}
-                  aria-label="Remove image"
-                  className="absolute -top-2 -right-2 rounded-full bg-black/70 p-0.5 text-white/90 hover:text-white"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={disabled}
+                  aria-label="Add image"
+                  title="Add another image"
+                  className="h-20 w-20 flex items-center justify-center rounded-xl border border-dashed border-white/25 text-white/60 hover:text-white hover:border-white/50 disabled:opacity-40 transition"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <Plus className="h-6 w-6" />
                 </button>
-              </div>
-            ))}
-          </div>
+              )}
+            </div>
+          )}
+          {attachError && (
+            <p className="mt-2 text-xs text-red-300/90" role="alert">
+              {attachError}
+            </p>
+          )}
         </div>
       )}
 
@@ -188,7 +243,7 @@ export default function QuestionInput({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept={SUPPORTED_ACCEPT}
           multiple
           className="hidden"
           onChange={(e) => {
@@ -202,7 +257,7 @@ export default function QuestionInput({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={disabled || images.length >= MAX_IMAGES}
+            disabled={disabled || images.length >= maxImages}
             className="pl-3 md:pl-4 text-white/70 hover:text-white disabled:opacity-40 transition"
             aria-label="Attach image"
             title="Attach image (or paste / drag and drop)"
@@ -255,4 +310,5 @@ QuestionInput.propTypes = {
   disabled: PropTypes.bool,
   className: PropTypes.string,
   canAttachImages: PropTypes.bool,
+  maxImages: PropTypes.number,
 };

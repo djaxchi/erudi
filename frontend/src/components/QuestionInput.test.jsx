@@ -26,6 +26,8 @@ const pasteImage = (node, file) => {
 const pngFile = () =>
   new File([new Uint8Array([137, 80, 78, 71])], "pasted.png", { type: "image/png" });
 
+const svgFile = () => new File(["<svg/>"], "vector.svg", { type: "image/svg+xml" });
+
 beforeEach(() => {
   window.imageAPI = { savePasted: vi.fn(async () => FAKE_PATH) };
 });
@@ -87,5 +89,48 @@ describe("QuestionInput pasted-image persistence (#136)", () => {
     await Promise.resolve();
     expect(window.imageAPI.savePasted).not.toHaveBeenCalled();
     expect(screen.queryByAltText("attachment 1")).toBeNull();
+  });
+});
+
+describe("QuestionInput image-pipeline robustness", () => {
+  it("rejects an unsupported format (SVG) with an error instead of attaching it", async () => {
+    render(<QuestionInput placeholder="ask" onSend={vi.fn()} canAttachImages />);
+    const fileInput = document.querySelector('input[type="file"]');
+    fireEvent.change(fileInput, { target: { files: [svgFile()] } });
+
+    await screen.findByRole("alert");
+    expect(screen.queryByAltText("attachment 1")).toBeNull();
+  });
+
+  it("rejects an image over the size cap", async () => {
+    render(<QuestionInput placeholder="ask" onSend={vi.fn()} canAttachImages />);
+    const big = pngFile();
+    Object.defineProperty(big, "size", { value: 21 * 1024 * 1024 });
+    const fileInput = document.querySelector('input[type="file"]');
+    fireEvent.change(fileInput, { target: { files: [big] } });
+
+    await screen.findByRole("alert");
+    expect(screen.queryByAltText("attachment 1")).toBeNull();
+  });
+
+  it("shows an add-another tile once an image is attached", async () => {
+    render(<QuestionInput placeholder="ask" onSend={vi.fn()} canAttachImages />);
+    const fileInput = document.querySelector('input[type="file"]');
+    fireEvent.change(fileInput, { target: { files: [pngFile()] } });
+
+    await screen.findByAltText("attachment 1");
+    await screen.findByLabelText("Add image");
+  });
+
+  it("caps attachments at maxImages and warns when more are picked", async () => {
+    render(<QuestionInput placeholder="ask" onSend={vi.fn()} canAttachImages maxImages={1} />);
+    const fileInput = document.querySelector('input[type="file"]');
+    fireEvent.change(fileInput, { target: { files: [pngFile(), pngFile()] } });
+
+    await screen.findByAltText("attachment 1");
+    expect(screen.queryByAltText("attachment 2")).toBeNull();
+    await screen.findByRole("alert");
+    // At the cap, the add-another tile is hidden.
+    expect(screen.queryByLabelText("Add image")).toBeNull();
   });
 });
