@@ -82,6 +82,81 @@ def _patch_text_only_tied_embeddings() -> bool:
     return True
 
 
+def _patch_gemma_shared_kv_sanitize() -> bool:
+    """Drop unused shared-KV weights for MLX-format Gemma 4 / Gemma 3n (#193).
+
+    Gemma 3n E4B (shipped by LM Studio as ``gemma-4-E4B-it-MLX-4bit``, top-level
+    ``model_type == "gemma4"``) shares K/V across its upper layers: for
+    ``layer_idx >= num_hidden_layers - num_kv_shared_layers`` the model class
+    does NOT instantiate its own ``k_proj``/``v_proj``/``k_norm`` -- those layers
+    reuse an earlier layer's cache. The architecture's ``LanguageModel.sanitize``
+    is what drops the checkpoint's leftover copies of those tensors.
+
+    But ``mlx_vlm.utils.load_model`` SKIPS sanitize entirely for MLX-format
+    checkpoints (``metadata.format == "mlx"``), and LM Studio's conversion keeps
+    the unused shared-KV tensors. With sanitize skipped, the strict
+    ``model.load_weights`` at the end of ``load_model`` rejects them:
+
+        ValueError: Received 126 parameters not in model:
+          language_model.model.layers.24.self_attn.k_norm.weight, ...
+
+    (For E4B: 42 hidden layers, 18 shared -> first shared layer is index 24, and
+    18 shared layers x 7 tensors each = exactly 126.) Same root cause as
+    ``_patch_text_only_tied_embeddings`` (mlx-format sanitize skip), different
+    symptom, and that patch only covers the ``text_only`` wrapper -- a
+    multimodal Gemma 4 checkpoint never routes through it.
+
+    We re-introduce ONLY the drop-only ``LanguageModel.sanitize`` at the
+    top-level ``Model.load_weights`` boundary. That sanitize renames nothing and
+    reshapes nothing (unlike the top-level ``Model.sanitize``, which also does
+    conv transposes / MoE splits that must NOT be re-applied to an already-mlx
+    checkpoint), so running it standalone on the full weight dict is safe and
+    idempotent -- a no-op for checkpoints without leftover shared-KV tensors.
+    Vision/audio weights pass straight through.
+
+    Returns:
+        True if the patch was applied to at least one class (or already
+        present), False if no Gemma 4 module could be imported (non-MLX hosts,
+        CI, or an mlx-vlm build without these architectures). Idempotent.
+    """
+    import importlib
+
+    applied = False
+    for mod_name in ("gemma4", "gemma4_unified"):
+        try:
+            mod = importlib.import_module(f"mlx_vlm.models.{mod_name}")
+        except Exception:
+            continue
+        model_cls = getattr(mod, "Model", None)
+        if model_cls is None:
+            continue
+        if getattr(model_cls, "_erudi_shared_kv_patch", False):
+            applied = True
+            continue
+
+        _orig_load_weights = model_cls.load_weights
+
+        def _make_load_weights(orig):
+            def _load_weights(self, weights, *args, **kwargs):
+                lang = getattr(self, "language_model", None)
+                if lang is not None and hasattr(lang, "sanitize"):
+                    as_dict = dict(weights)
+                    try:
+                        weights = list(lang.sanitize(as_dict).items())
+                    except Exception:
+                        # Never let a sanitize edge case block a load that would
+                        # otherwise succeed: fall back to the original weights.
+                        weights = list(as_dict.items())
+                return orig(self, weights, *args, **kwargs)
+
+            return _load_weights
+
+        model_cls.load_weights = _make_load_weights(_orig_load_weights)
+        model_cls._erudi_shared_kv_patch = True
+        applied = True
+    return applied
+
+
 def _patch_gemma_end_of_turn_stop() -> bool:
     """Register Gemma's ``<end_of_turn>`` as a stop token in the mlx_vlm server (#249).
 
@@ -236,6 +311,10 @@ def run_mlx_vlm_server(argv: List[str]) -> None:
     # Applied in-child before the server loads any model so MLX-format
     # tied-embedding text-only checkpoints (Gemma3 270m/1b) load cleanly.
     _patch_text_only_tied_embeddings()
+    # Drop the leftover shared-KV tensors that MLX-format Gemma 4 / Gemma 3n
+    # checkpoints carry, which mlx-vlm's format=="mlx" sanitize skip would
+    # otherwise let through and hard-fail the strict weight load (#193).
+    _patch_gemma_shared_kv_sanitize()
     # Register Gemma's <end_of_turn> as a stop token so generation halts at the
     # end of the answer instead of streaming the literal token + garbage (#249).
     _patch_gemma_end_of_turn_stop()
