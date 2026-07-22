@@ -213,6 +213,52 @@ def test_hf_repo_none_on_empty_repo_id():
     assert tool_capability_from_hf_repo("") is None
 
 
+# ---------------- unit: local_files_only on the post-download capability load (#291) ----------------
+# Without local_files_only=True, AutoTokenizer.from_pretrained reaches out to the
+# Hub even though the artifact is already fully on disk, which can hang for
+# minutes on a slow/blocked connection and stall the whole download finalization.
+
+
+@pytest.mark.unit
+def test_llama_cpp_capability_load_is_local_only(tmp_path, monkeypatch):
+    from src.engines.cuda_engine import CUDA_Engine
+
+    gguf_path = tmp_path / "model.Q4_K_M.gguf"
+    gguf_path.write_bytes(b"")
+    monkeypatch.setattr(CUDA_Engine, "_select_gguf", classmethod(lambda cls, p: gguf_path))
+
+    captured = {}
+
+    def fake_from_pretrained(*args, **kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr("transformers.AutoTokenizer.from_pretrained", fake_from_pretrained)
+
+    CUDA_Engine._load_capability_tokenizer(tmp_path)
+    assert captured.get("local_files_only") is True
+
+
+@pytest.mark.unit
+def test_mlx_capability_load_is_local_only(tmp_path, monkeypatch):
+    from src.engines.mlx_engine import MLX_Engine
+
+    monkeypatch.setattr(
+        MLX_Engine, "_resolve_model_artifact", classmethod(lambda cls, p: tmp_path)
+    )
+
+    captured = {}
+
+    def fake_from_pretrained(*args, **kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr("transformers.AutoTokenizer.from_pretrained", fake_from_pretrained)
+
+    MLX_Engine._load_capability_tokenizer(tmp_path)
+    assert captured.get("local_files_only") is True
+
+
 # ---------------- mlx_only: real tokenizer load ----------------
 
 
