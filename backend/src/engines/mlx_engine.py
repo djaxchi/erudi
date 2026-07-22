@@ -262,7 +262,13 @@ class MLX_Engine(BaseChatServerEngine):
         from transformers import AutoTokenizer
 
         model_dir = cls._resolve_model_artifact(llm_local_path)
-        return AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=False)
+        # local_files_only=True (#164 pattern): everything needed lives in the
+        # already-downloaded directory. Without it, from_pretrained reaches out to
+        # the Hub to check for updates and can hang for minutes on a slow/blocked
+        # connection, stalling the whole download finalization (#291).
+        return AutoTokenizer.from_pretrained(
+            str(model_dir), trust_remote_code=False, local_files_only=True
+        )
 
     @classmethod
     def model_supports_vision(cls, llm_local_path: Union[str, Path]) -> Optional[bool]:

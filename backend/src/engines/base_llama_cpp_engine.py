@@ -184,8 +184,15 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         from transformers import AutoTokenizer
 
         gguf_path = cls._select_gguf(llm_local_path)
+        # local_files_only=True (#164 pattern): everything needed lives in the
+        # already-downloaded GGUF. Without it, from_pretrained reaches out to the
+        # Hub to check for updates and can hang for minutes on a slow/blocked
+        # connection, stalling the whole download finalization (#291).
         return AutoTokenizer.from_pretrained(
-            str(gguf_path.parent), gguf_file=gguf_path.name, trust_remote_code=False
+            str(gguf_path.parent),
+            gguf_file=gguf_path.name,
+            trust_remote_code=False,
+            local_files_only=True,
         )
 
     @classmethod
