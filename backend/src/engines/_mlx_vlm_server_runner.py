@@ -19,6 +19,21 @@ The two-function split (`_import_mlx_vlm_server_main` + `run_mlx_vlm_server`)
 keeps the heavy `mlx_vlm.server` import lazy and — critically — patchable from
 unit tests that run on Linux CI where `mlx-vlm` is not installed.
 
+In-child patches (pinned mlx-vlm 0.6.13)
+----------------------------------------
+Two monkeypatches are applied before the server starts. Two more existed
+against 0.6.2 and were dropped with the 0.6.13 bump because upstream now runs
+weight sanitization unconditionally in `mlx_vlm.utils.load_model` (the 0.6.2
+`format == "mlx"` sanitize skip is gone):
+
+  - `_patch_text_only_tied_embeddings` (dropped): `models/text_only.py` ships
+    `Model.sanitize` delegating to the inner mlx-lm model and a `load_weights`
+    that routes through it, so tied-embedding Gemma3 text-only checkpoints
+    load cleanly.
+  - `_patch_gemma_shared_kv_sanitize` (dropped, #193): `models/gemma4/language.py`
+    `LanguageModel.sanitize` drops the `_is_unused_shared_kv_weight` tensors
+    and is invoked on every load via `sanitize_weights(model_class.LanguageModel, ...)`.
+
 Contract
 --------
 `run_mlx_vlm_server(argv)` replaces `sys.argv` with the supplied list and calls
@@ -36,138 +51,24 @@ from __future__ import annotations
 from typing import List
 
 
-def _patch_text_only_tied_embeddings() -> bool:
-    """Teach mlx-vlm to load MLX-format text-only checkpoints with tied embeddings.
-
-    ``mlx_vlm.utils.load_model`` skips weight sanitization for MLX-format
-    checkpoints (``format == "mlx"``), but tied-embedding architectures such as
-    Gemma3 text-only (``gemma-3-270m``, ``gemma-3-1b``) ship *without* an
-    ``lm_head.weight`` tensor: the inner ``mlx_lm`` model's ``sanitize()`` is
-    what pops the untied ``lm_head`` so the strict weight load succeeds. With the
-    sanitize step skipped, loading dies with
-    ``ValueError: Missing 1 parameters: lm_head.weight``.
-
-    We re-introduce that sanitize step at the text-only wrapper's
-    ``load_weights`` boundary, *only* when ``lm_head.weight`` is genuinely
-    absent, leaving every other (untied / multimodal / non-MLX) path untouched.
-
-    Returns:
-        True if the patch was applied (or already present), False if mlx-vlm's
-        text-only module could not be imported (non-MLX hosts, CI). Idempotent.
-    """
-    try:
-        from mlx_vlm.models import text_only
-    except Exception:
-        return False
-
-    model_cls = getattr(text_only, "Model", None)
-    if model_cls is None:
-        return False
-    if getattr(model_cls, "_erudi_tied_embed_patch", False):
-        return True
-
-    _orig_load_weights = model_cls.load_weights
-
-    def _load_weights(self, weights, *args, **kwargs):
-        items = list(weights.items()) if isinstance(weights, dict) else list(weights)
-        has_lm_head = any(str(k).endswith("lm_head.weight") for k, _ in items)
-        inner = getattr(getattr(self, "language_model", None), "_model", None)
-        if not has_lm_head and inner is not None and hasattr(inner, "sanitize"):
-            sanitized = inner.sanitize(dict(items))
-            return inner.load_weights(list(sanitized.items()), *args, **kwargs)
-        return _orig_load_weights(self, weights, *args, **kwargs)
-
-    model_cls.load_weights = _load_weights
-    model_cls._erudi_tied_embed_patch = True
-    return True
-
-
-def _patch_gemma_shared_kv_sanitize() -> bool:
-    """Drop unused shared-KV weights for MLX-format Gemma 4 / Gemma 3n (#193).
-
-    Gemma 3n E4B (shipped by LM Studio as ``gemma-4-E4B-it-MLX-4bit``, top-level
-    ``model_type == "gemma4"``) shares K/V across its upper layers: for
-    ``layer_idx >= num_hidden_layers - num_kv_shared_layers`` the model class
-    does NOT instantiate its own ``k_proj``/``v_proj``/``k_norm`` -- those layers
-    reuse an earlier layer's cache. The architecture's ``LanguageModel.sanitize``
-    is what drops the checkpoint's leftover copies of those tensors.
-
-    But ``mlx_vlm.utils.load_model`` SKIPS sanitize entirely for MLX-format
-    checkpoints (``metadata.format == "mlx"``), and LM Studio's conversion keeps
-    the unused shared-KV tensors. With sanitize skipped, the strict
-    ``model.load_weights`` at the end of ``load_model`` rejects them:
-
-        ValueError: Received 126 parameters not in model:
-          language_model.model.layers.24.self_attn.k_norm.weight, ...
-
-    (For E4B: 42 hidden layers, 18 shared -> first shared layer is index 24, and
-    18 shared layers x 7 tensors each = exactly 126.) Same root cause as
-    ``_patch_text_only_tied_embeddings`` (mlx-format sanitize skip), different
-    symptom, and that patch only covers the ``text_only`` wrapper -- a
-    multimodal Gemma 4 checkpoint never routes through it.
-
-    We re-introduce ONLY the drop-only ``LanguageModel.sanitize`` at the
-    top-level ``Model.load_weights`` boundary. That sanitize renames nothing and
-    reshapes nothing (unlike the top-level ``Model.sanitize``, which also does
-    conv transposes / MoE splits that must NOT be re-applied to an already-mlx
-    checkpoint), so running it standalone on the full weight dict is safe and
-    idempotent -- a no-op for checkpoints without leftover shared-KV tensors.
-    Vision/audio weights pass straight through.
-
-    Returns:
-        True if the patch was applied to at least one class (or already
-        present), False if no Gemma 4 module could be imported (non-MLX hosts,
-        CI, or an mlx-vlm build without these architectures). Idempotent.
-    """
-    import importlib
-
-    applied = False
-    for mod_name in ("gemma4", "gemma4_unified"):
-        try:
-            mod = importlib.import_module(f"mlx_vlm.models.{mod_name}")
-        except Exception:
-            continue
-        model_cls = getattr(mod, "Model", None)
-        if model_cls is None:
-            continue
-        if getattr(model_cls, "_erudi_shared_kv_patch", False):
-            applied = True
-            continue
-
-        _orig_load_weights = model_cls.load_weights
-
-        def _make_load_weights(orig):
-            def _load_weights(self, weights, *args, **kwargs):
-                lang = getattr(self, "language_model", None)
-                if lang is not None and hasattr(lang, "sanitize"):
-                    as_dict = dict(weights)
-                    try:
-                        weights = list(lang.sanitize(as_dict).items())
-                    except Exception:
-                        # Never let a sanitize edge case block a load that would
-                        # otherwise succeed: fall back to the original weights.
-                        weights = list(as_dict.items())
-                return orig(self, weights, *args, **kwargs)
-
-            return _load_weights
-
-        model_cls.load_weights = _make_load_weights(_orig_load_weights)
-        model_cls._erudi_shared_kv_patch = True
-        applied = True
-    return applied
-
-
 def _patch_gemma_end_of_turn_stop() -> bool:
     """Register Gemma's ``<end_of_turn>`` as a stop token in the mlx_vlm server (#249).
 
-    mlx_vlm builds its stop-token set solely from ``config.eos_token_id`` (see
-    ``ResponseGenerator._initialize_model``). Gemma checkpoints declare
-    ``eos_token`` = ``<eos>`` (id 1), but their chat template ends *every turn*
-    with ``<end_of_turn>`` (id 106) — which is therefore NOT in the stop set.
-    Sampling runs past the answer and streams the literal ``<end_of_turn>`` token
-    text plus multilingual garbage to the user. (The OpenAI ``stop`` request field
-    does not help: mlx_vlm's generation loop halts on token *ids* in
-    ``stop_tokens``, not on decoded strings.)
+    mlx_vlm (still on 0.6.13, ``server/generation.py:_initialize_model``) builds
+    its stop-token set solely from ``config.eos_token_id``. Gemma checkpoints
+    declare ``eos_token`` = ``<eos>`` (id 1), but their chat template ends
+    *every turn* with ``<end_of_turn>`` (id 106) — which is therefore NOT in
+    the stop set. Sampling runs past the answer and streams the literal
+    ``<end_of_turn>`` token text plus multilingual garbage to the user. (The
+    OpenAI ``stop`` request field does not help: mlx_vlm's generation loop
+    halts on token *ids* in ``stop_tokens``, not on decoded strings.)
+
+    0.6.13 additionally merges a checkpoint's ``generation_config.json`` eos
+    ids into the config (``utils._merge_generation_config``), which covers
+    Gemma checkpoints that ship ``eos_token_id: [1, 106]`` there — but that is
+    checkpoint metadata, not a server guarantee. This patch stays as the
+    checkpoint-independent belt: derived from the tokenizer, and a no-op when
+    the merge already put id 106 in the stop set.
 
     We wrap ``_initialize_model`` to add the tokenizer's ``<end_of_turn>`` id to
     ``stop_tokens`` after the model loads — derived from the tokenizer, no
@@ -221,36 +122,44 @@ _NEVER_CLOSE_MARKER = "\x00/erudi:no-thinking-split\x00"
 def _patch_inline_thinking() -> bool:
     """Keep model reasoning INLINE in ``delta.content`` (#90).
 
-    mlx-vlm 0.6.2 splits streamed thinking into a dedicated
+    mlx-vlm 0.6.13 splits streamed thinking into a dedicated
     ``delta.reasoning`` field via ``ThinkingStreamState`` — a channel that
     ChatOpenAI silently drops, so the reasoning never reaches the runner. The
     design (#90) wants the raw ``<think>...</think>`` INLINE in
     ``delta.content`` so the runner's single streaming ThinkSplitter handles
     MLX exactly like llama-server with ``--reasoning-format none``.
 
-    Why a monkeypatch and not configuration — on the pinned 0.6.2:
+    Why a monkeypatch and not configuration — on the pinned 0.6.13:
 
-      - The server CLI does not accept ``--thinking-start-token`` (strict
-        argparse: the child would die at boot), and the
-        ``MLX_VLM_THINKING_START_TOKEN`` env var only exists in 0.6.4.
-      - Even injected per-request, a sentinel start token cannot disable the
-        split: ``_build_open_close_markers`` always APPENDS the built-in
-        marker families (``<think>``, ``<|channel>thought``,
-        ``<|START_THINKING|>``) after any custom pair.
-      - ``ThinkingStreamState.__init__`` sets ``in_thinking =
-        bool(enable_thinking)``, so with thinking enabled the stream starts in
-        reasoning mode regardless of any marker. This is also why the class
-        MUST be neutralized before passing ``--enable-thinking``: a
-        non-thinking model (which never emits ``</think>``) would otherwise
-        have its ENTIRE output routed to ``delta.reasoning`` — empty answers.
+      - ``--thinking-start-token`` / ``MLX_VLM_THINKING_START_TOKEN`` exist
+        but cannot disable the split: ``_build_open_close_markers`` always
+        APPENDS the built-in marker families (``<think>``,
+        ``<|channel>thought``, ``<|START_THINKING|>``) after any custom pair,
+        and a custom pair only registers when BOTH start and end tokens are
+        set. There is no native "reasoning inline / no split" control.
+      - ``ThinkingStreamState.__init__`` still sets ``in_thinking =
+        bool(enable_thinking)``: the route passes ``prompt_has_open_thinking``
+        there, so a prompt whose template opens a thinking block starts the
+        stream in reasoning mode regardless of any marker.
 
-    So the single choke point is the class itself: force every instance to
+    So the first choke point is the class itself: force every instance to
     start OUTSIDE thinking with unmatchable markers. ``feed()`` then falls
     through to its plain-content branch, preserving upstream
     ``<|START_TEXT|>`` content-marker stripping and the downstream tool-call
     suppression untouched. The class object is mutated in place (never
     rebound), so it is irrelevant whether callers imported it before or after
     the patch.
+
+    0.6.13 adds a second choke point: the ``make_response_stream_state``
+    factory prefers a ``ResponseTemplateStreamState`` (a transformers
+    response-template parser that ALSO routes reasoning to
+    ``delta.reasoning``) whenever the tokenizer exposes a
+    ``response_template`` — bypassing ``ThinkingStreamState`` entirely. The
+    factory resolves its ``_response_template_tokenizer`` helper through the
+    module globals at call time, so neutralizing that helper disables the
+    bypass even though the route modules from-import the factory at package
+    import time. Every stream then goes through the neutralized
+    ``ThinkingStreamState``.
 
     Returns:
         True if the patch was applied (or already present), False if
@@ -265,20 +174,27 @@ def _patch_inline_thinking() -> bool:
     state_cls = getattr(responses_state, "ThinkingStreamState", None)
     if state_cls is None:
         return False
-    if getattr(state_cls, "_erudi_inline_thinking_patch", False):
-        return True
 
-    _orig_init = state_cls.__init__
+    if not getattr(state_cls, "_erudi_inline_thinking_patch", False):
+        _orig_init = state_cls.__init__
 
-    def _init(self, *args, **kwargs):
-        _orig_init(self, *args, **kwargs)
-        self.in_thinking = False
-        self.open_close_markers = ((_NEVER_OPEN_MARKER, _NEVER_CLOSE_MARKER),)
-        self.open_markers = (_NEVER_OPEN_MARKER,)
-        self.close_markers = (_NEVER_CLOSE_MARKER,)
+        def _init(self, *args, **kwargs):
+            _orig_init(self, *args, **kwargs)
+            self.in_thinking = False
+            self.open_close_markers = ((_NEVER_OPEN_MARKER, _NEVER_CLOSE_MARKER),)
+            self.open_markers = (_NEVER_OPEN_MARKER,)
+            self.close_markers = (_NEVER_CLOSE_MARKER,)
 
-    state_cls.__init__ = _init
-    state_cls._erudi_inline_thinking_patch = True
+        state_cls.__init__ = _init
+        state_cls._erudi_inline_thinking_patch = True
+
+    # Disable the 0.6.13 template-parser bypass in `make_response_stream_state`.
+    if hasattr(responses_state, "_response_template_tokenizer") and not getattr(
+        responses_state, "_erudi_template_bypass_patch", False
+    ):
+        responses_state._response_template_tokenizer = lambda processor: None
+        responses_state._erudi_template_bypass_patch = True
+
     return True
 
 
@@ -308,19 +224,12 @@ def run_mlx_vlm_server(argv: List[str]) -> None:
     import sys
 
     sys.argv = list(argv)
-    # Applied in-child before the server loads any model so MLX-format
-    # tied-embedding text-only checkpoints (Gemma3 270m/1b) load cleanly.
-    _patch_text_only_tied_embeddings()
-    # Drop the leftover shared-KV tensors that MLX-format Gemma 4 / Gemma 3n
-    # checkpoints carry, which mlx-vlm's format=="mlx" sanitize skip would
-    # otherwise let through and hard-fail the strict weight load (#193).
-    _patch_gemma_shared_kv_sanitize()
     # Register Gemma's <end_of_turn> as a stop token so generation halts at the
     # end of the answer instead of streaming the literal token + garbage (#249).
     _patch_gemma_end_of_turn_stop()
     # Applied in-child before the server starts so every ThinkingStreamState it
     # builds keeps reasoning inline in delta.content (#90) — see the patch's
-    # docstring for why 0.6.2 offers no configuration path for this.
+    # docstring for why 0.6.13 offers no configuration path for this.
     _patch_inline_thinking()
     main = _import_mlx_vlm_server_main()
     main()

@@ -18,7 +18,7 @@ requirements/
 │   └── prod/                 # minimal runtime deps (one per platform, *-prod.txt)
 ├── meta/
 │   ├── base.txt              # shared core: FastAPI, SQLAlchemy, pgserver,
-│   │                         #   langchain, sentence-transformers, transformers (pinned 5.10.2)
+│   │                         #   langchain, sentence-transformers, transformers (pinned 5.14.1)
 │   ├── dev.txt               # pytest / ruff / black / mypy
 │   ├── cpu.txt               # CPU torch (official CPU index) + gguf — REUSED by the CUDA entrypoints
 │   ├── cuda-specs.txt        # CUDA-only non-torch bits (pynvml). No torch+cuXXX.
@@ -37,8 +37,9 @@ requirements/
   (built by `scripts/dev/backend/build-llamacpp-cuda-*`). The CUDA toolkit version
   lives in the **binary build**, not in pip — which is why there is a single
   `cuda` entrypoint per OS (no 118/121 split anymore).
-- **transformers is pinned once in `base.txt` (5.10.2)** for every platform. It is
-  coupled to torch (5.10.2 imports `torch.float8_e8m0fnu`, needing torch>=2.7).
+- **transformers is pinned once in `base.txt` (5.14.1)** for every platform. The
+  floor comes from mlx-vlm 0.6.13 (`transformers>=5.14.0`); it is coupled to
+  torch (imports `torch.float8_e8m0fnu`, needing torch>=2.7).
 - Fine-tuning deps (peft/accelerate/datasets/bitsandbytes) were removed — the
   feature is unimplemented dead code (see the fine-tuning cleanup issue).
 
