@@ -343,25 +343,31 @@ class TestMlxVlmServerRunnerHelper:
         fake_main.assert_called_once()
         assert captured["argv"] == argv
 
-    def test_runner_dropped_load_time_patches_for_0613(self):
+    def test_runner_load_time_patch_roster_for_0613(self):
         """mlx-vlm 0.6.13 runs weight sanitize unconditionally in `load_model`
-        (`utils.py`: `sanitize_weights(model, weights)` plus the per-component
-        Vision/Language/Audio passes), so the two load-time patches written
-        against 0.6.2's `format == "mlx"` sanitize skip are fixed upstream:
+        (`utils.py:713` plus the per-component Vision/Language/Audio passes at
+        `utils.py:715-727`), so the two 0.6.2-era load-time patches stay gone:
 
-          - `_patch_text_only_tied_embeddings` — `models/text_only.py` now
-            ships `Model.sanitize` delegating to the inner mlx-lm model and a
-            `load_weights` that routes through it.
+          - `_patch_text_only_tied_embeddings` — the `text_only` route is
+            genuinely fixed upstream (`Model.sanitize` delegates to the inner
+            mlx-lm model), BUT hardware validation showed Gemma3 text-only
+            checkpoints no longer take that route at all: 0.6.13 ships a
+            native `models/gemma3_text` module whose tied-head sanitize is
+            quantization-unaware. That regression is covered by the adapted
+            `_patch_gemma3_tied_lm_head_quant` below.
           - `_patch_gemma_shared_kv_sanitize` (#193) — `models/gemma4/language.py`
             `LanguageModel.sanitize` drops `_is_unused_shared_kv_weight` keys
-            and is now invoked on every load.
-
-        They must be GONE, not kept as dead no-ops.
+            and is invoked on every load via the unconditional class-level
+            pass (`utils.py:717-721`; `gemma4/__init__.py` exports
+            `LanguageModel`, `ModelConfig.text_config` exists). gemma4-family
+            heads are tied by construction (`embed_tokens.as_linear`, no
+            `lm_head` parameter) so the gemma3_text blind spot has no analogue.
         """
         from src.engines import _mlx_vlm_server_runner as runner
 
         assert not hasattr(runner, "_patch_text_only_tied_embeddings")
         assert not hasattr(runner, "_patch_gemma_shared_kv_sanitize")
+        assert callable(runner._patch_gemma3_tied_lm_head_quant)
 
     def test_runner_applies_inline_thinking_patch_before_main(self, monkeypatch):
         """The thinking-split neutralization must run before the server's main()
@@ -375,6 +381,7 @@ class TestMlxVlmServerRunnerHelper:
         from src.engines import _mlx_vlm_server_runner as runner
 
         order: list[str] = []
+        monkeypatch.setattr(runner, "_patch_gemma3_tied_lm_head_quant", lambda: True)
         monkeypatch.setattr(runner, "_patch_gemma_end_of_turn_stop", lambda: True)
         monkeypatch.setattr(
             runner,
@@ -388,6 +395,33 @@ class TestMlxVlmServerRunnerHelper:
         runner.run_mlx_vlm_server(["mlx_vlm.server", "--port", "9080"])
 
         assert order == ["thinking-patch", "main"]
+
+    def test_runner_applies_tied_lm_head_patch_before_main(self, monkeypatch):
+        """The tied-lm_head sanitize completion must run before the server's
+        main() loads a model — it is a load-time patch: once `load_model` has
+        rejected the checkpoint, there is nothing left to fix.
+
+        Sibling in-child patches are stubbed out so this test never imports
+        the real mlx-vlm (absent on Linux CI, mutated-in-pytest-process on Mac).
+        """
+        import sys
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        order: list[str] = []
+        monkeypatch.setattr(
+            runner,
+            "_patch_gemma3_tied_lm_head_quant",
+            lambda: order.append("tied-lm-head") or True,
+        )
+        monkeypatch.setattr(runner, "_patch_gemma_end_of_turn_stop", lambda: True)
+        monkeypatch.setattr(runner, "_patch_inline_thinking", lambda: True)
+        fake_main = MagicMock(side_effect=lambda: order.append("main"))
+        monkeypatch.setattr(runner, "_import_mlx_vlm_server_main", lambda: fake_main)
+        monkeypatch.setattr(sys, "argv", ["pytest"])
+
+        runner.run_mlx_vlm_server(["mlx_vlm.server", "--port", "9080"])
+
+        assert order.index("tied-lm-head") < order.index("main")
 
 
 @pytest.mark.unit
@@ -485,6 +519,7 @@ class TestGemmaEndOfTurnStopPatch:
         from src.engines import _mlx_vlm_server_runner as runner
 
         order: list[str] = []
+        monkeypatch.setattr(runner, "_patch_gemma3_tied_lm_head_quant", lambda: True)
         monkeypatch.setattr(
             runner, "_patch_gemma_end_of_turn_stop",
             lambda: order.append("gemma-stop") or True,
@@ -497,6 +532,153 @@ class TestGemmaEndOfTurnStopPatch:
         runner.run_mlx_vlm_server(["mlx_vlm.server", "--port", "9080"])
 
         assert order.index("gemma-stop") < order.index("main")
+
+
+@pytest.mark.unit
+class TestGemma3TiedLmHeadQuantPatch:
+    """`_patch_gemma3_tied_lm_head_quant` completes mlx-vlm 0.6.13's tied-head
+    sanitize for quantized Gemma3 checkpoints (#273).
+
+    Hardware-found regression: `mlx-community/gemma-3-270m-it-4bit`
+    (`model_type == "gemma3_text"`, tied embeddings, no `lm_head.*` tensors)
+    fails `mlx_vlm.utils.load` on real 0.6.13 with
+
+        ValueError: Expected shape (262144, 640) but received shape
+        (262144, 80) for parameter language_model.lm_head.weight
+
+    because `gemma3.LanguageModel.sanitize` copies ONLY
+    `model.embed_tokens.weight` (the 4-bit packed tensor) to `lm_head.weight`
+    without the `.scales`/`.biases` sidecars, so `nn.quantize`'s
+    `f"{p}.scales" in weights` predicate leaves `lm_head` an UNQUANTIZED
+    `nn.Linear`. The patch copies the sidecars whenever the upstream tied
+    fallback fired on a quantized embedding, and only then.
+
+    The fake below is a behavioral double of
+    `mlx_vlm/models/gemma3/language.py:LanguageModel.sanitize` on 0.6.13.
+    """
+
+    _PFX = "language_model."
+
+    def _install_fake_gemma3_language(self, monkeypatch):
+        """Inject a minimal fake `mlx_vlm.models.gemma3.language` module."""
+        import sys
+        import types
+
+        class LanguageModel:
+            def sanitize(self, weights):
+                # Mirror upstream 0.6.13: the guard checks the UNPREFIXED key
+                # (always absent after gemma3_text.Model.sanitize prefixed
+                # everything), and copies only the packed weight.
+                if "lm_head.weight" not in weights:
+                    weights["language_model.lm_head.weight"] = weights[
+                        "language_model.model.embed_tokens.weight"
+                    ]
+                return {
+                    k: v
+                    for k, v in weights.items()
+                    if "self_attn.rotary_emb.inv_freq" not in k
+                }
+
+        mlx_vlm = types.ModuleType("mlx_vlm")
+        models = types.ModuleType("mlx_vlm.models")
+        gemma3 = types.ModuleType("mlx_vlm.models.gemma3")
+        language = types.ModuleType("mlx_vlm.models.gemma3.language")
+        language.LanguageModel = LanguageModel
+        gemma3.language = language
+        models.gemma3 = gemma3
+        mlx_vlm.models = models
+        monkeypatch.setitem(sys.modules, "mlx_vlm", mlx_vlm)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models", models)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma3", gemma3)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma3.language", language)
+        return LanguageModel
+
+    def _tied_quantized_weights(self):
+        """Checkpoint-shaped dict: tied 4-bit embeddings, no lm_head tensors."""
+        p = self._PFX
+        return {
+            f"{p}model.embed_tokens.weight": object(),
+            f"{p}model.embed_tokens.scales": object(),
+            f"{p}model.embed_tokens.biases": object(),
+            f"{p}model.layers.0.mlp.down_proj.weight": object(),
+        }
+
+    def test_returns_false_when_mlx_vlm_absent(self, monkeypatch):
+        import sys
+        import types
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        bare = types.ModuleType("mlx_vlm.models.gemma3")  # no `language` attr
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma3", bare)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma3.language", None)
+        assert runner._patch_gemma3_tied_lm_head_quant() is False
+
+    def test_copies_quant_sidecars_when_tied_fallback_fires(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        LM = self._install_fake_gemma3_language(monkeypatch)
+        assert runner._patch_gemma3_tied_lm_head_quant() is True
+
+        p = self._PFX
+        weights = self._tied_quantized_weights()
+        out = LM().sanitize(dict(weights))
+
+        # Upstream behavior preserved: packed weight aliased to the head.
+        assert out[f"{p}lm_head.weight"] is weights[f"{p}model.embed_tokens.weight"]
+        # Patch completion: the quant sidecars follow, so nn.quantize's
+        # `f"{p}.scales" in weights` predicate converts lm_head too.
+        assert out[f"{p}lm_head.scales"] is weights[f"{p}model.embed_tokens.scales"]
+        assert out[f"{p}lm_head.biases"] is weights[f"{p}model.embed_tokens.biases"]
+
+    def test_no_op_for_unquantized_tied_checkpoint(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        LM = self._install_fake_gemma3_language(monkeypatch)
+        assert runner._patch_gemma3_tied_lm_head_quant() is True
+
+        p = self._PFX
+        weights = {
+            f"{p}model.embed_tokens.weight": object(),  # float, no sidecars
+            f"{p}model.layers.0.mlp.down_proj.weight": object(),
+        }
+        out = LM().sanitize(dict(weights))
+
+        assert out[f"{p}lm_head.weight"] is weights[f"{p}model.embed_tokens.weight"]
+        assert f"{p}lm_head.scales" not in out
+        assert f"{p}lm_head.biases" not in out
+
+    def test_no_op_when_checkpoint_ships_its_own_lm_head(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        LM = self._install_fake_gemma3_language(monkeypatch)
+        assert runner._patch_gemma3_tied_lm_head_quant() is True
+
+        p = self._PFX
+        own_head_w, own_head_s = object(), object()
+        weights = self._tied_quantized_weights()
+        weights[f"{p}lm_head.weight"] = own_head_w
+        weights[f"{p}lm_head.scales"] = own_head_s
+        out = LM().sanitize(dict(weights))
+
+        # A genuinely shipped (untied) head keeps its own sidecars untouched.
+        assert out[f"{p}lm_head.scales"] is own_head_s
+        assert f"{p}lm_head.biases" not in out
+
+    def test_patch_is_idempotent(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        LM = self._install_fake_gemma3_language(monkeypatch)
+        assert runner._patch_gemma3_tied_lm_head_quant() is True
+        first = LM.sanitize
+        assert runner._patch_gemma3_tied_lm_head_quant() is True
+        assert LM.sanitize is first  # not double-wrapped
+
+        # And re-sanitizing already-completed weights changes nothing.
+        p = self._PFX
+        weights = self._tied_quantized_weights()
+        once = LM().sanitize(dict(weights))
+        twice = LM().sanitize(dict(once))
+        assert twice == once
 
 
 @pytest.mark.unit

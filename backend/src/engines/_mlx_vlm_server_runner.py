@@ -21,18 +21,27 @@ unit tests that run on Linux CI where `mlx-vlm` is not installed.
 
 In-child patches (pinned mlx-vlm 0.6.13)
 ----------------------------------------
-Two monkeypatches are applied before the server starts. Two more existed
-against 0.6.2 and were dropped with the 0.6.13 bump because upstream now runs
-weight sanitization unconditionally in `mlx_vlm.utils.load_model` (the 0.6.2
-`format == "mlx"` sanitize skip is gone):
+Three monkeypatches are applied before the server starts. Two 0.6.2-era
+patches were dropped with the 0.6.13 bump because upstream now runs weight
+sanitization unconditionally in `mlx_vlm.utils.load_model` (the 0.6.2
+`format == "mlx"` sanitize skip is gone) — but hardware validation showed the
+static evidence for the first drop was incomplete:
 
-  - `_patch_text_only_tied_embeddings` (dropped): `models/text_only.py` ships
-    `Model.sanitize` delegating to the inner mlx-lm model and a `load_weights`
-    that routes through it, so tied-embedding Gemma3 text-only checkpoints
-    load cleanly.
+  - `_patch_text_only_tied_embeddings` (dropped): the `text_only` route IS
+    fixed upstream (`models/text_only.py` `Model.sanitize` delegates to the
+    inner mlx-lm model). BUT Gemma3 text-only checkpoints no longer take that
+    route: 0.6.13 ships a native `models/gemma3_text` module that shadows the
+    `text_only` fallback, and its tied-head sanitize is quantization-unaware.
+    The adapted `_patch_gemma3_tied_lm_head_quant` (below) covers that
+    regression, proven on hardware with `mlx-community/gemma-3-270m-it-4bit`.
   - `_patch_gemma_shared_kv_sanitize` (dropped, #193): `models/gemma4/language.py`
     `LanguageModel.sanitize` drops the `_is_unused_shared_kv_weight` tensors
-    and is invoked on every load via `sanitize_weights(model_class.LanguageModel, ...)`.
+    and is invoked on every load via the unconditional class-level pass
+    (`utils.py:717-721`): `gemma4/__init__.py` exports `LanguageModel` and
+    `ModelConfig.text_config` exists, so the pass fires for gemma4-family
+    checkpoints. Unlike gemma3, gemma4 heads are tied by construction
+    (`embed_tokens.as_linear`, no `lm_head` parameter), so the gemma3_text
+    quantized-head blind spot has no analogue there.
 
 Contract
 --------
@@ -49,6 +58,98 @@ exiting only when the child process is terminated by the parent.
 from __future__ import annotations
 
 from typing import List
+
+
+def _patch_gemma3_tied_lm_head_quant() -> bool:
+    """Complete the tied-lm_head sanitize for quantized Gemma3 checkpoints (#273).
+
+    Hardware-found regression on the pinned mlx-vlm 0.6.13:
+    `mlx-community/gemma-3-270m-it-4bit` (tied-embeddings Gemma3 text-only,
+    MLX-format 4-bit checkpoint, ships NO ``lm_head.*`` tensors) fails to load:
+
+        File ".../mlx_vlm/utils.py", line 966, in load
+        File ".../mlx_vlm/utils.py", line 842, in load_model
+            model.load_weights(list(weights.items()), strict=strict)
+        ValueError: Expected shape (262144, 640) but received shape (262144, 80)
+        for parameter language_model.lm_head.weight
+
+    Note this DIFFERS from 0.6.2's failure ("Missing 1 parameters:
+    lm_head.weight", caused by the ``format == "mlx"`` sanitize skip). The
+    0.6.13 path:
+
+      1. ``get_model_and_args`` (``utils.py:517``) routes
+         ``model_type == "gemma3_text"`` to the NEW native
+         ``models/gemma3_text`` module — the ``text_only`` fallback
+         (``utils.py:549-551``), whose sanitize correctly delegates to the
+         inner mlx-lm model, is never reached.
+      2. ``gemma3_text.Model`` wraps ``gemma3.LanguageModel``
+         (``gemma3/language.py:245``) which instantiates
+         ``self.lm_head = nn.Linear(hidden, vocab)`` UNCONDITIONALLY — no
+         ``tie_word_embeddings`` branch.
+      3. The (now unconditional) sanitize at ``utils.py:713`` runs
+         ``gemma3_text.Model.sanitize`` (prefixes every key with
+         ``language_model.``) then ``gemma3.LanguageModel.sanitize``
+         (``gemma3/language.py:259-266``): its tied fallback copies ONLY
+         ``model.embed_tokens.weight`` — for a 4-bit checkpoint the PACKED
+         uint32 ``(vocab, hidden/8)`` tensor — to ``lm_head.weight``, without
+         the ``.scales``/``.biases`` sidecars.
+      4. ``nn.quantize``'s class predicate (``utils.py:824``) requires
+         ``f"{p}.scales" in weights``; ``language_model.lm_head.scales`` is
+         absent, so ``lm_head`` stays an UNQUANTIZED ``nn.Linear`` expecting
+         the full ``(vocab, hidden)`` float shape.
+      5. The strict ``model.load_weights`` (``utils.py:842``) then rejects the
+         packed tensor with the ValueError above.
+
+    Fix: wrap ``gemma3.LanguageModel.sanitize`` and, exactly when the upstream
+    tied fallback fired (the head weight IS the embed weight, by identity) on
+    a quantized embedding whose head lacks sidecars, copy
+    ``embed_tokens.scales``/``.biases`` to ``lm_head.*`` too. The predicate
+    then converts ``lm_head`` to a ``QuantizedLinear`` sharing the tied
+    tensors — numerically identical to ``embed_tokens.as_linear``. A no-op
+    for unquantized checkpoints (no sidecars to copy), for checkpoints that
+    ship their own head, and on every re-run (sidecars already present).
+
+    This hooks the shared ``gemma3.LanguageModel`` class, so both the
+    ``gemma3_text`` route (270m/1b text-only) and the multimodal ``gemma3``
+    route (4b+/quantized, same weight-only tied fallback) are covered.
+
+    Returns:
+        True if the patch was applied (or already present), False if mlx-vlm's
+        gemma3 language module could not be imported (non-MLX hosts, CI).
+        Idempotent.
+    """
+    try:
+        from mlx_vlm.models.gemma3 import language as _gemma3_language
+    except Exception:
+        return False
+
+    lm_cls = getattr(_gemma3_language, "LanguageModel", None)
+    if lm_cls is None or not hasattr(lm_cls, "sanitize"):
+        return False
+    if getattr(lm_cls, "_erudi_tied_lm_head_quant_patch", False):
+        return True
+
+    _orig_sanitize = lm_cls.sanitize
+
+    def _sanitize(self, weights):
+        weights = _orig_sanitize(self, weights)
+        prefix = "language_model."
+        head_w = weights.get(f"{prefix}lm_head.weight")
+        embed_w = weights.get(f"{prefix}model.embed_tokens.weight")
+        if (
+            head_w is not None
+            and head_w is embed_w
+            and f"{prefix}lm_head.scales" not in weights
+        ):
+            for sidecar in ("scales", "biases"):
+                src = weights.get(f"{prefix}model.embed_tokens.{sidecar}")
+                if src is not None:
+                    weights[f"{prefix}lm_head.{sidecar}"] = src
+        return weights
+
+    lm_cls.sanitize = _sanitize
+    lm_cls._erudi_tied_lm_head_quant_patch = True
+    return True
 
 
 def _patch_gemma_end_of_turn_stop() -> bool:
@@ -224,6 +325,10 @@ def run_mlx_vlm_server(argv: List[str]) -> None:
     import sys
 
     sys.argv = list(argv)
+    # Applied in-child before the server loads any model so quantized
+    # tied-embeddings Gemma3 checkpoints (270m/1b text-only via the native
+    # gemma3_text route, and multimodal gemma3) load cleanly on 0.6.13 (#273).
+    _patch_gemma3_tied_lm_head_quant()
     # Register Gemma's <end_of_turn> as a stop token so generation halts at the
     # end of the answer instead of streaming the literal token + garbage (#249).
     _patch_gemma_end_of_turn_stop()
