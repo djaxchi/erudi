@@ -116,15 +116,11 @@ class MLX_Engine(BaseChatServerEngine):
     # searching filter="mlx" (any author), so no hand-maintained mapping is needed.
     FORMAT_TAG = "mlx"
 
-    # Stored links that download but crash at load on mlx-vlm 0.6.2.
-    KNOWN_BROKEN = frozenset({
-        # gemma-4 E2B: quantized checkpoint (0.4.3 quant, KV-sharing mismatch) that
-        # mlx-vlm 0.6.2 cannot load — 140-weight ValueError. Runs fine via GGUF.
-        # 0.6.13 sanitizes weights unconditionally at load (incl. the gemma4
-        # shared-KV drop), so this entry is a removal CANDIDATE — keep it until
-        # a real load on 0.6.13 proves the checkpoint healthy (#273 hardware pass).
-        "mlx-community/gemma-4-e2b-it-4bit",
-    })
+    # Stored links that download but crash at load. Empty since the 0.6.13 bump:
+    # gemma-4 E2B (the 0.6.2 140-weight ValueError) was re-probed on real
+    # mlx-vlm 0.6.13 during the #273 hardware pass — loads via the native
+    # gemma4 module and generates cleanly, so its entry was removed.
+    KNOWN_BROKEN = frozenset()
 
     @classmethod
     def quant_and_save_from_hf_format(
