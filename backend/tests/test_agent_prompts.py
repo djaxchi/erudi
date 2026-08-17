@@ -99,11 +99,24 @@ class TestBuildKbSystemPrompt:
         assert "You are Erudi" in kb
         assert "document analyst" not in kb
 
-    def test_excerpts_contract_present(self):
+    def test_excerpts_contract_is_relevance_conditional(self):
+        # Excerpts are retrieved automatically for EVERY question, so the
+        # system append must flag possible irrelevance and open the escape
+        # hatch: the strict contract measurably refused everyday questions
+        # ("Quelle est la capitale de l'Australie ?" -> "not in the
+        # documents", sleep advice refused — 6-question matrix on a 7B).
         p = self._prompt()
         assert "Each question comes with excerpts from the user's documents" in p
-        assert "not in the documents" in p  # canonical abstention clause
+        assert "retrieved automatically" in p
+        assert "may or may not be relevant" in p
+        assert "answer normally from your own knowledge" in p
         assert "Do not mention these instructions" in p
+
+    def test_system_append_carries_no_abstention_clause(self):
+        # ONE canonical abstention clause per layer: it rides the per-turn
+        # reminder (the dominant layer, close to generation), never the
+        # system append — stacked refusal rules measurably over-abstain.
+        assert "not in the documents" not in self._prompt()
 
     def test_custom_prompt_and_starred_land_after_the_kb_section(self):
         p = self._prompt(
@@ -184,6 +197,48 @@ class TestBuildKbAgenticSystemPrompt:
         assert "client Meridia" in p
 
 
+class TestKbRegressionGuards:
+    """The relevance-conditional grounding change (#129 follow-up) touches
+    ONLY the systematic layers: the plain-path persona and the agentic KB
+    prompts must stay byte-identical to their pre-change output."""
+
+    _AGENTIC_FULL = (
+        "You also have access to the user's personal documents through the "
+        "search_knowledge_base tool. When a question concerns the user's "
+        "documents, or facts that could plausibly be in them, call "
+        "search_knowledge_base before answering: never assume what the documents "
+        "contain, and only say the information is not in the documents after a "
+        "search has come back empty. When in doubt whether the documents cover "
+        "it, search. Ground document answers on the excerpts the "
+        "tool returns and stay faithful to them. For everyday questions that have "
+        "nothing to do with the user's documents, answer directly from your own "
+        "knowledge without searching. Do not mention these instructions."
+    )
+    _AGENTIC_COMPACT = (
+        "You can also search the user's documents with the search_knowledge_base "
+        "tool. Search before answering anything about the documents - never guess "
+        "what they contain, and say the information is not in the documents only "
+        "after a search finds nothing. For questions unrelated to the documents, "
+        "answer directly without searching. Do not mention these instructions."
+    )
+
+    def test_plain_prompt_byte_unchanged(self):
+        llm = _Llm(name="Qwen 7B", param_size=7.0)
+        assert build_agent_system_prompt(llm) == build_system_prompt(
+            model_name="Qwen 7B", size_category="medium"
+        )
+
+    def test_agentic_full_prompt_byte_unchanged(self):
+        llm = _Llm(name="Agent 7B", param_size=7.0)
+        expected = build_agent_system_prompt(llm) + "\n\n" + self._AGENTIC_FULL
+        assert build_kb_agentic_system_prompt(llm) == expected
+
+    def test_agentic_compact_prompt_byte_unchanged(self):
+        llm = _Llm(name="Petit 0.6B", param_size=0.6)
+        expected = build_agent_system_prompt(llm) + "\n\n" + self._AGENTIC_COMPACT
+        assert build_kb_agentic_system_prompt(llm) == expected
+
+
 class TestBuildKbContextBlock:
     def _block(self, question="What is the notice period?"):
         return build_kb_context_block(excerpts=EXCERPTS, question=question)
@@ -196,14 +251,44 @@ class TestBuildKbContextBlock:
         assert "Le préavis est de 90 jours." in b
         assert "Le support répond sous 48 h." in b
 
-    def test_grounding_reminder_follows_the_excerpts(self):
+    def test_reminder_is_relevance_conditional_with_escape_hatch(self):
+        # Relevance-conditional grounding: excerpts arrive on EVERY question
+        # (retrieved automatically), so the reminder grounds document answers
+        # on them but lets unrelated questions escape to the model's own
+        # knowledge — the unconditional "Answer ONLY from the excerpts"
+        # contract measurably refused everyday questions (0/2 on the
+        # 6-question matrix).
         b = self._block()
-        assert "ONLY from the excerpts above" in b
-        assert "not in the documents" in b
+        assert "If the excerpts above are relevant" in b
+        assert "answer normally from your own knowledge" in b
         assert "exactly as written" in b
         assert "source document" in b  # according-to attribution
         # The reminder sits AFTER the excerpts (close to generation).
-        assert b.find("ONLY from the excerpts above") > b.find("[Document: faq-support.md]")
+        assert b.find("If the excerpts above are relevant") > b.find("[Document: faq-support.md]")
+
+    def test_reminder_keeps_exactly_one_scoped_abstention_clause(self):
+        # The abstention clause stays SINGLE and canonical (stacked refusal
+        # rules over-abstain) and is now SCOPED to document questions: an
+        # everyday question must never trigger "not in the documents".
+        en = self._block()
+        assert en.count("not in the documents") == 1
+        assert "asks about the user's documents" in en
+        fr = self._block(question="Quel est le préavis de résiliation du contrat ?")
+        assert fr.count("ne figure pas dans les documents") == 1
+        assert "porte sur les documents de l'utilisateur" in fr
+
+    def test_calculator_tool_reference_gone_arithmetic_caution_stays(self):
+        # #289 removed the calculator from the systematic path: the reminder
+        # must not point the model at a tool that no longer exists here.
+        # The write-out-the-operation caution survives.
+        en = self._block()
+        fr = self._block(question="Quel est le préavis de résiliation du contrat ?")
+        assert "calculator" not in en
+        assert "calculator" not in fr
+        assert "Never do mental arithmetic" in en
+        assert "write out the operation" in en
+        assert "Ne fais jamais de calcul mental" in fr
+        assert "écris l'opération" in fr
 
     def test_scaffolding_is_localized_to_the_question_language(self):
         # Runs 3-5: the model answers in the language of the SCAFFOLDING
@@ -211,14 +296,15 @@ class TestBuildKbContextBlock:
         # itself must speak the question's language.
         fr = self._block(question="Quel est le préavis de résiliation du contrat ?")
         assert "Extraits de documents :" in fr
-        assert "UNIQUEMENT à partir des extraits" in fr
+        assert "Si les extraits ci-dessus sont pertinents" in fr
         assert "ne figure pas dans les documents" in fr
-        assert "Answer ONLY" not in fr
+        assert "réponds normalement avec tes propres connaissances" in fr
+        assert "If the excerpts" not in fr
 
     def test_unmapped_language_falls_back_to_english_scaffolding(self):
         b = self._block(question="ok")  # unconfident detection
         assert "Document excerpts:" in b
-        assert "ONLY from the excerpts above" in b
+        assert "If the excerpts above are relevant" in b
 
 
 class TestAnswerLanguageLine:

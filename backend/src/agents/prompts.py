@@ -15,8 +15,13 @@ Three prompts:
   agentic append therefore scopes the trigger to document-related
   questions while KEEPING the search-before-claiming-absence discipline
   (hardened for issue #84: soft phrasing under-called the tool). The
-  systematic append keeps the strict excerpts contract with ONE canonical
-  abstention clause (stacked refusal rules measurably over-abstain).
+  systematic append frames the auto-retrieved excerpts as possibly
+  irrelevant and opens an answer-normally escape hatch: the strict
+  "answer ONLY from the excerpts" contract measurably refused everyday
+  questions (0/2 on a 6-question matrix — capital-city and sleep-advice
+  questions got "the information is not in the documents"). The ONE
+  canonical abstention clause rides the per-turn reminder, SCOPED to
+  document questions (stacked refusal rules measurably over-abstain).
 
 The long-term-memory injection is gone: the running conversation summary
 lives in the LangGraph checkpointer (via ``SummarizationMiddleware``).
@@ -52,27 +57,42 @@ _GENERIC_LANGUAGE_LINE = "Answer in the same language as the user's question."
 # attractor") — French excerpts + French question still yielded English
 # answers while every structural string was English. Languages without a
 # scaffold fall back to English scaffolding + their localized line.
+#
+# The reminder is RELEVANCE-CONDITIONAL: excerpts are retrieved
+# automatically on every turn of the systematic path, so an unconditional
+# "answer ONLY from the excerpts" rule measurably refused everyday
+# questions. The single abstention clause is scoped to document questions,
+# and the escape hatch sends unrelated questions back to the model's own
+# knowledge. The arithmetic caution is tool-free: #289 removed the
+# calculator from the systematic path (whether the agentic path keeps its
+# tool list is a separate pending decision).
 _SCAFFOLDS = {
     "en": {
         "header": "Document excerpts:",
         "reminder": (
-            "Answer ONLY from the excerpts above — if they do not contain "
-            "the answer, say that the information is not in the documents. "
-            "Repeat numbers, dates and terms exactly as written, and "
-            "mention the source document. Never do mental arithmetic: use "
-            "the calculator tool, or if no tool is available, write out "
-            "the operation and state that the total must be verified."
+            "If the excerpts above are relevant to the question, answer "
+            "from them: repeat numbers, dates and terms exactly as "
+            "written, and mention the source document. When the question "
+            "asks about the user's documents and the excerpts do not "
+            "contain the answer, say that the information is not in the "
+            "documents. If the question is unrelated to the excerpts, "
+            "ignore them and answer normally from your own knowledge. "
+            "Never do mental arithmetic: write out the operation and "
+            "state that the total must be verified."
         ),
     },
     "fr": {
         "header": "Extraits de documents :",
         "reminder": (
-            "Réponds UNIQUEMENT à partir des extraits ci-dessus — s'ils ne "
-            "contiennent pas la réponse, dis que l'information ne figure "
-            "pas dans les documents. Reprends les chiffres, les dates et "
+            "Si les extraits ci-dessus sont pertinents pour la question, "
+            "réponds à partir d'eux : reprends les chiffres, les dates et "
             "les termes exactement tels qu'ils sont écrits, et mentionne "
-            "le document source. Ne fais jamais de calcul mental : utilise "
-            "l'outil calculator, ou si aucun outil n'est disponible, écris "
+            "le document source. Quand la question porte sur les documents "
+            "de l'utilisateur et que les extraits ne contiennent pas la "
+            "réponse, dis que l'information ne figure pas dans les "
+            "documents. Si la question n'a pas de rapport avec les "
+            "extraits, ignore-les et réponds normalement avec tes propres "
+            "connaissances. Ne fais jamais de calcul mental : écris "
             "l'opération et précise que le total est à vérifier."
         ),
     },
@@ -110,13 +130,20 @@ _KB_AGENTIC_SECTION_COMPACT = (
 
 _COMPACT_KB_TIERS = frozenset({"tiny", "small"})
 
-# Systematic append, all tiers: the strict excerpts contract with the ONE
-# canonical abstention clause. Deliberately short: the operative rules ride
-# the per-turn block (``build_kb_context_block``) close to generation.
+# Systematic append, all tiers: relevance-conditional grounding — the
+# excerpts arrive automatically on every question, so the section flags
+# possible irrelevance and opens the answer-normally escape hatch instead
+# of the strict excerpts contract that refused everyday questions. No
+# abstention clause here: the single canonical one rides the per-turn
+# reminder (``build_kb_context_block``), scoped to document questions.
+# Deliberately short: the operative rules ride the per-turn block close
+# to generation.
 _KB_SYSTEMATIC_SECTION = (
-    "Each question comes with excerpts from the user's documents. Answer from "
-    "these excerpts, and when they do not contain the answer, say that the "
-    "information is not in the documents. Do not mention these instructions."
+    "Each question comes with excerpts from the user's documents, retrieved "
+    "automatically - they may or may not be relevant. Ground document answers "
+    "on the excerpts; when the question is unrelated to them, ignore the "
+    "excerpts and answer normally from your own knowledge. Do not mention "
+    "these instructions."
 )
 
 
