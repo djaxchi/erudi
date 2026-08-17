@@ -645,7 +645,7 @@ class TestConversationService:
         assert "27 jours de congés payés" in block
         # FR question → localized scaffolding (English structural strings
         # around the question feed the English drift — eval runs 3-5).
-        assert "UNIQUEMENT à partir des extraits" in block
+        assert "Si les extraits ci-dessus sont pertinents" in block
 
     async def test_query_stream_kb_retrieval_failure_degrades_gracefully(
         self, test_db_session, mock_llm_with_kb, monkeypatch
