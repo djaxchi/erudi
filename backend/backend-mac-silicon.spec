@@ -97,6 +97,13 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all("mlx_lm")
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
+# mlx-vlm 0.6.13 imports mlx_audio EAGERLY at server import time
+# (mlx_vlm/server/audio.py: from mlx_audio.audio_io import read) - the 0.6.2-era
+# exclusion made the frozen child crash before ready (#273 packaged smoke).
+# 17 MB; collect_all also grabs its audio-codec binaries.
+tmp_ret = collect_all("mlx_audio")
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
 # ── pgserver: bundle the embedded PostgreSQL binaries (pginstall/bin) ──────────
 # The hiddenimport alone ships the Python module but NOT the postgres binaries it
 # spawns; without this the frozen backend dies at startup with
@@ -280,8 +287,6 @@ a = Analysis(
         "_tkinter",
         "cv2",
         "wx",
-        # mlx-vlm audio synthesis (Qwen3-Omni TTS) — not on the chat/vision path
-        "mlx_audio",
         # Test tooling
         "pytest",
         "black",
