@@ -343,43 +343,45 @@ class TestMlxVlmServerRunnerHelper:
         fake_main.assert_called_once()
         assert captured["argv"] == argv
 
-    def test_runner_applies_tied_embedding_patch_before_main(self, monkeypatch):
-        """The tied-embedding patch must run before the server's main() loads a model.
+    def test_runner_load_time_patch_roster_for_0613(self):
+        """mlx-vlm 0.6.13 runs weight sanitize unconditionally in `load_model`
+        (`utils.py:713` plus the per-component Vision/Language/Audio passes at
+        `utils.py:715-727`), so the two 0.6.2-era load-time patches stay gone:
 
-        The sibling in-child patches are stubbed out so this test never imports
+          - `_patch_text_only_tied_embeddings` — the `text_only` route is
+            genuinely fixed upstream (`Model.sanitize` delegates to the inner
+            mlx-lm model), BUT hardware validation showed Gemma3 text-only
+            checkpoints no longer take that route at all: 0.6.13 ships a
+            native `models/gemma3_text` module whose tied-head sanitize is
+            quantization-unaware. That regression is covered by the adapted
+            `_patch_gemma3_tied_lm_head_quant` below.
+          - `_patch_gemma_shared_kv_sanitize` (#193) — `models/gemma4/language.py`
+            `LanguageModel.sanitize` drops `_is_unused_shared_kv_weight` keys
+            and is invoked on every load via the unconditional class-level
+            pass (`utils.py:717-721`; `gemma4/__init__.py` exports
+            `LanguageModel`, `ModelConfig.text_config` exists). gemma4-family
+            heads are tied by construction (`embed_tokens.as_linear`, no
+            `lm_head` parameter) so the gemma3_text blind spot has no analogue.
+        """
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        assert not hasattr(runner, "_patch_text_only_tied_embeddings")
+        assert not hasattr(runner, "_patch_gemma_shared_kv_sanitize")
+        assert callable(runner._patch_gemma3_tied_lm_head_quant)
+
+    def test_runner_applies_inline_thinking_patch_before_main(self, monkeypatch):
+        """The thinking-split neutralization must run before the server's main()
+        so every `ThinkingStreamState` the server ever builds is already patched
+        (#90 — reasoning must stay INLINE in delta.content).
+
+        The sibling in-child patch is stubbed out so this test never imports
         the real mlx-vlm (absent on Linux CI, mutated-in-pytest-process on Mac).
         """
         import sys
         from src.engines import _mlx_vlm_server_runner as runner
 
         order: list[str] = []
-        monkeypatch.setattr(
-            runner,
-            "_patch_text_only_tied_embeddings",
-            lambda: order.append("patch") or True,
-        )
-        monkeypatch.setattr(runner, "_patch_gemma_shared_kv_sanitize", lambda: True)
-        monkeypatch.setattr(runner, "_patch_gemma_end_of_turn_stop", lambda: True)
-        monkeypatch.setattr(runner, "_patch_inline_thinking", lambda: True)
-        fake_main = MagicMock(side_effect=lambda: order.append("main"))
-        monkeypatch.setattr(runner, "_import_mlx_vlm_server_main", lambda: fake_main)
-        monkeypatch.setattr(sys, "argv", ["pytest"])
-
-        runner.run_mlx_vlm_server(["mlx_vlm.server", "--port", "9080"])
-
-        assert order == ["patch", "main"]
-
-    def test_runner_applies_inline_thinking_patch_before_main(self, monkeypatch):
-        """The thinking-split neutralization must run before the server's main()
-        so every `ThinkingStreamState` the server ever builds is already patched
-        (#90 — reasoning must stay INLINE in delta.content).
-        """
-        import sys
-        from src.engines import _mlx_vlm_server_runner as runner
-
-        order: list[str] = []
-        monkeypatch.setattr(runner, "_patch_text_only_tied_embeddings", lambda: True)
-        monkeypatch.setattr(runner, "_patch_gemma_shared_kv_sanitize", lambda: True)
+        monkeypatch.setattr(runner, "_patch_gemma3_tied_lm_head_quant", lambda: True)
         monkeypatch.setattr(runner, "_patch_gemma_end_of_turn_stop", lambda: True)
         monkeypatch.setattr(
             runner,
@@ -394,199 +396,32 @@ class TestMlxVlmServerRunnerHelper:
 
         assert order == ["thinking-patch", "main"]
 
+    def test_runner_applies_tied_lm_head_patch_before_main(self, monkeypatch):
+        """The tied-lm_head sanitize completion must run before the server's
+        main() loads a model — it is a load-time patch: once `load_model` has
+        rejected the checkpoint, there is nothing left to fix.
 
-@pytest.mark.unit
-class TestTiedEmbeddingPatch:
-    """`_patch_text_only_tied_embeddings` re-runs sanitize for tied text-only checkpoints.
-
-    mlx_vlm.utils.load_model skips sanitize for MLX-format checkpoints, but Gemma3
-    text-only models (gemma-3-270m / 1b) ship without `lm_head.weight` (tied
-    embeddings) and need the inner model's sanitize() to pop the untied lm_head,
-    otherwise the strict weight load dies with "Missing 1 parameters: lm_head.weight".
-    """
-
-    def _install_fake_mlx_vlm(self, monkeypatch, *, sanitize_pops_lm_head=True):
-        """Inject a minimal fake `mlx_vlm.models.text_only` with a Model wrapper."""
+        Sibling in-child patches are stubbed out so this test never imports
+        the real mlx-vlm (absent on Linux CI, mutated-in-pytest-process on Mac).
+        """
         import sys
-        import types
-
-        calls: dict = {"sanitize": None, "inner_load": None, "orig_load": None}
-
-        class _InnerModel:
-            def sanitize(self, weights):
-                calls["sanitize"] = dict(weights)
-                out = dict(weights)
-                if sanitize_pops_lm_head:
-                    out.pop("lm_head.weight", None)  # already absent; mirrors real pop()
-                return out
-
-            def load_weights(self, items, *args, **kwargs):
-                calls["inner_load"] = list(items)
-                return "inner-loaded"
-
-        class _LanguageModel:
-            def __init__(self, inner):
-                self._model = inner
-
-        class Model:
-            def __init__(self):
-                self.language_model = _LanguageModel(_InnerModel())
-
-            def load_weights(self, weights, *args, **kwargs):
-                calls["orig_load"] = (
-                    list(weights.items()) if isinstance(weights, dict) else list(weights)
-                )
-                return "orig-loaded"
-
-        mlx_vlm = types.ModuleType("mlx_vlm")
-        models = types.ModuleType("mlx_vlm.models")
-        text_only = types.ModuleType("mlx_vlm.models.text_only")
-        text_only.Model = Model
-        models.text_only = text_only
-        mlx_vlm.models = models
-        monkeypatch.setitem(sys.modules, "mlx_vlm", mlx_vlm)
-        monkeypatch.setitem(sys.modules, "mlx_vlm.models", models)
-        monkeypatch.setitem(sys.modules, "mlx_vlm.models.text_only", text_only)
-        return Model, calls
-
-    def test_returns_false_when_mlx_vlm_absent(self, monkeypatch):
-        import sys
-        import types
         from src.engines import _mlx_vlm_server_runner as runner
 
-        # Simulate a host without mlx-vlm (Linux CI): the parent package exists
-        # but the `text_only` submodule import raises (None entry in sys.modules).
-        bare_models = types.ModuleType("mlx_vlm.models")  # no `text_only` attribute
-        monkeypatch.setitem(sys.modules, "mlx_vlm.models", bare_models)
-        monkeypatch.setitem(sys.modules, "mlx_vlm.models.text_only", None)
-        assert runner._patch_text_only_tied_embeddings() is False
-
-    def test_sanitize_runs_when_lm_head_missing(self, monkeypatch):
-        from src.engines import _mlx_vlm_server_runner as runner
-
-        Model, calls = self._install_fake_mlx_vlm(monkeypatch)
-        assert runner._patch_text_only_tied_embeddings() is True
-
-        m = Model()
-        # Tied checkpoint: no lm_head.weight present.
-        result = m.load_weights({"model.embed_tokens.weight": 1, "model.norm.weight": 2})
-
-        assert calls["sanitize"] is not None  # inner sanitize was invoked
-        assert result == "inner-loaded"
-        assert calls["orig_load"] is None  # original strict path bypassed
-
-    def test_untied_checkpoint_uses_original_path(self, monkeypatch):
-        from src.engines import _mlx_vlm_server_runner as runner
-
-        Model, calls = self._install_fake_mlx_vlm(monkeypatch)
-        assert runner._patch_text_only_tied_embeddings() is True
-
-        m = Model()
-        # lm_head.weight present → leave mlx-vlm's behavior untouched.
-        result = m.load_weights({"lm_head.weight": 9, "model.norm.weight": 2})
-
-        assert calls["sanitize"] is None
-        assert result == "orig-loaded"
-
-    def test_patch_is_idempotent(self, monkeypatch):
-        from src.engines import _mlx_vlm_server_runner as runner
-
-        Model, _ = self._install_fake_mlx_vlm(monkeypatch)
-        assert runner._patch_text_only_tied_embeddings() is True
-        first = Model.load_weights
-        assert runner._patch_text_only_tied_embeddings() is True
-        assert Model.load_weights is first  # not double-wrapped
-
-
-@pytest.mark.unit
-class TestSharedKvSanitizePatch:
-    """`_patch_gemma_shared_kv_sanitize` drops leftover shared-KV weights (#193).
-
-    Gemma 4 / Gemma 3n share K/V across upper layers, so the model class omits
-    k_proj/v_proj/k_norm on those layers and its LanguageModel.sanitize drops the
-    checkpoint's unused copies. mlx_vlm.utils.load_model skips sanitize for
-    MLX-format checkpoints, so without this patch the strict weight load dies with
-    "Received 126 parameters not in model".
-    """
-
-    def _install_fake_gemma4(self, monkeypatch):
-        """Inject a minimal fake `mlx_vlm.models.gemma4` with a Model wrapper."""
-        import sys
-        import types
-
-        calls: dict = {"sanitize_in": None, "orig_load": None}
-
-        class _LanguageModel:
-            def sanitize(self, weights):
-                calls["sanitize_in"] = dict(weights)
-                # Drop-only: strip the "unused shared-KV" markers, keep the rest.
-                return {k: v for k, v in weights.items() if "unused_shared_kv" not in k}
-
-        class Model:
-            def __init__(self):
-                self.language_model = _LanguageModel()
-
-            def load_weights(self, weights, *args, **kwargs):
-                calls["orig_load"] = (
-                    list(weights.items()) if isinstance(weights, dict) else list(weights)
-                )
-                return "orig-loaded"
-
-        mlx_vlm = types.ModuleType("mlx_vlm")
-        models = types.ModuleType("mlx_vlm.models")
-        gemma4 = types.ModuleType("mlx_vlm.models.gemma4")
-        gemma4.Model = Model
-        models.gemma4 = gemma4
-        mlx_vlm.models = models
-        monkeypatch.setitem(sys.modules, "mlx_vlm", mlx_vlm)
-        monkeypatch.setitem(sys.modules, "mlx_vlm.models", models)
-        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma4", gemma4)
-        # Keep the patch off the real gemma4_unified during the test (import fails).
-        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma4_unified", None)
-        return Model, calls
-
-    def test_returns_false_when_gemma4_absent(self, monkeypatch):
-        import sys
-        import types
-        from src.engines import _mlx_vlm_server_runner as runner
-
-        bare_models = types.ModuleType("mlx_vlm.models")  # no `gemma4` attribute
-        monkeypatch.setitem(sys.modules, "mlx_vlm.models", bare_models)
-        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma4", None)
-        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma4_unified", None)
-        assert runner._patch_gemma_shared_kv_sanitize() is False
-
-    def test_shared_kv_weights_are_dropped_before_load(self, monkeypatch):
-        from src.engines import _mlx_vlm_server_runner as runner
-
-        Model, calls = self._install_fake_gemma4(monkeypatch)
-        assert runner._patch_gemma_shared_kv_sanitize() is True
-
-        m = Model()
-        result = m.load_weights(
-            [
-                ("language_model.model.layers.0.self_attn.q_proj.weight", 1),
-                ("language_model.model.layers.24.self_attn.unused_shared_kv.weight", 2),
-                ("vision_tower.encoder.layer.0.weight", 3),
-            ]
+        order: list[str] = []
+        monkeypatch.setattr(
+            runner,
+            "_patch_gemma3_tied_lm_head_quant",
+            lambda: order.append("tied-lm-head") or True,
         )
+        monkeypatch.setattr(runner, "_patch_gemma_end_of_turn_stop", lambda: True)
+        monkeypatch.setattr(runner, "_patch_inline_thinking", lambda: True)
+        fake_main = MagicMock(side_effect=lambda: order.append("main"))
+        monkeypatch.setattr(runner, "_import_mlx_vlm_server_main", lambda: fake_main)
+        monkeypatch.setattr(sys, "argv", ["pytest"])
 
-        assert calls["sanitize_in"] is not None  # language sanitize was invoked
-        loaded_keys = [k for k, _ in calls["orig_load"]]
-        # The unused shared-KV tensor is gone; real weights (incl. vision) survive.
-        assert all("unused_shared_kv" not in k for k in loaded_keys)
-        assert "language_model.model.layers.0.self_attn.q_proj.weight" in loaded_keys
-        assert "vision_tower.encoder.layer.0.weight" in loaded_keys
-        assert result == "orig-loaded"
+        runner.run_mlx_vlm_server(["mlx_vlm.server", "--port", "9080"])
 
-    def test_patch_is_idempotent(self, monkeypatch):
-        from src.engines import _mlx_vlm_server_runner as runner
-
-        Model, _ = self._install_fake_gemma4(monkeypatch)
-        assert runner._patch_gemma_shared_kv_sanitize() is True
-        first = Model.load_weights
-        assert runner._patch_gemma_shared_kv_sanitize() is True
-        assert Model.load_weights is first  # not double-wrapped
+        assert order.index("tied-lm-head") < order.index("main")
 
 
 @pytest.mark.unit
@@ -594,11 +429,15 @@ class TestGemmaEndOfTurnStopPatch:
     """`_patch_gemma_end_of_turn_stop` adds Gemma's `<end_of_turn>` to the server's
     stop-token set (#249).
 
-    mlx_vlm builds `stop_tokens` from `config.eos_token_id` only. Gemma declares
-    `eos_token` = `<eos>` (id 1) but its chat template ends turns with
-    `<end_of_turn>` (id 106), so without this patch generation runs past the answer
-    and streams the literal token + garbage. Verified live on
-    `mlx-community/gemma-3-1b-it-4bit` (2048 chunks of garbage → 7 chunks, clean).
+    mlx_vlm (still on 0.6.13, `server/generation.py:_initialize_model`) builds
+    `stop_tokens` from `config.eos_token_id` only. Gemma declares `eos_token` =
+    `<eos>` (id 1) but its chat template ends turns with `<end_of_turn>` (id 106),
+    so without this patch generation runs past the answer and streams the literal
+    token + garbage. Verified live on `mlx-community/gemma-3-1b-it-4bit` (2048
+    chunks of garbage → 7 chunks, clean). 0.6.13 additionally merges a
+    checkpoint's `generation_config.json` eos ids into the config — the patch is
+    kept as the checkpoint-independent guarantee and is a no-op when that merge
+    already covers id 106.
     """
 
     def _install_fake_generation(self, monkeypatch, *, tokens, unk=3, base_stop=(1,)):
@@ -673,14 +512,14 @@ class TestGemmaEndOfTurnStopPatch:
     def test_runner_applies_gemma_patch_before_main(self, monkeypatch):
         """The stop-token patch must run before the server's main() loads a model.
 
-        The sibling in-child patches are stubbed out so this test never imports
+        The sibling in-child patch is stubbed out so this test never imports
         the real mlx-vlm (absent on Linux CI, mutated-in-pytest-process on Mac).
         """
         import sys
         from src.engines import _mlx_vlm_server_runner as runner
 
         order: list[str] = []
-        monkeypatch.setattr(runner, "_patch_text_only_tied_embeddings", lambda: True)
+        monkeypatch.setattr(runner, "_patch_gemma3_tied_lm_head_quant", lambda: True)
         monkeypatch.setattr(
             runner, "_patch_gemma_end_of_turn_stop",
             lambda: order.append("gemma-stop") or True,
@@ -696,25 +535,181 @@ class TestGemmaEndOfTurnStopPatch:
 
 
 @pytest.mark.unit
+class TestGemma3TiedLmHeadQuantPatch:
+    """`_patch_gemma3_tied_lm_head_quant` completes mlx-vlm 0.6.13's tied-head
+    sanitize for quantized Gemma3 checkpoints (#273).
+
+    Hardware-found regression: `mlx-community/gemma-3-270m-it-4bit`
+    (`model_type == "gemma3_text"`, tied embeddings, no `lm_head.*` tensors)
+    fails `mlx_vlm.utils.load` on real 0.6.13 with
+
+        ValueError: Expected shape (262144, 640) but received shape
+        (262144, 80) for parameter language_model.lm_head.weight
+
+    because `gemma3.LanguageModel.sanitize` copies ONLY
+    `model.embed_tokens.weight` (the 4-bit packed tensor) to `lm_head.weight`
+    without the `.scales`/`.biases` sidecars, so `nn.quantize`'s
+    `f"{p}.scales" in weights` predicate leaves `lm_head` an UNQUANTIZED
+    `nn.Linear`. The patch copies the sidecars whenever the upstream tied
+    fallback fired on a quantized embedding, and only then.
+
+    The fake below is a behavioral double of
+    `mlx_vlm/models/gemma3/language.py:LanguageModel.sanitize` on 0.6.13.
+    """
+
+    _PFX = "language_model."
+
+    def _install_fake_gemma3_language(self, monkeypatch):
+        """Inject a minimal fake `mlx_vlm.models.gemma3.language` module."""
+        import sys
+        import types
+
+        class LanguageModel:
+            def sanitize(self, weights):
+                # Mirror upstream 0.6.13: the guard checks the UNPREFIXED key
+                # (always absent after gemma3_text.Model.sanitize prefixed
+                # everything), and copies only the packed weight.
+                if "lm_head.weight" not in weights:
+                    weights["language_model.lm_head.weight"] = weights[
+                        "language_model.model.embed_tokens.weight"
+                    ]
+                return {
+                    k: v
+                    for k, v in weights.items()
+                    if "self_attn.rotary_emb.inv_freq" not in k
+                }
+
+        mlx_vlm = types.ModuleType("mlx_vlm")
+        models = types.ModuleType("mlx_vlm.models")
+        gemma3 = types.ModuleType("mlx_vlm.models.gemma3")
+        language = types.ModuleType("mlx_vlm.models.gemma3.language")
+        language.LanguageModel = LanguageModel
+        gemma3.language = language
+        models.gemma3 = gemma3
+        mlx_vlm.models = models
+        monkeypatch.setitem(sys.modules, "mlx_vlm", mlx_vlm)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models", models)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma3", gemma3)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma3.language", language)
+        return LanguageModel
+
+    def _tied_quantized_weights(self):
+        """Checkpoint-shaped dict: tied 4-bit embeddings, no lm_head tensors."""
+        p = self._PFX
+        return {
+            f"{p}model.embed_tokens.weight": object(),
+            f"{p}model.embed_tokens.scales": object(),
+            f"{p}model.embed_tokens.biases": object(),
+            f"{p}model.layers.0.mlp.down_proj.weight": object(),
+        }
+
+    def test_returns_false_when_mlx_vlm_absent(self, monkeypatch):
+        import sys
+        import types
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        bare = types.ModuleType("mlx_vlm.models.gemma3")  # no `language` attr
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma3", bare)
+        monkeypatch.setitem(sys.modules, "mlx_vlm.models.gemma3.language", None)
+        assert runner._patch_gemma3_tied_lm_head_quant() is False
+
+    def test_copies_quant_sidecars_when_tied_fallback_fires(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        LM = self._install_fake_gemma3_language(monkeypatch)
+        assert runner._patch_gemma3_tied_lm_head_quant() is True
+
+        p = self._PFX
+        weights = self._tied_quantized_weights()
+        out = LM().sanitize(dict(weights))
+
+        # Upstream behavior preserved: packed weight aliased to the head.
+        assert out[f"{p}lm_head.weight"] is weights[f"{p}model.embed_tokens.weight"]
+        # Patch completion: the quant sidecars follow, so nn.quantize's
+        # `f"{p}.scales" in weights` predicate converts lm_head too.
+        assert out[f"{p}lm_head.scales"] is weights[f"{p}model.embed_tokens.scales"]
+        assert out[f"{p}lm_head.biases"] is weights[f"{p}model.embed_tokens.biases"]
+
+    def test_no_op_for_unquantized_tied_checkpoint(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        LM = self._install_fake_gemma3_language(monkeypatch)
+        assert runner._patch_gemma3_tied_lm_head_quant() is True
+
+        p = self._PFX
+        weights = {
+            f"{p}model.embed_tokens.weight": object(),  # float, no sidecars
+            f"{p}model.layers.0.mlp.down_proj.weight": object(),
+        }
+        out = LM().sanitize(dict(weights))
+
+        assert out[f"{p}lm_head.weight"] is weights[f"{p}model.embed_tokens.weight"]
+        assert f"{p}lm_head.scales" not in out
+        assert f"{p}lm_head.biases" not in out
+
+    def test_no_op_when_checkpoint_ships_its_own_lm_head(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        LM = self._install_fake_gemma3_language(monkeypatch)
+        assert runner._patch_gemma3_tied_lm_head_quant() is True
+
+        p = self._PFX
+        own_head_w, own_head_s = object(), object()
+        weights = self._tied_quantized_weights()
+        weights[f"{p}lm_head.weight"] = own_head_w
+        weights[f"{p}lm_head.scales"] = own_head_s
+        out = LM().sanitize(dict(weights))
+
+        # A genuinely shipped (untied) head keeps its own sidecars untouched.
+        assert out[f"{p}lm_head.scales"] is own_head_s
+        assert f"{p}lm_head.biases" not in out
+
+    def test_patch_is_idempotent(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        LM = self._install_fake_gemma3_language(monkeypatch)
+        assert runner._patch_gemma3_tied_lm_head_quant() is True
+        first = LM.sanitize
+        assert runner._patch_gemma3_tied_lm_head_quant() is True
+        assert LM.sanitize is first  # not double-wrapped
+
+        # And re-sanitizing already-completed weights changes nothing.
+        p = self._PFX
+        weights = self._tied_quantized_weights()
+        once = LM().sanitize(dict(weights))
+        twice = LM().sanitize(dict(once))
+        assert twice == once
+
+
+@pytest.mark.unit
 class TestInlineThinkingPatch:
     """`_patch_inline_thinking` neutralizes mlx-vlm's server-side thinking split (#90).
 
-    On the pinned mlx-vlm 0.6.2, `ThinkingStreamState` routes everything between
-    (implicit) `<think>` boundaries into `delta.reasoning` — which ChatOpenAI
-    drops, so reasoning silently vanishes. The patch forces every state instance
-    to start OUTSIDE thinking with unmatchable markers, so the raw model text
-    (including inline `<think>...</think>`) flows through `delta.content` and the
-    runner's single ThinkSplitter handles it — identical to llama-server with
+    On the pinned mlx-vlm 0.6.13, `ThinkingStreamState` routes everything between
+    `<think>` boundaries into `delta.reasoning` — which ChatOpenAI drops, so
+    reasoning silently vanishes. The patch forces every state instance to start
+    OUTSIDE thinking with unmatchable markers, so the raw model text (including
+    inline `<think>...</think>`) flows through `delta.content` and the runner's
+    single ThinkSplitter handles it — identical to llama-server with
     `--reasoning-format none`.
 
-    The fake below is a behavioral double: `__init__`/`feed` and helpers are
-    copied from the real mlx-vlm 0.6.2 `server/responses_state.py`, so the
-    assertions exercise the exact upstream logic being neutralized while staying
-    runnable on Linux CI (no mlx-vlm installed).
+    0.6.13 adds a second splitting path the patch must also neutralize: the
+    `make_response_stream_state` factory prefers a `ResponseTemplateStreamState`
+    (a transformers response-template parser) whenever the tokenizer exposes a
+    `response_template`, bypassing `ThinkingStreamState` entirely. The patch
+    disables that bypass by neutralizing `_response_template_tokenizer` — a
+    call-time global inside the factory, so it works even though the route
+    modules from-import the factory at package import time.
+
+    The fake below is a behavioral double: `__init__`/`feed`, the helpers, and
+    the factory are copied from the real mlx-vlm 0.6.13
+    `server/responses_state.py`, so the assertions exercise the exact upstream
+    logic being neutralized while staying runnable on Linux CI (no mlx-vlm
+    installed).
     """
 
     def _install_fake_responses_state(self, monkeypatch):
-        """Inject `mlx_vlm.server.responses_state` with the real 0.6.2 splitter logic."""
+        """Inject `mlx_vlm.server.responses_state` with the real 0.6.13 splitter logic."""
         import sys
         import types
         from dataclasses import dataclass
@@ -734,7 +729,7 @@ class TestInlineThinkingPatch:
             thinking_closed: bool = False
 
         class ThinkingStreamState:
-            """Verbatim port of mlx-vlm 0.6.2 server/responses_state.py:37-161."""
+            """Verbatim port of mlx-vlm 0.6.13 server/responses_state.py:40-171."""
 
             _DEFAULT_OPEN_CLOSE_MARKERS = (
                 ("<|channel>thought", "<channel|>"),
@@ -757,7 +752,7 @@ class TestInlineThinkingPatch:
                 self.thinking_done = False
                 self.buffer = ""
 
-            def feed(self, text):
+            def feed(self, text, last=False):
                 self.buffer += text or ""
                 reasoning = []
                 content = []
@@ -804,6 +799,12 @@ class TestInlineThinkingPatch:
                             content.append(emit)
                     self.buffer = self.buffer[idx + len(marker):].lstrip("\n")
                     self.in_thinking = True
+                if last and self.buffer:
+                    held, self.buffer = self.buffer, ""
+                    if self.in_thinking:
+                        reasoning.append(self._strip_open_marker(held))
+                    else:
+                        content.append(_strip_content_markers(held))
                 return ThinkingStreamDelta(
                     reasoning="".join(reasoning) or None,
                     content="".join(content) or None,
@@ -851,11 +852,53 @@ class TestInlineThinkingPatch:
                         return before + after.lstrip("\n")
                 return text
 
+        class ResponseTemplateStreamState:
+            """Stand-in for 0.6.13's template-parser splitter (the bypass)."""
+
+            def __init__(self, parser):
+                self.parser = parser
+
         mlx_vlm = types.ModuleType("mlx_vlm")
         server = types.ModuleType("mlx_vlm.server")
         responses_state = types.ModuleType("mlx_vlm.server.responses_state")
         responses_state.ThinkingStreamDelta = ThinkingStreamDelta
         responses_state.ThinkingStreamState = ThinkingStreamState
+        responses_state.ResponseTemplateStreamState = ResponseTemplateStreamState
+
+        def _response_template_tokenizer(processor):
+            """Verbatim port of mlx-vlm 0.6.13 server/responses_state.py:214-220."""
+            if processor is None:
+                return None
+            tokenizer = (
+                processor.tokenizer if hasattr(processor, "tokenizer") else processor
+            )
+            if getattr(tokenizer, "response_template", None) is None:
+                return None
+            return tokenizer
+
+        def make_response_stream_state(
+            processor,
+            enable_thinking=False,
+            thinking_start_token=None,
+            thinking_end_token=None,
+        ):
+            """Verbatim port of mlx-vlm 0.6.13 server/responses_state.py:223-240,
+            minus the logger fallback. Resolves `_response_template_tokenizer`
+            through the module globals at call time — the seam the patch uses.
+            """
+            tokenizer = responses_state._response_template_tokenizer(processor)
+            if tokenizer is not None and hasattr(tokenizer, "get_response_parser"):
+                return ResponseTemplateStreamState(
+                    tokenizer.get_response_parser(prefix="")
+                )
+            return ThinkingStreamState(
+                enable_thinking,
+                thinking_start_token,
+                thinking_end_token,
+            )
+
+        responses_state._response_template_tokenizer = _response_template_tokenizer
+        responses_state.make_response_stream_state = make_response_stream_state
         server.responses_state = responses_state
         mlx_vlm.server = server
         monkeypatch.setitem(sys.modules, "mlx_vlm", mlx_vlm)
@@ -888,7 +931,7 @@ class TestInlineThinkingPatch:
         assert runner._patch_inline_thinking() is False
 
     def test_unpatched_state_splits_thinking(self, monkeypatch):
-        """Baseline pin of the 0.6.2 behavior being fixed: with enable_thinking
+        """Baseline pin of the 0.6.13 behavior being fixed: with enable_thinking
         the state starts IN thinking, so everything before `</think>` lands in
         the reasoning channel and the tags never reach content.
         """
@@ -918,6 +961,39 @@ class TestInlineThinkingPatch:
 
         assert reasoning == ""
         assert content == "<think>step by step</think>The answer is 4."
+
+    def test_patched_factory_skips_template_parser_bypass(self, monkeypatch):
+        """0.6.13's `make_response_stream_state` prefers a template-parser
+        splitter when the tokenizer exposes a `response_template` — a path that
+        routes reasoning to `delta.reasoning` while bypassing
+        `ThinkingStreamState` entirely. After the patch, the factory must fall
+        through to the (neutralized) `ThinkingStreamState` for every processor.
+        """
+        import sys
+        from types import SimpleNamespace
+
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        state_cls = self._install_fake_responses_state(monkeypatch)
+        responses_state = sys.modules["mlx_vlm.server.responses_state"]
+
+        tokenizer = SimpleNamespace(
+            response_template="{% generation %}",
+            get_response_parser=lambda prefix: object(),
+        )
+        processor = SimpleNamespace(tokenizer=tokenizer)
+
+        # Baseline pin: unpatched, the factory takes the bypass.
+        unpatched = responses_state.make_response_stream_state(processor)
+        assert isinstance(unpatched, responses_state.ResponseTemplateStreamState)
+
+        assert runner._patch_inline_thinking() is True
+
+        patched = responses_state.make_response_stream_state(
+            processor, enable_thinking=True
+        )
+        assert isinstance(patched, state_cls)
+        assert patched.in_thinking is False  # and it is the neutralized state
 
     def test_patched_state_has_no_partial_marker_holdback(self, monkeypatch):
         """A chunk ending mid-`<think` must flush immediately once patched:
@@ -1000,10 +1076,12 @@ class TestSpawnArgv:
         assert handle["base_url"] == "http://127.0.0.1:9087"
 
     def test_spawn_does_not_export_dead_thinking_env_sentinel(self, tmp_path, monkeypatch):
-        """The MLX_VLM_THINKING_START_TOKEN env sentinel was DEAD on the pinned
-        mlx-vlm 0.6.2 (the env-var mechanism only exists in 0.6.4) — #90. It is
-        replaced by the in-child `_patch_inline_thinking` monkeypatch, so
-        `_spawn_child` must no longer touch the parent's environment.
+        """MLX_VLM_THINKING_START_TOKEN exists on mlx-vlm 0.6.13 but cannot
+        express "never split": `_build_open_close_markers` always APPENDS the
+        built-in marker families after any custom pair, and it needs both a
+        start AND an end token to register at all. Inline delivery is owned by
+        the in-child `_patch_inline_thinking` monkeypatch instead, so
+        `_spawn_child` must not touch the parent's environment.
         """
         import os
 
@@ -1166,7 +1244,7 @@ class TestThinkingServerSideActivation:
 
     Half 1 — activation: `_spawn_child` passes `--enable-thinking`, so a request
     that does not set `enable_thinking` (Erudi's runner never does) still gets
-    thinking-on-by-default from mlx-vlm 0.6.2 — without it, a thinking model
+    thinking-on-by-default from mlx-vlm 0.6.13 — without it, a thinking model
     answers directly and no reasoning ever exists.
 
     Half 2 — inline delivery: the in-child `_patch_inline_thinking` monkeypatch

@@ -204,10 +204,18 @@ class TestRunnabilityPredicate:
         assert CPU_Engine.is_runnable("unsloth/gemma-3-1b-it-GGUF") is True
         assert CUDA_Engine.is_runnable("mradermacher/Some-Cool-Distill-GGUF") is True  # community
 
-    def test_known_broken_is_not_runnable(self):
-        assert MLX_Engine.is_runnable("mlx-community/gemma-4-e2b-it-4bit") is False
-        assert "mlx-community/gemma-4-e2b-it-4bit" in MLX_Engine.KNOWN_BROKEN
-        # llama.cpp has no known-broken quants → everything format-tagged runs
+    def test_known_broken_entries_are_not_runnable(self, monkeypatch):
+        # The roster is empty since the 0.6.13 bump re-proved gemma-4 E2B loads
+        # (#273); pin the MECHANISM with an injected entry, not a real model.
+        monkeypatch.setattr(
+            MLX_Engine, "KNOWN_BROKEN", frozenset({"mlx-community/broken-quant-4bit"})
+        )
+        assert MLX_Engine.is_runnable("mlx-community/broken-quant-4bit") is False
+
+    def test_known_broken_rosters_are_empty(self):
+        # gemma-4 E2B was removed after a real load+generate on mlx-vlm 0.6.13
+        # (#273 hardware pass); llama.cpp never had known-broken quants.
+        assert MLX_Engine.KNOWN_BROKEN == frozenset()
         assert CPU_Engine.KNOWN_BROKEN == frozenset()
 
 
@@ -251,7 +259,11 @@ class TestRunnableExposedInResponse:
     def test_remote_known_broken_is_not_runnable(self, monkeypatch):
         from src.domains.llms.schemas import LLMResponse
         monkeypatch.setattr(config, "LLM_Engine", MLX_Engine)
-        r = LLMResponse(id=2, name="Y", local=0, link="mlx-community/gemma-4-e2b-it-4bit")
+        # Roster empty since #273; pin the mechanism with an injected entry.
+        monkeypatch.setattr(
+            MLX_Engine, "KNOWN_BROKEN", frozenset({"mlx-community/broken-quant-4bit"})
+        )
+        r = LLMResponse(id=2, name="Y", local=0, link="mlx-community/broken-quant-4bit")
         assert r.runnable is False
 
     def test_downloaded_model_always_runnable(self, monkeypatch):
@@ -522,8 +534,12 @@ class TestDownloadRunnabilityGuard:
 
     def test_rejects_known_broken(self, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", MLX_Engine)
+        # Roster empty since #273; pin the mechanism with an injected entry.
+        monkeypatch.setattr(
+            MLX_Engine, "KNOWN_BROKEN", frozenset({"mlx-community/broken-quant-4bit"})
+        )
         with pytest.raises(UnsupportedPlatformException):
-            services._assert_runnable("mlx-community/gemma-4-e2b-it-4bit")
+            services._assert_runnable("mlx-community/broken-quant-4bit")
 
     def test_allows_normal_quant(self, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", MLX_Engine)
