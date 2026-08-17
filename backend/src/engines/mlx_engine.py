@@ -116,12 +116,11 @@ class MLX_Engine(BaseChatServerEngine):
     # searching filter="mlx" (any author), so no hand-maintained mapping is needed.
     FORMAT_TAG = "mlx"
 
-    # Stored links that download but crash at load on mlx-vlm 0.6.2.
-    KNOWN_BROKEN = frozenset({
-        # gemma-4 E2B: quantized checkpoint (0.4.3 quant, KV-sharing mismatch) that
-        # mlx-vlm 0.6.2 cannot load — 140-weight ValueError. Runs fine via GGUF.
-        "mlx-community/gemma-4-e2b-it-4bit",
-    })
+    # Stored links that download but crash at load. Empty since the 0.6.13 bump:
+    # gemma-4 E2B (the 0.6.2 140-weight ValueError) was re-probed on real
+    # mlx-vlm 0.6.13 during the #273 hardware pass — loads via the native
+    # gemma4 module and generates cleanly, so its entry was removed.
+    KNOWN_BROKEN = frozenset()
 
     @classmethod
     def quant_and_save_from_hf_format(
@@ -301,17 +300,19 @@ class MLX_Engine(BaseChatServerEngine):
             "--port", str(port),
             "--log-level", "INFO",
             # Thinking on by default for requests that don't set enable_thinking
-            # (Erudi's runner never does). Without it, mlx-vlm 0.6.2 renders the
+            # (Erudi's runner never does). Without it, mlx-vlm 0.6.13 renders the
             # chat template with enable_thinking=False and a thinking model
             # (e.g. Qwen3) answers directly — no reasoning ever exists (#90).
             # Safe for non-thinking models ONLY because the child neutralizes
             # the server-side thinking split (`_patch_inline_thinking` in
-            # _mlx_vlm_server_runner.py): unpatched, the split starts in
-            # reasoning mode and a model that never emits </think> would have
-            # its whole output routed to the dropped delta.reasoning channel.
-            # With the patch, the flag's only remaining effect is the template
-            # kwarg, which non-thinking templates ignore (hardware-verified on
-            # Qwen2.5-0.5B: byte-identical prompts and answers).
+            # _mlx_vlm_server_runner.py): unpatched, a prompt whose template
+            # opens a thinking block starts the stream in reasoning mode, and
+            # any emitted <think> marker routes text to the delta.reasoning
+            # channel that ChatOpenAI drops. With the patch, the flag's only
+            # remaining effect is the template kwarg, which non-thinking
+            # templates ignore (hardware-verified on Qwen2.5-0.5B on 0.6.2:
+            # byte-identical prompts and answers; re-check in the 0.6.13
+            # hardware pass).
             "--enable-thinking",
         ]
         proc = mp.Process(target=run_mlx_vlm_server, args=(argv,), daemon=False)

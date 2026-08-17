@@ -1,9 +1,11 @@
 # mlx-vlm is a superset of mlx-lm (it depends on it transitively) and ships the
 # OpenAI server the MLX engine now spawns. It unlocks native tool calling (no
-# mlx_lm.server EOS-flush bug) and image input. Pulls Pillow/opencv/datasets/
-# mlx-audio transitively (the inference path keeps cv2/datasets/mlx_audio lazy).
-mlx-vlm==0.6.2
+# mlx_lm.server EOS-flush bug) and image input. Pulls Pillow/opencv/mlx-audio/
+# python-multipart transitively (the inference path keeps cv2/mlx_audio lazy).
+# 0.6.13 (#273): datasets moved out of the core deps (train extra only), mlx
+# floor is now >=0.32.0, and transformers must be >=5.14.0 (pinned in base.txt).
+mlx-vlm==0.6.13
 
-# transformers is pinned in meta/base.txt (5.10.2, normalized for all platforms).
-# Its value is dictated here by mlx-vlm 0.6.2 (5.12 breaks Gemma3 loading). mac
-# resolves torch (>=2.7, has float8_e8m0fnu) transitively via the mlx/ST stack.
+# transformers is pinned in meta/base.txt (5.14.1, normalized for all platforms).
+# Its floor is dictated here by mlx-vlm 0.6.13 (requires transformers>=5.14.0).
+# mac resolves torch (>=2.7, has float8_e8m0fnu) transitively via the mlx/ST stack.
