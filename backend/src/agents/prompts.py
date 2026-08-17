@@ -76,7 +76,8 @@ _SCAFFOLDS = {
             "asks about the user's documents and the excerpts do not "
             "contain the answer, say that the information is not in the "
             "documents. If the question is unrelated to the excerpts, "
-            "ignore them and answer normally from your own knowledge. "
+            "ignore them and answer normally from your own knowledge, "
+            "without mentioning the excerpts or the documents. "
             "Never do mental arithmetic: write out the operation and "
             "state that the total must be verified."
         ),
@@ -92,7 +93,8 @@ _SCAFFOLDS = {
             "réponse, dis que l'information ne figure pas dans les "
             "documents. Si la question n'a pas de rapport avec les "
             "extraits, ignore-les et réponds normalement avec tes propres "
-            "connaissances. Ne fais jamais de calcul mental : écris "
+            "connaissances, sans mentionner les extraits ni les documents. "
+            "Ne fais jamais de calcul mental : écris "
             "l'opération et précise que le total est à vérifier."
         ),
     },
