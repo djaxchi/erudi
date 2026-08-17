@@ -64,7 +64,9 @@ class TestPlanTurn:
         assert plan.tools == [calculator, search_knowledge_base]
         assert plan.context.kb_id == 5 and plan.context.token_budget == 1000
         assert plan.kb_context_block is None
-        assert "MUST call" in plan.system_prompt
+        # Composed prompt (#129): tier persona base + agentic KB section.
+        assert "You are Erudi" in plan.system_prompt
+        assert "call search_knowledge_base before answering" in plan.system_prompt
 
     def test_tool_capable_defaults_to_systematic(self):
         # #288: with agentic mode OFF (the default), a tool-capable model does
@@ -91,7 +93,9 @@ class TestPlanTurn:
         assert plan.tools == []
         assert plan.context is None
         assert plan.kb_context_block and "[Document: d.pdf]" in plan.kb_context_block
-        assert "document analyst" in plan.system_prompt
+        # Composed prompt (#129): tier persona base + systematic KB section.
+        assert "You are Erudi" in plan.system_prompt
+        assert "excerpts from the user's documents" in plan.system_prompt
 
     def test_systematic_empty_pool_falls_back_to_plain(self):
         plan = plan_turn(

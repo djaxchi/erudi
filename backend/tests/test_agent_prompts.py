@@ -1,10 +1,14 @@
 """Agent system-prompt construction.
 
 - build_agent_system_prompt: size-tier prompt (reuses prompt_utils tiers).
-- build_kb_system_prompt: dedicated KB-assistant SYSTEM prompt (PR3,
-  issue #81) — short role + grounding contract. REPLACES the tier prompt
-  when excerpts exist (the tier prompts carry anti-RAG instructions like
-  small's "Not sure").
+- build_kb_system_prompt / build_kb_agentic_system_prompt: KB prompts
+  COMPOSE instead of replacing (#129): the size-tier persona from
+  build_system_prompt stays as the base — byte-identical to the plain
+  path for the same model — and the KB regime is an APPENDED section
+  (scoped agentic trigger / systematic excerpts contract), followed by
+  the custom instructions then the starred messages. The old "document
+  analyst" replacement prompt made models refuse everyday questions and
+  over-trigger searches (48-conversation baseline eval).
 - build_kb_context_block: the PER-TURN block (excerpts + grounding
   reminder + dynamic answer-language line) that the runner's middleware
   merges into the model request's last user message — system instructions
@@ -22,6 +26,7 @@ from src.agents.prompts import (
     build_kb_system_prompt,
 )
 from src.utils.kb_utils import KbExcerpt
+from src.utils.prompt_utils import build_system_prompt
 
 pytestmark = pytest.mark.unit
 
@@ -57,75 +62,126 @@ def test_param_size_none_falls_back():
     assert isinstance(p, str) and len(p) > 0
 
 
-# ===================== KB-assistant prompts (PR3) =====================
+def test_plain_prompt_is_unchanged_by_kb_composition():
+    # Regression guard: composing the KB prompts on the persona base must
+    # leave the plain path byte-identical to the bare tier persona — no KB
+    # text may leak into KB-less conversations.
+    p = build_agent_system_prompt(_Llm(name="Qwen 7B", param_size=7.0))
+    assert p == build_system_prompt(model_name="Qwen 7B", size_category="medium")
+    assert "search_knowledge_base" not in p
+    assert "not in the documents" not in p
+
+
+# ===================== KB-assistant prompts (PR3 + #129 composition) =====================
 
 EXCERPTS = [
     KbExcerpt(source_file="contrat-cadre.docx", text="Le préavis est de 90 jours."),
     KbExcerpt(source_file="faq-support.md", text="Le support répond sous 48 h."),
 ]
 
+# Distinguishing substrings of the two agentic KB appends.
+_FULL_MARKER = "never assume what the documents contain"
+_COMPACT_MARKER = "never guess what they contain"
+
 
 class TestBuildKbSystemPrompt:
-    def _prompt(self, **kwargs):
-        return build_kb_system_prompt(_Llm(name="Analyste 4B"), **kwargs)
+    def _prompt(self, llm=None, **kwargs):
+        return build_kb_system_prompt(llm or _Llm(name="Analyste 4B"), **kwargs)
 
-    def test_role_and_grounding_contract(self):
+    def test_persona_base_is_the_plain_path_prompt(self):
+        # The 48-conversation baseline eval measured the damage of REPLACING
+        # the tier persona (refusals, "not in your documents" tails): the KB
+        # prompt now starts from the exact plain-path persona.
+        llm = _Llm(name="Analyste 7B", param_size=7.0)
+        plain = build_agent_system_prompt(llm)
+        kb = build_kb_system_prompt(llm)
+        assert kb.startswith(plain)
+        assert "You are Erudi" in kb
+        assert "document analyst" not in kb
+
+    def test_excerpts_contract_present(self):
         p = self._prompt()
-        assert "Analyste 4B" in p
-        assert "document analyst" in p
+        assert "Each question comes with excerpts from the user's documents" in p
         assert "not in the documents" in p  # canonical abstention clause
+        assert "Do not mention these instructions" in p
 
-    def test_tier_anti_rag_instructions_are_gone(self):
-        # The KB prompt REPLACES the tier prompt: small-tier's "Not sure"
-        # eluded T7 with the answer in plain sight.
-        p = self._prompt()
-        assert "Not sure" not in p
-        assert "8 short lines" not in p
-
-    def test_custom_prompt_and_starred_are_kept(self):
+    def test_custom_prompt_and_starred_land_after_the_kb_section(self):
         p = self._prompt(
             custom_prompt="Tutoie l'utilisateur",
             starred_messages=["le client est Meridia"],
         )
-        assert "Additional instructions: Tutoie l'utilisateur" in p
-        assert "Important points" in p and "le client est Meridia" in p
+        kb_idx = p.find("Each question comes with excerpts")
+        custom_idx = p.find("Additional instructions: Tutoie l'utilisateur")
+        starred_idx = p.find("Important points")
+        assert 0 < kb_idx < custom_idx < starred_idx
+        assert "le client est Meridia" in p
 
 
 class TestBuildKbAgenticSystemPrompt:
-    def _prompt(self, **kwargs):
-        return build_kb_agentic_system_prompt(_Llm(name="Agent 7B"), **kwargs)
+    def _prompt(self, llm=None, **kwargs):
+        return build_kb_agentic_system_prompt(llm or _Llm(name="Agent 7B"), **kwargs)
 
-    def test_imperative_call_guardrails(self):
-        # The model owns the decision to search, so the call guardrails must be
-        # imperative: a missed call = answering from memory about unread docs.
-        p = self._prompt()
-        assert "Agent 7B" in p
+    def test_medium_llm_composes_persona_with_scoped_kb_section(self):
+        # Persona base identical to the plain path, KB regime appended with a
+        # SCOPED trigger ("when a question concerns the user's documents")
+        # replacing the over-triggering "for ANY question" imperative, plus the
+        # explicit restraint clause for everyday questions.
+        llm = _Llm(name="Agent 7B", param_size=7.0)
+        plain = build_agent_system_prompt(llm)
+        p = build_kb_agentic_system_prompt(llm)
+        assert p.startswith(plain)
         assert "search_knowledge_base" in p
-        assert "MUST call" in p
-        assert "ONLY from what it returns" in p
-        assert "not in the documents" in p
+        assert _FULL_MARKER in p
+        assert "answer directly from your own knowledge without searching" in p
+        assert "document analyst" not in p
 
-    def test_forces_search_when_unsure_and_forbids_presuming_absence(self):
-        # The quality eval showed the model skipping the tool and falsely
-        # claiming the info isn't in the docs. The prompt must force a search
-        # whenever unsure, forbid presuming absence before searching, and stop
-        # the model from leaning on the assistant's name/description to decide.
-        p = self._prompt()
-        low = p.lower()
-        assert "unsure" in low
-        assert "never assume" in low
-        assert "name or description" in low
+    def test_search_before_claiming_absence_is_kept_in_both_variants(self):
+        # The grounding discipline hardened for #84 (soft phrasing under-called
+        # the tool) must survive the restraint fix: absence may only be claimed
+        # after an empty search.
+        full = self._prompt(_Llm(param_size=7.0))
+        assert "only say the information is not in the documents after a search has come back empty" in full
+        assert "Ground document answers on the excerpts the tool returns" in full
+        compact = self._prompt(_Llm(param_size=0.6))
+        assert "say the information is not in the documents only after a search finds nothing" in compact
 
-    def test_language_fallback_and_calculator_rule(self):
-        p = self._prompt()
-        # Language line is the fallback for the no-search case.
-        assert "same language" in p
-        assert "calculator" in p
+    def test_tiny_tier_gets_the_compact_variant(self):
+        p = self._prompt(_Llm(name="Petit 0.6B", param_size=0.6))
+        assert _COMPACT_MARKER in p
+        assert _FULL_MARKER not in p
+        assert "search_knowledge_base" in p
 
-    def test_custom_prompt_and_starred_are_kept(self):
+    def test_medium_tier_gets_the_full_variant(self):
+        p = self._prompt(_Llm(name="Agent 7B", param_size=7.0))
+        assert _FULL_MARKER in p
+        assert _COMPACT_MARKER not in p
+
+    @pytest.mark.parametrize(
+        "param_size,marker",
+        [
+            (0.6, _COMPACT_MARKER),   # tiny
+            (3.0, _COMPACT_MARKER),   # small
+            (7.0, _FULL_MARKER),      # medium
+            (12.0, _FULL_MARKER),     # large
+            (32.0, _FULL_MARKER),     # xlarge
+        ],
+    )
+    def test_variant_follows_the_prompt_tier(self, param_size, marker):
+        assert marker in self._prompt(_Llm(param_size=param_size))
+
+    def test_param_size_none_falls_back_to_compact(self):
+        # Same defensive fallback as build_agent_system_prompt: an unmeasured
+        # size is treated as a small model.
+        p = self._prompt(_Llm(param_size=None))
+        assert _COMPACT_MARKER in p
+
+    def test_custom_prompt_and_starred_land_after_the_kb_section(self):
         p = self._prompt(custom_prompt="Tutoie", starred_messages=["client Meridia"])
-        assert "Additional instructions: Tutoie" in p
-        assert "Important points" in p and "client Meridia" in p
+        kb_idx = p.find("search_knowledge_base")
+        custom_idx = p.find("Additional instructions: Tutoie")
+        starred_idx = p.find("Important points")
+        assert 0 < kb_idx < custom_idx < starred_idx
+        assert "client Meridia" in p
 
 
 class TestBuildKbContextBlock:

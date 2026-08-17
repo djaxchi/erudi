@@ -633,12 +633,13 @@ class TestConversationService:
         mock_kb.assert_called_once()
         # param_size=7 → medium tier → its KB token budget reaches retrieval.
         assert mock_kb.call_args.kwargs["token_budget"] == 1000
-        # PR3: the dedicated KB system prompt replaces the tier prompt (no
-        # anti-RAG "Not sure"), and the per-turn block carries the excerpts
-        # + grounding reminder to the runner's request-time middleware.
+        # #129: the KB system prompt composes the tier persona with an
+        # appended excerpts contract, and the per-turn block carries the
+        # excerpts + grounding reminder to the runner's request-time
+        # middleware.
         prompt = captured["system_prompt"]
-        assert "document analyst" in prompt
-        assert "Not sure" not in prompt
+        assert "You are Erudi" in prompt
+        assert "excerpts from the user's documents" in prompt
         block = captured["kb_context_block"]
         assert "[Document: convention.pdf]" in block
         assert "27 jours de congés payés" in block
