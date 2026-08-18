@@ -61,6 +61,7 @@ class TestAssistantLifecycle:
         mock_llm.category = "code"
         mock_llm.model_metadata = '{"context_length": 32768}'
         mock_llm.supports_tools = True
+        mock_llm.supports_tools_wire = True
         mock_llm.type = "qwen"
         mock_llm.param_size = 14.0
         mock_llm.quantized = False
@@ -107,6 +108,27 @@ class TestAssistantLifecycle:
 
         specialized = test_db_session.query(Llm).get(llm_id)
         assert specialized.supports_tools is True
+
+    def test_kb_assistant_inherits_supports_tools_wire(self, test_db_session, mock_llm):
+        # #298: the verified wire capability must follow the weights. An
+        # assistant shares its base's artifact, so its wire verdict is the
+        # base's; without inheritance every assistant would route systematic
+        # until a redundant re-detection.
+        mock_llm.supports_tools = True
+        mock_llm.supports_tools_wire = True
+        test_db_session.flush()
+
+        service = KB_Service()
+        llm_id, _ = service.create_kb_assistant(
+            db=test_db_session,
+            base_llm_id=mock_llm.id,
+            model_name="Wire-verified assistant",
+            description="",
+            file_paths=["/tmp/whatever.pdf"],
+        )
+
+        specialized = test_db_session.query(Llm).get(llm_id)
+        assert specialized.supports_tools_wire is True
 
     def test_create_requires_local_base_llm(self, test_db_session):
         service = KB_Service()

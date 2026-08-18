@@ -264,6 +264,23 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         return tokenizer_declares_tools(tokenizer)
 
     @classmethod
+    def compute_wire_tools(cls, local_path: Union[str, Path]) -> Optional[bool]:
+        """Verified tool-call WIRE capability of the model at ``local_path`` (#298).
+
+        ``compute_supports_tools`` says the chat template DECLARES tools; this
+        says the engine's local server actually parses the model's tool-call
+        output into a structured call the agent executes — a per-model wire
+        property (#273 matrix): a template matching no parser streams the call
+        as raw text (swallowed answer, #295) or leaks JSON to the user.
+
+        Engine-specific: MLX runs mlx-vlm's own parser inference on the chat
+        template; llama.cpp engines trust the ``--jinja`` generic fallback for
+        any usable template. The base default is ``None`` (unverified) so an
+        engine without an implementation never routes a KB turn agentic.
+        """
+        return None
+
+    @classmethod
     def model_supports_vision(cls, local_path: Union[str, Path]) -> Optional[bool]:
         """Whether the model at ``local_path`` accepts image input (#133).
 
