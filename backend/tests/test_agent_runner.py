@@ -1124,6 +1124,208 @@ async def test_events_construction_error_is_sentinel_answer(monkeypatch):
     assert "/secret/path" not in events[0]["text"]
 
 
+# ===== Pre-tool narration reclassified as thinking (#297) =====
+#
+# On tool-carrying turns, text the model streams BEFORE its tool call is
+# hallucinated guessing, not the answer. The runner buffers the hop's answer
+# text and re-emits it as ``thinking`` events the moment the hop's first
+# tool_call_chunk arrives (before the ``tool_call`` event); a hop that ends
+# without a tool call flushes its buffer as ``answer`` at stream end.
+
+
+_NARRATION_CALL = AIMessage(
+    content="I believe the answer is around one thousand, let me verify.",
+    tool_calls=[{"name": "calculator", "args": {"expression": "4 + 5"}, "id": "n1"}],
+)
+
+
+async def test_narration_before_tool_call_becomes_thinking(monkeypatch):
+    """(a) narration + tool_call + tool_result + final answer: the narration
+    surfaces as ``thinking`` events emitted BEFORE the ``tool_call`` event;
+    only the final hop's text is ``answer``."""
+    fake = ToolableFakeChatModel(
+        messages=iter([_NARRATION_CALL, AIMessage(content="The result is 9.")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    events = await _events(
+        runner, llm=_Llm(), user_message="4 + 5 ?", system_prompt="s",
+        params=_PARAMS, thread_id="n-a", tools=[calculator],
+    )
+
+    assert _answers(events) == "The result is 9."
+    assert "let me verify" in _thinking(events)
+    # Narration must never leak into answer events.
+    assert "one thousand" not in _answers(events)
+    # Order: every thinking event precedes the tool_call, which precedes the
+    # tool_result, which precedes all answer events.
+    kinds = [e["t"] for e in events]
+    idx_call = kinds.index("tool_call")
+    idx_result = kinds.index("tool_result")
+    assert all(i < idx_call for i, k in enumerate(kinds) if k == "thinking")
+    assert idx_call < idx_result
+    assert all(i > idx_result for i, k in enumerate(kinds) if k == "answer")
+
+
+async def test_tools_bound_no_tool_call_flushes_buffer_as_answer(monkeypatch):
+    """(b) tools bound but the model answers directly: the buffered text is
+    flushed as ``answer`` events with the exact content, nothing as thinking."""
+    fake = ToolableFakeChatModel(
+        messages=iter([AIMessage(content="Direct answer, no tool needed.")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    events = await _events(
+        runner, llm=_Llm(), user_message="hi", system_prompt="s",
+        params=_PARAMS, thread_id="n-b", tools=[calculator],
+    )
+
+    assert _answers(events) == "Direct answer, no tool needed."
+    assert _thinking(events) == ""
+    assert all(e["t"] == "answer" for e in events)
+
+
+async def test_narration_does_not_defeat_empty_final_fallback(monkeypatch):
+    """(c) narration + tool result + EMPTY final answer: the narration went out
+    as thinking, so it must NOT count as emitted answer text -- the #90
+    fallback still delivers the tool result as the answer."""
+    narrating_call = AIMessage(
+        content="Maybe around one thousand kilograms.",
+        tool_calls=[{
+            "name": "calculator",
+            "args": {"expression": "1240 + 1378 + 1456"},
+            "id": "n2",
+        }],
+    )
+    fake = ToolableFakeChatModel(messages=iter([narrating_call, AIMessage(content="")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    events = await _events(
+        runner, llm=_Llm(), user_message="total ?", system_prompt="s",
+        params=_PARAMS, thread_id="n-c", tools=[calculator],
+    )
+
+    assert _answers(events).strip() == "4074"
+    assert "one thousand" in _thinking(events)
+    assert all(ERROR_SENTINEL not in e.get("text", "") for e in events)
+
+
+async def test_think_tags_inside_narration_no_double_wrapping(monkeypatch):
+    """(d) inline ``<think>`` inside a narrating hop: splitter thinking flows
+    through unchanged, the remaining narration is reclassified as thinking too,
+    and no tag ever leaks into any event."""
+    narrating_call = AIMessage(
+        content="<think>internal reasoning</think>guessing before the call",
+        tool_calls=[{"name": "calculator", "args": {"expression": "4 + 5"}, "id": "n3"}],
+    )
+    fake = ToolableFakeChatModel(
+        messages=iter([narrating_call, AIMessage(content="Nine.")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    events = await _events(
+        runner, llm=_Llm(), user_message="4 + 5 ?", system_prompt="s",
+        params=_PARAMS, thread_id="n-d", tools=[calculator],
+    )
+
+    thinking = _thinking(events)
+    assert "internal reasoning" in thinking
+    assert "guessing before the call" in thinking
+    assert _answers(events) == "Nine."
+    for e in events:
+        assert "<think>" not in e.get("text", "")
+        assert "</think>" not in e.get("text", "")
+
+
+async def test_zero_tool_turn_event_stream_unchanged(monkeypatch):
+    """(e) regression guard: a zero-tool turn streams answer events immediately,
+    token by token, exactly as before -- no buffering side effects."""
+    fake = ToolableFakeChatModel(messages=iter([AIMessage(content="One two three")]))
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    events = await _events(
+        runner, llm=_Llm(), user_message="hi", system_prompt="s",
+        params=_PARAMS, thread_id="n-e", tools=[],
+    )
+
+    assert events == [
+        {"t": "answer", "text": "One"},
+        {"t": "answer", "text": " "},
+        {"t": "answer", "text": "two"},
+        {"t": "answer", "text": " "},
+        {"t": "answer", "text": "three"},
+    ]
+
+
+async def test_multi_hop_narration_reclassified_each_hop(monkeypatch):
+    """(f) two tool rounds then a final answer: each hop's narration comes out
+    as thinking (before that hop's tool_call), the final answer is intact."""
+    call_1 = AIMessage(
+        content="First guess, checking.",
+        tool_calls=[{"name": "calculator", "args": {"expression": "1 + 1"}, "id": "m1"}],
+    )
+    call_2 = AIMessage(
+        content="Second guess, checking again.",
+        tool_calls=[{"name": "calculator", "args": {"expression": "2 + 2"}, "id": "m2"}],
+    )
+    fake = ToolableFakeChatModel(
+        messages=iter([call_1, call_2, AIMessage(content="Final answer.")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=InMemorySaver())
+
+    events = await _events(
+        runner, llm=_Llm(), user_message="sum things", system_prompt="s",
+        params=_PARAMS, thread_id="n-f", tools=[calculator],
+    )
+
+    assert _answers(events) == "Final answer."
+    assert "First guess" in _thinking(events)
+    assert "Second guess" in _thinking(events)
+    kinds = [e["t"] for e in events]
+    assert kinds.count("tool_call") == 2
+    assert kinds.count("tool_result") == 2
+    # Hop 1's narration precedes tool_call #1; hop 2's narration sits between
+    # tool_result #1 and tool_call #2; answers come after tool_result #2.
+    idx_call_1 = kinds.index("tool_call")
+    idx_result_1 = kinds.index("tool_result")
+    idx_call_2 = kinds.index("tool_call", idx_call_1 + 1)
+    idx_result_2 = kinds.index("tool_result", idx_result_1 + 1)
+    thinking_idx = [i for i, k in enumerate(kinds) if k == "thinking"]
+    hop1_thinking = [i for i in thinking_idx if i < idx_call_1]
+    hop2_thinking = [i for i in thinking_idx if idx_result_1 < i < idx_call_2]
+    assert hop1_thinking and hop2_thinking
+    assert len(hop1_thinking) + len(hop2_thinking) == len(thinking_idx)
+    assert all(i > idx_result_2 for i, k in enumerate(kinds) if k == "answer")
+
+
+async def test_str_mode_drops_narration_keeps_final_answer(monkeypatch):
+    """Arena projection (emit_events=False): the reclassified narration rides
+    thinking events, which the projection drops -- the hallucinated guessing
+    disappears from arena answers while the final answer is unchanged."""
+    fake = ToolableFakeChatModel(
+        messages=iter([_NARRATION_CALL, AIMessage(content="The result is 9.")])
+    )
+    _patch_model(monkeypatch, fake)
+    runner = AgentRunner(checkpointer=None)
+
+    out = [
+        t
+        async for t in runner.astream_text(
+            llm=_Llm(), user_message="4 + 5 ?", system_prompt="s",
+            params=_PARAMS, thread_id=None, tools=[calculator],
+        )
+    ]
+
+    assert "".join(out) == "The result is 9."
+    assert all("one thousand" not in t for t in out)
+
+
 # ===== One-shot stream (#266) — thinking must never reach the title =====
 
 
