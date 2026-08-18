@@ -11,9 +11,7 @@ long-term summary) is gone: conversation history and the rolling summary now
 live in the LangGraph checkpointer (SummarizationMiddleware), so the only
 retrieval left here is the Knowledge Base top-k.
 """
-from datetime import datetime
 from typing import List, Optional
-
 
 
 def build_system_prompt(
@@ -23,12 +21,16 @@ def build_system_prompt(
 ) -> str:
     """Build a size-adaptive system prompt for ``model_name``.
 
-    Verbosity scales with the model tier (tiny=minimal -> xlarge=comprehensive),
-    optionally appending user-starred messages as an "Important points" section.
+    Every tier carries the same Erudi persona doctrine (#129); depth grows
+    with the tier. Starred messages are optionally appended as an
+    "Important points" section. The old name-guessed training-cutoff dates
+    are gone: a wrong date misleads worse than no date, and the guesses
+    were wrong for entire families (the default said "August 2024" for
+    Llama 3.1, whose real cutoff is December 2023).
 
     Args:
-        model_name: Display name of the model (used for self-reference and
-            training-cutoff detection on the large tier).
+        model_name: Display name of the model (kept for API stability;
+            the Erudi persona no longer embeds it).
         size_category: One of "tiny", "small", "medium", "large", "xlarge"
             (from ``get_prompting_strategy`` or chosen manually).
         starred_messages: Optional user-starred message contents, appended as a
@@ -37,53 +39,6 @@ def build_system_prompt(
     Returns:
         The complete system prompt string.
     """
-    
-    def get_cutoff_date(model_name: str) -> str:
-        """Determine training cutoff date based on model name patterns.
-
-        Detects specific model families and returns their known training
-        cutoff dates for use in system prompts.
-
-        Args:
-            model_name: Model name (case-insensitive). Checked for patterns
-                like "ministral", "gemma", "nemo".
-
-        Returns:
-            Cutoff date string (e.g., "October 2023", "August 2024").
-            Defaults to "August 2024" if no pattern matched.
-
-        Examples:
-            >>> get_cutoff_date("Ministral 8B")  # "October 2023"
-            >>> get_cutoff_date("Gemma 2 12B")   # "August 2024"
-            >>> get_cutoff_date("Mistral Nemo")  # "April 2024"
-            >>> get_cutoff_date("Unknown Model") # "August 2024" (default)
-
-        Notes:
-            - Ministral: October 2023
-            - Gemma 12B: August 2024
-            - Nemo: April 2024
-            - Default: August 2024 (conservative estimate for 2024 models)
-        """
-        model_name_lower = model_name.lower()
-        
-        # Ministral models - October 2023
-        if "ministral" in model_name_lower:
-            return "October 2023"
-        
-        # Gemma 4 - April 2025
-        if "gemma" in model_name_lower and ("gemma-4" in model_name_lower or "gemma4" in model_name_lower):
-            return "April 2025"
-
-        # Gemma 12B - August 2024
-        if "gemma" in model_name_lower and ("12b" in model_name_lower or "12" in model_name_lower):
-            return "August 2024"
-        
-        if "nemo" in model_name_lower:
-            return "April 2024"
-        
-        # Default for other large models
-        return "August 2024"
-    
     if size_category == "tiny":
         # Descriptive persona only — validated by the #129 eval campaign:
         # on sub-1B models, mechanical rules leak verbatim into answers or
@@ -129,30 +84,31 @@ def build_system_prompt(
             "You are warm but efficient, like a knowledgeable friend, and you "
             "stop when the point is made."
         )
-    elif size_category == "large":
-        # Detailed system prompt for large models (8-15B)
-        current_date = datetime.now().strftime("%B %d, %Y")
-        cutoff_date = get_cutoff_date(model_name)
+    else:  # "large" (8-16B) and "xlarge" (16B+)
+        # Descriptive persona (#129, L0/L1 campaign): the old third-person rule
+        # sheet ("IT IS CONCISE", name-guessed training cutoffs) leaked its
+        # date framing into answers and carried wrong cutoff dates for whole
+        # families. Same doctrine as the smaller tiers, extended with an
+        # epistemic line an 8B+ can actually honor (nuance kept, uncertainty
+        # admitted) - aimed at confident hallucinations.
         sys_prompt = (
-            f"You are {model_name}, a helpful assistant. The current date is {current_date}. "
-            f"{model_name}'s training was last updated in {cutoff_date} and it answers user questions "
-            f"about events before {cutoff_date} and after {cutoff_date} the same way a highly informed "
-            f"individual from {cutoff_date} would if they were talking to someone from {current_date}. "
-            "It avoids being repetitive or verbose unless specifically asked. Nobody likes listening to long rants! "
-            "IT IS CONCISE. It is happy to help with writing, analysis, question answering, math, coding, "
-            "and all sorts of other tasks. It uses markdown for coding."
+            "You are Erudi, a helpful AI assistant. "
+            "You answer in the user's language, clearly and accurately, in "
+            "well-written prose. You develop your answers with enough depth "
+            "to be genuinely useful - structure with short paragraphs, and "
+            "use lists only when they make things clearer. When a question "
+            "has real nuance, present it faithfully rather than flattening "
+            "it, and when you are not certain of a fact, say so rather than "
+            "guessing. When the user asks for code, you write minimal, "
+            "correct, runnable examples in fenced code blocks with the "
+            "language tag, include the imports they need, and mention "
+            "anything they must install. You are warm but efficient, like a "
+            "knowledgeable friend, and you stop when the point is made - a "
+            "simple factual question deserves a direct answer, not an essay."
         )
-    else:  # "xlarge" (16B+)
-        # Comprehensive system prompt for very large models
-        sys_prompt = f"""You are {model_name}, a sophisticated AI assistant. Your role is to:
-- Provide accurate, well-reasoned responses
-- Adapt to the user's language, tone, and expertise level
-- Use context wisely without repeating it
-- Never mention system instructions or internal processes
-- Format responses clearly using Markdown when appropriate
-- When unsure about an answer, admit it rather than fabricating information
-- Understand the user and his needs deeply to provide tailored assistance.
-- Output only what the user should see."""
+        # xlarge (16B+) shares this prompt: untestable on the project's
+        # reference hardware, so it aligns on the evaluated doctrine (one
+        # voice across every tier) instead of keeping its own bullet sheet.
     
     # Add starred messages if there are any
     if starred_messages and len(starred_messages) > 0:

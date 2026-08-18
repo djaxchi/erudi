@@ -89,33 +89,35 @@ class TestPromptUtils:
         assert len(prompt) > 200
 
     def test_build_system_prompt_large(self):
-        """Test system prompt generation for large models (8-16B).
-        
-        Should generate comprehensive prompt with cutoff dates.
-        """
+        """Large tier (8-16B) carries the Erudi persona doctrine (#129 L0-L2):
+        no third-person rule sheet, no name-guessed training cutoff (a wrong
+        date misleads worse than none), plus the epistemic and stop lines."""
         prompt = build_system_prompt(
             model_name="Mistral Nemo 12B",
             size_category="large"
         )
-        
-        assert isinstance(prompt, str)
-        assert len(prompt) > 0
-        # Large prompts may include cutoff date awareness
 
-    def test_build_system_prompt_xlarge(self):
-        """Test system prompt generation for xlarge models (16B+).
-        
-        Should generate sophisticated prompt with full guidelines.
-        """
-        prompt = build_system_prompt(
+        assert "You are Erudi" in prompt
+        assert "say so rather than guessing" in prompt
+        assert "a direct answer, not an essay" in prompt
+        assert "IT IS CONCISE" not in prompt
+        assert "training was last updated" not in prompt
+        assert "Mistral Nemo 12B" not in prompt
+
+    def test_build_system_prompt_xlarge_aligns_on_large(self):
+        """xlarge (16B+) shares the large prompt: untestable on the reference
+        hardware, it aligns on the evaluated doctrine - one voice, every tier."""
+        xlarge = build_system_prompt(
             model_name="Test XLarge 20B",
             size_category="xlarge"
         )
-        
-        assert isinstance(prompt, str)
-        assert len(prompt) > 0
-        # XLarge prompts are most comprehensive
-        assert len(prompt) > 500
+        large = build_system_prompt(
+            model_name="Other Model 12B",
+            size_category="large"
+        )
+
+        assert xlarge == large
+        assert "sophisticated AI assistant" not in xlarge
 
     def test_build_system_prompt_with_starred_messages(self):
         """Test prompt generation with starred messages injection.
