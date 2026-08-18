@@ -54,6 +54,10 @@ class ToolableFakeChatModel(GenericFakeChatModel):
     - ``_stream`` only splits ``content`` and ignores modern ``tool_calls``
       (a tool-call-only message yields zero chunks → "No generations found
       in stream") → emitted as a single chunk with ``tool_call_chunks``.
+
+    A message carrying BOTH content and ``tool_calls`` streams its content
+    tokens first, THEN the ``tool_call_chunks`` chunk — mirroring the real
+    pre-tool narration order observed on local models (#297).
     """
 
     def bind_tools(self, tools, **kwargs):
@@ -62,7 +66,20 @@ class ToolableFakeChatModel(GenericFakeChatModel):
     def _stream(self, messages, stop=None, run_manager=None, **kwargs):
         result = self._generate(messages, stop=stop, run_manager=None, **kwargs)
         message = result.generations[0].message
-        if getattr(message, "tool_calls", None) and not message.content:
+        tool_calls = getattr(message, "tool_calls", None) or []
+        if message.content or not tool_calls:
+            tokens = re.split(r"(\s)", message.content)
+            for index, token in enumerate(tokens):
+                is_last = index == len(tokens) - 1 and not tool_calls
+                chunk = ChatGenerationChunk(
+                    message=AIMessageChunk(
+                        content=token, chunk_position="last" if is_last else None
+                    )
+                )
+                if run_manager:
+                    run_manager.on_llm_new_token(token, chunk=chunk)
+                yield chunk
+        if tool_calls:
             yield ChatGenerationChunk(
                 message=AIMessageChunk(
                     content="",
@@ -79,13 +96,3 @@ class ToolableFakeChatModel(GenericFakeChatModel):
                     ],
                 )
             )
-            return
-        tokens = re.split(r"(\s)", message.content)
-        for index, token in enumerate(tokens):
-            position = "last" if index == len(tokens) - 1 else None
-            chunk = ChatGenerationChunk(
-                message=AIMessageChunk(content=token, chunk_position=position)
-            )
-            if run_manager:
-                run_manager.on_llm_new_token(token, chunk=chunk)
-            yield chunk

@@ -19,6 +19,18 @@ over those events with two modes selected by ``emit_events``:
   - Arena: ``thread_id=None`` + ``summarize=False`` + no checkpointer → a
     stateless single-model call.
 
+On tool-carrying turns (#297), text a model hop streams BEFORE its tool call is
+not the answer — it is pre-answer narration (often hallucinated guessing on
+small local models: an invented payload figure narrated at length, THEN the
+``search_knowledge_base`` call, THEN the grounded answer). The capture loop
+therefore BUFFERS each hop's post-splitter answer text instead of yielding it:
+the moment the hop's first ``tool_call_chunk`` arrives, the buffer is re-emitted
+as ``thinking`` events (before the ``tool_call`` event) and further text in that
+hop streams as thinking too; a hop that ends WITHOUT a tool call flushes its
+buffer as ``answer`` at stream end. The accepted cost is that on agentic turns
+the final answer's text appears at hop end rather than token-by-token; plain
+and systematic (zero-tool) turns are untouched and still stream live.
+
 Everything runs inside ``engine.generation_guard()`` so model resolution + the
 whole stream serialize on the single-model engine and the idle-cleanup monitor
 never reaps the model mid-stream.
@@ -368,6 +380,18 @@ class AgentRunner:
             last_tool_result: Optional[str] = None
             splitter = ThinkSplitter()
             pending_tool_calls: dict = {}
+            # Pre-tool narration reclassification (#297), tool-carrying turns
+            # only: each model hop's post-splitter ANSWER text is buffered here.
+            # The hop's first tool_call_chunk re-emits the buffer as thinking
+            # (the text was narration, not the answer) and flips
+            # ``hop_has_tool_call`` so the rest of the hop streams as thinking;
+            # a ToolMessage resets the flag for the next hop; stream end flushes
+            # whatever is buffered as the real answer. ``emitted_model_text``
+            # and ``char_count`` are only touched on that final ANSWER flush --
+            # reclassified narration must not defeat the #90 fallback.
+            agentic = bool(effective_tools)
+            hop_text_buffer: list[str] = []
+            hop_has_tool_call = False
             logger.info(
                 f"Agent stream started: llm={getattr(llm, 'id', '?')}, "
                 f"thread_id={thread_id}"
@@ -387,6 +411,12 @@ class AgentRunner:
                         tool_text = getattr(token, "text", "") or ""
                         if tool_text.strip():
                             last_tool_result = tool_text
+                        # Defensive (#297): narration not yet reclassified (tool
+                        # calls that arrived without streamed chunks) goes out
+                        # as thinking BEFORE the tool_call events.
+                        for buffered in hop_text_buffer:
+                            yield {"t": "thinking", "text": buffered}
+                        hop_text_buffer.clear()
                         for tc_event in _drain_tool_calls(pending_tool_calls):
                             yield tc_event
                         yield {
@@ -394,10 +424,23 @@ class AgentRunner:
                             "name": getattr(token, "name", "") or "",
                             "text": tool_text,
                         }
+                        # The hop ended with tools: the next model hop buffers
+                        # fresh (#297).
+                        hop_has_tool_call = False
                         continue
                     if meta.get("langgraph_node") == "model":
-                        for tc_chunk in getattr(token, "tool_call_chunks", None) or []:
+                        tc_chunks = getattr(token, "tool_call_chunks", None) or []
+                        for tc_chunk in tc_chunks:
                             _accumulate_tool_call(pending_tool_calls, tc_chunk)
+                        if agentic and tc_chunks and not hop_has_tool_call:
+                            # First tool_call_chunk of this hop (#297): the text
+                            # streamed so far was pre-tool narration -- re-emit
+                            # it as thinking NOW (before the tool_call event),
+                            # preserving stream liveness.
+                            hop_has_tool_call = True
+                            for buffered in hop_text_buffer:
+                                yield {"t": "thinking", "text": buffered}
+                            hop_text_buffer.clear()
                         text = getattr(token, "text", "")
                         if text:
                             if first_token_s is None:
@@ -408,11 +451,33 @@ class AgentRunner:
                                 )
                             chunk_count += 1
                             for event in splitter.feed(text):
-                                if event["t"] == "answer":
+                                if event["t"] != "answer":
+                                    # Real <think> content: flows immediately.
+                                    yield event
+                                elif agentic and hop_has_tool_call:
+                                    # Post-tool-call text in a narrating hop
+                                    # (#297): also narration -> thinking.
+                                    yield {"t": "thinking", "text": event["text"]}
+                                elif agentic:
+                                    # Tool-carrying turn, no tool call yet this
+                                    # hop: hold the text (#297) -- it is either
+                                    # narration (a tool call follows) or the
+                                    # final answer (flushed at stream end).
+                                    hop_text_buffer.append(event["text"])
+                                else:
                                     if event["text"].strip():
                                         emitted_model_text = True
                                     char_count += len(event["text"])
-                                yield event
+                                    yield event
+                # The final hop ended without a tool call: its buffered text IS
+                # the final answer (#297) -- flush it as ANSWER events (this is
+                # the only place buffered text counts as emitted answer).
+                for text in hop_text_buffer:
+                    if text.strip():
+                        emitted_model_text = True
+                    char_count += len(text)
+                    yield {"t": "answer", "text": text}
+                hop_text_buffer.clear()
                 # Flush any buffered splitter text (a trailing partial tag, or an
                 # unclosed <think> -> thinking) BEFORE the empty-final decision.
                 for event in splitter.flush():
@@ -458,6 +523,14 @@ class AgentRunner:
                     getattr(llm, "id", "?"),
                     thread_id,
                 )
+                # Deliver what was gathered: an interrupted hop's buffered text
+                # (#297) had no tool call yet, so it flushes as answer.
+                for text in hop_text_buffer:
+                    if text.strip():
+                        emitted_model_text = True
+                    char_count += len(text)
+                    yield {"t": "answer", "text": text}
+                hop_text_buffer.clear()
                 for event in splitter.flush():
                     if event["t"] == "answer":
                         if event["text"].strip():
@@ -476,6 +549,12 @@ class AgentRunner:
                 logger.exception("Agent streaming failed")
                 if stateful:
                     await self._repair_alternation(agent, run_config)
+                # Parity with the pre-#297 live stream: text buffered before the
+                # failure would already have been yielded, so flush it ahead of
+                # the sentinel instead of dropping it.
+                for text in hop_text_buffer:
+                    yield {"t": "answer", "text": text}
+                hop_text_buffer.clear()
                 yield {"t": "answer", "text": ERROR_MESSAGE}
 
     async def astream_oneshot(
