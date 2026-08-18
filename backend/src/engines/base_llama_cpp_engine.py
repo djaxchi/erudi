@@ -35,6 +35,52 @@ from src.engines.base_chat_server_engine import BaseChatServerEngine
 from src.core.subprocess_flags import hidden_console_creationflags
 
 
+# Mirror of llama.cpp's NATIVE tool-format dispatch, for LOGS ONLY (#298).
+#
+# Provenance: backend/forks/llama-cpp/common/chat.cpp (b6850),
+# common_chat_templates_apply_jinja, lines 2706-2794. Each entry is
+# (format_name, (markers that must ALL appear in the chat template)), in the
+# same order chat.cpp tests them. A template matching none of these still gets
+# structured tool handling: with `--jinja` (which both GGUF engines pass at
+# spawn) llama-server ends the dispatch with the grammar-constrained generic
+# handler — chat.cpp:2793 "Generic fallback" -> common_chat_params_init_generic.
+# That fallback is why this table never gates the wire verdict; it only names
+# which native handler would match, for the detection log.
+#
+# Non-ASCII markers (DeepSeek R1's fullwidth bars U+FF5C and low lines U+2581)
+# are written as escapes to keep this source file byte-ASCII.
+LLAMA_NATIVE_TOOL_FORMATS = (
+    ("deepseek_v3_1", ("message['prefix'] is defined and message['prefix'] and thinking",)),  # chat.cpp:2706-2708
+    ("deepseek_r1", ("<\uff5ctool\u2581calls\u2581begin\uff5c>",)),                           # chat.cpp:2712-2713
+    ("command_r7b", ("<|END_THINKING|><|START_ACTION|>",)),                                   # chat.cpp:2717-2718
+    ("granite", ("elif thinking", "<|tool_call|>")),                                          # chat.cpp:2722-2723
+    ("hermes_2_pro", ("<tool_call>",)),                                                       # chat.cpp:2727-2728
+    ("gpt_oss", ("<|channel|>",)),                                                            # chat.cpp:2732-2733
+    ("seed_oss", ("<seed:think>",)),                                                          # chat.cpp:2737-2738
+    ("nemotron_v2", ("<SPECIAL_10>",)),                                                       # chat.cpp:2742-2743
+    ("apertus", ("<|system_start|>", "<|tools_prefix|>")),                                    # chat.cpp:2747-2748
+    ("functionary_v3_2", (">>>all",)),                                                        # chat.cpp:2758-2759
+    ("firefunction_v2", (" functools[",)),                                                    # chat.cpp:2763-2764
+    ("functionary_v3_1_llama_3_1", ("<|start_header_id|>", "<function=")),                    # chat.cpp:2768-2770
+    ("llama_3_x", ("<|start_header_id|>ipython<|end_header_id|>",)),                          # chat.cpp:2774-2776
+    ("magistral", ("[THINK]", "[/THINK]")),                                                   # chat.cpp:2779-2780
+    ("mistral_nemo", ("[TOOL_CALLS]",)),                                                      # chat.cpp:2789-2790
+)
+
+
+def native_tool_format_for_template(template: str) -> str:
+    """Name the llama.cpp native tool handler a template would match (logs only).
+
+    First entry of ``LLAMA_NATIVE_TOOL_FORMATS`` whose markers all appear in
+    ``template``, or ``"generic"`` — chat.cpp's own last resort (line 2793) —
+    when none does. Purely informational: the wire verdict never reads this.
+    """
+    for format_name, markers in LLAMA_NATIVE_TOOL_FORMATS:
+        if all(marker in template for marker in markers):
+            return format_name
+    return "generic"
+
+
 class BaseLlamaCppEngine(BaseChatServerEngine):
     """Shared scaffolding for engines that spawn `llama-server` via Popen."""
 
@@ -187,6 +233,46 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         return AutoTokenizer.from_pretrained(
             str(gguf_path.parent), gguf_file=gguf_path.name, trust_remote_code=False
         )
+
+    @classmethod
+    def compute_wire_tools(cls, llm_local_path: Union[str, Path]) -> Optional[bool]:
+        """Verified tool-call wire capability on llama-server (#298).
+
+        Both GGUF engines spawn ``llama-server`` with ``--jinja``
+        (cpu_engine.py / cuda_engine.py), so llama.cpp's chat dispatch applies:
+        a chat template matched by a native handler gets that handler, and ANY
+        other usable template still gets the grammar-constrained generic tool
+        handler (forks/llama-cpp/common/chat.cpp:2793, "Generic fallback").
+        Structured tool handling is therefore guaranteed whenever the model has
+        a usable chat template at all: template present -> True.
+
+        The mirrored native-format table (``LLAMA_NATIVE_TOOL_FORMATS``) is
+        consulted for the LOG only — which native handler would match — never
+        for the verdict. No template -> False (llama-server would fall back to
+        its legacy non-jinja path); unreadable artifact -> None (unverified).
+        """
+        try:
+            tokenizer = cls._load_capability_tokenizer(llm_local_path)
+        except Exception:
+            logger.warning(
+                f"[{cls.__name__}] wire tool detection: could not load a "
+                f"tokenizer for {llm_local_path}",
+                exc_info=True,
+            )
+            return None
+        template = getattr(tokenizer, "chat_template", None)
+        if not template or not isinstance(template, str):
+            logger.info(
+                f"[{cls.__name__}] wire tools NOT verified for {llm_local_path}: "
+                f"no chat template in the GGUF"
+            )
+            return False
+        native_format = native_tool_format_for_template(template)
+        logger.info(
+            f"[{cls.__name__}] wire tools verified for {llm_local_path}: "
+            f"--jinja tool handler={native_format}"
+        )
+        return True
 
     @classmethod
     def model_supports_vision(cls, llm_local_path: Union[str, Path]) -> Optional[bool]:

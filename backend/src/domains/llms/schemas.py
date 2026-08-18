@@ -75,6 +75,7 @@ class LLMResponse(LLMBase):
     model_metadata: Optional[str] = None
     quantized: Optional[bool] = False
     supports_tools: Optional[bool] = None
+    supports_tools_wire: Optional[bool] = Field(default=None, description="True=tool calls verified to parse into structured calls on the active engine's wire (#298); False=verified unreliable; None=unverified (routes systematic)")
     param_size: Optional[float] = Field(default=None, gt=0, description="Parameter size in billions; None when unmeasured (#201)")
     is_base: bool = Field(default=False, description="True=curated foundation/base model, False=derived/community quant")
     conversational: Optional[bool] = Field(default=None, description="True=instruction-tuned/chat model; drives IT-first recommendations and list order (#182). None=unknown")

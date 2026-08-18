@@ -87,13 +87,36 @@ load_dotenv()
 HF_TOKEN = os.getenv("HF_TOKEN", None)
 
 # Agentic KB mode exposes the knowledge base as a ``search_knowledge_base`` tool
-# the model decides to call. On the bundled local servers this is unreliable:
-# many tool-capable models (Qwen, Llama) emit the tool call as raw text instead
-# of a structured call, so the tool never runs and the JSON leaks to the user or
-# the model answers "not in the documents" (#288). Default OFF so KB turns take
-# the systematic context-injection path, which is model-independent and reliable.
-# Opt back in with ERUDI_KB_AGENTIC=1 once local tool-calling is trustworthy.
-KB_AGENTIC_MODE = os.getenv("ERUDI_KB_AGENTIC", "0") == "1"
+# the model decides to call. Whether the local server turns the model's
+# tool-call output into a structured call is a PER-MODEL wire property (#273
+# matrix, #298): some templates parse and execute, others leak raw JSON or get
+# swallowed entirely (#295). ERUDI_KB_AGENTIC is therefore tri-state:
+#   unset      -> None:  per-model routing (the default). A KB turn goes
+#                        agentic only for models whose wire capability was
+#                        VERIFIED (llms.supports_tools_wire is True).
+#   1 / true   -> True:  force agentic for every KB turn (debug).
+#   0 / false  -> False: force systematic for every KB turn (kill switch,
+#                        the pre-#298 behavior of #288).
+
+
+def parse_kb_agentic_flag(raw: Optional[str]) -> Optional[bool]:
+    """Parse the tri-state ERUDI_KB_AGENTIC value (#298).
+
+    Unset/empty/unrecognized -> None (per-model routing); "1"/"true" -> True
+    (force agentic); "0"/"false" -> False (force systematic). Case-insensitive,
+    surrounding whitespace ignored.
+    """
+    if raw is None:
+        return None
+    value = raw.strip().lower()
+    if value in ("1", "true"):
+        return True
+    if value in ("0", "false"):
+        return False
+    return None
+
+
+KB_AGENTIC_MODE: Optional[bool] = parse_kb_agentic_flag(os.getenv("ERUDI_KB_AGENTIC"))
 
 # Restrict LangGraph checkpoint (msgpack) deserialization to known-safe types.
 # Set before any langgraph serializer is constructed.

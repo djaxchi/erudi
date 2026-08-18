@@ -72,6 +72,13 @@ class Llm(Base):
     # chat template (#84). NULL = unknown (remote/not-yet-downloaded); the
     # agent treats NULL/False as "not tool-capable" -> systematic KB path.
     supports_tools = Column(Boolean, nullable=True)
+    # Verified tool-call WIRE capability (#298): supports_tools says the chat
+    # template declares tools; this says the active engine's server actually
+    # parses the model's tool-call output into a structured call (per-model
+    # wire property, #273 matrix — e.g. Qwen3-4B-2507 declares tools but
+    # matches no mlx-vlm parser, #295). Detected post-download / backfilled at
+    # startup. NULL = unverified; only an explicit True routes agentic KB.
+    supports_tools_wire = Column(Boolean, nullable=True)
     # Catalog classification (#86): True = curated foundation/base model (discovered
     # from a FOUNDATION_ORG, built via _create_base_llm), False = derived/community
     # quant. Drives the Base vs Community split and the "Models For You" hardware-fit

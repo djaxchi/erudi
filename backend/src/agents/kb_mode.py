@@ -1,13 +1,27 @@
 """Per-turn KB mode routing for conversation/arena (issue #84).
 
 The KB mode is DERIVED from the model, never a user toggle:
-  - KB attached & the size tier allows context & the model is tool-capable
+  - KB attached & the size tier allows context & the model's tool calls are
+    VERIFIED to work on this engine's wire (#298)
     -> AGENTIC: the KB is exposed as the ``search_knowledge_base`` tool and the
        model decides when to consult it (no systematic injection).
-  - KB attached & tier allows & NOT tool-capable -> SYSTEMATIC: today's path,
-    excerpts retrieved up front and merged request-time (unchanged).
+  - KB attached & tier allows & not verified -> SYSTEMATIC: excerpts retrieved
+    up front and merged request-time (unchanged).
   - otherwise -> PLAIN: zero tools (#129) — plain chat never pays the
     tool-scaffolding cost, whatever the model's capability.
+
+Agentic gating (#298): tool-calling reliability is a per-model WIRE property
+(#273 matrix — same server, some templates parse, others leak raw JSON or get
+swallowed, #295), so the blanket #288 kill switch became the tri-state
+``config.KB_AGENTIC_MODE``:
+
+    agentic iff should_use_kb(llm) AND (flag is True
+                                        OR (flag is None AND supports_tools
+                                            AND supports_tools_wire is True))
+
+Flag None (default) = per-model routing on the verified capability; True =
+force agentic (debug); False = force systematic (kill switch). A NULL/False
+wire verdict always routes systematic.
 
 Factored here so conversation and arena share one decision. Retrieval is
 injected as a callable so each caller keeps its own failure policy
@@ -75,15 +89,27 @@ def plan_turn(
 
     base_tools = [calculator]
 
-    if (
-        config.KB_AGENTIC_MODE
-        and should_use_kb(llm)
-        and getattr(llm, "supports_tools", False)
-    ):
+    # #298 agentic gate: the tri-state flag arbitrates, the per-model verified
+    # wire capability decides in the default (flag None) state.
+    flag = config.KB_AGENTIC_MODE
+    supports_tools = bool(getattr(llm, "supports_tools", False))
+    wire = getattr(llm, "supports_tools_wire", None)
+    agentic = should_use_kb(llm) and (
+        flag is True or (flag is None and supports_tools and wire is True)
+    )
+
+    if agentic:
+        if flag is True:
+            decided_by = "flag force-agentic (ERUDI_KB_AGENTIC=1)"
+        else:
+            decided_by = (
+                "per-model verified wire capability "
+                "(supports_tools=True, supports_tools_wire=True)"
+            )
         budget = get_prompting_strategy(_param_size(llm))["kb_token_budget"]
         logger.info(
             f"Turn mode: agentic KB (kb_id={getattr(llm, 'kb_id', None)}, "
-            f"reason=model supports tools and size tier allows KB context)"
+            f"decided_by={decided_by})"
         )
         return TurnPlan(
             system_prompt=build_kb_agentic_system_prompt(
@@ -98,10 +124,18 @@ def plan_turn(
     # Systematic: retrieve() encapsulates is_attached + tier + failure policy.
     excerpts = retrieve()
     if excerpts:
+        # Name the gate that kept this KB turn off the agentic path (#298).
+        if flag is False:
+            decided_by = "flag force-systematic (ERUDI_KB_AGENTIC=0)"
+        elif not supports_tools:
+            decided_by = "model does not declare tool support"
+        elif wire is None:
+            decided_by = "tool-call wire capability unverified (NULL)"
+        else:
+            decided_by = "tool-call wire capability verified unreliable (False)"
         logger.info(
             f"Turn mode: systematic KB (kb_id={getattr(llm, 'kb_id', None)}, "
-            f"excerpts={len(excerpts)}, reason=KB attached, tier allows context, "
-            f"model lacks tool support)"
+            f"excerpts={len(excerpts)}, decided_by={decided_by})"
         )
         return TurnPlan(
             system_prompt=build_kb_system_prompt(

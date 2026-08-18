@@ -264,6 +264,58 @@ class MLX_Engine(BaseChatServerEngine):
         return AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=False)
 
     @classmethod
+    def compute_wire_tools(cls, llm_local_path: Union[str, Path]) -> Optional[bool]:
+        """Verified tool-call wire capability on the mlx-vlm server (#298).
+
+        Runs mlx-vlm's OWN parser inference (``_infer_tool_parser``) on the
+        model's chat template: the server picks its tool parser from exactly
+        that function at load time, so this executes the same code the server
+        executes — the verdict is exact by construction for the pinned mlx-vlm
+        (0.6.13). A template matching no parser entry means the server streams
+        the model's tool-call output as raw text (#295), hence wire False.
+
+        Tokenizer-level only (``_load_capability_tokenizer``: local files, no
+        weights, no server). Any failure to load mlx-vlm or the tokenizer
+        returns ``None`` (unverified) rather than a wrong verdict.
+        """
+        try:
+            from mlx_vlm.tool_parsers import _infer_tool_parser
+        except Exception:
+            logging.warning(
+                f"[MLX_Engine] wire tool detection unavailable (mlx_vlm import failed) "
+                f"for {llm_local_path}"
+            )
+            return None
+        try:
+            tokenizer = cls._load_capability_tokenizer(llm_local_path)
+        except Exception:
+            logging.warning(
+                f"[MLX_Engine] wire tool detection: could not load a tokenizer "
+                f"for {llm_local_path}"
+            )
+            return None
+        try:
+            template = getattr(tokenizer, "chat_template", None)
+            parser = _infer_tool_parser(template)
+        except Exception:
+            logging.warning(
+                f"[MLX_Engine] wire tool detection: parser inference failed "
+                f"for {llm_local_path}"
+            )
+            return None
+        if parser is None:
+            logging.info(
+                f"[MLX_Engine] wire tools NOT verified for {llm_local_path}: "
+                f"chat template matches no mlx-vlm tool parser"
+            )
+            return False
+        logging.info(
+            f"[MLX_Engine] wire tools verified for {llm_local_path}: "
+            f"mlx-vlm inferred parser {parser}"
+        )
+        return True
+
+    @classmethod
     def model_supports_vision(cls, llm_local_path: Union[str, Path]) -> Optional[bool]:
         """An MLX model is vision-capable iff its ``config.json`` declares vision.
 

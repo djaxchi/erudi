@@ -1282,6 +1282,62 @@ class Database_Seeder:
         logger.info(f"Model-size backfill: {corrected} local model(s) corrected from disk")
         return corrected
 
+    def backfill_wire_tools(self, db: Session) -> int:
+        """One-shot per model: verify the tool-call wire capability (#298).
+
+        Models downloaded before the ``supports_tools_wire`` column existed
+        carry NULL (unverified) and therefore route every KB turn systematic.
+        For every local (local==1) row still NULL whose artifact exists,
+        compute the verdict via the active engine (tokenizer-level, no model
+        load) and persist it. A None verdict (engine unavailable, unreadable
+        artifact) leaves the row NULL so a transient failure is retried on the
+        next boot instead of being pinned to False. Shared links (a KB
+        assistant and its base) are computed once. Defensive like
+        ``backfill_local_model_sizes``: any per-row error is swallowed so the
+        backfill never takes the app down.
+
+        Returns:
+            Number of rows whose wire capability was persisted.
+        """
+        from src.domains.llms.repository import detect_wire_tools
+
+        updated = 0
+        verdict_cache: Dict[str, Optional[bool]] = {}
+        try:
+            pending = (
+                db.query(Llm)
+                .filter(Llm.local == 1, Llm.supports_tools_wire.is_(None))
+                .all()
+            )
+        except Exception as e:
+            logger.warning(f"Wire-capability backfill skipped (query failed): {e}")
+            return 0
+
+        for llm in pending:
+            try:
+                link = llm.link
+                if not link or not Path(link).exists():
+                    continue
+                if link in verdict_cache:
+                    verdict = verdict_cache[link]
+                else:
+                    verdict = detect_wire_tools(link)
+                    verdict_cache[link] = verdict
+                if verdict is None:
+                    continue
+                llm.supports_tools_wire = verdict
+                updated += 1
+            except Exception as e:
+                logger.warning(
+                    f"Wire-capability backfill skipped for LLM {getattr(llm, 'id', '?')}: {e}"
+                )
+                continue
+
+        if updated:
+            db.commit()
+        logger.info(f"Wire-capability backfill: {updated} local model(s) verified")
+        return updated
+
     async def populate_startup_data(
         self,
         db: Optional[Session] = None
@@ -1449,6 +1505,28 @@ async def startup_populate_database() -> Dict[str, Any]:
     """
     seeder = Database_Seeder()
     return await seeder.populate_startup_data()
+
+
+def backfill_wire_tools_startup() -> int:
+    """Threadpool entrypoint for the post-ready wire-capability backfill (#298).
+
+    Verifying the wire capability loads a tokenizer per unverified model
+    (seconds each, GGUF especially), so it must NOT run inside the awaited
+    boot sequence — the lifespan schedules this AFTER the app is ready, in a
+    threadpool (same rationale as the post-ready catalog resync of #109).
+    Opens and closes its own session; swallows everything: NULL rows simply
+    keep routing systematic until a later boot verifies them.
+    """
+    db = None
+    try:
+        db = SessionLocal()
+        return Database_Seeder().backfill_wire_tools(db)
+    except Exception as e:
+        logger.warning(f"Wire-capability backfill failed: {e}")
+        return 0
+    finally:
+        if db is not None:
+            db.close()
 
 
 async def delete_all_data() -> None:

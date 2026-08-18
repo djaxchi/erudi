@@ -55,6 +55,7 @@ Note:
     application crashes or is forcefully terminated.
 """
 
+import asyncio
 import time
 
 from fastapi import FastAPI
@@ -64,7 +65,7 @@ from starlette.datastructures import MutableHeaders
 from contextlib import asynccontextmanager
 from src.database.core import init_database
 from src.database.migrations import run_migrations
-from src.database.seed import startup_populate_database
+from src.database.seed import backfill_wire_tools_startup, startup_populate_database
 from src.launcher.postgres_runtime import start_postgres, stop_postgres
 from src.launcher.db_watchdog import start_watchdog, stop_watchdog
 from src.ingestion.vector_store import close_kb_store, init_kb_store
@@ -398,8 +399,20 @@ async def lifespan(app: FastAPI):
     # state on /health (#162). Started AFTER init_database bound the live engine
     # (the disconnect hook attaches to it) and the checkpointer is on app.state.
     start_watchdog(app)
+    # Post-ready backfill (#298): verify the tool-call wire capability of
+    # models downloaded before the supports_tools_wire column existed. Each
+    # verification loads a tokenizer (seconds per model), so it runs AFTER the
+    # ready handshake in a threadpool — never inside the awaited boot sequence
+    # (same non-blocking rationale as the post-ready resync of #109). Until a
+    # row is verified it stays NULL and its KB turns route systematic.
+    app.state.wire_backfill_task = asyncio.create_task(
+        run_in_threadpool(backfill_wire_tools_startup)
+    )
     yield
     logger.info("==== Shutting down... ====")
+    wire_backfill_task = getattr(app.state, "wire_backfill_task", None)
+    if wire_backfill_task is not None and not wire_backfill_task.done():
+        wire_backfill_task.cancel()
     await stop_watchdog()
     config.LLM_Engine.stop_cleanup_task()
     config.LLM_Engine.cleanup()

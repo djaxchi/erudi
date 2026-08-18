@@ -461,6 +461,26 @@ def detect_supports_tools(local_path: Optional[str]) -> Optional[bool]:
         return None
 
 
+def detect_wire_tools(local_path: Optional[str]) -> Optional[bool]:
+    """Verified tool-call wire capability via the active engine (#298).
+
+    Whether the engine's local server actually parses this model's tool-call
+    output into a structured call (per-model wire property, #273 matrix) —
+    not just whether the template declares tools (``detect_supports_tools``).
+    Tokenizer-level, no model load. Returns None (column stays unset -> the KB
+    routing stays systematic) when the engine or path is unavailable, or on
+    any failure, so detection never blocks download finalization or startup.
+    """
+    engine = config.LLM_Engine
+    if engine is None or not local_path:
+        return None
+    try:
+        return engine.compute_wire_tools(local_path)
+    except Exception:
+        logger.warning(f"wire tool-calling detection failed for {local_path}")
+        return None
+
+
 def detect_supports_vision(local_path: Optional[str]) -> Optional[bool]:
     """Static vision (image-input) capability via the active engine (#133).
 

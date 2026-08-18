@@ -188,7 +188,11 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
     """Background body of a download: flip the job to running, run the download
     (which spawns its own progress updater), and mark failed on error. Module-level
     so both the by-id and by-link download routes share one implementation."""
-    from src.domains.llms.repository import detect_supports_tools, detect_supports_vision
+    from src.domains.llms.repository import (
+        detect_supports_tools,
+        detect_supports_vision,
+        detect_wire_tools,
+    )
     session = SessionLocal()
     try:
         job_obj = session.query(DownloadJobModel).get(job_id)
@@ -212,6 +216,9 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
             llm_obj = session.query(Llm).get(model_id)
             if llm_obj:
                 llm_obj.supports_tools = detect_supports_tools(llm_obj.link)
+                # Verified wire capability (#298): does the engine's server
+                # actually parse this model's tool calls? Gates agentic KB.
+                llm_obj.supports_tools_wire = detect_wire_tools(llm_obj.link)
                 llm_obj.supports_vision = detect_supports_vision(llm_obj.link)
                 # Rewrite the displayed size from the REAL on-disk footprint (#220):
                 # the catalog value was a whole-repo/estimate guess, never measured.

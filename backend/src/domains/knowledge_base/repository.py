@@ -47,6 +47,7 @@ COPIED_FIELDS = (
     "param_size",
     "quantized",
     "supports_tools",
+    "supports_tools_wire",
     "model_metadata",
 )
 
