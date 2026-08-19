@@ -179,30 +179,11 @@ def test_compute_supports_tools_graceful_on_none_tokenizer():
     assert _NoneEngine.compute_supports_tools("/any/path") is False
 
 
-# ---------------- unit: local_files_only on the capability tokenizer load (#291) ----------------
-# Without local_files_only=True, AutoTokenizer.from_pretrained reaches out to the
-# Hub even though the artifact is already fully on disk, which can hang for
-# minutes on a slow/blocked connection and stall download finalization.
-
-
-@pytest.mark.unit
-def test_llama_cpp_capability_load_is_local_only(tmp_path, monkeypatch):
-    from src.engines.cuda_engine import CUDA_Engine
-
-    gguf_path = tmp_path / "model.Q4_K_M.gguf"
-    gguf_path.write_bytes(b"")
-    monkeypatch.setattr(CUDA_Engine, "_select_gguf", classmethod(lambda cls, p: gguf_path))
-
-    captured = {}
-
-    def fake_from_pretrained(*args, **kwargs):
-        captured.update(kwargs)
-        return object()
-
-    monkeypatch.setattr("transformers.AutoTokenizer.from_pretrained", fake_from_pretrained)
-
-    CUDA_Engine._load_capability_tokenizer(tmp_path)
-    assert captured.get("local_files_only") is True
+# ---------------- unit: local_files_only on the MLX capability load (#291) ----------------
+# The llama.cpp half of this pair is gone: that path no longer builds an
+# AutoTokenizer at all, it reads the template from the GGUF KV header (#313).
+# Its replacement guard lives in test_gguf_chat_template.py, which asserts the
+# probe path never imports transformers.
 
 
 @pytest.mark.unit
