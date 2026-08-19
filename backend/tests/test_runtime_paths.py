@@ -25,6 +25,7 @@ def _isolated_module_state(monkeypatch, tmp_path):
     monkeypatch.delenv("LOCALAPPDATA", raising=False)
     monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)
+    monkeypatch.delenv("ERUDI_DATA_ROOT", raising=False)
     yield
 
 
@@ -256,6 +257,65 @@ class TestEnsureMacosSymlink:
 
         assert packaged.is_symlink()
         assert packaged.resolve() == target.resolve()
+
+
+# =====================================================================
+# UNIT - explicit instance root (ERUDI_DATA_ROOT)
+# =====================================================================
+
+@pytest.mark.unit
+class TestDataRootOverride:
+    """ERUDI_DATA_ROOT points a whole instance (data + logs) at an explicit
+    root, so an isolated backend (tests, QA side-by-side runs) never touches
+    the default dev/prod directories or their log files."""
+
+    def test_dev_mode_honours_erudi_data_root(self, monkeypatch, tmp_path):
+        root = tmp_path / "backend"
+        root.mkdir()
+        instance = tmp_path / "instance"
+        monkeypatch.setenv("ERUDI_DATA_ROOT", str(instance))
+
+        paths = rp.initialize_runtime_paths("dev", root)
+
+        assert paths.mode == "dev"
+        assert paths.data_dir == instance.resolve() / "data"
+        assert paths.log_dir == instance.resolve() / "logs"
+        assert paths.data_dir.is_dir()
+        assert paths.log_dir.is_dir()
+        # The default dev layout must not have been created.
+        assert not (root / "data").exists()
+        assert not (root / "logs").exists()
+
+    def test_prod_mode_honours_override_and_copies_payload(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(rp.platform, "system", lambda: "Darwin")
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
+        root = tmp_path / "bundle" / "backend"
+        payload = root / "data"
+        payload.mkdir(parents=True)
+        (payload / "catalog.json").write_text("{}")
+        instance = tmp_path / "instance"
+        monkeypatch.setenv("ERUDI_DATA_ROOT", str(instance))
+
+        paths = rp.initialize_runtime_paths("prod", root, packaged_data_dir=payload)
+
+        assert paths.data_dir == instance.resolve() / "data"
+        assert paths.log_dir == instance.resolve() / "logs"
+        # Bundled payload still lands in the overridden data dir...
+        assert (paths.data_dir / "catalog.json").exists()
+        # ...but the bundle itself is never repointed at the override root.
+        assert not payload.is_symlink()
+        # And the default macOS prod location is untouched.
+        assert not (tmp_path / "home" / "Library").exists()
+
+    def test_empty_override_keeps_default_layout(self, monkeypatch, tmp_path):
+        root = tmp_path / "backend"
+        root.mkdir()
+        monkeypatch.setenv("ERUDI_DATA_ROOT", "")
+
+        paths = rp.initialize_runtime_paths("dev", root)
+
+        assert paths.data_dir == root.resolve() / "data"
+        assert paths.log_dir == root.resolve() / "logs"
 
 
 # =====================================================================

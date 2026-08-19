@@ -5,6 +5,12 @@ should read and write its runtime artifacts (embedded PostgreSQL data dir,
 log files, cached models). The launcher initializes this state before
 FastAPI imports occur, but a development fallback keeps local `uvicorn`
 workflows working without the launcher.
+
+``ERUDI_DATA_ROOT`` (optional env var) points the whole instance -- data dir
+AND log dir -- at an explicit root instead of the default dev/prod layout.
+It exists for isolated side-by-side instances (integration tests booting a
+throwaway backend, QA runs next to a live app) that must not share the
+default embedded-Postgres cluster or append to the same log files.
 """
 
 from __future__ import annotations
@@ -98,12 +104,36 @@ def _compute_runtime_paths(mode: str, backend_root: Path, packaged_data_dir: Opt
     backend_root = backend_root.resolve()
     packaged_data_dir = (packaged_data_dir or backend_root / "data").resolve()
 
+    override = _data_root_override()
+    if override is not None:
+        data_dir = override / "data"
+        log_dir = override / "logs"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        log_dir.mkdir(parents=True, exist_ok=True)
+        if normalized_mode == "prod":
+            # A packaged build pointed at an explicit root still needs its
+            # bundled payload (catalog snapshot, seed data) -- but never the
+            # macOS symlink swap: the bundle must keep pointing at the default
+            # location, not at a possibly-temporary override root.
+            _copy_packaged_payload(packaged_data_dir, data_dir)
+        return RuntimePaths(
+            mode=normalized_mode, backend_root=backend_root, data_dir=data_dir, log_dir=log_dir
+        )
+
     if normalized_mode == "dev":
         data_dir, log_dir = _setup_dev_paths(backend_root)
     else:
         data_dir, log_dir = _setup_prod_paths(packaged_data_dir)
 
     return RuntimePaths(mode=normalized_mode, backend_root=backend_root, data_dir=data_dir, log_dir=log_dir)
+
+
+def _data_root_override() -> Optional[Path]:
+    """Explicit instance root from ``ERUDI_DATA_ROOT`` (empty/unset -> None)."""
+    raw = os.getenv("ERUDI_DATA_ROOT")
+    if not raw:
+        return None
+    return Path(raw).expanduser().resolve()
 
 
 def _setup_dev_paths(backend_root: Path) -> tuple[Path, Path]:
