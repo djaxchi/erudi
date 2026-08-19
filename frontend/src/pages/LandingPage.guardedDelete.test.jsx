@@ -142,6 +142,63 @@ describe("LandingPage guarded base delete (#225)", () => {
     expect(url).not.toContain("orphan_dependents");
   });
 
+  it("never guards a KB assistant delete, even when a sibling shares its link (#317)", async () => {
+    // QA real-data shape: base 5 owns the weights; assistants 9 and 11 are
+    // copies of its link. Deleting an assistant is a direct 200 that frees
+    // nothing, so it must get the PLAIN confirm — no dependents pre-check, no
+    // guard dialog — regardless of what /dependents would answer for it.
+    const assistant9 = {
+      id: 9,
+      name: "Nimbus Assistant",
+      link: "/models/5",
+      model_metadata: "size: 4.2 GB",
+      weights_available: true,
+      kb_id: 3,
+      is_attached_to_kb: true,
+    };
+    const assistant11 = {
+      id: 11,
+      name: "Nimbus Assistant 2",
+      link: "/models/5",
+      model_metadata: "size: 4.2 GB",
+      weights_available: true,
+      kb_id: 4,
+      is_attached_to_kb: true,
+    };
+    tracedFetchMock.mockImplementation(async (url, opts = {}) => {
+      const u = String(url);
+      if (opts.method === "DELETE") return jsonResponse({});
+      // Worst case (pre-#317 backend): /dependents on an assistant reports
+      // its sibling. The client must not even ask.
+      if (u.endsWith("/llms/11/dependents"))
+        return jsonResponse({
+          assistants: [{ id: 9, name: "Nimbus Assistant", kb_id: 3, conversation_count: 1 }],
+          own_conversation_count: 0,
+          total_conversation_count: 1,
+        });
+      if (u.endsWith("/llms/local"))
+        return jsonResponse([localModels[0], assistant9, assistant11]);
+      return jsonResponse([]);
+    });
+
+    render(<LandingPage />);
+    await screen.findByText("Nimbus Assistant 2");
+    fireEvent.click(screen.getAllByTitle("Delete model")[2]); // assistant 11's card
+
+    expect(await screen.findByText(/Are you sure you want to delete the model/)).toBeTruthy();
+    expect(screen.queryByText("Delete anyway")).toBeNull();
+    const dependentsCalls = tracedFetchMock.mock.calls.filter(([u]) =>
+      String(u).includes("/dependents")
+    );
+    expect(dependentsCalls).toHaveLength(0);
+
+    fireEvent.click(screen.getByText("Delete"));
+    await waitFor(() => expect(deleteCalls()).toHaveLength(1));
+    const url = String(deleteCalls()[0][0]);
+    expect(url.endsWith("/llms/11")).toBe(true);
+    expect(url).not.toContain("orphan_dependents");
+  });
+
   it("falls back to the 409 payload when the pre-check fails (safety net)", async () => {
     tracedFetchMock.mockImplementation(
       makeRouteFetch({

@@ -312,19 +312,24 @@ export default function LandingPage() {
   // Guarded base delete (#225): pre-check the dependents endpoint so the
   // confirmation dialog can list what the deletion orphans. Best-effort — if
   // the pre-check fails the plain dialog opens and the DELETE's 409 below
-  // remains the safety net.
+  // remains the safety net. The guard is keyed on actual dependency, never on
+  // the shared weights link (#317): deleting a KB assistant is a direct 200
+  // that frees nothing (the weights belong to its base), so assistants skip
+  // the pre-check entirely and always get the plain confirm.
   const handleDelete = async (model) => {
     let dependents = null;
-    try {
-      const response = await tracedFetch(`${API_BASE_URL}/llms/${model.id}/dependents`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data && Array.isArray(data.assistants) && data.assistants.length > 0) {
-          dependents = data;
+    if (!isKbAssistant(model)) {
+      try {
+        const response = await tracedFetch(`${API_BASE_URL}/llms/${model.id}/dependents`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Array.isArray(data.assistants) && data.assistants.length > 0) {
+            dependents = data;
+          }
         }
+      } catch (error) {
+        log.warn("Dependents pre-check failed, falling back to the plain dialog:", error);
       }
-    } catch (error) {
-      log.warn("Dependents pre-check failed, falling back to the plain dialog:", error);
     }
     setDeleteConfirmation({ show: true, model, dependents });
   };

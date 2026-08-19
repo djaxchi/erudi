@@ -431,6 +431,11 @@ async def get_llm_dependents(
     list with zero-or-more conversation counts. The frontend calls this before a
     base-model delete to render the choice dialog.
 
+    A KB assistant NEVER has dependents (#317): deleting it is a direct 200
+    that keeps the shared weights (they belong to the base), so sibling
+    assistants copying the same link are not reported — this endpoint answers
+    with the exact truth the guarded DELETE's 409 uses.
+
     Args:
         llm_id: ID of the (base) model to inspect.
         llm_repo: Injected LLM repository.
@@ -444,6 +449,13 @@ async def get_llm_dependents(
     llm = llm_repo.get_by_id(llm_id)
     if not llm:
         raise ModelNotFoundException(f"LLM {llm_id}")
+    if llm.is_attached_to_kb:
+        own = llm_repo.count_conversations(llm.id)
+        return {
+            "assistants": [],
+            "own_conversation_count": own,
+            "total_conversation_count": own,
+        }
     return _dependents_payload(llm_repo, llm)
 
 
