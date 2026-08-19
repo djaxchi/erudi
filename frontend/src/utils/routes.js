@@ -4,3 +4,6 @@
 
 /** Path to a single conversation by id. */
 export const conversationPath = (id) => `/erudi/conversations/${id}`;
+
+/** Path to the app settings page. */
+export const SETTINGS_PATH = "/erudi/settings";

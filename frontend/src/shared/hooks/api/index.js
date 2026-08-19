@@ -194,3 +194,47 @@ export function useBackendHealth() {
 
   return { isHealthy, loading, error };
 }
+
+/**
+ * Custom hook for the user-settings singleton (GET/PUT /user_settings/).
+ * Carries the global web-search default; new conversations inherit it.
+ * @returns {Object} { settings, loading, error, updateSettings }
+ */
+export function useUserSettings() {
+  const [settings, setSettings] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        setLoading(true);
+        const data = await apiClient.get("/user_settings/");
+        setSettings(data);
+        setError(null);
+      } catch (err) {
+        log.error("Failed to fetch user settings", err);
+        setError(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSettings();
+  }, []);
+
+  const updateSettings = useCallback(async (payload) => {
+    try {
+      const data = await apiClient.put("/user_settings/", payload);
+      setSettings(data);
+      setError(null);
+      return data;
+    } catch (err) {
+      log.error("Failed to update user settings", err);
+      setError(err);
+      throw err;
+    }
+  }, []);
+
+  return { settings, loading, error, updateSettings };
+}

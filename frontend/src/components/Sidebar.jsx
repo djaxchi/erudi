@@ -8,9 +8,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Bug,
+  Settings,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
+import { SETTINGS_PATH } from "../utils/routes";
 
 /**
  * Sidebar with icons that highlight based on the current route.
@@ -34,6 +36,7 @@ export default function Sidebar({
     location.pathname.startsWith("/erudi/conversations");
   const isArenaActive = location.pathname === "/erudi/arena";
   const isKnowledgeBaseActive = location.pathname === "/erudi/attach_knowledge_base";
+  const isSettingsActive = location.pathname === SETTINGS_PATH;
 
   return (
     <div
@@ -149,8 +152,21 @@ export default function Sidebar({
         />
       </Link>
 
-      {/* Bug Report Button - Bottom of sidebar */}
+      {/* Settings + Bug Report - Bottom of sidebar */}
       <div className="flex-1" />
+      <Link
+        to={SETTINGS_PATH}
+        aria-label="Settings"
+        className={`w-full flex justify-center items-center py-5 border-l-4 ${
+          isSettingsActive ? "border-green-500" : "border-transparent"
+        }`}
+      >
+        <Settings
+          className={`w-5 h-5 transition-colors duration-200 ${
+            isSettingsActive ? "text-green-400" : "text-gray-400 hover:text-green-400"
+          }`}
+        />
+      </Link>
       {!isDownloading && (
         <button
           aria-label="Report a bug"
