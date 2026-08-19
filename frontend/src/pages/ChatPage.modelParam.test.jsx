@@ -18,6 +18,12 @@ vi.mock("../services/api/client", () => ({
   tracedFetch: tracedFetchMock,
 }));
 
+// ChatPage reads completionCount from the download context (#303); this suite
+// exercises only the ?model= preselection, so an inert context is enough.
+vi.mock("../contexts/DownloadModalContext", () => ({
+  useDownloadModal: () => ({ open: vi.fn(), completionCount: 0 }),
+}));
+
 // Stub the heavy children; the model selector itself stays real.
 vi.mock("../components/Sidebar", () => ({ default: () => null }));
 vi.mock("../components/ChatCollapsibleSection", () => ({ default: () => null }));

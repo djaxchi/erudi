@@ -50,9 +50,11 @@ const rendererRules = [
     type: "asset/resource",
   },
   {
-    // Self-hosted fonts (Montserrat via @fontsource). Inlined as data URIs so they
-    // load offline and over file:// in the packaged app, with no extra fetch.
-    test: /\.woff2?$/i,
+    // Self-hosted fonts (Montserrat via @fontsource, KaTeX math fonts). Inlined
+    // as data URIs so they load offline and over file:// in the packaged app,
+    // with no extra fetch. KaTeX's CSS also references .ttf fallbacks, which
+    // css-loader resolves too — hence the ttf extension.
+    test: /\.(woff2?|ttf)$/i,
     type: "asset/inline",
   },
 ];

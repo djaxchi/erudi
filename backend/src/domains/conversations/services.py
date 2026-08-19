@@ -277,6 +277,28 @@ class ConversationService:
 
         assistant_response = ""
         trace: list = []
+        persisted = False
+
+        async def _persist_assistant_once() -> None:
+            # The ``done`` event is the client's refetch signal (#303): the
+            # assistant row must be committed before that event goes out, or
+            # the refetch races the insert and returns rows without the answer.
+            # Idempotent so the finally-block safety net (client disconnect
+            # mid-stream) never double-writes.
+            nonlocal persisted
+            if persisted:
+                return
+            persisted = True
+            persist_trace = None
+            if trace and ERROR_SENTINEL not in assistant_response:
+                persist_trace = _cap_trace(trace)
+            await run_in_threadpool(
+                self._persist_assistant_message,
+                conversation_id,
+                assistant_response,
+                persist_trace,
+            )
+
         try:
             user_message = self._build_user_message(payload.question, payload.images)
             await run_in_threadpool(
@@ -342,12 +364,14 @@ class ConversationService:
                     # thinking / tool_call / tool_result -> wire AND replay trace.
                     trace.append(event)
                     yield _ndjson(event)
+            await _persist_assistant_once()
             yield _ndjson({"t": "done"})
         except Exception:
             logger.exception("Query streaming failed")
             if not assistant_response:
                 assistant_response = ERROR_MESSAGE
                 yield _ndjson({"t": "error", "text": ERROR_MESSAGE})
+            await _persist_assistant_once()
             yield _ndjson({"t": "done"})
         finally:
             duration_ms = (time.perf_counter() - start_s) * 1000
@@ -357,17 +381,10 @@ class ConversationService:
                 f"response_chars={len(assistant_response)}, "
                 f"preview={truncate_for_log(assistant_response, 500)}"
             )
-            # Persist the trace only on a non-error turn (error turns unchanged,
-            # no trace) and only when there is non-answer activity to replay.
-            persist_trace = None
-            if trace and ERROR_SENTINEL not in assistant_response:
-                persist_trace = _cap_trace(trace)
-            await run_in_threadpool(
-                self._persist_assistant_message,
-                conversation_id,
-                assistant_response,
-                persist_trace,
-            )
+            # Safety net: a client that disconnects mid-stream closes the
+            # generator before either ``done`` path ran — persist here so the
+            # partial answer is never lost (no-op when done already persisted).
+            await _persist_assistant_once()
 
     async def generate_title_stream(
         self,
@@ -505,6 +522,8 @@ class ConversationService:
                 "no quotes; no emojis; no hashtags; no code; no trailing "
                 "punctuation; never answer the question; if empty/URL/noise => "
                 "output nothing.\n"
+                "Write the title in the same language as the user's message "
+                "(a French message gets a French title).\n"
                 f"User message: {question}\n"
                 "Do not answer the question, only create a relevant title. "
                 "Do NOT add quotes around the title.\n"
@@ -513,6 +532,7 @@ class ConversationService:
                 "google founding team members -> Google Founding Team\n"
                 "what's the capital of japan -> Japan Capital\n"
                 "female of the pig -> Pig Female Name\n"
+                "combien de pommes me reste-t-il -> Compte De Pommes\n"
             )
         system_prompt = (
             "You are a very-short-title generator. Return ONLY a concise "
@@ -520,12 +540,15 @@ class ConversationService:
             "no quotes, no hashtags, no emojis, no trailing filler words. "
             "Capitalize important words. The title shouldn't be a question.\n"
             "Do not answer the question, only create a relevant title.\n"
+            "Write the title in the same language as the user's message "
+            "(a French message gets a French title).\n"
             "If the message is empty or meaningless, return nothing.\n"
             "Examples (user question -> title):\n"
             "give me pizza recipe -> Pizza Recipe\n"
             "google founding team members -> Google Founding Team\n"
             "what's the capital of japan -> Japan Capital\n"
             "female of the pig -> Pig Female Name\n"
+            "combien de pommes me reste-t-il -> Compte De Pommes\n"
             "Format: just the title, nothing else."
         )
         user_prompt = f"Create a 2-to-4-word title for:\n{question}"
