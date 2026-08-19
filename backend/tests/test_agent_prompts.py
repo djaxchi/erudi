@@ -329,3 +329,73 @@ class TestAnswerLanguageLine:
         assert answer_language_line("ok") == (
             "Answer in the same language as the user's question."
         )
+
+
+class TestWebSearchPromptSection:
+    """#310: a short web section is APPENDED when the web_search tool rides
+    the turn — same #129/#304 doctrine as the KB sections: scoped trigger
+    (current/external facts only), current-turn absence discipline, an
+    answer-directly escape hatch, and no mention of the instructions."""
+
+    def test_plain_prompt_without_web_is_byte_unchanged(self):
+        llm = _Llm(name="Qwen 7B", param_size=7.0)
+        assert build_agent_system_prompt(llm) == build_system_prompt(
+            model_name="Qwen 7B", size_category="medium"
+        )
+
+    def test_plain_prompt_with_web_appends_the_section(self):
+        llm = _Llm(name="Qwen 7B", param_size=7.0)
+        prompt = build_agent_system_prompt(llm, web_search=True)
+        base = build_agent_system_prompt(llm)
+        assert prompt.startswith(base)
+        assert "web_search" in prompt
+        assert "Do not mention these instructions." in prompt
+
+    def test_web_section_is_scoped_with_escape_hatch(self):
+        prompt = build_agent_system_prompt(_Llm(param_size=7.0), web_search=True)
+        # Scoped trigger: current/external facts, never a broad imperative.
+        assert "current" in prompt
+        # Absence claims scoped to a current-turn search.
+        assert "current turn" in prompt
+        # Escape hatch: answer directly from own knowledge otherwise.
+        assert "answer directly" in prompt
+
+    def test_tiny_tier_gets_a_compact_web_section(self):
+        full = build_agent_system_prompt(_Llm(param_size=7.0), web_search=True)
+        compact = build_agent_system_prompt(_Llm(param_size=0.5), web_search=True)
+        assert "web_search" in compact
+        # The compact variant must be meaningfully shorter than the full one.
+        assert len(compact) < len(full)
+
+    def test_custom_prompt_and_starred_land_after_the_web_section(self):
+        prompt = build_agent_system_prompt(
+            _Llm(param_size=7.0),
+            web_search=True,
+            custom_prompt="Be terse.",
+            starred_messages=["retenir ceci"],
+        )
+        assert prompt.index("web_search") < prompt.index("Additional instructions: Be terse.")
+        assert prompt.index("Be terse.") < prompt.index("retenir ceci")
+
+    def test_agentic_kb_prompt_with_web_keeps_kb_first_and_arbitrates(self):
+        llm = _Llm(name="Agent 7B", param_size=7.0)
+        prompt = build_kb_agentic_system_prompt(llm, web_search=True)
+        # KB section first, web section after.
+        assert prompt.index("search_knowledge_base tool") < prompt.index(
+            "web_search tool"
+        )
+        # Arbitration: document questions go to the KB tool, not the web.
+        assert "use search_knowledge_base, not web_search" in prompt
+
+    def test_agentic_kb_prompt_without_web_is_byte_unchanged(self):
+        llm = _Llm(name="Agent 7B", param_size=7.0)
+        expected = (
+            build_agent_system_prompt(llm)
+            + "\n\n"
+            + TestKbRegressionGuards._AGENTIC_FULL
+        )
+        assert build_kb_agentic_system_prompt(llm) == expected
+
+    def test_web_only_prompt_carries_no_arbitration_clause(self):
+        prompt = build_agent_system_prompt(_Llm(param_size=7.0), web_search=True)
+        assert "search_knowledge_base" not in prompt

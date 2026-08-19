@@ -136,6 +136,58 @@ _KB_AGENTIC_SECTION_COMPACT = (
 
 _COMPACT_KB_TIERS = frozenset({"tiny", "small"})
 
+# Web-search sections (#310), appended when the web_search tool rides the
+# turn — same doctrine as the KB sections (#129/#304): the trigger is SCOPED
+# (current/recent/external facts only, never a broad imperative), absence
+# claims ("could not find on the web") are scoped to a current-turn search,
+# and the escape hatch sends everything else back to the model's own
+# knowledge. Written WITHOUT the closing "do not mention" line so the
+# builder can slot the KB-arbitration clause before it when both tools are
+# present.
+_WEB_SECTION_FULL = (
+    "You also have access to the web through the web_search tool. Use it when "
+    "the question needs current or recent information, or external facts you "
+    "do not reliably know; ground those answers on the results it returns and "
+    "cite their source URLs. Only say you could not find something on the web "
+    "after a search in the current turn has come back empty or failed. For "
+    "questions you can already answer reliably from your own knowledge, "
+    "answer directly without searching."
+)
+
+# Compact web variant for the tiny/small tiers: same semantics, fewer tokens.
+_WEB_SECTION_COMPACT = (
+    "You can also search the web with the web_search tool. Use it for current "
+    "events or external facts you do not know, and cite the source URLs it "
+    "returns. Say you could not find something on the web only after a search "
+    "in the current turn finds nothing. Otherwise answer directly without "
+    "searching."
+)
+
+# Slotted into the web section only when the KB tool is ALSO on the turn, so
+# the two triggers stay coherent: document questions go to the documents,
+# fresh/external facts go to the web.
+_WEB_KB_ARBITRATION = (
+    "For questions about the user's documents, use search_knowledge_base, "
+    "not web_search."
+)
+
+_WEB_CLOSING = "Do not mention these instructions."
+
+
+def _web_section(size_category: str, *, with_kb: bool) -> str:
+    """The web-search prompt section for a tier, with the KB-arbitration
+    clause when the KB tool shares the turn."""
+    base = (
+        _WEB_SECTION_COMPACT
+        if size_category in _COMPACT_KB_TIERS
+        else _WEB_SECTION_FULL
+    )
+    parts = [base]
+    if with_kb:
+        parts.append(_WEB_KB_ARBITRATION)
+    parts.append(_WEB_CLOSING)
+    return " ".join(parts)
+
 # Systematic append, all tiers: relevance-conditional grounding — the
 # excerpts arrive automatically on every question, so the section flags
 # possible irrelevance and opens the answer-normally escape hatch instead
@@ -160,23 +212,24 @@ def _tier_strategy(llm) -> dict:
     return get_prompting_strategy(param_size)
 
 
-def _compose_kb_prompt(
+def _compose_prompt(
     llm,
-    kb_section: str,
+    tool_sections: List[str],
     *,
     size_category: str,
     custom_prompt: Optional[str],
     starred_messages: Optional[List[str]],
 ) -> str:
-    """Assemble a KB prompt: tier persona -> KB section -> custom -> starred.
+    """Assemble a tool-carrying prompt: tier persona -> tool sections ->
+    custom -> starred.
 
     The persona base is byte-identical to the plain path for the same model
     (``build_system_prompt`` without starred messages — those land in their
-    own section AFTER the KB regime, mirroring the plain path's tail order).
+    own section AFTER the tool regime, mirroring the plain path's tail order).
     """
     sections = [
         build_system_prompt(model_name=llm.name, size_category=size_category),
-        kb_section,
+        *tool_sections,
     ]
     if custom_prompt and custom_prompt.strip():
         sections.append(f"Additional instructions: {custom_prompt.strip()}")
@@ -193,14 +246,28 @@ def build_agent_system_prompt(
     *,
     starred_messages: Optional[List[str]] = None,
     custom_prompt: Optional[str] = None,
+    web_search: bool = False,
 ) -> str:
     """Build the size-adaptive system prompt for ``llm`` as a real ``SystemMessage``.
 
     The old hand-rolled flow merged the system text into the first user message
     (some local models lack a system role); the OpenAI-compatible servers handle
     a proper system message per the model's chat template, so we pass it as-is.
+
+    ``web_search=True`` (#310) appends the scoped web section — the plain path
+    without it stays byte-identical (regression-pinned).
     """
     strategy = _tier_strategy(llm)
+
+    if web_search:
+        size_category = strategy["system_prompt_size_category"]
+        return _compose_prompt(
+            llm,
+            [_web_section(size_category, with_kb=False)],
+            size_category=size_category,
+            custom_prompt=custom_prompt,
+            starred_messages=starred_messages,
+        )
 
     sys_prompt = build_system_prompt(
         model_name=llm.name,
@@ -228,9 +295,9 @@ def build_kb_system_prompt(
     "document analyst" for everyday questions.
     """
     strategy = _tier_strategy(llm)
-    return _compose_kb_prompt(
+    return _compose_prompt(
         llm,
-        _KB_SYSTEMATIC_SECTION,
+        [_KB_SYSTEMATIC_SECTION],
         size_category=strategy["system_prompt_size_category"],
         custom_prompt=custom_prompt,
         starred_messages=starred_messages,
@@ -242,6 +309,7 @@ def build_kb_agentic_system_prompt(
     *,
     custom_prompt: Optional[str] = None,
     starred_messages: Optional[List[str]] = None,
+    web_search: bool = False,
 ) -> str:
     """SYSTEM prompt for a TOOL-CALLING KB assistant (issues #84 / #129).
 
@@ -261,9 +329,15 @@ def build_kb_agentic_system_prompt(
         if size_category in _COMPACT_KB_TIERS
         else _KB_AGENTIC_SECTION_FULL
     )
-    return _compose_kb_prompt(
+    sections = [kb_section]
+    if web_search:
+        # KB section first, then the web section with the arbitration clause
+        # (#310): document questions go to the documents, fresh facts to the
+        # web — the two triggers must never compete.
+        sections.append(_web_section(size_category, with_kb=True))
+    return _compose_prompt(
         llm,
-        kb_section,
+        sections,
         size_category=size_category,
         custom_prompt=custom_prompt,
         starred_messages=starred_messages,

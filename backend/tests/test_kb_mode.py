@@ -223,3 +223,125 @@ class TestKbAgenticFlagParsing:
     def test_empty_and_garbage_fall_back_to_per_model(self):
         for raw in ("", "  ", "yes", "on", "2"):
             assert parse_kb_agentic_flag(raw) is None, raw
+
+
+class TestWebSearchGate:
+    """#310: the web_search tool joins the tools list iff the conversation's
+    toggle is on AND the model is wire-capable (supports_tools AND
+    supports_tools_wire is True — the SAME gate as agentic KB, #301). It
+    applies on plain turns (plain+web becomes a tool turn) and on agentic-KB
+    turns (both tools). Systematic-KB turns stay zero-tool: a non-wire model
+    cannot execute tools, toggle or not."""
+
+    def test_plain_toggle_on_wire_capable_gets_the_tool(self):
+        from src.agents.tools import web_search
+
+        plan = plan_turn(
+            _llm(supports_tools=True, supports_tools_wire=True),
+            question="latest news?", retrieve=lambda: [],
+            web_search_enabled=True,
+        )
+        assert plan.tools == [web_search]
+        assert plan.context is not None
+        assert plan.context.kb_id is None
+        assert plan.context.web_max_results == 5
+        assert plan.context.web_token_budget == 1000  # medium tier budget
+        assert "web_search" in plan.system_prompt
+
+    def test_plain_toggle_off_stays_zero_tool(self):
+        plan = plan_turn(
+            _llm(supports_tools=True, supports_tools_wire=True),
+            question="hi", retrieve=lambda: [],
+            web_search_enabled=False,
+        )
+        assert plan.tools == [] and plan.context is None
+        assert "web_search" not in plan.system_prompt
+
+    @pytest.mark.parametrize(
+        "tools,wire", [(True, None), (True, False), (False, True), (None, None)]
+    )
+    def test_plain_toggle_on_not_wire_capable_stays_zero_tool(self, tools, wire):
+        plan = plan_turn(
+            _llm(supports_tools=tools, supports_tools_wire=wire),
+            question="hi", retrieve=lambda: [],
+            web_search_enabled=True,
+        )
+        assert plan.tools == [] and plan.context is None
+        assert "web_search" not in plan.system_prompt
+
+    def test_agentic_kb_toggle_on_carries_both_tools(self):
+        from src.agents.tools import web_search
+
+        plan = plan_turn(
+            _llm(
+                is_attached_to_kb=True, kb_id=5,
+                supports_tools=True, supports_tools_wire=True,
+            ),
+            question="q", retrieve=_must_not_retrieve,
+            web_search_enabled=True,
+        )
+        assert plan.tools == [calculator, search_knowledge_base, web_search]
+        assert plan.context.kb_id == 5 and plan.context.kb_token_budget == 1000
+        assert plan.context.web_token_budget == 1000
+        assert "search_knowledge_base" in plan.system_prompt
+        assert "web_search" in plan.system_prompt
+
+    def test_agentic_kb_toggle_off_keeps_kb_tools_only(self):
+        plan = plan_turn(
+            _llm(
+                is_attached_to_kb=True, kb_id=5,
+                supports_tools=True, supports_tools_wire=True,
+            ),
+            question="q", retrieve=_must_not_retrieve,
+            web_search_enabled=False,
+        )
+        assert plan.tools == [calculator, search_knowledge_base]
+        assert "web_search" not in plan.system_prompt
+
+    def test_systematic_kb_stays_zero_tool_even_with_toggle_on(self):
+        # Non-wire model with a KB: systematic injection; the toggle cannot
+        # hand tools to a model that cannot execute them.
+        excerpts = [KbExcerpt(source_file="d.pdf", text="x")]
+        plan = plan_turn(
+            _llm(is_attached_to_kb=True, kb_id=5, supports_tools=True),
+            question="q", retrieve=lambda: excerpts,
+            web_search_enabled=True,
+        )
+        assert plan.tools == []
+        assert plan.kb_context_block is not None
+        assert "web_search" not in plan.system_prompt
+
+    def test_web_budget_follows_the_size_tier(self):
+        from src.agents.tools import web_search
+
+        plan = plan_turn(
+            _llm(param_size=0.5, supports_tools=True, supports_tools_wire=True),
+            question="q", retrieve=lambda: [],
+            web_search_enabled=True,
+        )
+        assert plan.tools == [web_search]
+        assert plan.context.web_token_budget == 400  # tiny tier budget
+
+    def test_decision_is_logged(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="erudi"):
+            plan_turn(
+                _llm(supports_tools=True, supports_tools_wire=True),
+                question="q", retrieve=lambda: [],
+                web_search_enabled=True,
+            )
+        joined = " ".join(r.message for r in caplog.records)
+        assert "web_search" in joined and "decided_by" in joined
+
+    def test_unavailable_decision_is_logged(self, caplog):
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="erudi"):
+            plan_turn(
+                _llm(supports_tools=True, supports_tools_wire=None),
+                question="q", retrieve=lambda: [],
+                web_search_enabled=True,
+            )
+        joined = " ".join(r.message for r in caplog.records)
+        assert "web_search" in joined and "unavailable" in joined

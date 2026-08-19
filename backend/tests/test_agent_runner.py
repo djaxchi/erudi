@@ -924,7 +924,7 @@ async def test_kb_tool_returns_not_found_message_on_empty_pool(monkeypatch):
 
 def test_build_middleware_includes_kb_tool_strip():
     built = AgentRunner()._build_middleware(ToolableFakeChatModel(messages=iter([])))
-    assert any(type(m).__name__ == "_StripStaleKbToolMessages" for m in built)
+    assert any(type(m).__name__ == "_StripStaleToolResults" for m in built)
 
 
 async def test_stale_kb_tool_results_placeholdered_on_followup(monkeypatch):

@@ -221,25 +221,34 @@ class _FoldSystemIntoUserMiddleware(AgentMiddleware):
         return await handler(self._fold(request))
 
 
-class _StripStaleKbToolMessages(AgentMiddleware):
-    """Placeholder the ``search_knowledge_base`` results of PAST turns.
+class _StripStaleToolResults(AgentMiddleware):
+    """Placeholder PAST turns' bulky tool results (KB search, web search).
 
-    The checkpointer persists every KB ToolMessage, so without this each
-    follow-up would re-send every past turn's (bulky) excerpts and re-introduce
-    the multi-turn context pollution the request-time design of issue #81 had
-    eliminated. The CURRENT turn's KB result stays intact (the model just
-    fetched it and must read it); only past ones shrink to a short marker. We
+    The checkpointer persists every ToolMessage, so without this each
+    follow-up would re-send every past turn's (bulky) excerpts/snippets and
+    re-introduce the multi-turn context pollution the request-time design of
+    issue #81 had eliminated. The CURRENT turn's results stay intact (the
+    model just fetched them and must read them); only past ones shrink to a
+    short PER-TOOL directive marker telling the model to search again. We
     rewrite content only, never dropping the message, so the
     ``AIMessage(tool_calls) -> ToolMessage`` pairing the chat template requires
     stays valid. The checkpointer keeps the full result, so the UI is
     unaffected — symmetric to ``_StripStaleImagesMiddleware`` for images.
+    Name-keyed (#310): each stripped tool carries its own marker; tools not
+    listed here (e.g. the tiny calculator results) pass through untouched.
     """
 
-    _MARKER = (
-        "[knowledge base results from an earlier turn omitted - call "
-        "search_knowledge_base again if this turn needs facts from the "
-        "documents]"
-    )
+    _MARKERS = {
+        "search_knowledge_base": (
+            "[knowledge base results from an earlier turn omitted - call "
+            "search_knowledge_base again if this turn needs facts from the "
+            "documents]"
+        ),
+        "web_search": (
+            "[web search results from an earlier turn omitted - call "
+            "web_search again if this turn needs fresh web facts]"
+        ),
+    }
 
     def _strip(self, request):
         messages = list(request.messages)
@@ -251,8 +260,9 @@ class _StripStaleKbToolMessages(AgentMiddleware):
         for i, m in enumerate(messages):
             if i >= keep:
                 continue
-            if m.type == "tool" and getattr(m, "name", None) == "search_knowledge_base":
-                messages[i] = m.model_copy(update={"content": self._MARKER})
+            marker = self._MARKERS.get(getattr(m, "name", None))
+            if m.type == "tool" and marker is not None:
+                messages[i] = m.model_copy(update={"content": marker})
                 changed = True
         return request.override(messages=messages) if changed else request
 
