@@ -9,6 +9,7 @@ vi.mock("./pages/ChatPage", () => ({ default: () => <div>CHAT</div> }));
 vi.mock("./pages/ConversationPage", () => ({ default: () => <div>CONV</div> }));
 vi.mock("./pages/ArenaPage", () => ({ default: () => <div>ARENA</div> }));
 vi.mock("./pages/KnowledgeBasePage", () => ({ default: () => <div>KB</div> }));
+vi.mock("./pages/SettingsPage", () => ({ default: () => <div>SETTINGS</div> }));
 vi.mock("./components/UpdateBanner", () => ({ default: () => null }));
 vi.mock("./contexts/DownloadModalContext", () => ({
   DownloadModalProvider: ({ children }) => <>{children}</>,

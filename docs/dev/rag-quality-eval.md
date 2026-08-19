@@ -206,7 +206,18 @@ roadmap notes) — fictional so no world knowledge can substitute for retrieval.
 | W6 language | W1 asked in French | answer in French, grounded |
 | W7 returning topic | 3 turns, ONE conversation: doc-1 fact -> doc-2 fact (topic shift) -> ANOTHER doc-1 fact | turn 3 runs a FRESH search and grounds; an absence claim without a current-turn search is the #304 failure mode |
 | W8 multi-subject | ONE question spanning two facts in two different documents ("What is the X2's payload capacity, and how many remote days are allowed?") | BOTH facts grounded. (agentic) one or two searches covering both subjects. (systematic) the injected pool must cover both — single-query RRF favoring the salient subject is the #85 failure mode |
+| W9 web fresh-fact | web toggle ON, wire-capable model, NO KB; one question needing a current/external fact the model cannot reliably know ("what is the latest stable Python release?") | exactly one web_search call; answer grounded on the returned snippets and cites at least one source URL from the tool result |
+| W10 web offline | same setup as W9, machine offline (Wi-Fi off) | the tool is still exposed and called; the tool result is the honest text "Error during Web Search: no internet connection"; the model relays the failure without inventing a value; the turn completes (no hang, no error bubble) |
+| W11 web restraint | web toggle ON; a stable-knowledge question the model reliably knows ("what is the capital of France?") | zero web_search calls; direct answer — the #129 restraint doctrine applied to the web section |
+| W12 KB-vs-web arbitration | web toggle ON on a KB-attached agentic assistant; a document question (W1's) | the model calls search_knowledge_base, NOT web_search; answer grounded on the documents |
 
 W8 is the concrete guard for issue #85 (multi-subject retrieval coverage): the
 systematic path is where it bites (one query embedding, one fused pool, budget
 cut); the agentic path can self-correct by searching twice — verify it does.
+
+W9-W12 are the web-search cases (#310). They only apply to wire-capable models
+(`supports_tools AND supports_tools_wire`, the #301 gate): a non-wire model must
+never receive the tool, toggle or not. W10 pins the locked offline contract —
+the tool is always exposed and degrades to deterministic readable text, never a
+raised error or a hanging turn. W12 pins the arbitration clause appended to the
+web prompt section when both tools ride the same turn.

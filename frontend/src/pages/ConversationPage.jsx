@@ -76,6 +76,10 @@ export default function ConversationPage() {
     topP: 0.5,
     maxTokens: 1024,
   });
+  // Per-conversation web-search toggle (#310): hydrated from the conversation
+  // GET, persisted through a one-field PATCH the moment it is flipped (like
+  // the model picker) so the NEXT turn already honors it.
+  const [webSearch, setWebSearch] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [firstReplyPending, setFirstReplyPending] = useState(false);
   // A ref, not state: the scroll handler updates it on every scroll event, and
@@ -172,6 +176,21 @@ export default function ConversationPage() {
     });
     // // Optionally, refresh conversations state here
     // fetchMessagesAndConversations();
+  };
+
+  // #310: persist a web-search flip immediately (one-field PATCH, mirroring
+  // the model picker) with an optimistic local update.
+  const handleWebSearchChange = async (next) => {
+    setWebSearch(next);
+    try {
+      await tracedFetch(`${API_BASE_URL}/conversations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ web_search_enabled: next }),
+      });
+    } catch (error) {
+      log.error("Failed to save the web search toggle", error);
+    }
   };
 
   // Function to save conversation parameters
@@ -564,6 +583,7 @@ export default function ConversationPage() {
             topP: conversation.top_p,
             maxTokens: conversation.max_tokens,
           });
+          setWebSearch(Boolean(conversation.web_search_enabled));
           setCustomPrompt(conversation.custom_prompt || "");
 
           // Record the conversation's assigned model; the header picker's
@@ -791,6 +811,9 @@ export default function ConversationPage() {
             onModelChange={handleModelChange}
             pickerAttention={isModelOrphaned}
             pickerAttentionMessage="Please select a model"
+            showWebSearch
+            initialWebSearch={webSearch}
+            onWebSearchChange={handleWebSearchChange}
           />
         </div>
 

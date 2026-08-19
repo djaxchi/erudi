@@ -107,4 +107,21 @@ describe("Sidebar", () => {
     renderAt("/erudi/models");
     expect(screen.queryByLabelText("Report a bug")).toBeNull();
   });
+
+  it("renders the settings gear at the bottom, linking to the settings page", () => {
+    renderAt("/erudi/models");
+    expect(screen.getByLabelText("Settings").getAttribute("href")).toBe("/erudi/settings");
+  });
+
+  it("highlights the settings gear on the settings route", () => {
+    renderAt("/erudi/settings");
+    expect(screen.getByLabelText("Settings").className).toContain("border-green-500");
+    expect(screen.getByLabelText("Models").className).toContain("border-transparent");
+  });
+
+  it("keeps the settings gear visible during a download", () => {
+    mockDownloadModal.isDownloading = true;
+    renderAt("/erudi/models");
+    expect(screen.getByLabelText("Settings")).toBeTruthy();
+  });
 });

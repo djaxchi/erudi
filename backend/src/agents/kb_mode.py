@@ -53,7 +53,7 @@ class TurnPlan:
     tools: list
     kb_context_block: Optional[str]
     kb_language_line: str
-    context: Optional[Any]  # KbToolContext in agentic mode, else None
+    context: Optional[Any]  # TurnToolContext on tool-carrying turns, else None
 
 
 def _param_size(llm) -> float:
@@ -74,17 +74,34 @@ def plan_turn(
     retrieve: Callable[[], List[KbExcerpt]],
     custom_prompt: Optional[str] = None,
     starred_messages: Optional[List[str]] = None,
+    web_search_enabled: bool = False,
 ) -> TurnPlan:
     """Decide the turn's mode and build the runner bundle.
 
     ``retrieve`` is only called in systematic mode: agentic mode defers
     retrieval to the model's tool call, and plain mode has no KB.
+
+    ``web_search_enabled`` is the conversation's toggle (#310, copied from the
+    global default at creation; arena passes the global setting directly). The
+    web_search tool joins the turn iff the toggle is on AND the model is
+    wire-capable — the SAME gate as agentic KB (#301): supports_tools AND
+    supports_tools_wire is True. It rides plain turns (plain+web becomes a
+    tool turn) and agentic-KB turns (both tools); the systematic path stays
+    zero-tool, toggle or not — a non-wire model cannot execute tools, and the
+    debug force-systematic flag deliberately keeps its zero-tool contract.
+    The tool is ALWAYS exposed when gated in, online or not: offline turns get
+    the tool's honest deterministic failure text instead of a missing tool.
     """
     # Deferred (#160): importing the tools module pulls the LangChain ``@tool``
     # machinery, needed on turns only — never at boot. Deterministic tools are
     # carried by KB turns only (the KB tool is added in agentic mode); plain
-    # chat is zero-tool (#129).
-    from src.agents.tools import KbToolContext, calculator, search_knowledge_base
+    # chat is zero-tool (#129) unless the web toggle turns it into a tool turn.
+    from src.agents.tools import (
+        TurnToolContext,
+        calculator,
+        search_knowledge_base,
+        web_search,
+    )
     from src.core import config
 
     base_tools = [calculator]
@@ -98,6 +115,30 @@ def plan_turn(
         flag is True or (flag is None and supports_tools and wire is True)
     )
 
+    # #310 web gate: strictly the verified wire capability — the KB tri-state
+    # flag never bypasses it (a forced-agentic debug run on an unverified wire
+    # still gets no web tool).
+    wire_capable = supports_tools and wire is True
+    web = web_search_enabled and wire_capable
+
+    def _log_web(mode_allows_tools: bool) -> None:
+        if not web_search_enabled:
+            return
+        if web and mode_allows_tools:
+            logger.info(
+                "Turn tools: web_search enabled "
+                "(decided_by=web toggle on + verified wire capability)"
+            )
+        elif not wire_capable:
+            logger.info(
+                "Turn tools: web_search unavailable "
+                "(model tool-call wire capability not verified)"
+            )
+        else:
+            logger.info(
+                "Turn tools: web_search unavailable (systematic KB path is zero-tool)"
+            )
+
     if agentic:
         if flag is True:
             decided_by = "flag force-agentic (ERUDI_KB_AGENTIC=1)"
@@ -107,18 +148,26 @@ def plan_turn(
                 "(supports_tools=True, supports_tools_wire=True)"
             )
         budget = get_prompting_strategy(_param_size(llm))["kb_token_budget"]
+        _log_web(mode_allows_tools=True)
         logger.info(
             f"Turn mode: agentic KB (kb_id={getattr(llm, 'kb_id', None)}, "
-            f"decided_by={decided_by})"
+            f"decided_by={decided_by}, web_search={'on' if web else 'off'})"
         )
         return TurnPlan(
             system_prompt=build_kb_agentic_system_prompt(
-                llm, custom_prompt=custom_prompt, starred_messages=starred_messages
+                llm,
+                custom_prompt=custom_prompt,
+                starred_messages=starred_messages,
+                web_search=web,
             ),
-            tools=[*base_tools, search_knowledge_base],
+            tools=[*base_tools, search_knowledge_base, *([web_search] if web else [])],
             kb_context_block=None,
             kb_language_line="",
-            context=KbToolContext(kb_id=llm.kb_id, token_budget=budget),
+            context=TurnToolContext(
+                kb_id=llm.kb_id,
+                kb_token_budget=budget,
+                web_token_budget=budget,
+            ),
         )
 
     # Systematic: retrieve() encapsulates is_attached + tier + failure policy.
@@ -133,6 +182,7 @@ def plan_turn(
             decided_by = "tool-call wire capability unverified (NULL)"
         else:
             decided_by = "tool-call wire capability verified unreliable (False)"
+        _log_web(mode_allows_tools=False)
         logger.info(
             f"Turn mode: systematic KB (kb_id={getattr(llm, 'kb_id', None)}, "
             f"excerpts={len(excerpts)}, decided_by={decided_by})"
@@ -158,10 +208,29 @@ def plan_turn(
         plain_reason = "size tier disables KB context"
     else:
         plain_reason = "KB retrieval returned no excerpts"
-    logger.info(f"Turn mode: plain (reason={plain_reason})")
+    _log_web(mode_allows_tools=True)
+    logger.info(
+        f"Turn mode: plain (reason={plain_reason}, "
+        f"web_search={'on' if web else 'off'})"
+    )
     # Zero tools in plain mode (#129): the calculator was a demo tool whose
     # scaffolding cost hurt every model (and wrecked small ones) for no product
-    # value outside KB turns.
+    # value outside KB turns. The web toggle is the ONE exception (#310):
+    # a wire-capable model with the toggle on carries web_search alone.
+    if web:
+        budget = get_prompting_strategy(_param_size(llm))["kb_token_budget"]
+        return TurnPlan(
+            system_prompt=build_agent_system_prompt(
+                llm,
+                custom_prompt=custom_prompt,
+                starred_messages=starred_messages,
+                web_search=True,
+            ),
+            tools=[web_search],
+            kb_context_block=None,
+            kb_language_line="",
+            context=TurnToolContext(web_token_budget=budget),
+        )
     return TurnPlan(
         system_prompt=build_agent_system_prompt(
             llm, custom_prompt=custom_prompt, starred_messages=starred_messages

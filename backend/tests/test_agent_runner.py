@@ -850,7 +850,7 @@ async def test_images_stripped_when_vision_capability_unknown(monkeypatch):
 
 from unittest.mock import MagicMock  # noqa: E402
 
-from src.agents.tools import KbToolContext, search_knowledge_base  # noqa: E402
+from src.agents.tools import TurnToolContext, search_knowledge_base  # noqa: E402
 from src.utils.kb_utils import KbExcerpt  # noqa: E402
 
 
@@ -887,7 +887,7 @@ async def test_kb_tool_round_trip_searches_with_runtime_context(monkeypatch):
             llm=_Llm(), user_message="Quel est le préavis ?", system_prompt="sys",
             params=_PARAMS, thread_id="c-kbtool",
             tools=[search_knowledge_base],
-            context=KbToolContext(kb_id=7, token_budget=1000),
+            context=TurnToolContext(kb_id=7, kb_token_budget=1000),
         )
     ]
 
@@ -914,7 +914,7 @@ async def test_kb_tool_returns_not_found_message_on_empty_pool(monkeypatch):
 
     async for _ in runner.astream_text(
         llm=_Llm(), user_message="?", system_prompt="s", params=_PARAMS, thread_id="c-empty",
-        tools=[search_knowledge_base], context=KbToolContext(kb_id=7, token_budget=1000),
+        tools=[search_knowledge_base], context=TurnToolContext(kb_id=7, kb_token_budget=1000),
     ):
         pass
 
@@ -924,7 +924,7 @@ async def test_kb_tool_returns_not_found_message_on_empty_pool(monkeypatch):
 
 def test_build_middleware_includes_kb_tool_strip():
     built = AgentRunner()._build_middleware(ToolableFakeChatModel(messages=iter([])))
-    assert any(type(m).__name__ == "_StripStaleKbToolMessages" for m in built)
+    assert any(type(m).__name__ == "_StripStaleToolResults" for m in built)
 
 
 async def test_stale_kb_tool_results_placeholdered_on_followup(monkeypatch):
@@ -951,7 +951,7 @@ async def test_stale_kb_tool_results_placeholdered_on_followup(monkeypatch):
     )
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=InMemorySaver())
-    ctx = KbToolContext(kb_id=7, token_budget=1000)
+    ctx = TurnToolContext(kb_id=7, kb_token_budget=1000)
 
     for q in ("q1", "q2"):
         async for _ in runner.astream_text(

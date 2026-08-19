@@ -162,6 +162,14 @@ class ConversationCreate(ConversationBase):
         max_length=4096,
         description="Custom system prompt override"
     )
+    web_search_enabled: Optional[bool] = Field(
+        default=None,
+        description=(
+            "Per-conversation web-search toggle (#310). None (default) copies "
+            "the global user-settings default at creation; an explicit value "
+            "wins (pre-conversation settings panel)."
+        ),
+    )
 
 class ConversationUpdate(ConversationBase):
     """Schema for partial conversation updates (PATCH operations).
@@ -193,6 +201,7 @@ class ConversationUpdate(ConversationBase):
     top_p: Optional[float] = None
     max_tokens: Optional[int] = None
     custom_prompt: Optional[str] = None
+    web_search_enabled: Optional[bool] = None
 
 class ConversationResponse(ConversationBase):
     """Schema for conversation responses with full metadata.
@@ -219,6 +228,7 @@ class ConversationResponse(ConversationBase):
     top_p: float
     max_tokens: int
     custom_prompt: str
+    web_search_enabled: bool
 
 
     class Config:

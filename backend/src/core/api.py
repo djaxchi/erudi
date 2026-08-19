@@ -88,6 +88,7 @@ from src.domains.conversations.endpoints import router as conversations_router
 from src.domains.hardware.endpoints import router as hardware_router
 from src.domains.knowledge_base.endpoints import router as knowledge_base_router
 from src.domains.startup.endpoints import router as startup_router
+from src.domains.user_settings.endpoints import router as user_settings_router
 from src.core.health import router as health_router
 
 def _is_polling_path(path: str) -> bool:
@@ -235,6 +236,7 @@ def register_routers(app: FastAPI) -> None :
     app.include_router(conversations_router, prefix="/erudi")
     app.include_router(health_router, prefix="/erudi")
     app.include_router(startup_router, prefix="/erudi")
+    app.include_router(user_settings_router, prefix="/erudi")
 
 def add_exception_handlers(app: FastAPI) -> None :
     """Attach application-level exception handlers to FastAPI.

@@ -29,6 +29,7 @@ from src.agents.kb_mode import plan_turn
 from src.agents.runner import AgentRunner, GenParams, IMAGES_IGNORED_NOTICE
 from src.domains.arena.repository import ArenaRepository
 from src.domains.llms.repository import detect_supports_vision
+from src.domains.user_settings.repository import User_Settings_Repository
 from src.domains.arena.schemas import ArenaQueryPayload
 from src.entities.Llm import Llm
 from src.core.exceptions import (
@@ -134,12 +135,18 @@ class ArenaService:
         # Derive the turn's mode (plain / systematic-KB / agentic-KB) from the
         # model's tool-calling capability (#84). Retrieval is injected so it runs
         # only in systematic mode and keeps arena's raise-on-failure policy.
+        # #310: arena panels have no conversation row, so the web toggle follows
+        # the GLOBAL user setting directly (kept deliberately simple).
+        web_search_enabled = await run_in_threadpool(
+            User_Settings_Repository(self.db).get_web_search_enabled
+        )
         plan = await run_in_threadpool(
             plan_turn,
             llm,
             question=payload.question,
             retrieve=lambda: self._retrieve_kb_excerpts(llm, payload.question, strategy),
             custom_prompt=payload.custom_prompt,
+            web_search_enabled=web_search_enabled,
         )
 
         params = GenParams(

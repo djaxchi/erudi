@@ -5,6 +5,7 @@ import ChatPage from "./pages/ChatPage";
 import ConversationPage from "./pages/ConversationPage";
 import ArenaPage from "./pages/ArenaPage";
 import KnowledgeBasePage from "./pages/KnowledgeBasePage";
+import SettingsPage from "./pages/SettingsPage";
 import { DownloadModalProvider } from "./contexts/DownloadModalContext";
 import { KnowledgeBaseProvider } from "./contexts/KnowledgeBaseContext";
 import LoadingScreen from "./components/LoadingScreen";
@@ -136,6 +137,7 @@ export default function App() {
             <Route path="/erudi/conversations/:id" element={<ConversationPage />} />
             <Route path="/erudi/arena" element={<ArenaPage />} />
             <Route path="/erudi/attach_knowledge_base" element={<KnowledgeBasePage />} />
+            <Route path="/erudi/settings" element={<SettingsPage />} />
           </Routes>
         </Router>
       </KnowledgeBaseProvider>

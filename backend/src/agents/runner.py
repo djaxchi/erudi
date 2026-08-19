@@ -626,12 +626,12 @@ class AgentRunner:
 
         from src.agents.middleware import (
             _StripStaleImagesMiddleware,
-            _StripStaleKbToolMessages,
+            _StripStaleToolResults,
         )
 
         return [
             _StripStaleImagesMiddleware(),
-            _StripStaleKbToolMessages(),
+            _StripStaleToolResults(),
             SummarizationMiddleware(
                 model=model,
                 trigger=("messages", SUMMARY_TRIGGER_MESSAGES),

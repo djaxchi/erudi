@@ -6,6 +6,7 @@ import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
 import Tooltip from "../components/Tooltip";
+import ToggleSwitch from "../components/ToggleSwitch";
 import ErrorModal from "../components/modals/ErrorModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";
@@ -43,6 +44,26 @@ export default function ChatPage() {
   const [customPrompt, setCustomPrompt] = useState("");
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // Web-search toggle (#310): null until the GLOBAL default is fetched, so an
+  // untouched panel inherits it server-side (the creation payload omits the
+  // field while null). Once fetched or flipped, the explicit value is sent
+  // and the FIRST turn already honors it.
+  const [webSearch, setWebSearch] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiClient.get("/user_settings/");
+        if (!cancelled) setWebSearch(Boolean(data?.web_search_enabled));
+      } catch (error) {
+        log.error("Failed to fetch the global web search default", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Refs for dropdown
   const dropdownRef = useRef(null);
@@ -156,6 +177,9 @@ export default function ChatPage() {
             top_p: settings.topP,
             max_tokens: settings.maxTokens,
             custom_prompt: customPrompt,
+            // null (global default not fetched yet) -> omit: the backend
+            // copies the global setting at creation (#310).
+            ...(webSearch === null ? {} : { web_search_enabled: webSearch }),
           }),
         });
         if (!res.ok) {
@@ -178,7 +202,7 @@ export default function ChatPage() {
         setErrorMessage(`Failed to start conversation: ${err.message || "Network error"}`);
       }
     },
-    [models, selectedModel, navigate, settings, customPrompt]
+    [models, selectedModel, navigate, settings, customPrompt, webSearch]
   );
 
   const handleRename = (id, newName) => {
@@ -211,7 +235,9 @@ export default function ChatPage() {
           ? "Controls word variety. Lower = predictable, higher = diverse."
           : id === "prompt"
             ? "Customize system instructions that guide AI behavior."
-            : "";
+            : id === "web-search"
+              ? "Lets the model search the web for current facts. Searched queries are sent to external search engines."
+              : "";
     return (
       <Tooltip content={text} side={side} width="w-64">
         <HelpCircle className="w-4 h-4 text-gray-400 hover:text-emerald-400 transition-colors cursor-help" />
@@ -515,6 +541,19 @@ export default function ChatPage() {
                                     }))
                                   }
                                   className="bg-transparent border-0 outline-none w-28 text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                              </div>
+                            </div>
+                            <div className="mt-4 flex items-center gap-3">
+                              <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
+                                Web Search
+                              </span>
+                              <TooltipIcon id="web-search" side="right" />
+                              <div className="ml-auto">
+                                <ToggleSwitch
+                                  checked={webSearch === true}
+                                  onChange={(next) => setWebSearch(next)}
+                                  label="Web search"
                                 />
                               </div>
                             </div>

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text, Boolean
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
@@ -73,6 +73,10 @@ class Conversation(Base):
     max_tokens = Column(Integer, default=1024)
     custom_prompt = Column(Text, default="")
     name = Column(String(255), nullable=False, index=True, default="New Conversation")
+    # Per-conversation web-search toggle (#310): copied from the GLOBAL
+    # user-settings default at creation; the conversation owns it afterwards
+    # (a later global change never retro-affects existing conversations).
+    web_search_enabled = Column(Boolean, default=False, nullable=False)
 
     # Relationships — ordered by pk, NOT timestamp: PostgreSQL's now() is
     # frozen per transaction, so a user/assistant pair written in the same
