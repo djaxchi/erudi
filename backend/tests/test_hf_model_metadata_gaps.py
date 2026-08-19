@@ -48,8 +48,9 @@ class TestDiskSizeAfterQuant:
     def test_api_success_sums_chosen_artifacts(self, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", _NonGgufEngine)
         api = MagicMock()
+        # Decimal GB (#316): the unit Hugging Face quotes for the same files.
         api.repo_info.return_value = _repo_info(
-            [("model.safetensors", 2 * 1024**3), ("config.json", 1024)]
+            [("model.safetensors", 2 * 1_000_000_000), ("config.json", 1024)]
         )
         monkeypatch.setattr(meta, "get_hf_api", lambda: api)
         size = get_disk_size_after_quant("mlx-community/Some-Model-4bit")
