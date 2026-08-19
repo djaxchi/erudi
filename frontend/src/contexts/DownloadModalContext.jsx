@@ -8,8 +8,28 @@ import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { API_BASE_URL } from "../config/api.js";
 import { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
-import { DOWNLOAD_CANCELLED } from "../utils/downloadStatus";
+import {
+  DOWNLOAD_CANCELLED,
+  DOWNLOAD_STALLED,
+  DOWNLOAD_STALLED_MESSAGE,
+} from "../utils/downloadStatus";
 const log = createLogger("DownloadModalContext");
+
+// Poll cadence, and the stall guard on top of it (#315).
+//
+// The poll used to stop ONLY on a `completed` / `failed` / `cancelled` reply, so
+// the day the backend stopped producing one (#291 strands the job at `running`
+// with progress 100) it ran forever: 800+ requests over 25 minutes with the
+// widget frozen, the sidebar dimmed and no way out of the app.
+//
+// The cap is scoped to FINALIZATION, not to the download as a whole. A transfer
+// that is merely slow is still a healthy transfer -- a 70 GB pull on a bad line
+// legitimately takes hours -- so it must never be killed by a timer. Once
+// progress reaches 100% the bytes are in, and everything after that is local
+// bookkeeping that should take seconds; if that has not moved for
+// FINALIZE_STALL_TICKS consecutive polls, the job is not coming back on its own.
+const POLL_INTERVAL_MS = 2000;
+const FINALIZE_STALL_TICKS = 90; // 90 x 2s = 3 minutes stuck at 100%
 
 const DownloadModalContext = createContext();
 
@@ -55,6 +75,9 @@ export function DownloadModalProvider({ children }) {
 
   const intervalRef = useRef(null);
   const callbacksRef = useRef({ onComplete: null, onError: null });
+  // Stall guard state (#315): the last (status, progress) pair seen and how many
+  // consecutive polls have reported it unchanged while at 100%.
+  const stallRef = useRef({ signature: null, ticks: 0 });
 
   const toggleCollapse = useCallback(() => {
     setIsCollapsed((c) => !c);
@@ -88,11 +111,39 @@ export function DownloadModalProvider({ children }) {
       setStatus(data.status);
       setTimeLeft(data.time_left);
 
-      if (
+      const isTerminal =
         data.status === "completed" ||
         data.status === "failed" ||
-        data.status === DOWNLOAD_CANCELLED
-      ) {
+        data.status === DOWNLOAD_CANCELLED;
+
+      // Stall guard (#315). Only armed once the transfer is done: past 100% the
+      // job is finalizing locally, so an unchanging reply means it is wedged,
+      // not slow.
+      if (!isTerminal && (data.progress ?? 0) >= 100) {
+        const signature = `${data.status}:${Math.floor(data.progress ?? 0)}`;
+        if (stallRef.current.signature === signature) {
+          stallRef.current.ticks += 1;
+        } else {
+          stallRef.current = { signature, ticks: 1 };
+        }
+        if (stallRef.current.ticks >= FINALIZE_STALL_TICKS) {
+          clearInterval(intervalRef.current);
+          stallRef.current = { signature: null, ticks: 0 };
+          log.error(
+            `Download job ${id} stuck at 100% in status "${data.status}" for ` +
+              `${FINALIZE_STALL_TICKS} polls; giving up on the status poll`
+          );
+          setIsDownloading(false);
+          setStatus(DOWNLOAD_STALLED);
+          setErrorMessage(DOWNLOAD_STALLED_MESSAGE);
+          callbacksRef.current.onError?.(DOWNLOAD_STALLED);
+          return;
+        }
+      } else {
+        stallRef.current = { signature: null, ticks: 0 };
+      }
+
+      if (isTerminal) {
         clearInterval(intervalRef.current);
         setIsDownloading(false);
         if (data.status === "completed") {
@@ -157,9 +208,10 @@ export function DownloadModalProvider({ children }) {
       // Sauvegarder le jobId pour l'annulation
       setJobId(job.id);
 
+      stallRef.current = { signature: null, ticks: 0 };
       intervalRef.current = setInterval(() => {
         checkDownloadStatus(job.id);
-      }, 2000);
+      }, POLL_INTERVAL_MS);
     } catch (err) {
       log.error("Download start error:", err);
       const errorMsg = err.message || err.toString() || "An unexpected error occurred";
