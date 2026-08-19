@@ -27,7 +27,9 @@ from src.core.exceptions import (
     KnowledgeBaseNotFoundException,
     DatabaseException,
     InvalidInputException,
+    StateConflictException,
 )
+from fastapi import status as http_status
 
 
 router = APIRouter(prefix="/knowledge_base", tags=["knowledge_base"])
@@ -165,7 +167,18 @@ def create_knowledge_base(
             )
 
         else:
-            # Create new KB assistant
+            # Create new KB assistant. Refuse a name already carried by any
+            # installed model (#317): two identical names are indistinguishable
+            # in every picker. The update path above never reads the name, so
+            # updating an assistant with its own (existing) name stays valid.
+            duplicate = repo.get_local_llm_by_name(db, payload.modelName)
+            if duplicate:
+                raise StateConflictException(
+                    f"A local model named '{payload.modelName.strip()}' already "
+                    "exists. Choose a different assistant name.",
+                    status_code=http_status.HTTP_409_CONFLICT,
+                )
+
             logger.info(f"Creating new KB assistant from base LLM {base_llm.id}")
 
             llm_id, kb_job_id = service.create_kb_assistant(

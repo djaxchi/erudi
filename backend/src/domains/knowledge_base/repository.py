@@ -17,6 +17,7 @@ Architecture:
     - Database session handling
 """
 from typing import Optional
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.entities.KnowledgeBase import KnowledgeBase
@@ -184,6 +185,28 @@ class KB_Repository:
         return db.query(Llm).filter(
             Llm.id == llm_id,
             Llm.local == 1
+        ).first()
+
+    def get_local_llm_by_name(self, db: Session, name: str) -> Optional[Llm]:
+        """Fetch a local Llm whose name matches case-insensitively (trimmed).
+
+        Used by the KB create guard (#317): a new assistant must not reuse the
+        name of any installed model, or the two become indistinguishable in
+        every picker (chat, arena, KB library, installed list).
+
+        Args:
+            db: Database session.
+            name: Candidate assistant name (leading/trailing spaces ignored).
+
+        Returns:
+            Llm instance or None if no local model carries that name.
+        """
+        normalized = (name or "").strip().lower()
+        if not normalized:
+            return None
+        return db.query(Llm).filter(
+            Llm.local == 1,
+            func.lower(func.trim(Llm.name)) == normalized,
         ).first()
 
     def create_specialized_llm(

@@ -10,6 +10,7 @@ import ErrorModal from "../components/modals/ErrorModal";
 import apiClient from "../services/api/client";
 import EmbeddingModelGateModal from "../components/modals/EmbeddingModelGateModal";
 import { GATE, gateStateFromStatus, shouldPoll, isGateBlocking } from "../utils/embeddingGate";
+import { isKbAssistant } from "../utils/modelWeights";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("KnowledgeBasePage");
@@ -107,14 +108,38 @@ export default function KnowledgeBasePage() {
       return;
     }
 
+    // Update vs create (#317): selecting the assistant itself means its
+    // existing KB gets new documents — the backend routes on the same signal
+    // (is_attached_to_kb), and the confirmation dialog must say update.
+    const selected = models.find((m) => m.id === selectedModel);
+    const isUpdate = isKbAssistant(selected);
+    const trimmedName = modelName.trim();
+
+    // Duplicate-name guard (#317): a second assistant with an existing local
+    // model's name would be indistinguishable in every picker. Updates keep
+    // the assistant's own (necessarily existing) name, so they skip the check.
+    if (!isUpdate) {
+      const duplicate = models.find(
+        (m) => (m.name || "").trim().toLowerCase() === trimmedName.toLowerCase()
+      );
+      if (duplicate) {
+        log.warn("Duplicate assistant name rejected", { name: trimmedName });
+        setErrorMessage(
+          `A model named "${duplicate.name}" already exists. Choose a different assistant name.`
+        );
+        return;
+      }
+    }
+
     log.log("Validation passed, proceeding with creation");
     setErrorMessage("");
 
     const task = {
       paths,
       selectedModel,
-      modelName: modelName.trim(),
+      modelName: trimmedName,
       description: description.trim(),
+      isUpdate,
     };
 
     openKnowledgeBase(task, {
