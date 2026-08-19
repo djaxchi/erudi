@@ -202,7 +202,8 @@ describe("ModelCollapsibleSection delete (#228)", () => {
     await waitFor(() => expect(screen.getByText("gemma-270m")).toBeDefined(), settle);
 
     fireEvent.click(screen.getAllByTitle("Delete model")[0]);
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    // The dialog opens once the dependents pre-check resolves (#317).
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }, settle));
 
     await waitFor(
       () =>
@@ -220,7 +221,7 @@ describe("ModelCollapsibleSection delete (#228)", () => {
     await waitFor(() => expect(screen.getByText("gemma-270m")).toBeDefined(), settle);
 
     fireEvent.click(screen.getAllByTitle("Delete model")[0]);
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }, settle));
 
     expect(deleteCalls()).toHaveLength(0);
     // AnimatePresence keeps the dialog mounted during its exit animation.
@@ -238,7 +239,7 @@ describe("ModelCollapsibleSection delete (#228)", () => {
     await waitFor(() => expect(screen.getByText("gemma-270m")).toBeDefined(), settle);
 
     fireEvent.click(screen.getAllByTitle("Delete model")[0]);
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }, settle));
 
     await waitFor(
       () => expect(screen.getByText(/Failed to delete the model/)).toBeDefined(),
