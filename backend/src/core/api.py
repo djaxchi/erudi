@@ -61,6 +61,7 @@ import time
 from fastapi import FastAPI
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from starlette.datastructures import MutableHeaders
 from contextlib import asynccontextmanager
 from src.database.core import init_database
@@ -267,43 +268,51 @@ def add_exception_handlers(app: FastAPI) -> None :
     app.add_exception_handler(AppBaseException, app_base_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
-def add_middleware(app: FastAPI) -> None:
-    """Configure the middleware stack: CORS + request logging.
+# The only two origins the renderer ever runs under (#89): the webpack dev
+# server, and the packaged app's ``file://`` page — which browsers serialize
+# to the literal origin string "null" on cross-origin requests. Anything else
+# (i.e. any website the user visits while Erudi runs) gets no CORS grant, so
+# the browser blocks it from reading the unauthenticated localhost API.
+# Residual: sandboxed iframes also send "null" (mitigated by Chromium's
+# private-network-access; per-session token tracked in #89).
+RENDERER_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "null",
+]
 
-    Adds permissive CORS middleware to allow requests from any origin
-    (suitable for development and local desktop application environments)
-    and the request-logging middleware (request-id propagation + one
-    access-log line per request). Request logging is added last so it sits
-    outermost and also covers CORS-short-circuited requests.
+# DNS-rebinding guard (#89): an attacker domain resolving to 127.0.0.1 makes
+# the browser send a same-origin request that bypasses CORS entirely — but its
+# Host header stays the attacker's domain, so pinning Host to local names
+# closes the vector.
+LOCAL_HOSTS = ["127.0.0.1", "localhost"]
+
+
+def add_middleware(app: FastAPI) -> None:
+    """Configure the middleware stack: host pinning + CORS + request logging.
+
+    The API binds 127.0.0.1 without auth (single-user desktop), so the
+    browser's same-origin machinery is the wall between a malicious website
+    and the user's data (#89): CORS grants are restricted to the two real
+    renderer origins with credentials off, and TrustedHostMiddleware rejects
+    non-local Host headers (DNS rebinding). Request logging is added last so
+    it sits outermost and also covers CORS-short-circuited requests.
 
     Args:
         app: The FastAPI application instance to configure.
 
     Returns:
         None. Modifies the app instance in-place.
-
-    Example:
-        ::
-
-            from fastapi import FastAPI
-            from src.core.api import add_middleware
-
-            app = FastAPI()
-            add_middleware(app)
-            # Frontend at http://localhost:3000 can now access API
-
-    Warning:
-        Current configuration allows all origins ("*"). For production
-        deployments, restrict allow_origins to specific trusted domains.
     """
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=LOCAL_HOSTS)
     app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["X-Request-ID"],
-)
+        CORSMiddleware,
+        allow_origins=RENDERER_ORIGINS,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
+    )
     # Added last -> outermost: every request gets an id and one access line.
     app.add_middleware(RequestLoggingMiddleware)
 

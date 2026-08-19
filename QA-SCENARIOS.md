@@ -84,6 +84,7 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When KB retrieval **fails** (broken/empty vector store), then the turn **degrades to a no-context answer** instead of erroring.
 - [ ] When I ask about something the documents **do not cover** (e.g. an undocumented product variant), then the agentic model searches, finds nothing relevant, and **says the documents don't cover it** — it never invents a value and never substitutes a nearby fact (e.g. another model's price).
 - [ ] When a follow-up returns to a **topic searched earlier in the conversation**, then the model runs a **fresh search** rather than answering from its memory of old excerpts (old tool results are placeholder-stripped from context) — it must not claim "not in the documents" without having just searched.
+- [ ] When ONE question spans **two subjects living in two different documents** ("what is the drone's payload, and how many remote days are allowed?"), then the answer grounds **both** facts — neither half is dropped or answered from world knowledge *(multi-subject coverage — see #85)*.
 - [ ] When I inspect any agentic answer, then **no raw tool markup** (`<tool_call>`, JSON arguments, function-call syntax) appears in the answer bubble or in the persisted history; the search call and its excerpts appear only inside the reasoning strip.
 
 **Multimodal / multi-turn**

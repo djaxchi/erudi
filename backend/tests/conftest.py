@@ -176,7 +176,11 @@ def client(test_db_session):
     from langgraph.checkpoint.memory import InMemorySaver
     test_app.state.checkpointer = InMemorySaver()
 
-    with TestClient(test_app, raise_server_exceptions=False) as test_client:
+    # base_url pins the Host header to a local name: TrustedHostMiddleware
+    # (#89) rejects TestClient's default "testserver" host.
+    with TestClient(
+        test_app, raise_server_exceptions=False, base_url="http://127.0.0.1"
+    ) as test_client:
         yield test_client
     
     test_app.dependency_overrides.clear()

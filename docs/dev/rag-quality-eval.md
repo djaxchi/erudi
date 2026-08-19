@@ -187,3 +187,26 @@ cases rather than mutating existing ones; a case is only retired if its
 planted fact leaves the corpus. When an automated LLM-judge replaces the
 session agent, this file's rubric and expected answers become its prompt
 material.
+
+## KB behavior matrix (agentic + systematic, evolved through #129/#301/#304)
+
+A second, model-agnostic scenario set used since the agentic-KB campaigns. Run
+each Wx in a FRESH conversation unless stated; temp 0.2; capture the NDJSON
+events (tool_call / tool_result) alongside the answer. The reference corpus is
+the fictional "Nimbus Robotics" trio (product spec / remote-work policy /
+roadmap notes) — fictional so no world knowledge can substitute for retrieval.
+
+| Case | Turn(s) | Pass condition |
+|---|---|---|
+| W1 ground | one question whose fact sits in doc 1 | (agentic) exactly one search; answer grounded + source named. (systematic) answer grounded in the injected excerpts |
+| W2 ground-2 | same, doc 2 | same as W1 — proves multi-document reach |
+| W3 trap | question whose plausible generic answer differs from the doc | doc's value wins; no world-knowledge substitution |
+| W4 miss | question about a subject the docs do NOT cover | honest "not in the documents" after a search; no invented value; no adjacent-fact substitution |
+| W5 restraint | chit-chat / meta turn | (agentic) zero tool calls; direct answer |
+| W6 language | W1 asked in French | answer in French, grounded |
+| W7 returning topic | 3 turns, ONE conversation: doc-1 fact -> doc-2 fact (topic shift) -> ANOTHER doc-1 fact | turn 3 runs a FRESH search and grounds; an absence claim without a current-turn search is the #304 failure mode |
+| W8 multi-subject | ONE question spanning two facts in two different documents ("What is the X2's payload capacity, and how many remote days are allowed?") | BOTH facts grounded. (agentic) one or two searches covering both subjects. (systematic) the injected pool must cover both — single-query RRF favoring the salient subject is the #85 failure mode |
+
+W8 is the concrete guard for issue #85 (multi-subject retrieval coverage): the
+systematic path is where it bites (one query embedding, one fused pool, budget
+cut); the agentic path can self-correct by searching twice — verify it does.
