@@ -700,7 +700,14 @@ const createWindow = () => {
   isCreatingWindow = false;
 };
 
-app.commandLine.appendSwitch("no-sandbox");
+// Chromium sandbox stays ON everywhere it can (#89): the switch below was a
+// blanket workaround for the classic Electron sandbox launch failure on Linux
+// (unprivileged user namespaces restricted on several distros, notably Ubuntu
+// 24.04's AppArmor policy, which breaks AppImage startup). Keep it scoped to
+// Linux only; macOS and Windows run fully sandboxed renderers.
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("no-sandbox");
+}
 
 // Backend readiness + diagnostics for the renderer. getInfo lets the renderer
 // recover the resolved port / ready state if it mounted after the events fired
