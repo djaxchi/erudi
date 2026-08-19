@@ -12,6 +12,7 @@ import { SlidersHorizontal, ChevronDown, HelpCircle } from "lucide-react";
 import logoErudi from "../assets/images/logos/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api.js";
 import apiClient, { tracedFetch } from "../services/api/client";
+import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 import { canAttachImages } from "../utils/modelCapabilities";
@@ -21,6 +22,7 @@ const log = createLogger("ChatPage");
 export default function ChatPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { completionCount } = useDownloadModal();
 
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
@@ -62,13 +64,15 @@ export default function ChatPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  useEffect(() => {
+  const fetchModels = useCallback(() => {
     apiClient
       .get("/llms/local")
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
           setModels(data);
-          setSelectedModel(data[0].name);
+          // Keep the user's current selection on refreshes; default to the
+          // first local model only when nothing is selected yet.
+          setSelectedModel((prev) => prev || data[0].name);
         }
       })
       .catch((err) => {
@@ -76,6 +80,21 @@ export default function ChatPage() {
         setErrorMessage(`Failed to load models: ${err.message || "Network error"}`);
       });
   }, []);
+
+  useEffect(() => {
+    fetchModels();
+  }, [fetchModels]);
+
+  // A completed download bumps the context's completionCount, whichever entry
+  // point started it. Refresh the model list on every tick so a user sitting
+  // on Chat during a download gets the composer without navigating away and
+  // back (#303) — same pattern as LandingPage (#205).
+  useEffect(() => {
+    if (!completionCount) {
+      return;
+    }
+    fetchModels();
+  }, [completionCount, fetchModels]);
 
   useEffect(() => {
     const fetchConversations = async () => {
