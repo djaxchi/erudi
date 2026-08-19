@@ -77,6 +77,7 @@ from src.utils.hf_model_metadata import (
     format_model_info_metadata,
     extract_parameter_pattern,
     humanize_model_name,
+    measure_dir_size_bytes,
     measure_dir_size_gb,
     rewrite_size_in_metadata,
     ParameterScale,
@@ -831,7 +832,12 @@ class Job_Cleanup_Service:
            cheap enough to run inside the boot sequence.
         2. The on-disk footprint covers the job's recorded ``total_bytes``. Used
            when no engine is bound, so a full artifact is never deleted merely
-           because the engine could not be consulted.
+           because the engine could not be consulted. Compared in BYTES on both
+           sides (#316): reading the footprint through a GB helper and scaling it
+           back would silently change this threshold the day that helper's
+           divisor changes, and a threshold that drifts upward marks a truncated
+           download "complete" -- worse than the deletion this guards against,
+           since a kept-but-broken artifact is never cleaned up again.
 
         Defensive: any failure answers False, i.e. falls back to the historical
         delete-and-retry behavior.
@@ -853,7 +859,7 @@ class Job_Cleanup_Service:
         total_bytes = getattr(job, "total_bytes", None) or 0
         if total_bytes > 0:
             try:
-                measured_bytes = measure_dir_size_gb(link) * (1024 ** 3)
+                measured_bytes = measure_dir_size_bytes(link)
             except Exception:
                 return False
             return measured_bytes >= total_bytes

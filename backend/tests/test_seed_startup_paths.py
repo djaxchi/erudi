@@ -559,6 +559,61 @@ class TestJobCleanup:
         assert not model_dir.exists()
         assert job.status == "failed"
 
+    def test_download_cleanup_removes_nearly_complete_artifact(
+        self, test_db_session, tmp_path, monkeypatch
+    ):
+        # The blind spot of the two pins above (#316): they truncate to a
+        # fraction of a percent, so ANY threshold drift still deletes them. A
+        # transfer cut at ~95% is the case that separates a byte-exact
+        # comparison from one that has drifted upward, and it is also the
+        # realistic one -- interrupted downloads die near the end, not at byte 10.
+        monkeypatch.setattr(config, "LLM_Engine", None)
+        model_dir = tmp_path / "model-902"
+        model_dir.mkdir()
+        (model_dir / "weights.gguf").write_bytes(b"x" * 3900)  # 95.2% of 4096
+        llm = Llm(name="NearlyThere", local=2, link=str(model_dir), type="x")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        job = self._download_job(test_db_session, llm_id=llm.id)
+        job.total_bytes = 4096
+
+        assert Job_Cleanup_Service(test_db_session)._cleanup_download_jobs() == 1
+
+        assert not model_dir.exists()
+        assert job.status == "failed"
+
+    def test_download_cleanup_threshold_ignores_the_display_gb_divisor(
+        self, test_db_session, tmp_path, monkeypatch
+    ):
+        # The completeness threshold must be a property of the BYTES, not of
+        # whatever "a GB" currently means on screen (#316). Pinned by making the
+        # display helper answer in decimal GB: a footprint read through it and
+        # scaled back by 1024**3 inflates 7.4%, which is enough to mark this
+        # 95%-truncated artifact "complete", keep it, and flip it to local=1 --
+        # a broken model presented as installed, never cleaned up again.
+        from src.utils.hf_model_metadata import measure_dir_size_bytes
+
+        monkeypatch.setattr(config, "LLM_Engine", None)
+        monkeypatch.setattr(
+            seed_mod,
+            "measure_dir_size_gb",
+            lambda path: measure_dir_size_bytes(path) / 1_000_000_000,
+        )
+        model_dir = tmp_path / "model-903"
+        model_dir.mkdir()
+        (model_dir / "weights.gguf").write_bytes(b"x" * 3900)
+        llm = Llm(name="DivisorProof", local=2, link=str(model_dir), type="x")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        job = self._download_job(test_db_session, llm_id=llm.id)
+        job.total_bytes = 4096
+
+        assert Job_Cleanup_Service(test_db_session)._cleanup_download_jobs() == 1
+
+        assert not model_dir.exists()
+        assert llm.local != 1
+        assert job.status == "failed"
+
     # ---- #314 end to end against the REAL engine validator, not a double ----
     # The pins above use engine doubles, which prove the branching but not that
     # a real GGUF artifact is actually judged complete. This replays the exact
