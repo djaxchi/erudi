@@ -257,6 +257,129 @@ def test_stdin_eof_watcher_survives_none_stdin(monkeypatch):
     assert server.should_exit is False
 
 
+@pytest.mark.unit
+def test_parent_watchdog_enabled_by_default(monkeypatch):
+    # The watchdog is on by default everywhere, dev runs included: its
+    # predicate is a PARENT CHANGE, and a dev's shell staying alive is the
+    # normal case, so plain `python run.py` stays fully usable. The opt-out
+    # exists only for deliberately detached runs (nohup/setsid), where
+    # reparenting is expected and survival is intended (#224).
+    import run
+
+    monkeypatch.delenv("ERUDI_NO_PARENT_WATCHDOG", raising=False)
+    assert run.parent_watchdog_enabled() is True
+
+    monkeypatch.setenv("ERUDI_NO_PARENT_WATCHDOG", "0")
+    assert run.parent_watchdog_enabled() is True
+
+    monkeypatch.setenv("ERUDI_NO_PARENT_WATCHDOG", "1")
+    assert run.parent_watchdog_enabled() is False
+
+
+@pytest.mark.unit
+def test_parent_alive_probe_posix_tracks_ppid():
+    # POSIX probe: alive while os.getppid() still equals the recorded parent,
+    # dead the moment the process is reparented (ppid changed) -- pid 1 or a
+    # subreaper alike (#224).
+    import run
+
+    assert run._parent_alive_probe(os.getppid())() is True
+    # Any initial ppid that is not the current one reads as "parent gone".
+    bogus = os.getppid() + 12345
+    assert run._parent_alive_probe(bogus)() is False
+
+
+@pytest.mark.unit
+def test_parent_alive_probe_windows_uses_psutil(monkeypatch):
+    # Windows never rewrites ppid on parent death, so the probe pins the
+    # parent through psutil (identity guarded by create_time against pid
+    # reuse). psutil is cross-platform, so the branch is testable here.
+    import subprocess
+    import run
+
+    monkeypatch.setattr(run.os, "name", "nt")
+    try:
+        # Our own live process stands in for a living parent.
+        assert run._parent_alive_probe(os.getpid())() is True
+
+        # A freshly exited (and reaped) child reads as a dead parent.
+        proc = subprocess.Popen([sys.executable, "-c", "pass"])
+        proc.wait(timeout=10)
+        assert run._parent_alive_probe(proc.pid)() is False
+    finally:
+        monkeypatch.undo()
+
+
+class _WatchdogFakeServer:
+    should_exit = False
+
+
+@pytest.mark.unit
+def test_parent_watchdog_fires_when_parent_dies():
+    # The probe flips to dead after a few healthy polls: the watchdog must not
+    # fire early, then must flip uvicorn's exit flag (the SAME clean shutdown
+    # path the SIGTERM relay uses) and terminate its thread.
+    import run
+
+    calls = {"n": 0}
+
+    def probe():
+        calls["n"] += 1
+        return calls["n"] < 3
+
+    server = _WatchdogFakeServer()
+    thread = run.start_parent_watchdog(server, poll_seconds=0.02, parent_alive=probe)
+    thread.join(timeout=5.0)
+
+    assert not thread.is_alive()
+    assert server.should_exit is True
+    assert calls["n"] >= 3  # it polled while the parent lived, no early fire
+
+
+@pytest.mark.unit
+def test_parent_watchdog_fires_immediately_if_parent_already_gone():
+    # Parent died during the (long) boot imports, before the watchdog started:
+    # the first check fires without waiting a poll interval.
+    import run
+
+    server = _WatchdogFakeServer()
+    thread = run.start_parent_watchdog(server, poll_seconds=30.0, parent_alive=lambda: False)
+    thread.join(timeout=5.0)
+
+    assert not thread.is_alive()
+    assert server.should_exit is True
+
+
+@pytest.mark.unit
+def test_parent_watchdog_survives_broken_probe():
+    # A probe that raises must never crash the launcher or force a shutdown:
+    # the thread exits and shutdown is left to signals/stdin-EOF.
+    import run
+
+    def probe():
+        raise RuntimeError("probe broke")
+
+    server = _WatchdogFakeServer()
+    thread = run.start_parent_watchdog(server, poll_seconds=0.02, parent_alive=probe)
+    thread.join(timeout=5.0)
+
+    assert not thread.is_alive()
+    assert server.should_exit is False
+
+
+@pytest.mark.unit
+def test_graceful_shutdown_timeout_is_bounded():
+    # should_exit alone waits FOREVER on in-flight tasks (uvicorn's
+    # timeout_graceful_shutdown defaults to None), which is exactly the
+    # observed orphan: a SIGKILLed Electron mid-generation left the backend
+    # generating until completion (#224). The launcher must bound that wait so
+    # every should_exit path (watchdog, SIGTERM, stdin EOF) reaches the
+    # lifespan shutdown (inference child terminated, postgres stopped) promptly.
+    import run
+
+    assert 0 < run.GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS <= 30
+
+
 def test_json_event_emission():
     import time
 
