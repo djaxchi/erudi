@@ -19,6 +19,7 @@ from src.utils.prompt_utils import (
 # HF metadata utils
 from src.core import config
 from src.utils.hf_model_metadata import (
+    BYTES_PER_GB,
     get_disk_size_after_quant,
     get_model_size_estimate,
     extract_parameter_pattern,
@@ -542,8 +543,9 @@ class TestGetDiskSizeChosenArtifact:
         size = get_disk_size_after_quant("bartowski/Model-GGUF")
 
         # Chosen = best quant (Q4_K_M) + mmproj + small aux (config.json).
-        expected_gb = (800_000_000 + 600_000_000 + 2_000) / (1024**3)
-        whole_repo_gb = sum(s.size for s in siblings) / (1024**3)
+        # Decimal GB (#316), the unit Hugging Face quotes for the same file.
+        expected_gb = (800_000_000 + 600_000_000 + 2_000) / BYTES_PER_GB
+        whole_repo_gb = sum(s.size for s in siblings) / BYTES_PER_GB
         assert abs(size.size_gb - expected_gb) < 1e-6
         assert size.size_gb < whole_repo_gb        # NOT the whole-repo sum
         assert size.source == "api"
@@ -566,7 +568,7 @@ class TestGetDiskSizeChosenArtifact:
 
         size = get_disk_size_after_quant("mlx-community/Model-4bit")
 
-        expected_gb = sum(s.size for s in siblings) / (1024**3)
+        expected_gb = sum(s.size for s in siblings) / BYTES_PER_GB
         assert abs(size.size_gb - expected_gb) < 1e-6
         assert size.source == "api"
 
@@ -574,13 +576,17 @@ class TestGetDiskSizeChosenArtifact:
 # ============ Measured on-disk size + metadata rewrite (#220 helpers) ============
 
 class TestMeasureDirSize:
-    """measure_dir_size_gb: real recursive byte count, defensive on missing paths."""
+    """measure_dir_size_gb: real recursive byte count, defensive on missing paths.
+
+    Reported in DECIMAL GB (#316), the same unit the catalog and Hugging Face
+    quote, so an artifact does not appear to shrink the moment it lands on disk.
+    """
 
     def test_sums_nested_files(self, tmp_path):
-        (tmp_path / "a.bin").write_bytes(b"\x00" * (1024**3 // 2))     # 0.5 GB
+        (tmp_path / "a.bin").write_bytes(b"\x00" * 500_000_000)     # 0.5 GB
         sub = tmp_path / "sub"
         sub.mkdir()
-        (sub / "b.bin").write_bytes(b"\x00" * (1024**3 // 4))          # 0.25 GB
+        (sub / "b.bin").write_bytes(b"\x00" * 250_000_000)          # 0.25 GB
         assert abs(measure_dir_size_gb(tmp_path) - 0.75) < 1e-6
 
     def test_missing_dir_returns_zero(self, tmp_path):
@@ -591,8 +597,24 @@ class TestMeasureDirSize:
 
     def test_single_file_path(self, tmp_path):
         f = tmp_path / "w.bin"
-        f.write_bytes(b"\x00" * (1024**3 // 2))                        # 0.5 GB
+        f.write_bytes(b"\x00" * 500_000_000)                        # 0.5 GB
         assert abs(measure_dir_size_gb(f) - 0.5) < 1e-6
+
+    def test_measures_in_decimal_gb_not_gibibytes(self, tmp_path):
+        """The #316 regression itself, on the real artifact from the QA pass.
+
+        9,001,752,960 bytes is 9.00 decimal GB and 8.38 GiB. Both were rendered
+        as "GB", so the installed card read ~8.4 GB where the catalog card and
+        Hugging Face both said ~9.0 GB for one unchanged file.
+        """
+        f = tmp_path / "Qwen3-14B-Q4_K_M.gguf"
+        f.write_bytes(b"\x00" * 9_001_752)  # 1/1000th, same ratio, fast to write
+
+        measured = measure_dir_size_gb(tmp_path)
+
+        assert abs(measured - 0.009001752) < 1e-9
+        # And explicitly NOT the GiB reading that produced the bug.
+        assert abs(measured - 9_001_752 / (1024**3)) > 1e-6
 
 
 class TestRewriteSizeInMetadata:
