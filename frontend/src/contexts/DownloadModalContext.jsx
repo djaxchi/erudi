@@ -238,8 +238,10 @@ export function DownloadModalProvider({ children }) {
                 <div className="fixed bottom-7 left-[1.5%]">
                   <SpinnerDots className="w-6 h-6 text-emerald-400 animate-spin" />
                 </div>
+                {/* Offset above the sidebar's bottom edge so the widget never
+                    covers the connection pill living there (#303). */}
                 <div
-                  className={`fixed bottom-0 bg-[#121212]/50 p-4 flex items-center rounded-r-3xl z-50 ${
+                  className={`fixed bottom-14 bg-[#121212]/50 p-4 flex items-center rounded-r-3xl z-50 ${
                     isCollapsed
                       ? "left-[4.5%] w-0 bg-transparent"
                       : "left-[4.5%] w-[35%] sm:w-[38%] xl:w-[28%] gap-3"

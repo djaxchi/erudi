@@ -13,41 +13,46 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
     return null;
   }
 
-  // Helper function to get color based on label
+  // Badge colors for the labels the backend actually emits
+  // (hardware/services.py _get_label: Excellent / Good / Fair / Poor / Weak).
   const getColorForLabel = (label) => {
     switch (label) {
-      case "Very Good":
+      case "Excellent":
         return "bg-emerald-700/30 text-white";
       case "Good":
         return "bg-green-600/30 text-white";
-      case "Medium":
+      case "Fair":
         return "bg-yellow-600/30 text-white";
       case "Poor":
+      case "Weak":
         return "bg-red-600/30 text-white";
       default:
         return "bg-gray-600/30 text-white";
     }
   };
 
-  // Helper function to get dynamic recommendations
+  // The caption below the score derives from the SAME thresholds as the label
+  // badge (80+ Excellent, 60+ Good, 40+ Fair, below Poor/Weak) so the two
+  // never contradict each other — a 53% "Fair" must not read "Great
+  // Performance!" (#303).
   const getRecommendations = (inferenceScore) => {
-    if (inferenceScore >= 75) {
+    if (inferenceScore >= 80) {
       return {
         title: "Excellent Hardware! 🚀",
         description:
           "Your system can handle any model from 1B to 12B parameters with ease. We recommend trying the power of Mistral 8B or Gemma 12B for the best experience. We're also working on adding support for much larger models—stay tuned!",
       };
-    } else if (inferenceScore >= 50) {
+    } else if (inferenceScore >= 60) {
       return {
-        title: "Great Performance! ✨",
+        title: "Good Performance 👍",
         description:
-          "Your hardware supports models from 1B to 12B parameters. You'll get smooth performance with Mistral 8B and Gemma 12B. Perfect for experiencing the full capabilities of modern AI!",
+          "Your hardware runs models from 1B to 12B parameters smoothly. Mistral 8B and Gemma 12B are within comfortable reach, and smaller models will feel instant.",
       };
-    } else if (inferenceScore >= 25) {
+    } else if (inferenceScore >= 40) {
       return {
-        title: "Good Setup 👍",
+        title: "Fair Performance",
         description:
-          "You may experience some delays with larger models like Mistral 7B, but you're well-equipped for models like Gemma 4B and smaller. These will provide excellent results with smooth performance.",
+          "Good news: models like Gemma 4B and smaller will run well on your machine. Larger models such as Mistral 7B will work too, but expect some delays.",
       };
     } else {
       return {
@@ -108,8 +113,8 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                       depends on your hardware.
                     </p>
                     <p className="text-gray-300 leading-relaxed">
-                      This is v1.0.0 and some rough edges may remain. If you encounter an issue,
-                      we&apos;d love to hear about it.
+                      This is an early release and some rough edges may remain. If you encounter an
+                      issue, we&apos;d love to hear about it.
                     </p>
                     <p className="text-gray-300 leading-relaxed">
                       Your feedback shapes what we build next — thank you for using Erudi.

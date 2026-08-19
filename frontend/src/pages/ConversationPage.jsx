@@ -18,6 +18,29 @@ import { getDisplayContent } from "../utils/messageContent";
 
 const log = createLogger("ConversationPage");
 
+// Reconcile a fetched message list with the current one (#303). Fetched DB rows
+// win, but trailing LOCAL messages the fetch does not cover yet are kept: the
+// in-flight streaming bubble, or a just-finished turn whose DB insert the
+// refetch raced. A blind replacement here erased streamed answers (the later
+// flushes match by message id and silently no-op once the bubble is gone).
+// Kept messages are matched away by content on a later refetch.
+const mergeFetchedMessages = (prev, fetched) => {
+  const covered = (m) =>
+    fetched.some(
+      (f) => f.sender === m.sender && (f.content || "").trim() === (m.content || "").trim()
+    );
+  const tail = [];
+  for (let i = prev.length - 1; i >= 0; i--) {
+    const m = prev[i];
+    if (m.streaming || (m.local && !covered(m))) {
+      tail.unshift(m);
+    } else {
+      break;
+    }
+  }
+  return [...fetched, ...tail];
+};
+
 export default function ConversationPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -190,7 +213,11 @@ export default function ConversationPage() {
       convs.sort((a, b) => new Date(b.last_message_time) - new Date(a.last_message_time));
       setMessages((prev) => {
         const sameConv = loadedConvIdRef.current === id;
-        return msgs.map((m, i) => ({ ...m, images: (sameConv && prev[i]?.images) || m.images }));
+        const fetched = msgs.map((m, i) => ({
+          ...m,
+          images: (sameConv && prev[i]?.images) || m.images,
+        }));
+        return sameConv ? mergeFetchedMessages(prev, fetched) : fetched;
       });
       loadedConvIdRef.current = id;
       setConversations(convs);
@@ -220,11 +247,14 @@ export default function ConversationPage() {
         setFirstReplyPending(true);
       }
 
+      // `local: true` marks optimistic entries a refetch may not know about
+      // yet, so mergeFetchedMessages keeps them instead of erasing them (#303).
       const userMessage = {
         id: Date.now(),
         sender: "user",
         content: question,
         images,
+        local: true,
       };
 
       const assistantMessage = {
@@ -236,6 +266,7 @@ export default function ConversationPage() {
         // `streaming` gates the strip's expanded-while-only-content behavior.
         trace: [],
         streaming: true,
+        local: true,
       };
 
       setMessages((prev) => [...prev, userMessage, assistantMessage]);
@@ -517,7 +548,11 @@ export default function ConversationPage() {
         setStarredIds(starredMap);
         setMessages((prev) => {
           const sameConv = loadedConvIdRef.current === id;
-          return msgs.map((m, i) => ({ ...m, images: (sameConv && prev[i]?.images) || m.images }));
+          const fetched = msgs.map((m, i) => ({
+            ...m,
+            images: (sameConv && prev[i]?.images) || m.images,
+          }));
+          return sameConv ? mergeFetchedMessages(prev, fetched) : fetched;
         });
         loadedConvIdRef.current = id;
 
@@ -583,7 +618,11 @@ export default function ConversationPage() {
             const imagesByContent = sameConv
               ? new Map(prev.filter((m) => m.images?.length > 0).map((m) => [m.content, m.images]))
               : new Map();
-            return msgs.map((m) => ({ ...m, images: imagesByContent.get(m.content) || m.images }));
+            const fetched = msgs.map((m) => ({
+              ...m,
+              images: imagesByContent.get(m.content) || m.images,
+            }));
+            return sameConv ? mergeFetchedMessages(prev, fetched) : fetched;
           });
           loadedConvIdRef.current = id;
         } catch (err) {
