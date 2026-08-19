@@ -65,11 +65,14 @@ class TestOrgDiscovery:
         # non-chat noise here — quants, OCR — is dropped by earlier filters anyway).
         models = [SimpleNamespace(id=i, downloads=d, tags=["conversational"]) for i, d in ids]
 
-        # Discovery now queries per pipeline_tag (text + vision passes). These fixtures
-        # are plain text models, so only the text-generation pass returns them; the
-        # vision passes return nothing.
+        # Discovery now queries per pipeline_tag (text + vision passes) and per sort
+        # (downloads + freshness, #305). These fixtures are plain text models ranked
+        # by downloads, so only the text-generation downloads pass returns them; the
+        # vision and freshness passes return nothing (freshness has dedicated tests).
         def _list(**kwargs):
-            return models if kwargs.get("pipeline_tag") == "text-generation" else []
+            if kwargs.get("pipeline_tag") == "text-generation" and kwargs.get("sort") == "downloads":
+                return models
+            return []
 
         api.list_models.side_effect = _list
         return Model_Seeder(db=None, hf_api=api)
@@ -117,6 +120,9 @@ class TestOrgDiscovery:
 
         def fake_list(**kw):
             # Chat releases carry the `conversational` tag; discovery requires it (#182).
+            # Downloads pass only — the freshness pass (#305) has dedicated tests below.
+            if kw.get("sort") != "downloads":
+                return []
             return [
                 SimpleNamespace(id=i, downloads=d, tags=["conversational"])
                 for i, d in mapping.get(kw.get("pipeline_tag"), [])
@@ -191,6 +197,98 @@ class TestOrgDiscovery:
         assert "meta-llama/Llama-3.2-1B" not in links            # raw pretrain dropped
         assert "meta-llama/Llama-3.2-1B-Instruct" in links       # instruct sibling kept
         assert "deepseek-ai/DeepSeek-V3" in links                # suffix-less chat kept via tag
+
+
+class TestFreshnessPass:
+    """#305: a downloads-only ranking structurally hides recent releases (established
+    checkpoints accumulate CI downloads a new model can't match for months). Discovery
+    therefore runs a second, creation-date-sorted pass per org/pipeline with its own
+    small quota and a higher downloads floor. Fresh candidates go through the SAME
+    rejection rules and dedup as the downloads pass, and ADD to (never displace) the
+    downloads-ranked quota."""
+
+    def _seeder(self, by_downloads, by_created):
+        """Fake HF api keyed on the `sort` kwarg: `by_downloads` feeds the classic
+        pass, `by_created` feeds the freshness pass (both text-generation only)."""
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        from src.database.seed import Model_Seeder
+
+        def mk(rows):
+            return [SimpleNamespace(id=i, downloads=d, tags=list(t))
+                    for i, d, t in rows]
+
+        api = MagicMock()
+
+        def _list(**kw):
+            if kw.get("pipeline_tag") != "text-generation":
+                return []
+            if kw.get("sort") == "downloads":
+                return mk(by_downloads)
+            if kw.get("sort") == "created_at":
+                return mk(by_created)
+            raise AssertionError(f"unexpected sort: {kw.get('sort')!r}")
+
+        api.list_models.side_effect = _list
+        return Model_Seeder(db=None, hf_api=api)
+
+    _CHAT = ("conversational",)
+
+    def test_recent_release_missing_from_downloads_top_is_discovered(self):
+        # The downloads top is saturated with old checkpoints; the recent release
+        # (high downloads, absent from that top) must surface via the freshness pass
+        # WITHOUT displacing any downloads-ranked model.
+        old_top = [(f"Qwen/Qwen-old-{i}-Instruct", 20_000_000 - i, self._CHAT) for i in range(3)]
+        seeder = self._seeder(
+            by_downloads=old_top,
+            by_created=[("Qwen/Qwen3.8-27B-Instruct", 1_000_000, self._CHAT)] + old_top,
+        )
+        links = [c.link for c in seeder.discover_instruct_models("Qwen", "qwen", top_n=3)]
+        assert "Qwen/Qwen3.8-27B-Instruct" in links
+        for link, _, _ in old_top:
+            assert link in links  # freshness ADDS; the downloads quota is untouched
+
+    def test_recent_release_below_freshness_floor_is_not_discovered(self):
+        # Below FRESH_MIN_DOWNLOADS the fresh candidate is noise, even though it
+        # clears the regular min_downloads floor of the downloads pass.
+        seeder = self._seeder(
+            by_downloads=[("Qwen/Qwen3-8B", 20_000_000, self._CHAT)],
+            by_created=[("Qwen/Qwen-Brand-New-3B-Instruct", 10_000, self._CHAT)],
+        )
+        links = [c.link for c in seeder.discover_instruct_models("Qwen", "qwen")]
+        assert "Qwen/Qwen-Brand-New-3B-Instruct" not in links
+        assert "Qwen/Qwen3-8B" in links
+
+    def test_freshness_pass_respects_rejection_rules(self):
+        # The freshness pass merges BEFORE filtering: a fresh quant/adapter derivative,
+        # a raw pretrain, and an OCR model are still rejected on that pass too.
+        seeder = self._seeder(
+            by_downloads=[("Qwen/Qwen3-8B", 20_000_000, self._CHAT)],
+            by_created=[
+                ("Qwen/Qwen3.9-9B-Instruct-GGUF", 900_000, self._CHAT),  # artifact token
+                ("Qwen/Qwen3.9-9B", 800_000, ()),                        # raw pretrain
+                ("Qwen/Qwen3.9-OCR-9B", 700_000, self._CHAT),            # non-chat task
+                ("Qwen/Qwen3.9-9B-Instruct", 600_000, self._CHAT),       # keep
+            ],
+        )
+        links = [c.link for c in seeder.discover_instruct_models("Qwen", "qwen")]
+        assert links == ["Qwen/Qwen3-8B", "Qwen/Qwen3.9-9B-Instruct"]
+
+    def test_model_in_both_passes_appears_once(self):
+        seeder = self._seeder(
+            by_downloads=[("Qwen/Qwen3-8B", 20_000_000, self._CHAT)],
+            by_created=[("Qwen/Qwen3-8B", 20_000_000, self._CHAT)],
+        )
+        links = [c.link for c in seeder.discover_instruct_models("Qwen", "qwen")]
+        assert links == ["Qwen/Qwen3-8B"]
+
+    def test_freshness_quota_is_bounded(self):
+        # The fresh pass has its own small cap (FRESH_TOP_N); a flood of recent
+        # releases can't blow up the catalog.
+        from src.database.seed import FRESH_TOP_N
+        fresh = [(f"Org/New-{i}-Instruct", 500_000 - i, self._CHAT) for i in range(FRESH_TOP_N + 10)]
+        seeder = self._seeder(by_downloads=[], by_created=fresh)
+        assert len(seeder.discover_instruct_models("Org", "x")) == FRESH_TOP_N
 
 
 class TestRunnabilityPredicate:

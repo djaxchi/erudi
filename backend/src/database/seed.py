@@ -255,6 +255,14 @@ class Quality_Filters:
     min_likes: int = 5
 
 
+# Freshness pass tuning (#305). A downloads-only ranking structurally favors old
+# checkpoints (established models accumulate CI-driven downloads a recent release
+# cannot match for months), so org discovery runs a second, creation-date-sorted
+# pass with its own small quota and a higher downloads floor to filter noise.
+FRESH_TOP_N: int = 5
+FRESH_MIN_DOWNLOADS: int = 50_000
+
+
 # ============ Model Seeding Service ============
 
 class Model_Seeder:
@@ -302,64 +310,93 @@ class Model_Seeder:
     VISION_PIPELINES: tuple = ("image-text-to-text", "any-to-any")
 
     def discover_instruct_models(self, org: str, model_type: str, top_n: int = 14,
-                                 vision_top_n: int = 8, min_downloads: int = 2000) -> List[Model_Config]:
+                                 vision_top_n: int = 8, min_downloads: int = 2000,
+                                 fresh_top_n: int = FRESH_TOP_N,
+                                 fresh_min_downloads: int = FRESH_MIN_DOWNLOADS) -> List[Model_Config]:
         """Discover an org's chat-capable models (text + multimodal) as base candidates.
 
         Text and vision get SEPARATE quotas (``top_n`` / ``vision_top_n``) so a busy
         text family never starves the multimodal pass — the real VLMs must reach Base
         (#122). For each relevant ``pipeline_tag`` (drops the org's CLIP / Whisper /
-        BERT, and keeps VLMs out of the text bucket) it pulls the top repos with
-        ``expand`` so safetensors/tags/pipeline come back in ONE call, then rejects
-        quant/merge/adapter derivatives (``base_model`` relation tags), intermediate
-        artifacts, and raw pretrains, deduping by normalized slug. Anything without an
-        engine-format quant self-corrects later (the resolver returns None).
+        BERT, and keeps VLMs out of the text bucket) it runs TWO ranked passes with
+        ``expand`` so safetensors/tags/pipeline come back in ONE call each:
+
+        - the classic top-repos-by-downloads pass (quota ``top_n``/``vision_top_n``);
+        - a FRESHNESS pass sorted by creation date, newest first (#305): cumulative
+          downloads structurally hide recent releases, so the newest repos get their
+          own small quota (``fresh_top_n``) behind a higher downloads floor
+          (``fresh_min_downloads``). Fresh candidates ADD to the downloads-ranked
+          set — they never displace it.
+
+        Both passes share the same rejection rules — quant/merge/adapter derivatives
+        (``base_model`` relation tags), intermediate artifacts, raw pretrains — and
+        dedup by normalized slug. Anything without an engine-format quant
+        self-corrects later (the resolver returns None).
         """
         out: List[Model_Config] = []
         seen: set = set()
+
+        def fetch(pipeline: str, sort: str) -> list:
+            try:
+                return list(self.hf_api.list_models(
+                    author=org, pipeline_tag=pipeline, sort=sort, limit=80,
+                    expand=["safetensors", "cardData", "tags", "pipeline_tag",
+                            "gated", "downloads"],
+                ))
+            except Exception as e:
+                logger.warning(f"Org discovery failed for {org}/{pipeline} (sort={sort}): {e}")
+                return []
+
+        def accept(m, floor: int) -> Optional[Model_Config]:
+            """One candidate through every rejection rule; None means rejected.
+            Shared by both passes so the freshness door can't bypass a filter."""
+            if (getattr(m, "downloads", 0) or 0) < floor:
+                return None
+            name = m.id.split("/")[-1]
+            pipeline_tag = getattr(m, "pipeline_tag", None)
+            tags = list(getattr(m, "tags", None) or [])
+            if set(re.split(r"[-_.]", name.lower())) & self.ARTIFACT_TOKENS:
+                return None
+            if is_nonchat_task(name, pipeline_tag):
+                return None
+            if is_derivative(tags):
+                return None
+            # #182: the Base catalog is chat-only. Keep only conversational
+            # (instruct/chat) releases; raw pretrains (Llama-3.2-1B,
+            # Mistral-7B-v0.1) are dropped and reachable only via HF search.
+            if not is_conversational(tags, name):
+                return None
+            key = base_key(m.id)
+            if key in seen:
+                return None
+            seen.add(key)
+            return Model_Config(
+                name, m.id, model_type,
+                safetensors_total=_safetensors_total(m),
+                category=categorize(name, tags, pipeline_tag),
+            )
+
         for pipelines, cap in ((self.TEXT_PIPELINES, top_n), (self.VISION_PIPELINES, vision_top_n)):
             added = 0
+            fresh_added = 0
             for pipeline in pipelines:
-                if added >= cap:
-                    break
-                try:
-                    models = list(self.hf_api.list_models(
-                        author=org, pipeline_tag=pipeline, sort="downloads", limit=80,
-                        expand=["safetensors", "cardData", "tags", "pipeline_tag",
-                                "gated", "downloads"],
-                    ))
-                except Exception as e:
-                    logger.warning(f"Org discovery failed for {org}/{pipeline}: {e}")
-                    continue
-                for m in models:
-                    if added >= cap:
-                        break
-                    if (getattr(m, "downloads", 0) or 0) < min_downloads:
-                        continue
-                    name = m.id.split("/")[-1]
-                    low = name.lower()
-                    pipeline = getattr(m, "pipeline_tag", None)
-                    tags = list(getattr(m, "tags", None) or [])
-                    if set(re.split(r"[-_.]", low)) & self.ARTIFACT_TOKENS:
-                        continue
-                    if is_nonchat_task(name, pipeline):
-                        continue
-                    if is_derivative(tags):
-                        continue
-                    # #182: the Base catalog is chat-only. Keep only conversational
-                    # (instruct/chat) releases; raw pretrains (Llama-3.2-1B,
-                    # Mistral-7B-v0.1) are dropped and reachable only via HF search.
-                    if not is_conversational(tags, name):
-                        continue
-                    key = base_key(m.id)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    out.append(Model_Config(
-                        name, m.id, model_type,
-                        safetensors_total=_safetensors_total(m),
-                        category=categorize(name, tags, getattr(m, "pipeline_tag", None)),
-                    ))
-                    added += 1
+                if added < cap:
+                    for m in fetch(pipeline, "downloads"):
+                        if added >= cap:
+                            break
+                        if (mc := accept(m, min_downloads)) is not None:
+                            out.append(mc)
+                            added += 1
+                # Freshness pass (#305): newest repos first (`created_at` on the
+                # installed huggingface_hub maps to the raw API's `createdAt`,
+                # descending). Own quota, higher floor, same filters and dedup.
+                if fresh_added < fresh_top_n:
+                    for m in fetch(pipeline, "created_at"):
+                        if fresh_added >= fresh_top_n:
+                            break
+                        if (mc := accept(m, fresh_min_downloads)) is not None:
+                            out.append(mc)
+                            fresh_added += 1
         return out
 
     # Suffix tokens that mark a chat-tuned release (vs its raw pretrain sibling).
