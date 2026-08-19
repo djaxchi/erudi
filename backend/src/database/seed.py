@@ -814,32 +814,123 @@ class Job_Cleanup_Service:
         
         return counts
     
+    def _artifact_is_complete(self, job: DownloadJobModel, llm: Llm) -> bool:
+        """Whether the model on disk is a usable artifact worth preserving (#314).
+
+        A job row left in ``running``/``pending`` means "we do not know how this
+        ended", NOT "the files are garbage": #291 strands the row at ``running``
+        AFTER the transfer fully succeeded, so deleting on the strength of the
+        status alone throws away a complete multi-GB download.
+
+        Two independent signals, either one is enough:
+
+        1. The active engine's own integrity gate (``validate_local_artifact``,
+           #88) -- the same validator the download-completion path uses, so
+           cleanup and finalization can never disagree on what "complete" means.
+           It is metadata-only (GGUF magic + non-empty weights file), so it is
+           cheap enough to run inside the boot sequence.
+        2. The on-disk footprint covers the job's recorded ``total_bytes``. Used
+           when no engine is bound, so a full artifact is never deleted merely
+           because the engine could not be consulted.
+
+        Defensive: any failure answers False, i.e. falls back to the historical
+        delete-and-retry behavior.
+        """
+        link = getattr(llm, "link", None)
+        if not link or not os.path.exists(link):
+            return False
+
+        validator = getattr(config.LLM_Engine, "validate_local_artifact", None)
+        if validator is not None:
+            try:
+                validator(str(link))
+                return True
+            except Exception:
+                # Engine says the artifact is incomplete/corrupt: it is genuine
+                # download debris, fall through and let it be removed.
+                return False
+
+        total_bytes = getattr(job, "total_bytes", None) or 0
+        if total_bytes > 0:
+            try:
+                measured_bytes = measure_dir_size_gb(link) * (1024 ** 3)
+            except Exception:
+                return False
+            return measured_bytes >= total_bytes
+        return False
+
     def _cleanup_download_jobs(self) -> int:
-        """Cleanup interrupted download jobs."""
+        """Resolve interrupted download jobs, preserving complete artifacts (#314).
+
+        Historically this deleted the model directory for every job left in
+        ``running``/``pending``, purely on the strength of the status. That is
+        data loss whenever a download finished but its row was never finalized
+        (#291): the user downloaded 9 GB, the transfer worked, and the next boot
+        silently rmtree'd it.
+
+        Now every unfinished job is triaged first. A complete artifact is
+        RESCUED (job finalized ``completed``, model flipped to ``local=1``);
+        only genuine debris is removed, and every deletion is logged with its
+        path and reclaimed size so a multi-GB delete is never silent again.
+
+        Capability columns are deliberately left NULL on a rescued row: the
+        post-ready ``backfill_wire_tools`` and the boot-time
+        ``backfill_local_model_sizes`` fill them in exactly as they do for any
+        other legacy local model, so no capability probe runs inside boot.
+        """
         unfinished = self.db.query(DownloadJobModel).filter(
             DownloadJobModel.status.in_(["running", "pending"])
         ).all()
-        
+
         count = 0
+        rescued = 0
         for job in unfinished:
             try:
-                # Delete incomplete model files
                 llm = self.db.query(Llm).filter(Llm.id == job.local_model_id).first()
-                if llm and os.path.exists(llm.link):
+
+                if llm and self._artifact_is_complete(job, llm):
+                    # The download actually succeeded; only the bookkeeping was
+                    # lost. Finalize it instead of destroying the artifact.
+                    llm.local = 1
+                    job.status = "completed"
+                    job.progress = 100.0
+                    job.error_message = None
+                    rescued += 1
+                    logger.info(
+                        f"Download job {job.id}: artifact at {llm.link} is "
+                        f"complete; finalizing as completed instead of deleting "
+                        f"(model {llm.id} kept)"
+                    )
+                elif llm and os.path.exists(llm.link):
+                    # Genuine debris: log what is destroyed BEFORE destroying it.
+                    reclaimed_gb = 0.0
+                    try:
+                        reclaimed_gb = measure_dir_size_gb(llm.link)
+                    except Exception:
+                        pass
+                    logger.info(
+                        f"Download job {job.id}: removing incomplete model "
+                        f"{llm.id} at {llm.link} (reclaiming ~{reclaimed_gb:.2f} GB)"
+                    )
                     shutil.rmtree(llm.link, ignore_errors=True)
                     self.db.delete(llm)
-                
-                # Delete temp files
+                    job.status = "failed"
+                    job.error_message = (
+                        "Download interrupted due to application shutdown"
+                    )
+                else:
+                    job.status = "failed"
+                    job.error_message = (
+                        "Download interrupted due to application shutdown"
+                    )
+
+                # Delete temp files. The staging dir is scratch space in every
+                # case: on a rescue its contents were already moved into place.
                 if job.temp_local_model_link and os.path.exists(job.temp_local_model_link):
                     shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
-                
-                # Mark as failed. The temp Llm delete above nulls
-                # local_model_id server-side (FK SET NULL); updated_at is
-                # stamped by onupdate=func.now().
-                job.status = "failed"
-                job.error_message = (
-                    "Download interrupted due to application shutdown"
-                )
+
+                # The temp Llm delete above nulls local_model_id server-side
+                # (FK SET NULL); updated_at is stamped by onupdate=func.now().
                 job.temp_local_model_link = ""
 
                 count += 1
@@ -849,12 +940,17 @@ class Job_Cleanup_Service:
             except DatabaseException as e:
                 logger.error(f"Database error cleaning download job {job.id}: {e}")
                 continue
-        
+
         if count > 0:
             self.db.commit()
-        
+        if rescued > 0:
+            logger.info(
+                f"Preserved {rescued} fully-downloaded model(s) whose job row "
+                f"was left unfinished"
+            )
+
         return count
-    
+
     def _cleanup_kb_jobs(self) -> int:
         """Cleanup interrupted knowledge base jobs.
 

@@ -43,6 +43,28 @@ from src.entities.Llm import Llm
 from src.entities.StartupVariables import StartupVariables
 
 
+class _AcceptingEngine:
+    """Engine whose integrity gate (#88) accepts the artifact on disk."""
+
+    __name__ = "CPU_Engine"
+    FORMAT_TAG = "gguf"
+
+    @classmethod
+    def validate_local_artifact(cls, path):
+        return None
+
+
+class _RejectingEngine:
+    """Engine whose integrity gate rejects the artifact on disk."""
+
+    __name__ = "CPU_Engine"
+    FORMAT_TAG = "gguf"
+
+    @classmethod
+    def validate_local_artifact(cls, path):
+        raise RuntimeError("incomplete artifact")
+
+
 class _FakeEngineType:
     __name__ = "CPU_Engine"
     FORMAT_TAG = "gguf"
@@ -432,8 +454,11 @@ class TestJobCleanup:
         return job
 
     def test_download_cleanup_marks_failed_and_removes_files(
-        self, test_db_session, tmp_path
+        self, test_db_session, tmp_path, monkeypatch
     ):
+        # Incomplete artifact: the engine's integrity gate rejects it, so the
+        # historical delete-and-mark-failed behavior still applies (#314).
+        monkeypatch.setattr(config, "LLM_Engine", _RejectingEngine)
         model_dir = tmp_path / "model-42"
         model_dir.mkdir()
         temp_dir = tmp_path / "temp_42"
@@ -457,6 +482,156 @@ class TestJobCleanup:
     def test_download_cleanup_ignores_finished_jobs(self, test_db_session):
         self._download_job(test_db_session, status="completed")
         assert Job_Cleanup_Service(test_db_session)._cleanup_download_jobs() == 0
+
+    # ---- #314: a complete artifact must survive an unfinished job row ----
+    # #291 strands the job at 'running' AFTER the transfer fully succeeded, so
+    # deleting on the strength of the status alone destroys a valid multi-GB
+    # download. Cleanup must validate the artifact before removing anything.
+
+    def test_download_cleanup_preserves_complete_artifact(
+        self, test_db_session, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(config, "LLM_Engine", _AcceptingEngine)
+        model_dir = tmp_path / "model-748"
+        model_dir.mkdir()
+        (model_dir / "model.Q4_K_M.gguf").write_bytes(b"GGUF" + b"\x00" * 64)
+        temp_dir = tmp_path / "temp_748"
+        temp_dir.mkdir()
+        llm = Llm(name="Qwen3 14B", local=2, link=str(model_dir), type="x")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        job = self._download_job(
+            test_db_session, llm_id=llm.id, temp_dir=str(temp_dir)
+        )
+
+        count = Job_Cleanup_Service(test_db_session)._cleanup_download_jobs()
+
+        assert count == 1
+        # The artifact and its DB row survive, finalized rather than destroyed.
+        assert model_dir.exists()
+        assert (model_dir / "model.Q4_K_M.gguf").exists()
+        assert test_db_session.query(Llm).filter(Llm.id == llm.id).first() is not None
+        assert llm.local == 1
+        assert job.status == "completed"
+        assert job.progress == 100.0
+        assert job.error_message is None
+        # Staging space is still reclaimed: its contents were already moved.
+        assert not temp_dir.exists()
+        assert job.temp_local_model_link == ""
+
+    def test_download_cleanup_preserves_when_size_covers_total_bytes(
+        self, test_db_session, tmp_path, monkeypatch
+    ):
+        # No engine bound: fall back to the recorded total_bytes rather than
+        # deleting a full artifact just because the engine was unavailable.
+        monkeypatch.setattr(config, "LLM_Engine", None)
+        model_dir = tmp_path / "model-900"
+        model_dir.mkdir()
+        (model_dir / "weights.gguf").write_bytes(b"x" * 4096)
+        llm = Llm(name="Sized", local=2, link=str(model_dir), type="x")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        job = self._download_job(test_db_session, llm_id=llm.id)
+        job.total_bytes = 4096
+
+        assert Job_Cleanup_Service(test_db_session)._cleanup_download_jobs() == 1
+
+        assert model_dir.exists()
+        assert llm.local == 1
+        assert job.status == "completed"
+
+    def test_download_cleanup_removes_short_artifact_against_total_bytes(
+        self, test_db_session, tmp_path, monkeypatch
+    ):
+        # Same path, but the transfer really was truncated: still deleted.
+        monkeypatch.setattr(config, "LLM_Engine", None)
+        model_dir = tmp_path / "model-901"
+        model_dir.mkdir()
+        (model_dir / "weights.gguf").write_bytes(b"x" * 10)
+        llm = Llm(name="Truncated", local=2, link=str(model_dir), type="x")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        job = self._download_job(test_db_session, llm_id=llm.id)
+        job.total_bytes = 4096
+
+        assert Job_Cleanup_Service(test_db_session)._cleanup_download_jobs() == 1
+
+        assert not model_dir.exists()
+        assert job.status == "failed"
+
+    # ---- #314 end to end against the REAL engine validator, not a double ----
+    # The pins above use engine doubles, which prove the branching but not that
+    # a real GGUF artifact is actually judged complete. This replays the exact
+    # shape from the 2.0.0 RC post-mortem (job 40 / llm 748: status 'running',
+    # progress 100, complete artifact on disk) through CPU_Engine's real
+    # validate_local_artifact, which is what runs in production.
+
+    def test_real_engine_keeps_a_complete_gguf_left_running(
+        self, test_db_session, tmp_path, monkeypatch
+    ):
+        from src.engines.cpu_engine import CPU_Engine
+
+        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
+        model_dir = tmp_path / "748"
+        model_dir.mkdir()
+        # A real GGUF container: the magic the integrity gate actually checks.
+        (model_dir / "Qwen3-14B-Q4_K_M.gguf").write_bytes(b"GGUF" + b"\x00" * 4096)
+        (model_dir / "config.json").write_text("{}")
+        llm = Llm(name="Qwen3 14B", local=2, link=str(model_dir), type="qwen")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        job = self._download_job(test_db_session, llm_id=llm.id)
+        job.status = "running"
+        job.progress = 100.0
+
+        Job_Cleanup_Service(test_db_session)._cleanup_download_jobs()
+
+        assert (model_dir / "Qwen3-14B-Q4_K_M.gguf").exists(), "the 9 GB artifact was destroyed"
+        assert test_db_session.query(Llm).filter(Llm.id == llm.id).first() is not None
+        assert llm.local == 1
+        assert job.status == "completed"
+
+    def test_real_engine_still_deletes_a_corrupt_gguf_left_running(
+        self, test_db_session, tmp_path, monkeypatch
+    ):
+        # The guard must not become "never delete anything": a truncated file
+        # with no GGUF magic is exactly what the cleanup exists to reclaim.
+        from src.engines.cpu_engine import CPU_Engine
+
+        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
+        model_dir = tmp_path / "749"
+        model_dir.mkdir()
+        (model_dir / "partial.gguf").write_bytes(b"NOTG" + b"\x00" * 16)
+        llm = Llm(name="Broken", local=2, link=str(model_dir), type="qwen")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        job = self._download_job(test_db_session, llm_id=llm.id)
+
+        Job_Cleanup_Service(test_db_session)._cleanup_download_jobs()
+
+        assert not model_dir.exists()
+        assert job.status == "failed"
+
+    def test_download_cleanup_logs_the_reclaimed_size_on_delete(
+        self, test_db_session, tmp_path, monkeypatch, caplog
+    ):
+        # A multi-GB delete must never be silent again (#314).
+        monkeypatch.setattr(config, "LLM_Engine", _RejectingEngine)
+        model_dir = tmp_path / "model-902"
+        model_dir.mkdir()
+        (model_dir / "partial.bin").write_bytes(b"x" * 2048)
+        llm = Llm(name="Debris", local=2, link=str(model_dir), type="x")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        self._download_job(test_db_session, llm_id=llm.id)
+
+        with caplog.at_level("INFO"):
+            Job_Cleanup_Service(test_db_session)._cleanup_download_jobs()
+
+        messages = " ".join(r.getMessage() for r in caplog.records)
+        assert "removing incomplete model" in messages
+        assert str(model_dir) in messages
+        assert "reclaiming" in messages
 
     def _kb_job(self, db, base_id, new_id, kb_id, status="running"):
         job = KBJobModel(
