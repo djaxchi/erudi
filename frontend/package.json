@@ -22,7 +22,8 @@
     "format": "prettier --write \"src/**/*.{js,jsx,css,md}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,css,md}\"",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "Djalil Chikhi, Rayan Hanader, Sami Taider, Youssef Chaouki, Youssef Laatar",
@@ -35,6 +36,7 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@vercel/webpack-asset-relocator-loader": "1.7.3",
+    "@vitest/coverage-v8": "4.1.9",
     "autoprefixer": "^10.4.21",
     "babel-loader": "^10.0.0",
     "concurrently": "^9.1.2",
