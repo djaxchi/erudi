@@ -2,9 +2,44 @@ import React from "react";
 import PropTypes from "prop-types";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 
 // Renders markdown safely with GitHub-flavored features (tables, lists, code blocks)
 // Tailwind Typography is used for nice defaults on dark backgrounds
+
+// Local models emit inline TeX between single dollars ("$ \frac{14}{2} = 7 $",
+// Qwen3 does this routinely), so single-dollar math stays ENABLED. That default
+// is a currency footgun: remark-math turns "I have $5 and $10" into
+// math("5 and "). This guard runs AFTER remark-math and reverts any inline
+// span whose opening "$" is immediately followed by a digit — the currency
+// signature — back to literal text, using the node's source position to
+// restore the exact original characters. Deliberate trade-off: math that
+// starts with a bare digit right after the dollar ("$3x+1$") stays literal;
+// models pad their math ("$ 3x+1 $") or open with a symbol, both of which
+// render (#303).
+function remarkCurrencyGuard() {
+  return (tree, file) => {
+    const source = String(file);
+    const revert = (node) => {
+      if (Array.isArray(node.children)) {
+        node.children.forEach(revert);
+        node.children = node.children.map((child) => {
+          if (child.type !== "inlineMath" || !child.position) {
+            return child;
+          }
+          const original = source.slice(child.position.start.offset, child.position.end.offset);
+          if (/^\$\d/.test(original)) {
+            return { type: "text", value: original, position: child.position };
+          }
+          return child;
+        });
+      }
+    };
+    revert(tree);
+  };
+}
 
 MarkdownRenderer.propTypes = {
   content: PropTypes.string.isRequired,
@@ -19,7 +54,8 @@ export default function MarkdownRenderer({ content }) {
   return (
     <div className="prose prose-invert max-w-none whitespace-normal">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath, remarkCurrencyGuard]}
+        rehypePlugins={[rehypeKatex]}
         // Do not allow raw HTML for safety in LLM outputs
         skipHtml
         components={{
