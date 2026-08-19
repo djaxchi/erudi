@@ -34,25 +34,50 @@ from src.core.exceptions import HardwareException
 from src.core import config
 
 
-# Recommended model size window (billions of params) per UI inference tier (#86).
-# The UI shows base models whose param_size falls in [min, max] as "Models For You".
-# Thresholds apply to the boosted inference score and match the windows the frontend
-# used to hardcode — now a single, data-driven source of truth.
-_PARAM_RANGE_TIERS = (
-    (75.0, (7.0, 12.0)),
-    (50.0, (4.0, 8.0)),
-    (25.0, (2.0, 7.0)),
-)
-_PARAM_RANGE_FLOOR = (1.0, 4.0)
+# Recommended model size window (billions of params) — drives the hardware-fit
+# "Models For You" filter in the UI (#86). Derived from the machine's actual
+# usable inference memory (#199 Part 2), not from a coarse 0-100 score bucket:
+# a score-tier lookup caps every "Excellent" machine at the same ceiling
+# whether it has 12GB or 48GB of VRAM, which is exactly the under-recommendation
+# the +20 display boost was papering over instead of fixing.
+#
+# Quantized (4-bit) footprint: ~0.6 GB per billion params, matching the same
+# ratio the frontend already uses for per-model fit (hardwareFit.js
+# estimateFootprintGb). _INFERENCE_OVERHEAD_RESERVE_GB covers KV cache and
+# runtime overhead for a modest context window.
+_GB_PER_BILLION_PARAMS_Q4 = 0.6
+_INFERENCE_OVERHEAD_RESERVE_GB = 1.5
+# Unified/system memory is shared with the OS and other apps, unlike dedicated
+# VRAM — only a fraction of it is realistically usable for model weights.
+_MLX_UNIFIED_MEMORY_USABLE_FRACTION = 0.75
+_CPU_RAM_USABLE_FRACTION = 0.5
+_MIN_PARAM_FLOOR = 1.0
+_MAX_PARAM_CEILING = 120.0
 
 
-def recommended_param_range(inference_score: float) -> tuple[float, float]:
-    """Recommended model size window (billions of params) for a boosted inference
-    score — drives the hardware-fit "Models For You" filter in the UI (#86)."""
-    for threshold, window in _PARAM_RANGE_TIERS:
-        if inference_score >= threshold:
-            return window
-    return _PARAM_RANGE_FLOOR
+def _usable_inference_memory_gb(profile: HardwareProfile) -> float:
+    """Memory actually available to load model weights into, per backend.
+
+    CUDA: dedicated VRAM (not shared with the OS). MLX: a fraction of unified
+    memory (shared with the OS and everything else running). CPU: a fraction
+    of system RAM, same reasoning.
+    """
+    if profile.backend_type == "cuda" and profile.vram_total_gb:
+        return profile.vram_total_gb
+    if profile.unified_memory and profile.total_memory_gb:
+        return profile.total_memory_gb * _MLX_UNIFIED_MEMORY_USABLE_FRACTION
+    return (profile.total_memory_gb or 0.0) * _CPU_RAM_USABLE_FRACTION
+
+
+def recommended_param_range(profile: HardwareProfile) -> tuple[float, float]:
+    """Recommended model size window (billions of params) this machine can
+    comfortably run at 4-bit quantization, derived from real usable memory."""
+    usable_gb = _usable_inference_memory_gb(profile)
+    weight_budget_gb = max(0.0, usable_gb - _INFERENCE_OVERHEAD_RESERVE_GB)
+    max_params = weight_budget_gb / _GB_PER_BILLION_PARAMS_Q4
+    max_params = max(_MIN_PARAM_FLOOR, min(max_params, _MAX_PARAM_CEILING))
+    min_params = max(_MIN_PARAM_FLOOR, max_params * 0.5)
+    return (round(min_params, 1), round(max_params, 1))
 
 
 class Hardware_Service:
@@ -269,8 +294,8 @@ class Hardware_Service:
         }
 
         # Hardware-fit model size window (billions of params) for the UI's
-        # "Models For You" recommendations (#86), derived from the boosted score.
-        param_min, param_max = recommended_param_range(boosted_inf)
+        # "Models For You" recommendations (#86), derived from real usable memory.
+        param_min, param_max = recommended_param_range(profile)
         result["recommended_param_min"] = param_min
         result["recommended_param_max"] = param_max
         

@@ -28,6 +28,17 @@ Stat.propTypes = {
   label: PropTypes.string,
 };
 
+// A friendly one-liner under the chip name (#199 follow-up) — fills what was
+// dead space under a short GPU name, and keeps the "Weak"/"Poor" tiers from
+// reading like a verdict. Never technical: that's what the stats row is for.
+const CATCHPHRASES = {
+  Excellent: "Big rig energy. Go wild.",
+  Good: "Solid setup, most models will fly.",
+  Fair: "Gets the job done, mind the big ones.",
+  Poor: "Small models are your best friend here.",
+  Weak: "Featherweight champion. Stick to the tiny stuff.",
+};
+
 export default function MachineReadout({ machine, loading }) {
   if (loading) {
     return (
@@ -55,15 +66,22 @@ export default function MachineReadout({ machine, loading }) {
         className="pointer-events-none absolute -right-24 -top-24 w-72 h-72 rounded-full blur-3xl"
         style={{ background: "radial-gradient(circle, rgba(52,214,165,0.10), transparent 70%)" }}
       />
-      <div className="relative p-5 flex flex-wrap items-center gap-x-9 gap-y-5">
-        <div className="min-w-[150px]">
-          <div className="eyebrow mb-1.5">Your machine</div>
-          <div className="text-2xl font-semibold text-[var(--ink)] tracking-tight leading-none">
-            {m.chip || "Unknown"}
+      <div className="relative p-5 grid grid-cols-[auto_1fr_auto] items-stretch gap-x-9">
+        <div className="min-w-[150px] flex flex-col justify-between">
+          <div>
+            <div className="eyebrow mb-1.5">Your machine</div>
+            <div className="text-2xl font-semibold text-[var(--ink)] tracking-tight leading-none">
+              {m.chip || "Unknown"}
+            </div>
+            <div className="mono text-[11px] text-[var(--ink-dim)] mt-1.5 uppercase tracking-wider">
+              {m.backend || ""} runtime
+            </div>
           </div>
-          <div className="mono text-[11px] text-[var(--ink-dim)] mt-1.5 uppercase tracking-wider">
-            {m.backend || ""} runtime
-          </div>
+          {CATCHPHRASES[m.inferenceLabel] && (
+            <div className="text-[12px] text-[var(--ink-dim)] italic">
+              {CATCHPHRASES[m.inferenceLabel]}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
@@ -74,7 +92,7 @@ export default function MachineReadout({ machine, loading }) {
           <Stat value={m.inferenceLabel || "n/a"} unit={`· ${score}`} label="Inference" />
         </div>
 
-        <div className="ml-auto flex items-center gap-4 pl-6 sm:border-l border-white/10">
+        <div className="flex items-end justify-end gap-4 pl-6 sm:border-l border-white/10">
           <div>
             <div className="eyebrow mb-1.5">Sweet spot</div>
             <div className="flex items-baseline gap-1">

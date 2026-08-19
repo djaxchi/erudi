@@ -245,9 +245,10 @@ class TestHardwareEndpoints:
         assert body["raw_inference_score"] == 40.0
         assert body["global_inference_score"] == 60.0  # raw + 20 boost
         assert body["global_inference_label"] == "Good"
-        # 60 >= 50 tier -> 4-8B window (#86)
-        assert body["recommended_param_min"] == 4.0
-        assert body["recommended_param_max"] == 8.0
+        # Window derives from real usable memory (#199 Part 2), not the score tier:
+        # CPU 16GB -> 50% usable = 8GB, less the 1.5GB reserve, / 0.6 GB-per-B = 10.8B
+        assert body["recommended_param_min"] == 5.4
+        assert body["recommended_param_max"] == 10.8
 
     def test_app_startup_hardware_error_maps_to_500(self, client):
         with patch.object(

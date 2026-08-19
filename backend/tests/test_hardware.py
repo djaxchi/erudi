@@ -150,6 +150,9 @@ class TestHardwareService:
         mock_profile.cpu_score = 40.0
         mock_profile.memory_score = 60.0
         mock_profile.gpu_score = 70.0
+        mock_profile.backend_type = "cpu"
+        mock_profile.total_memory_gb = 16.0
+        mock_profile.unified_memory = False
 
         result = service.calculate_boosted_scores(mock_profile)
 
@@ -163,38 +166,92 @@ class TestHardwareService:
         mock_profile.cpu_score = 40.0
         mock_profile.memory_score = 60.0
         mock_profile.gpu_score = 70.0
+        mock_profile.backend_type = "cpu"
+        mock_profile.total_memory_gb = 16.0
+        mock_profile.unified_memory = False
 
         result = service.calculate_boosted_scores(mock_profile)
 
         assert result["boosted_inference_score"] == 100.0  # min(85 + 20, 100)
 
     def test_calculate_boosted_scores_includes_recommended_param_range(self, service):
-        """Boosted scores carry the hardware-fit model size window (#86)."""
+        """Boosted scores carry the hardware-fit model size window (#86), now
+        derived from real usable memory (#199) rather than the score."""
         mock_profile = Mock(spec=HardwareProfile)
-        mock_profile.global_inference_score = 65.0   # boosted 85 -> top tier (>= 75)
+        mock_profile.global_inference_score = 65.0
         mock_profile.cpu_score = 40.0
         mock_profile.memory_score = 60.0
         mock_profile.gpu_score = 70.0
+        mock_profile.backend_type = "cuda"
+        mock_profile.vram_total_gb = 16.0
+        mock_profile.unified_memory = False
+        mock_profile.total_memory_gb = 32.0
 
         result = service.calculate_boosted_scores(mock_profile)
 
-        assert result["recommended_param_min"] == 7.0
-        assert result["recommended_param_max"] == 12.0
+        # (16 - 1.5) / 0.6 = 24.166... -> max 24.2, min = max * 0.5
+        assert result["recommended_param_min"] == 12.1
+        assert result["recommended_param_max"] == 24.2
 
 
-@pytest.mark.parametrize("score,expected", [
-    (100.0, (7.0, 12.0)),
-    (75.0, (7.0, 12.0)),   # tier boundary
-    (74.9, (4.0, 8.0)),
-    (50.0, (4.0, 8.0)),
-    (25.0, (2.0, 7.0)),
-    (24.9, (1.0, 4.0)),
-    (0.0, (1.0, 4.0)),
-])
-def test_recommended_param_range_tiers(score, expected):
-    """The hardware-fit model size window per boosted inference score (#86)."""
-    from src.domains.hardware.services import recommended_param_range
-    assert recommended_param_range(score) == expected
+class TestRecommendedParamRange:
+    """The hardware-fit model size window from real usable memory (#199 Part 2).
+
+    Replaces the old score-tier lookup: a coarse 0-100 bucket capped every
+    "Excellent" machine at the same ceiling regardless of whether it had 12GB
+    or 48GB of VRAM — the exact under-recommendation the +20 display boost was
+    compensating for instead of fixing.
+    """
+
+    @staticmethod
+    def _profile(**overrides):
+        defaults = dict(backend_type="cpu", vram_total_gb=None, unified_memory=False,
+                         total_memory_gb=16.0)
+        defaults.update(overrides)
+        return Mock(spec=HardwareProfile, **defaults)
+
+    def test_cuda_uses_dedicated_vram(self):
+        from src.domains.hardware.services import recommended_param_range
+        # RTX 5060 Ti 16GB: (16 - 1.5) / 0.6 = 24.16 -> (12.1, 24.2)
+        profile = self._profile(backend_type="cuda", vram_total_gb=16.0)
+        assert recommended_param_range(profile) == (12.1, 24.2)
+
+    def test_cuda_high_end_scales_up(self):
+        from src.domains.hardware.services import recommended_param_range
+        # RTX 4090 24GB: (24 - 1.5) / 0.6 = 37.5 -> (18.8, 37.5)
+        profile = self._profile(backend_type="cuda", vram_total_gb=24.0)
+        assert recommended_param_range(profile) == (18.8, 37.5)
+
+    def test_mlx_uses_a_fraction_of_unified_memory(self):
+        from src.domains.hardware.services import recommended_param_range
+        # 16GB M-series: usable = 16*0.75=12, (12-1.5)/0.6 = 17.5 -> (8.8, 17.5)
+        profile = self._profile(backend_type="mlx", unified_memory=True, total_memory_gb=16.0)
+        assert recommended_param_range(profile) == (8.8, 17.5)
+
+    def test_cpu_uses_a_fraction_of_system_ram(self):
+        from src.domains.hardware.services import recommended_param_range
+        # 8GB laptop: usable = 8*0.5=4, (4-1.5)/0.6 = 4.16 -> (2.1, 4.2)
+        profile = self._profile(backend_type="cpu", total_memory_gb=8.0)
+        assert recommended_param_range(profile) == (2.1, 4.2)
+
+    def test_cpu_desktop_scales_up_with_more_ram(self):
+        from src.domains.hardware.services import recommended_param_range
+        # 32GB CPU desktop: usable = 32*0.5=16, (16-1.5)/0.6 = 24.16 -> (12.1, 24.2)
+        profile = self._profile(backend_type="cpu", total_memory_gb=32.0)
+        assert recommended_param_range(profile) == (12.1, 24.2)
+
+    def test_floor_never_goes_below_one_billion(self):
+        from src.domains.hardware.services import recommended_param_range
+        profile = self._profile(backend_type="cpu", total_memory_gb=1.0)
+        min_p, max_p = recommended_param_range(profile)
+        assert min_p >= 1.0
+        assert max_p >= 1.0
+
+    def test_ceiling_is_capped(self):
+        from src.domains.hardware.services import recommended_param_range
+        profile = self._profile(backend_type="cuda", vram_total_gb=1000.0)
+        _, max_p = recommended_param_range(profile)
+        assert max_p == 120.0
 
 
 class TestBuildBackendSpecificSchema:
