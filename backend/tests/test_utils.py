@@ -87,6 +87,9 @@ class TestPromptUtils:
         assert len(prompt) > 0
         # Medium prompts are more detailed
         assert len(prompt) > 200
+        # #304: the epistemic caution line reaches the medium tier too - a 4B
+        # confidently invented a Nobel laureate during the 2.0.0 QA pass.
+        assert "say so rather than guessing" in prompt
 
     def test_build_system_prompt_large(self):
         """Large tier (8-16B) carries the Erudi persona doctrine (#129 L0-L2):

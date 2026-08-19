@@ -968,6 +968,15 @@ async def test_stale_kb_tool_results_placeholdered_on_followup(monkeypatch):
     # Past turn's real excerpts are gone (placeholdered)…
     assert "90 jours" not in "".join(m.text for m in last_call)
     assert any("earlier turn omitted" in m.content for m in tool_msgs)
+    # #304: the placeholder is DIRECTIVE - the model must be told to search
+    # again rather than trust its memory of removed excerpts (observed live:
+    # a 4B asserted "not in the documents" from a placeholdered turn while the
+    # fact sat in the spec sheet).
+    assert any(
+        "call search_knowledge_base again" in m.content
+        for m in tool_msgs
+        if "earlier turn omitted" in m.content
+    )
     # …and the current turn's KB result is intact.
     assert any("99,7" in m.text for m in tool_msgs)
 
