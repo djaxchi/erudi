@@ -133,6 +133,14 @@ frontend/src/
 - **Ruff config** (`backend/ruff.toml`) only enforces `F` + `E7`. `E501`/`E402`/`F841`/`E701` are intentionally ignored — don't reintroduce them as blockers. Black uses `--line-length=100` via pre-commit.
 - **Frontend**: ESLint + Prettier are enforced by CI (`lint:check`, `format:check`).
 - **Commits**: `type(scope): description` (`feat`, `fix`, `docs`, `chore`, `ci`). Don't mention Claude/AI or add `Co-Authored-By: Claude`.
+- **Branches and pushes**: `main` is protected, PRs are **squash-merged**, and the
+  repo requires branches to be **up to date** before merging. Two consequences:
+  - **Never rebase or amend a branch that has been pushed.** Rewriting history
+    forces a `--force-push`, which can dismiss reviews and strands inline review
+    comments on SHAs that no longer exist. When GitHub says your branch is behind,
+    use **"Update branch"** (or `git merge origin/main`) and push normally.
+  - **Don't groom the branch history.** The squash discards it anyway, so
+    incremental commits are fine and cost nothing. Tidying costs a force-push.
 - **Requirements**: never edit a single platform file blindly. Common deps live in `backend/requirements/meta/base.txt`; platform/hardware specifics in `meta/*-specs.txt`; entrypoints (`entrypoints/dev/*.txt`, `entrypoints/prod/*.txt`) compose them. Read `backend/requirements/README.md` before adding a dep.
 
 ## Data and storage
