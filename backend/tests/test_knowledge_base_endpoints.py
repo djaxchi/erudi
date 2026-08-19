@@ -162,6 +162,70 @@ class TestCreateKnowledgeBase:
         ]
         assert self.creation_calls == []
 
+    def test_duplicate_assistant_name_rejected_with_409(
+        self, client, mock_llm, test_db_session
+    ):
+        """#317: two assistants with the same name are indistinguishable in
+        every picker. The create path must refuse a modelName that collides
+        with an existing local model's name."""
+        from src.entities.Llm import Llm
+
+        test_db_session.add(
+            Llm(name="Docs Assistant", local=1, link="test/other/path", type="test")
+        )
+        test_db_session.commit()
+
+        with patch.object(KB_Service, "create_kb_assistant") as create:
+            resp = client.post(
+                "/erudi/knowledge_base/create",
+                json=_payload(selectedModel=mock_llm.id),
+            )
+
+        assert resp.status_code == 409
+        assert "Docs Assistant" in resp.json()["error"]["message"]
+        create.assert_not_called()
+        assert self.creation_calls == []
+        assert self.update_calls == []
+
+    def test_duplicate_name_check_is_case_insensitive(
+        self, client, mock_llm, test_db_session
+    ):
+        from src.entities.Llm import Llm
+
+        test_db_session.add(
+            Llm(name="Docs Assistant", local=1, link="test/other/path", type="test")
+        )
+        test_db_session.commit()
+
+        resp = client.post(
+            "/erudi/knowledge_base/create",
+            json=_payload(selectedModel=mock_llm.id, modelName="  docs assistant "),
+        )
+
+        assert resp.status_code == 409
+
+    def test_name_collision_with_the_base_model_itself_rejected(self, client, mock_llm):
+        """An assistant named exactly like its base is just as ambiguous."""
+        resp = client.post(
+            "/erudi/knowledge_base/create",
+            json=_payload(selectedModel=mock_llm.id, modelName=mock_llm.name),
+        )
+        assert resp.status_code == 409
+
+    def test_update_path_accepts_the_assistant_own_name(self, client, mock_llm_with_kb):
+        """Updating an assistant's KB routes by the selected assistant, not the
+        name: its own (necessarily existing) name must not be rejected."""
+        llm, _kb = mock_llm_with_kb
+        with patch.object(
+            KB_Service, "update_existing_kb", return_value=(llm.id, 12)
+        ):
+            resp = client.post(
+                "/erudi/knowledge_base/create",
+                json=_payload(selectedModel=llm.id, modelName=llm.name),
+            )
+        assert resp.status_code == 200
+        assert "updated" in resp.json()["msg"]
+
     def test_service_valueerror_maps_to_404(self, client, mock_llm):
         with patch.object(
             KB_Service, "create_kb_assistant", side_effect=ValueError("gone")

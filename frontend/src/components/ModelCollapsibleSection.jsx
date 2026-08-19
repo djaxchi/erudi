@@ -8,6 +8,7 @@ import { ChevronDown, RefreshCcw, HelpCircle, Trash2, Database, Globe, Search } 
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { API_BASE_URL } from "../config/api";
 import { tracedFetch } from "../services/api/client";
+import { fetchDeleteDependents, parseConflictDependents } from "../utils/deleteGuard";
 import { createLogger } from "../utils/logger";
 const log = createLogger("ModelCollapsibleSection");
 
@@ -28,7 +29,11 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [deleteConfirmation, setDeleteConfirmation] = useState({ show: false, model: null });
+  const [deleteConfirmation, setDeleteConfirmation] = useState({
+    show: false,
+    model: null,
+    dependents: null,
+  });
   const [successMessage, setSuccessMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -118,9 +123,13 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
     });
   };
 
-  const handleDeleteClick = (e, model) => {
+  // Guarded base delete (#317): the rail runs the same flow as the installed
+  // cards — pre-check the dependents so the dialog can list what the deletion
+  // orphans, instead of a bare DELETE whose 409 used to dead-end here.
+  const handleDeleteClick = async (e, model) => {
     e.stopPropagation();
-    setDeleteConfirmation({ show: true, model });
+    const dependents = await fetchDeleteDependents(model);
+    setDeleteConfirmation({ show: true, model, dependents });
   };
 
   const confirmDelete = async () => {
@@ -130,10 +139,16 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
 
     // Store model reference and close modal immediately to prevent double-clicks
     const modelToDelete = deleteConfirmation.model;
-    setDeleteConfirmation({ show: false, model: null });
+    // Confirming a dialog that listed dependents means "Delete anyway":
+    // the base goes, its assistants stay (orphaned) and conversations are kept.
+    const orphanDependents = Boolean(deleteConfirmation.dependents?.assistants?.length);
+    setDeleteConfirmation({ show: false, model: null, dependents: null });
 
     try {
-      const response = await tracedFetch(`${API_BASE_URL}/llms/${modelToDelete.id}`, {
+      const url = orphanDependents
+        ? `${API_BASE_URL}/llms/${modelToDelete.id}?orphan_dependents=true`
+        : `${API_BASE_URL}/llms/${modelToDelete.id}`;
+      const response = await tracedFetch(url, {
         method: "DELETE",
       });
 
@@ -145,6 +160,16 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
         if (onLocalModelRefresh) {
           onLocalModelRefresh();
         }
+      } else if (response.status === 409) {
+        // Safety net: the pre-check missed dependents (raced or failed). The
+        // 409 payload carries the same dependents shape — reopen the dialog
+        // with it instead of dying silently (#317).
+        const detail = await parseConflictDependents(response);
+        if (detail) {
+          setDeleteConfirmation({ show: true, model: modelToDelete, dependents: detail });
+          return;
+        }
+        throw new Error(`Failed to delete model: ${response.status}`);
       } else {
         throw new Error(`Failed to delete model: ${response.status}`);
       }
@@ -157,7 +182,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
   };
 
   const cancelDelete = () => {
-    setDeleteConfirmation({ show: false, model: null });
+    setDeleteConfirmation({ show: false, model: null, dependents: null });
   };
 
   const closeErrorModal = () => {
@@ -307,6 +332,7 @@ const CollapsibleSection = forwardRef(({ title, onLocalModelRefresh, hasSearch =
       <DeleteModelModal
         isOpen={deleteConfirmation.show}
         model={deleteConfirmation.model}
+        dependents={deleteConfirmation.dependents}
         onConfirm={confirmDelete}
         onCancel={cancelDelete}
       />

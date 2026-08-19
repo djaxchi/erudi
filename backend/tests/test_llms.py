@@ -1065,6 +1065,31 @@ class TestModelDeletionAndRebind:
         assert data["own_conversation_count"] == 2
         assert data["total_conversation_count"] == 3
 
+    def test_dependents_endpoint_empty_for_assistant_even_with_sibling(
+        self, client, test_db_session, tmp_path
+    ):
+        """A KB assistant has no dependents (#317): its DELETE is a direct 200
+        that frees nothing (the weights belong to the base), so the endpoint
+        must not report sibling assistants sharing the same copied link as
+        dependents — that renders the guard dialog on the wrong entity."""
+        from src.entities.Conversation import Conversation
+
+        base, _ = self._make_base_with_files(test_db_session, tmp_path)
+        a1, _ = self._make_assistant(test_db_session, base, name="Nimbus Assistant")
+        a2, _ = self._make_assistant(test_db_session, base, name="Nimbus Assistant 2")
+        test_db_session.flush()
+        test_db_session.add(Conversation(llm_id=a1.id, name="a1c1"))
+        test_db_session.commit()
+        a1_id = a1.id
+
+        resp = client.get(f"/erudi/llms/{a1_id}/dependents")
+
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        assert data["assistants"] == []
+        assert data["own_conversation_count"] == 1
+        assert data["total_conversation_count"] == 1
+
     def test_dependents_endpoint_empty_for_model_without_dependents(
         self, client, test_db_session, tmp_path
     ):

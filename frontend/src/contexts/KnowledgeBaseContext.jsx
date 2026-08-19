@@ -152,12 +152,29 @@ export function KnowledgeBaseProvider({ children }) {
 
             {/* Modal container */}
             <div className="relative bg-[#313131] rounded-2xl px-20 py-12 w-[60%] shadow-lg shadow-emerald-500/10">
-              <h2 className="text-xl font-semibold text-white pr-4">
-                Are you sure you want to create <span className="font-bold">{task.modelName}</span>?
-              </h2>
-              <p className="mt-1 text-gray-300">
-                This will create a knowledge base assistant with {task.paths?.length || 0} files
-              </p>
+              {/* Update vs create wording (#317): updating an existing
+                  assistant must never read as creating a new one. */}
+              {task.isUpdate ? (
+                <>
+                  <h2 className="text-xl font-semibold text-white pr-4">
+                    Update <span className="font-bold">{task.modelName}</span>&apos;s knowledge base
+                    with {task.paths?.length || 0} file(s)?
+                  </h2>
+                  <p className="mt-1 text-gray-300">
+                    The new documents will be added to this assistant&apos;s existing knowledge base
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-xl font-semibold text-white pr-4">
+                    Are you sure you want to create{" "}
+                    <span className="font-bold">{task.modelName}</span>?
+                  </h2>
+                  <p className="mt-1 text-gray-300">
+                    This will create a knowledge base assistant with {task.paths?.length || 0} files
+                  </p>
+                </>
+              )}
 
               <div className="mt-4 flex justify-start gap-4">
                 <button
@@ -170,7 +187,7 @@ export function KnowledgeBaseProvider({ children }) {
                   onClick={startCreation}
                   className="px-4 py-2 border border-emerald-500 text-emerald-500 rounded-full hover:bg-emerald-500/10 transition-shadow shadow-none hover:shadow-lg"
                 >
-                  Create Assistant
+                  {task.isUpdate ? "Update Knowledge Base" : "Create Assistant"}
                 </button>
               </div>
             </div>

@@ -140,6 +140,41 @@ describe("KnowledgeBaseContext creation success", () => {
   });
 });
 
+describe("KnowledgeBaseContext confirmation wording (#317)", () => {
+  it("asks to create when the task is a new assistant", async () => {
+    renderProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByText("OPEN"));
+    });
+
+    expect(screen.getByText(/Are you sure you want to create/)).toBeTruthy();
+    expect(screen.getByText("Create Assistant")).toBeTruthy();
+    expect(screen.queryByText(/knowledge base with/)).toBeNull();
+  });
+
+  it("asks to update when the task targets an existing assistant", async () => {
+    currentTask = { ...currentTask, isUpdate: true };
+    renderProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByText("OPEN"));
+    });
+
+    // "Update <name>'s knowledge base with 2 file(s)?" — never "create".
+    expect(screen.getByText(/knowledge base with 2 file\(s\)\?/)).toBeTruthy();
+    expect(screen.getByText("My KB")).toBeTruthy();
+    expect(screen.queryByText(/Are you sure you want to create/)).toBeNull();
+    expect(screen.queryByText("Create Assistant")).toBeNull();
+
+    // The confirm button still drives the same POST /create flow.
+    await act(async () => {
+      fireEvent.click(screen.getByText("Update Knowledge Base"));
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    const post = tracedFetchMock.mock.calls.find(([, o]) => o?.method === "POST");
+    expect(String(post[0])).toMatch(/\/knowledge_base\/create$/);
+  });
+});
+
 describe("KnowledgeBaseContext failure routing", () => {
   it("routes a failed status to onError with the backend message", async () => {
     statusResponder = () => ({

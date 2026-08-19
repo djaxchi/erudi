@@ -242,6 +242,58 @@ describe("KnowledgeBasePage assistant creation", () => {
       selectedModel: 5,
       modelName: "picked-name",
       description: "my helper",
+      isUpdate: false,
+    });
+  });
+
+  it("rejects a name already carried by another local model (#317)", async () => {
+    modelsResponder = () => [
+      { id: 5, name: "Qwen3 4B" },
+      { id: 7, name: "picked-name" },
+    ];
+    render(<KnowledgeBasePage />);
+    await waitFor(() => expect(screen.getByTestId("lib-count").textContent).toBe("2"));
+
+    fireEvent.click(screen.getByText("PICK_MODEL"));
+    fireEvent.click(screen.getByText("SET_NAME"));
+    fireEvent.click(screen.getByText("DROP_FILES"));
+    fireEvent.click(screen.getByText("Create Assistant"));
+
+    expect(await screen.findByText(/already exists/)).toBeTruthy();
+    expect(openKB).not.toHaveBeenCalled();
+  });
+
+  it("treats the duplicate check case-insensitively (#317)", async () => {
+    modelsResponder = () => [{ id: 5, name: "PICKED-NAME" }];
+    render(<KnowledgeBasePage />);
+    await waitFor(() => expect(screen.getByTestId("lib-count").textContent).toBe("1"));
+
+    fireEvent.click(screen.getByText("PICK_MODEL"));
+    fireEvent.click(screen.getByText("SET_NAME"));
+    fireEvent.click(screen.getByText("DROP_FILES"));
+    fireEvent.click(screen.getByText("Create Assistant"));
+
+    expect(await screen.findByText(/already exists/)).toBeTruthy();
+    expect(openKB).not.toHaveBeenCalled();
+  });
+
+  it("flags the task as an update when the selected model is the assistant itself (#317)", async () => {
+    // Updating an assistant keeps its own (necessarily existing) name: no
+    // duplicate error, and the confirmation must say update, not create.
+    modelsResponder = () => [{ id: 5, name: "picked-name", is_attached_to_kb: true, kb_id: 1 }];
+    render(<KnowledgeBasePage />);
+    await waitFor(() => expect(screen.getByTestId("lib-count").textContent).toBe("1"));
+
+    fireEvent.click(screen.getByText("PICK_MODEL"));
+    fireEvent.click(screen.getByText("SET_NAME"));
+    fireEvent.click(screen.getByText("DROP_FILES"));
+    fireEvent.click(screen.getByText("Create Assistant"));
+
+    expect(openKB).toHaveBeenCalledTimes(1);
+    expect(openKB.mock.calls[0][0]).toMatchObject({
+      selectedModel: 5,
+      modelName: "picked-name",
+      isUpdate: true,
     });
   });
 

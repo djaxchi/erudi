@@ -53,7 +53,7 @@ screens, the shared chrome, and non-functional behavior.
 **Edge cases & errors**
 - [ ] When I send **without any image** (plain text), then the model answers normally.
 - [ ] When I attach image(s) on a **vision-capable** model (button, paste, or drag-and-drop) and send, then thumbnails show (up to 4) and the images are used in the answer.
-- [ ] When the **selected model is NOT vision-capable**, then the image **attach button is disabled** with a tooltip ("This model can't read images — pick a Vision model") and pasting/dropping an image is ignored; if an image still reaches the backend it is stripped, so the answer is plain text (never broken).
+- [ ] When the **selected model is NOT vision-capable**, then the image **attach button is not shown at all** (vision-only affordance) and pasting/dropping an image is ignored; if an image still reaches the backend it is stripped, so the answer is plain text (never broken).
 - [ ] When I try to attach a **5th** image, then it is rejected (cap of 4) and the attach button is disabled at 4.
 - [ ] When I drop a **non-image** file, then it is ignored.
 - [ ] When the input is **empty or whitespace** only, then the send button is disabled.
@@ -143,6 +143,19 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When I click the bug/contact icon, then `erudi.app/contact` opens in my browser.
 - [ ] When a download is in progress, then the contact icon is hidden; navigation stays enabled and the progress widget follows me across screens.
 - [ ] When I navigate to an unknown route, then I am redirected to the Models screen.
+
+## Security — localhost hardening (#89, ships after the 2.0.0 candidate)
+
+*These scenarios verify the CORS/host-pinning/sandbox hardening merged after the
+2.0.0 draft was cut. Skip them on any candidate built before that merge; they
+are mandatory from the next draft on.*
+
+- [ ] When the packaged app is running and I send the API a request with a **foreign Origin** (e.g. `curl -H "Origin: https://evil.example" http://127.0.0.1:27182/erudi/health -i`), then the response carries **no** `access-control-allow-origin` header (a malicious website cannot read the local API).
+- [ ] When I send a request with `Origin: null` (what the packaged renderer sends), then the response grants exactly `access-control-allow-origin: null` — and the app's own screens all load their data normally (proof the packaged renderer's requests still pass).
+- [ ] When I send a request with a **non-local Host header** (`curl -H "Host: attacker.example" http://127.0.0.1:27182/erudi/health -i`), then the API answers **400** (DNS-rebinding guard).
+- [ ] When I inspect any API response, then **no** `access-control-allow-credentials` header is present.
+- [ ] When the app runs on **macOS or Windows**, then the Chromium renderer processes run **sandboxed** (no `--no-sandbox` in the renderer process arguments — check the process list); on Linux the flag is expected (user-namespace workaround).
+- [ ] When the backend logs a request with a foreign Origin or Host, then the request id correlation (`X-Request-ID`) still works for allowed requests (tracing survives the tightening).
 
 ## Non-functional (boot, offline, persistence, updates, errors)
 
