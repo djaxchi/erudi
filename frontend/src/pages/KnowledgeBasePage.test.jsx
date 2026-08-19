@@ -1,0 +1,370 @@
+// @vitest-environment jsdom
+import React from "react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
+
+// KnowledgeBasePage drives the embedding-model gate (#146) and the assistant
+// creation form. These tests pin: the GATE.* state machine as the user sees it
+// (mount check, resume-in-flight polling, download POST, error retry, leave
+// navigation), the creation flow (validation, exact task payload with
+// deduplicated dropped paths, success reset, error surfacing), the hardware
+// readout fallbacks, and the URL-driven model preselection.
+
+const { getMock, postMock, openKB, kbState, navigateMock, routerState } = vi.hoisted(() => ({
+  getMock: vi.fn(),
+  postMock: vi.fn(),
+  openKB: vi.fn(),
+  kbState: { isCreating: false, isStarting: false },
+  navigateMock: vi.fn(),
+  routerState: { params: new URLSearchParams() },
+}));
+
+vi.mock("../services/api/client", () => ({
+  default: { get: getMock, post: postMock },
+  apiClient: { get: getMock, post: postMock },
+}));
+
+vi.mock("../contexts/KnowledgeBaseContext", () => ({
+  useKnowledgeBase: () => ({
+    open: openKB,
+    isCreating: kbState.isCreating,
+    isStarting: kbState.isStarting,
+  }),
+}));
+
+vi.mock("react-router-dom", () => ({
+  useSearchParams: () => [routerState.params],
+  useNavigate: () => navigateMock,
+}));
+
+vi.mock("../components/Sidebar", () => ({ default: () => null }));
+
+// Probe stubs: expose the props the page wires into its children so the tests
+// can both observe state (selected model, model list size) and drive callbacks
+// (model pick, file drop, gate actions) without the heavy real components.
+vi.mock("../components/ModelLibrary", () => ({
+  default: ({ models, selectedModel, modelName, onModelSelect, onModelNameChange, onRefresh }) => (
+    <div>
+      <span data-testid="lib-selected">{String(selectedModel)}</span>
+      <span data-testid="lib-name">{modelName}</span>
+      <span data-testid="lib-count">{models.length}</span>
+      <button onClick={() => onModelSelect(5)}>PICK_MODEL</button>
+      <button onClick={() => onModelNameChange("picked-name")}>SET_NAME</button>
+      <button onClick={() => onRefresh()}>REFRESH_MODELS</button>
+    </div>
+  ),
+}));
+
+vi.mock("../components/DragDropArea", () => ({
+  default: ({ onFilesAdded }) => (
+    <button
+      onClick={() =>
+        onFilesAdded([{ path: "/docs/a.pdf" }, "/docs/b.pdf", { path: "/docs/a.pdf" }])
+      }
+    >
+      DROP_FILES
+    </button>
+  ),
+}));
+
+vi.mock("../components/modals/EmbeddingModelGateModal", () => ({
+  default: ({ state, error, onDownload, onLeave, onClose }) => (
+    <div data-testid="gate" data-state={state} data-error={error || ""}>
+      <button onClick={onDownload}>GATE_DOWNLOAD</button>
+      <button onClick={onLeave}>GATE_LEAVE</button>
+      <button onClick={onClose}>GATE_CLOSE</button>
+    </div>
+  ),
+}));
+
+import KnowledgeBasePage from "./KnowledgeBasePage";
+
+let hwResponder;
+let modelsResponder;
+let statusResponder;
+
+const statusCalls = () =>
+  getMock.mock.calls.filter(([p]) => p === "/knowledge_base/embedding-model/status");
+
+const gateState = () => screen.getByTestId("gate").getAttribute("data-state");
+
+beforeEach(() => {
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
+
+  getMock.mockReset();
+  postMock.mockReset();
+  openKB.mockReset();
+  navigateMock.mockReset();
+  kbState.isCreating = false;
+  kbState.isStarting = false;
+  routerState.params = new URLSearchParams();
+
+  hwResponder = () => ({ global_inference_score: 91, global_inference_label: "Amazing" });
+  modelsResponder = () => [];
+  statusResponder = () => ({ available: true });
+
+  getMock.mockImplementation(async (path) => {
+    if (path === "/hardware/app_startup") return hwResponder();
+    if (path === "/llms/local") return modelsResponder();
+    if (path === "/knowledge_base/embedding-model/status") return statusResponder();
+    return {};
+  });
+  postMock.mockResolvedValue({});
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe("KnowledgeBasePage embedding-model gate", () => {
+  it("shows no gate when the model is already on disk", async () => {
+    render(<KnowledgeBasePage />);
+    await waitFor(() => expect(statusCalls()).toHaveLength(1));
+    expect(screen.queryByTestId("gate")).toBeNull();
+  });
+
+  it("prompts to download when the model is absent", async () => {
+    statusResponder = () => ({ available: false });
+    render(<KnowledgeBasePage />);
+    await waitFor(() => expect(screen.getByTestId("gate")).toBeTruthy());
+    expect(gateState()).toBe("prompt");
+  });
+
+  it("resumes an in-flight download, polls to done, and stops polling on close", async () => {
+    vi.useFakeTimers();
+    const statuses = [{ available: false, downloading: true }, { available: true }];
+    statusResponder = () => (statuses.length > 1 ? statuses.shift() : statuses[0]);
+
+    render(<KnowledgeBasePage />);
+    await act(async () => {});
+    expect(gateState()).toBe("downloading");
+
+    // One poll tick later the model landed: "done" only ever follows an
+    // active download, so the success screen (not a silent hide) is shown.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(gateState()).toBe("done");
+    const callsAtDone = statusCalls().length;
+
+    fireEvent.click(screen.getByText("GATE_CLOSE"));
+    expect(screen.queryByTestId("gate")).toBeNull();
+
+    // Leaving the downloading state must tear the interval down.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    expect(statusCalls()).toHaveLength(callsAtDone);
+  });
+
+  it("enters the spinner and POSTs the download request on accept", async () => {
+    statusResponder = () => ({ available: false });
+    render(<KnowledgeBasePage />);
+    await waitFor(() => expect(screen.getByTestId("gate")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("GATE_DOWNLOAD"));
+    expect(gateState()).toBe("downloading");
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith("/knowledge_base/embedding-model/download")
+    );
+  });
+
+  it("surfaces a failed download request as a retryable error", async () => {
+    statusResponder = () => ({ available: false });
+    postMock.mockRejectedValue(new Error("disk full"));
+    render(<KnowledgeBasePage />);
+    await waitFor(() => expect(screen.getByTestId("gate")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("GATE_DOWNLOAD"));
+    await waitFor(() => expect(gateState()).toBe("error"));
+    expect(screen.getByTestId("gate").getAttribute("data-error")).toContain("disk full");
+  });
+
+  it("reports the backend-side error carried by the status payload", async () => {
+    statusResponder = () => ({ available: false, error: "download crashed" });
+    render(<KnowledgeBasePage />);
+    await waitFor(() => expect(screen.getByTestId("gate")).toBeTruthy());
+    expect(gateState()).toBe("error");
+    expect(screen.getByTestId("gate").getAttribute("data-error")).toBe("download crashed");
+  });
+
+  it("navigates back to the model library when the user declines", async () => {
+    statusResponder = () => ({ available: false });
+    render(<KnowledgeBasePage />);
+    await waitFor(() => expect(screen.getByTestId("gate")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("GATE_LEAVE"));
+    expect(navigateMock).toHaveBeenCalledWith("/erudi/models");
+  });
+
+  it("keeps the page usable (no modal) when the status endpoint is unreachable", async () => {
+    statusResponder = () => {
+      throw new Error("backend down");
+    };
+    render(<KnowledgeBasePage />);
+    await waitFor(() => expect(statusCalls().length).toBeGreaterThan(0));
+    expect(screen.queryByTestId("gate")).toBeNull();
+  });
+});
+
+describe("KnowledgeBasePage assistant creation", () => {
+  it("blocks submission until model, name and files are present", async () => {
+    render(<KnowledgeBasePage />);
+    fireEvent.click(screen.getByText("Create Assistant"));
+
+    expect(await screen.findByText("Please fill in all required fields")).toBeTruthy();
+    expect(openKB).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("Close"));
+    await waitFor(() =>
+      expect(screen.queryByText("Please fill in all required fields")).toBeNull()
+    );
+  });
+
+  it("submits the trimmed task with deduplicated dropped paths", async () => {
+    render(<KnowledgeBasePage />);
+    fireEvent.click(screen.getByText("PICK_MODEL"));
+    fireEvent.click(screen.getByText("SET_NAME"));
+    fireEvent.click(screen.getByText("DROP_FILES"));
+    fireEvent.change(screen.getByPlaceholderText("Write a description"), {
+      target: { value: "  my helper  " },
+    });
+
+    fireEvent.click(screen.getByText("Create Assistant"));
+
+    expect(openKB).toHaveBeenCalledTimes(1);
+    expect(openKB.mock.calls[0][0]).toEqual({
+      paths: ["/docs/a.pdf", "/docs/b.pdf"],
+      selectedModel: 5,
+      modelName: "picked-name",
+      description: "my helper",
+    });
+  });
+
+  it("shows the success message then resets the form after the delay", async () => {
+    vi.useFakeTimers();
+    render(<KnowledgeBasePage />);
+    await act(async () => {});
+    fireEvent.click(screen.getByText("PICK_MODEL"));
+    fireEvent.click(screen.getByText("SET_NAME"));
+    fireEvent.click(screen.getByText("DROP_FILES"));
+    fireEvent.click(screen.getByText("Create Assistant"));
+
+    const opts = openKB.mock.calls[0][1];
+    act(() => opts.onComplete());
+
+    expect(screen.getByText("Data attached to your Assistant successfully!")).toBeTruthy();
+    expect(screen.queryByText("Create Assistant")).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(screen.getByText("Create Assistant")).toBeTruthy();
+    expect(screen.getByTestId("lib-name").textContent).toBe("");
+    expect(screen.getByPlaceholderText("Write a description").value).toBe("");
+  });
+
+  it("routes a creation error into the error modal", async () => {
+    render(<KnowledgeBasePage />);
+    fireEvent.click(screen.getByText("PICK_MODEL"));
+    fireEvent.click(screen.getByText("SET_NAME"));
+    fireEvent.click(screen.getByText("DROP_FILES"));
+    fireEvent.click(screen.getByText("Create Assistant"));
+
+    const opts = openKB.mock.calls[0][1];
+    act(() => opts.onError("ingestion exploded"));
+
+    expect(await screen.findByText("ingestion exploded")).toBeTruthy();
+  });
+
+  it("disables the button and relabels it while creating", async () => {
+    kbState.isCreating = true;
+    render(<KnowledgeBasePage />);
+    const button = screen.getByText("Creating Assistant...");
+    expect(button.disabled).toBe(true);
+  });
+});
+
+describe("KnowledgeBasePage hardware readout", () => {
+  it("renders the inference label and score chip once fetched", async () => {
+    render(<KnowledgeBasePage />);
+    expect(await screen.findByText("Amazing")).toBeTruthy();
+    expect(screen.getByText("91/100")).toBeTruthy();
+  });
+
+  it("falls back to N/A when the backend omits score and label", async () => {
+    hwResponder = () => ({});
+    render(<KnowledgeBasePage />);
+    expect((await screen.findAllByText("N/A")).length).toBeGreaterThan(0);
+  });
+
+  it("keeps mid-tier labels rendered (orange rating branch)", async () => {
+    hwResponder = () => ({ global_inference_score: 55, global_inference_label: "Good" });
+    render(<KnowledgeBasePage />);
+    expect(await screen.findByText("Good")).toBeTruthy();
+    expect(screen.getByText("55/100")).toBeTruthy();
+  });
+
+  it("shows the error placeholders when the hardware fetch fails", async () => {
+    hwResponder = () => {
+      throw new Error("hw down");
+    };
+    render(<KnowledgeBasePage />);
+    expect((await screen.findAllByText("Error fetching")).length).toBeGreaterThan(0);
+  });
+});
+
+describe("KnowledgeBasePage model list and URL preselection", () => {
+  it("preselects the model named in the URL, case-insensitively", async () => {
+    modelsResponder = () => [
+      { id: 7, name: "Mistral" },
+      { id: 8, name: "Qwen" },
+    ];
+    routerState.params = new URLSearchParams("model=mistral");
+    render(<KnowledgeBasePage />);
+
+    await waitFor(() => expect(screen.getByTestId("lib-selected").textContent).toBe("7"));
+    expect(screen.getByTestId("lib-name").textContent).toBe("Mistral");
+  });
+
+  it("also matches the URL parameter against the model id", async () => {
+    modelsResponder = () => [{ id: "abc", name: "X" }];
+    routerState.params = new URLSearchParams("model=abc");
+    render(<KnowledgeBasePage />);
+
+    await waitFor(() => expect(screen.getByTestId("lib-selected").textContent).toBe("abc"));
+    expect(screen.getByTestId("lib-name").textContent).toBe("X");
+  });
+
+  it("selects nothing when the URL model is unknown", async () => {
+    modelsResponder = () => [{ id: 7, name: "Mistral" }];
+    routerState.params = new URLSearchParams("model=ghost");
+    render(<KnowledgeBasePage />);
+
+    await waitFor(() => expect(screen.getByTestId("lib-count").textContent).toBe("1"));
+    expect(screen.getByTestId("lib-selected").textContent).toBe("null");
+    expect(screen.getByTestId("lib-name").textContent).toBe("");
+  });
+
+  it("recovers from a model list fetch failure with an empty library", async () => {
+    modelsResponder = () => {
+      throw new Error("llms down");
+    };
+    render(<KnowledgeBasePage />);
+    await waitFor(() => expect(getMock.mock.calls.some(([p]) => p === "/llms/local")).toBe(true));
+    expect(screen.getByTestId("lib-count").textContent).toBe("0");
+  });
+
+  it("refetches the model list when the library asks for a refresh", async () => {
+    render(<KnowledgeBasePage />);
+    const localCalls = () => getMock.mock.calls.filter(([p]) => p === "/llms/local");
+    await waitFor(() => expect(localCalls()).toHaveLength(1));
+
+    fireEvent.click(screen.getByText("REFRESH_MODELS"));
+    await waitFor(() => expect(localCalls()).toHaveLength(2));
+  });
+});
