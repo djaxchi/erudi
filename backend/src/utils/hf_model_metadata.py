@@ -114,6 +114,19 @@ class ParameterScale(Enum):
     MILLION = "M"
 
 
+# Bytes per gigabyte for every MODEL ARTIFACT size we display (#316).
+#
+# Decimal (10^9), NOT binary (2^30). Model sizes are quoted decimal by Hugging
+# Face, by the download progress and by `catalog_classify`, so measuring the
+# same artifact in GiB while labelling it "GB" made a model appear to shrink by
+# ~600 MB the moment it finished downloading (9.00 GB in the catalog, 8.4 GB
+# once installed, for one unchanged 9,001,752,960 byte file).
+#
+# Deliberately NOT used for RAM/VRAM/disk-capacity readouts: those are reported
+# in GiB by the OS and by every hardware vendor, and converting them here would
+# make the machine readout disagree with Task Manager.
+BYTES_PER_GB = 1_000_000_000
+
 # ============ Data Structures ============
 
 @dataclass(frozen=True)
@@ -463,8 +476,9 @@ def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
         # file, so the whole-repo sum is preserved for them.
         total_size_bytes = _chosen_artifact_bytes(repo_info)
 
-        # Convert to GB with high precision
-        size_gb = total_size_bytes / (1024**3)
+        # Convert to GB with high precision. Decimal GB (#316) so the number
+        # matches what Hugging Face itself shows for the very same file.
+        size_gb = total_size_bytes / BYTES_PER_GB
         
         logger.info(f"Retrieved actual size for {link_hf_quant_repo}: {size_gb:.2f} GB")
         
@@ -818,8 +832,9 @@ def _chosen_artifact_bytes(repo_info) -> int:
 def measure_dir_size_gb(path: Union[str, Path]) -> float:
     """Measure the real on-disk footprint of a model directory, recursively, in GB.
 
-    Sums the size of every regular file under ``path`` (base-1024 GB, matching the
-    ``~X.X GB`` catalog format). Defensive by design: a missing path returns 0.0 and
+    Sums the size of every regular file under ``path`` in decimal GB (#316), the
+    same unit the catalog and Hugging Face quote, so the displayed size does not
+    change the moment a download finishes. Defensive by design: a missing path returns 0.0 and
     a per-file stat error is skipped, so an orphaned/removed model dir never crashes
     the caller (orphans are legitimate since #225/#208).
 
@@ -834,7 +849,7 @@ def measure_dir_size_gb(path: Union[str, Path]) -> float:
         return 0.0
     if root.is_file():
         try:
-            return root.stat().st_size / (1024**3)
+            return root.stat().st_size / BYTES_PER_GB
         except OSError:
             return 0.0
     total_bytes = 0
@@ -844,7 +859,7 @@ def measure_dir_size_gb(path: Union[str, Path]) -> float:
                 total_bytes += entry.stat().st_size
         except OSError:
             continue
-    return total_bytes / (1024**3)
+    return total_bytes / BYTES_PER_GB
 
 
 def rewrite_size_in_metadata(metadata_str: Optional[str], size_gb: float) -> str:
@@ -891,6 +906,8 @@ def rewrite_size_in_metadata(metadata_str: Optional[str], size_gb: float) -> str
 # ============ Module Exports ============
 
 __all__ = [
+    # Units
+    "BYTES_PER_GB",
     # Data structures
     "ModelSize",
     "ParameterCount",

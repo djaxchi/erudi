@@ -79,6 +79,7 @@ from src.utils.hf_model_metadata import (
     humanize_model_name,
     measure_dir_size_gb,
     rewrite_size_in_metadata,
+    BYTES_PER_GB,
     ParameterScale,
 )
 from src.domains.hardware.repository import Hardware_Repository
@@ -853,7 +854,7 @@ class Job_Cleanup_Service:
         total_bytes = getattr(job, "total_bytes", None) or 0
         if total_bytes > 0:
             try:
-                measured_bytes = measure_dir_size_gb(link) * (1024 ** 3)
+                measured_bytes = measure_dir_size_gb(link) * BYTES_PER_GB
             except Exception:
                 return False
             return measured_bytes >= total_bytes
