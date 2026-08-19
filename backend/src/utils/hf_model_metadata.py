@@ -829,29 +829,34 @@ def _chosen_artifact_bytes(repo_info) -> int:
     return sum(file_sizes.get(f, 0) for f in chosen)
 
 
-def measure_dir_size_gb(path: Union[str, Path]) -> float:
-    """Measure the real on-disk footprint of a model directory, recursively, in GB.
+def measure_dir_size_bytes(path: Union[str, Path]) -> int:
+    """Measure the real on-disk footprint of a model directory, recursively, in BYTES.
 
-    Sums the size of every regular file under ``path`` in decimal GB (#316), the
-    same unit the catalog and Hugging Face quote, so the displayed size does not
-    change the moment a download finishes. Defensive by design: a missing path returns 0.0 and
-    a per-file stat error is skipped, so an orphaned/removed model dir never crashes
-    the caller (orphans are legitimate since #225/#208).
+    The unit-free primitive: callers comparing a footprint against another byte
+    count (a job's recorded ``total_bytes``, a manifest size) must use this and
+    never round-trip through ``measure_dir_size_gb``. A bytes -> GB -> bytes
+    round-trip silently changes meaning the day the GB divisor changes, and the
+    error lands on whichever safety check does the comparing (#314/#316).
+
+    Sums the size of every regular file under ``path``. Defensive by design: a
+    missing path returns 0 and a per-file stat error is skipped, so an
+    orphaned/removed model dir never crashes the caller (orphans are legitimate
+    since #225/#208).
 
     Args:
         path: Directory (or single file) to measure.
 
     Returns:
-        Size in gigabytes (0.0 if the path does not exist or is empty).
+        Size in bytes (0 if the path does not exist or is empty).
     """
     root = Path(path)
     if not root.exists():
-        return 0.0
+        return 0
     if root.is_file():
         try:
-            return root.stat().st_size / BYTES_PER_GB
+            return root.stat().st_size
         except OSError:
-            return 0.0
+            return 0
     total_bytes = 0
     for entry in root.rglob("*"):
         try:
@@ -859,7 +864,25 @@ def measure_dir_size_gb(path: Union[str, Path]) -> float:
                 total_bytes += entry.stat().st_size
         except OSError:
             continue
-    return total_bytes / BYTES_PER_GB
+    return total_bytes
+
+
+def measure_dir_size_gb(path: Union[str, Path]) -> float:
+    """Measure the real on-disk footprint of a model directory, recursively, in GB.
+
+    Display-layer wrapper over ``measure_dir_size_bytes``: it owns the divisor,
+    i.e. what a "GB" means on screen. That is DECIMAL GB (#316), the unit the
+    catalog and Hugging Face quote, so a model does not appear to shrink the
+    moment it finishes downloading. Anything comparing against a byte count
+    wants the primitive instead.
+
+    Args:
+        path: Directory (or single file) to measure.
+
+    Returns:
+        Size in gigabytes (0.0 if the path does not exist or is empty).
+    """
+    return measure_dir_size_bytes(path) / BYTES_PER_GB
 
 
 def rewrite_size_in_metadata(metadata_str: Optional[str], size_gb: float) -> str:
@@ -918,6 +941,7 @@ __all__ = [
     "get_model_size_estimate",
     "format_model_info_metadata",
     # On-disk size (measured reality)
+    "measure_dir_size_bytes",
     "measure_dir_size_gb",
     "rewrite_size_in_metadata",
     # Helper functions
