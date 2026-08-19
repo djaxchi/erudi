@@ -559,6 +559,59 @@ class TestJobCleanup:
         assert not model_dir.exists()
         assert job.status == "failed"
 
+    # ---- #314 end to end against the REAL engine validator, not a double ----
+    # The pins above use engine doubles, which prove the branching but not that
+    # a real GGUF artifact is actually judged complete. This replays the exact
+    # shape from the 2.0.0 RC post-mortem (job 40 / llm 748: status 'running',
+    # progress 100, complete artifact on disk) through CPU_Engine's real
+    # validate_local_artifact, which is what runs in production.
+
+    def test_real_engine_keeps_a_complete_gguf_left_running(
+        self, test_db_session, tmp_path, monkeypatch
+    ):
+        from src.engines.cpu_engine import CPU_Engine
+
+        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
+        model_dir = tmp_path / "748"
+        model_dir.mkdir()
+        # A real GGUF container: the magic the integrity gate actually checks.
+        (model_dir / "Qwen3-14B-Q4_K_M.gguf").write_bytes(b"GGUF" + b"\x00" * 4096)
+        (model_dir / "config.json").write_text("{}")
+        llm = Llm(name="Qwen3 14B", local=2, link=str(model_dir), type="qwen")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        job = self._download_job(test_db_session, llm_id=llm.id)
+        job.status = "running"
+        job.progress = 100.0
+
+        Job_Cleanup_Service(test_db_session)._cleanup_download_jobs()
+
+        assert (model_dir / "Qwen3-14B-Q4_K_M.gguf").exists(), "the 9 GB artifact was destroyed"
+        assert test_db_session.query(Llm).filter(Llm.id == llm.id).first() is not None
+        assert llm.local == 1
+        assert job.status == "completed"
+
+    def test_real_engine_still_deletes_a_corrupt_gguf_left_running(
+        self, test_db_session, tmp_path, monkeypatch
+    ):
+        # The guard must not become "never delete anything": a truncated file
+        # with no GGUF magic is exactly what the cleanup exists to reclaim.
+        from src.engines.cpu_engine import CPU_Engine
+
+        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
+        model_dir = tmp_path / "749"
+        model_dir.mkdir()
+        (model_dir / "partial.gguf").write_bytes(b"NOTG" + b"\x00" * 16)
+        llm = Llm(name="Broken", local=2, link=str(model_dir), type="qwen")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        job = self._download_job(test_db_session, llm_id=llm.id)
+
+        Job_Cleanup_Service(test_db_session)._cleanup_download_jobs()
+
+        assert not model_dir.exists()
+        assert job.status == "failed"
+
     def test_download_cleanup_logs_the_reclaimed_size_on_delete(
         self, test_db_session, tmp_path, monkeypatch, caplog
     ):
