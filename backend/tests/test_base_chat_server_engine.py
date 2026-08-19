@@ -8,8 +8,10 @@ lifecycle without spawning real subprocesses. Integration coverage (real
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import socket as _stdlib_socket
+import sys
 from pathlib import Path
 from typing import Iterator, List
 from unittest.mock import MagicMock, Mock, patch
@@ -23,6 +25,44 @@ from src.engines.base_chat_server_engine import BaseChatServerEngine
 # =====================================================================
 # Helpers
 # =====================================================================
+
+@contextlib.contextmanager
+def _occupied_port(port: int):
+    """Hold ``port`` so that another binder genuinely cannot take it (#331).
+
+    ``SO_REUSEADDR`` does not mean the same thing on both platforms, and the
+    difference inverts this helper's purpose:
+
+    - POSIX: it mainly permits rebinding a port stuck in ``TIME_WAIT``. A live
+      listening socket still excludes a second bind, so occupying works.
+    - Windows: it permits binding a port that is **actively bound by another
+      socket**. ``_pick_free_port`` sets ``SO_REUSEADDR`` on its probe, so it
+      would bind straight over us, correctly conclude the port is free, and the
+      test asserting "busy ports are skipped" would fail against working code.
+
+    ``SO_EXCLUSIVEADDRUSE`` is the Windows counterpart that actually reserves
+    the address against other binders, including ``SO_REUSEADDR`` ones. The
+    ``listen()`` matters too: a bound-but-not-listening Windows socket is
+    weaker at excluding a second bind.
+
+    Yields the socket, and always closes it.
+    """
+    s = _stdlib_socket.socket(_stdlib_socket.AF_INET, _stdlib_socket.SOCK_STREAM)
+    try:
+        if sys.platform == "win32":
+            s.setsockopt(
+                _stdlib_socket.SOL_SOCKET,
+                _stdlib_socket.SO_EXCLUSIVEADDRUSE,  # type: ignore[attr-defined]
+                1,
+            )
+        else:
+            s.setsockopt(_stdlib_socket.SOL_SOCKET, _stdlib_socket.SO_REUSEADDR, 1)
+        s.bind(("127.0.0.1", port))
+        s.listen(1)
+        yield s
+    finally:
+        s.close()
+
 
 def _sse_bytes(payloads: List[dict | str]) -> Iterator[bytes]:
     """Render payloads as raw SSE chunks. Strings are emitted verbatim (for
@@ -134,10 +174,7 @@ class TestPickFreePort:
 
     def test_skips_busy_port_and_finds_next(self):
         busy = _TestEngine._port_range_start
-        with _stdlib_socket.socket(_stdlib_socket.AF_INET, _stdlib_socket.SOCK_STREAM) as s:
-            s.setsockopt(_stdlib_socket.SOL_SOCKET, _stdlib_socket.SO_REUSEADDR, 1)
-            s.bind(("127.0.0.1", busy))
-            s.listen(1)
+        with _occupied_port(busy):
             port = _TestEngine._pick_free_port()
             assert port != busy
 
@@ -148,22 +185,16 @@ class TestPickFreePort:
             _port_range_start = 19500
             _port_range_count = 2
 
-        sockets = []
-        for offset in range(_Tight._port_range_count):
-            s = _stdlib_socket.socket(_stdlib_socket.AF_INET, _stdlib_socket.SOCK_STREAM)
-            s.setsockopt(_stdlib_socket.SOL_SOCKET, _stdlib_socket.SO_REUSEADDR, 1)
-            try:
-                s.bind(("127.0.0.1", _Tight._port_range_start + offset))
-                s.listen(1)
-                sockets.append(s)
-            except OSError:
-                s.close()
-        try:
+        with contextlib.ExitStack() as stack:
+            for offset in range(_Tight._port_range_count):
+                # A port already taken by something else on the machine is fine:
+                # it is busy either way, which is what this test needs.
+                with contextlib.suppress(OSError):
+                    stack.enter_context(
+                        _occupied_port(_Tight._port_range_start + offset)
+                    )
             with pytest.raises(EngineException, match=_Tight._server_name):
                 _Tight._pick_free_port()
-        finally:
-            for s in sockets:
-                s.close()
 
 
 # =====================================================================
