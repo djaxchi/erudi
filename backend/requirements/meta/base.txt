@@ -52,3 +52,9 @@ openpyxl==3.1.5
 # prompt. 0.3.0 declares numpy>=2.0.0, aligned with the numpy 2.x bump the
 # mlx-vlm swap brings in; same langid.MODEL_FILE/LanguageIdentifier API as 0.2.2.
 py3langid==0.3.0
+
+# ===== Web search agent tool (issue #310) =====
+# Keyless multi-engine metasearch (DDG/Bing/Brave/Mojeek/... with automatic
+# failover) backing the web_search tool. Deferred import: loaded on the first
+# web search, never at boot.
+ddgs==9.15.0

@@ -743,7 +743,7 @@ class TestConversationService:
         self, test_db_session, mock_llm_with_kb, monkeypatch
     ):
         """A tool-capable model gets the KB as a TOOL (agentic), not a systematic
-        injection: the runner receives search_knowledge_base + a KbToolContext
+        injection: the runner receives search_knowledge_base + a TurnToolContext
         and NO kb_context_block, and there is no up-front retrieval."""
         llm, kb = mock_llm_with_kb
         llm.supports_tools = True

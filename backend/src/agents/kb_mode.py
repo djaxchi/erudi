@@ -53,7 +53,7 @@ class TurnPlan:
     tools: list
     kb_context_block: Optional[str]
     kb_language_line: str
-    context: Optional[Any]  # KbToolContext in agentic mode, else None
+    context: Optional[Any]  # TurnToolContext on tool-carrying turns, else None
 
 
 def _param_size(llm) -> float:
@@ -84,7 +84,7 @@ def plan_turn(
     # machinery, needed on turns only — never at boot. Deterministic tools are
     # carried by KB turns only (the KB tool is added in agentic mode); plain
     # chat is zero-tool (#129).
-    from src.agents.tools import KbToolContext, calculator, search_knowledge_base
+    from src.agents.tools import TurnToolContext, calculator, search_knowledge_base
     from src.core import config
 
     base_tools = [calculator]
@@ -118,7 +118,7 @@ def plan_turn(
             tools=[*base_tools, search_knowledge_base],
             kb_context_block=None,
             kb_language_line="",
-            context=KbToolContext(kb_id=llm.kb_id, token_budget=budget),
+            context=TurnToolContext(kb_id=llm.kb_id, kb_token_budget=budget),
         )
 
     # Systematic: retrieve() encapsulates is_attached + tier + failure policy.

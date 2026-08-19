@@ -71,7 +71,7 @@ class TestPlanTurn:
         )
         # Non-regression (#129): the agentic KB branch keeps BOTH tools.
         assert plan.tools == [calculator, search_knowledge_base]
-        assert plan.context.kb_id == 5 and plan.context.token_budget == 1000
+        assert plan.context.kb_id == 5 and plan.context.kb_token_budget == 1000
         assert plan.kb_context_block is None
         # Composed prompt (#129): tier persona base + agentic KB section.
         assert "You are Erudi" in plan.system_prompt
