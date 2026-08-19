@@ -87,6 +87,15 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When ONE question spans **two subjects living in two different documents** ("what is the drone's payload, and how many remote days are allowed?"), then the answer grounds **both** facts — neither half is dropped or answered from world knowledge *(multi-subject coverage — see #85)*.
 - [ ] When I inspect any agentic answer, then **no raw tool markup** (`<tool_call>`, JSON arguments, function-call syntax) appears in the answer bubble or in the persisted history; the search call and its excerpts appear only inside the reasoning strip.
 
+**Web search (#310)**
+- [ ] When I create a new conversation, then its **Web search** toggle (settings panel, next to Max Tokens) starts at the value of the global Settings-page default at creation time.
+- [ ] When I flip the Web search toggle in an open conversation, then it persists immediately (survives a reload) and **takes effect on the next turn** — no Apply needed.
+- [ ] When web search is ON with a tool-capable model and I ask a question needing a **current external fact**, then the reasoning strip shows a `web_search` call with its results, and the answer **cites source URLs** from those results.
+- [ ] When web search is ON and I ask something the model already knows ("capital of France"), then it answers **directly with zero web calls**.
+- [ ] When web search is ON but the machine is **offline**, then the turn completes with the model relaying the honest tool text ("Error during Web Search: no internet connection") — no hang, no invented answer.
+- [ ] When the conversation's model is **not verified tool-capable**, then the model never receives the web tool, whatever the toggle says (the toggle stays visible; it simply has no effect on such models).
+- [ ] When I change the **global** web-search default in Settings, then existing conversations keep their own toggle unchanged; only conversations created afterwards inherit the new default.
+
 **Multimodal / multi-turn**
 - [ ] When I send an image on a vision model, then it is used for that turn; on the **next** turn the stale image is dropped from the model's context (only the current turn's image is sent), while the display keeps all images.
 - [ ] When I reload a conversation with **file-attached** images, then the thumbnails re-render (for images still present on disk).
@@ -136,6 +145,13 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When **some** files fail but at least one ingests, then the job still completes for the good ones.
 - [ ] When ingestion **fails** (network/HTTP), then an error dialog shows the reason.
 - [ ] When the selected base model **already has a KB**, then submitting **updates** the existing KB with the new files instead of creating a new assistant.
+
+## Settings — `/erudi/settings`
+
+- [ ] When I click the **gear icon** at the bottom of the left rail, then the Settings page opens and the gear shows the active highlight.
+- [ ] When I open Settings on a fresh install, then the **Web Search** toggle is **off** and the copy explains that enabling it sends the searched query to external search engines when the model decides to search.
+- [ ] When I flip the Web Search toggle, then the change **persists across an app relaunch**.
+- [ ] When the global toggle is on and I start a **new** conversation, then that conversation's own Web search toggle starts **on** (inheritance at creation; the conversation owns it afterwards).
 
 ## Shared chrome (sidebar, connection, downloads)
 
