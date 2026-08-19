@@ -108,8 +108,8 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                       depends on your hardware.
                     </p>
                     <p className="text-gray-300 leading-relaxed">
-                      This is v1.0.0 and some rough edges may remain. If you encounter an issue,
-                      we&apos;d love to hear about it.
+                      This is an early release and some rough edges may remain. If you encounter an
+                      issue, we&apos;d love to hear about it.
                     </p>
                     <p className="text-gray-300 leading-relaxed">
                       Your feedback shapes what we build next — thank you for using Erudi.
