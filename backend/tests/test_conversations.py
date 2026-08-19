@@ -350,6 +350,44 @@ class TestConversationService:
         updated_conv = service.conversation_repo.get_conversation_by_id(conversation.id)
         assert updated_conv.name == "AI Basics"
 
+    async def test_generate_title_prompt_instructs_conversation_language(
+        self, test_db_session, mock_llm, monkeypatch
+    ):
+        """The title prompt tells the model to title in the USER's language.
+
+        Without the instruction, French conversations get English titles
+        ("Pomme Count", "Aster X2 Max Capacity") — #303. The capturing fake
+        records the exact messages sent to the model so the assertion pins the
+        prompt content, not the sanitized output.
+        """
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        captured = {}
+
+        class _CapturingFake(ToolableFakeChatModel):
+            def _stream(self, messages, stop=None, run_manager=None, **kwargs):
+                captured["messages"] = messages
+                return super()._stream(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+        monkeypatch.setattr(
+            agent_runner,
+            "build_chat_model",
+            lambda llm, **kw: _CapturingFake(
+                messages=iter([AIMessage(content="Compte De Pommes")])
+            ),
+        )
+        service = ConversationService(test_db_session)
+        conversation = service.create_conversation(
+            llm_id=mock_llm.id, temperature=0.5, top_p=0.8, max_tokens=512
+        )
+
+        async for _ in service.generate_title_stream(
+            conversation.id, "Combien de pommes me reste-t-il ?"
+        ):
+            pass
+
+        prompt = "\n".join(str(m.content) for m in captured["messages"])
+        assert "same language as the user's message" in prompt
+
     async def test_generate_title_stream_empty_question(self, test_db_session, mock_llm, monkeypatch):
         """Empty question short-circuits to the default title (no streaming)."""
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)

@@ -522,6 +522,8 @@ class ConversationService:
                 "no quotes; no emojis; no hashtags; no code; no trailing "
                 "punctuation; never answer the question; if empty/URL/noise => "
                 "output nothing.\n"
+                "Write the title in the same language as the user's message "
+                "(a French message gets a French title).\n"
                 f"User message: {question}\n"
                 "Do not answer the question, only create a relevant title. "
                 "Do NOT add quotes around the title.\n"
@@ -530,6 +532,7 @@ class ConversationService:
                 "google founding team members -> Google Founding Team\n"
                 "what's the capital of japan -> Japan Capital\n"
                 "female of the pig -> Pig Female Name\n"
+                "combien de pommes me reste-t-il -> Compte De Pommes\n"
             )
         system_prompt = (
             "You are a very-short-title generator. Return ONLY a concise "
@@ -537,12 +540,15 @@ class ConversationService:
             "no quotes, no hashtags, no emojis, no trailing filler words. "
             "Capitalize important words. The title shouldn't be a question.\n"
             "Do not answer the question, only create a relevant title.\n"
+            "Write the title in the same language as the user's message "
+            "(a French message gets a French title).\n"
             "If the message is empty or meaningless, return nothing.\n"
             "Examples (user question -> title):\n"
             "give me pizza recipe -> Pizza Recipe\n"
             "google founding team members -> Google Founding Team\n"
             "what's the capital of japan -> Japan Capital\n"
             "female of the pig -> Pig Female Name\n"
+            "combien de pommes me reste-t-il -> Compte De Pommes\n"
             "Format: just the title, nothing else."
         )
         user_prompt = f"Create a 2-to-4-word title for:\n{question}"
