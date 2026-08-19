@@ -176,8 +176,7 @@ describe("LandingPage guarded base delete (#225)", () => {
           own_conversation_count: 0,
           total_conversation_count: 1,
         });
-      if (u.endsWith("/llms/local"))
-        return jsonResponse([localModels[0], assistant9, assistant11]);
+      if (u.endsWith("/llms/local")) return jsonResponse([localModels[0], assistant9, assistant11]);
       return jsonResponse([]);
     });
 

@@ -280,9 +280,7 @@ describe("KnowledgeBasePage assistant creation", () => {
   it("flags the task as an update when the selected model is the assistant itself (#317)", async () => {
     // Updating an assistant keeps its own (necessarily existing) name: no
     // duplicate error, and the confirmation must say update, not create.
-    modelsResponder = () => [
-      { id: 5, name: "picked-name", is_attached_to_kb: true, kb_id: 1 },
-    ];
+    modelsResponder = () => [{ id: 5, name: "picked-name", is_attached_to_kb: true, kb_id: 1 }];
     render(<KnowledgeBasePage />);
     await waitFor(() => expect(screen.getByTestId("lib-count").textContent).toBe("1"));
 

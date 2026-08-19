@@ -157,12 +157,11 @@ export function KnowledgeBaseProvider({ children }) {
               {task.isUpdate ? (
                 <>
                   <h2 className="text-xl font-semibold text-white pr-4">
-                    Update <span className="font-bold">{task.modelName}</span>&apos;s knowledge
-                    base with {task.paths?.length || 0} file(s)?
+                    Update <span className="font-bold">{task.modelName}</span>&apos;s knowledge base
+                    with {task.paths?.length || 0} file(s)?
                   </h2>
                   <p className="mt-1 text-gray-300">
-                    The new documents will be added to this assistant&apos;s existing knowledge
-                    base
+                    The new documents will be added to this assistant&apos;s existing knowledge base
                   </p>
                 </>
               ) : (
@@ -172,8 +171,7 @@ export function KnowledgeBaseProvider({ children }) {
                     <span className="font-bold">{task.modelName}</span>?
                   </h2>
                   <p className="mt-1 text-gray-300">
-                    This will create a knowledge base assistant with {task.paths?.length || 0}{" "}
-                    files
+                    This will create a knowledge base assistant with {task.paths?.length || 0} files
                   </p>
                 </>
               )}

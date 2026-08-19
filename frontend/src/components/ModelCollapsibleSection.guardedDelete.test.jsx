@@ -152,7 +152,11 @@ describe("ModelCollapsibleSection guarded base delete (#317)", () => {
       if (opts.method === "DELETE")
         return { ok: false, status: 409, json: async () => ({ detail: "downloading" }) };
       if (u.endsWith("/llms/319/dependents"))
-        return jsonResponse({ assistants: [], own_conversation_count: 0, total_conversation_count: 0 });
+        return jsonResponse({
+          assistants: [],
+          own_conversation_count: 0,
+          total_conversation_count: 0,
+        });
       if (u.endsWith("/llms/local")) return jsonResponse([base]);
       return jsonResponse([]);
     });
