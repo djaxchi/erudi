@@ -38,6 +38,9 @@ CUDA, MLX, and CPU builds.
     * Support all build variants (CPU, CUDA, MLX) transparently via ERUDI_BUILD_VARIANT env var.
     * Watch stdin for EOF when ERUDI_WATCH_STDIN=1 (Electron's Windows graceful-quit
       signal, since there is no SIGTERM to relay) and turn it into a clean uvicorn shutdown.
+    * Watch the parent process for death (SIGKILLed Electron main leaves no one to
+      kill us, #224) and turn a reparenting into the same clean shutdown. Opt out
+      with ERUDI_NO_PARENT_WATCHDOG=1 for deliberately detached runs (nohup/setsid).
 
 **Usage:**
     Development:
@@ -93,6 +96,19 @@ CANONICAL_PORT = 27182
 # inference pools live (llama.cpp 27200–27299, MLX 27300–27399) — so the three
 # local servers can never fight over a port. Erudi's whole footprint is 271xx–273xx.
 PORT_SCAN_COUNT = 18
+
+# Parent-death watchdog cadence (#224). Cheap (one getppid()/psutil check per
+# tick), so a few seconds keeps orphan lifetime short without busy-polling.
+PARENT_POLL_SECONDS = 2.0
+
+# Bound on uvicorn's wait for in-flight requests once should_exit is set.
+# uvicorn's default (None) waits FOREVER, which is exactly the observed orphan:
+# a SIGKILLed Electron mid-generation left the backend generating to completion
+# (#224). Bounded, every should_exit path (parent watchdog, SIGTERM relay,
+# stdin EOF) cancels the leftover tasks and still runs the lifespan shutdown
+# (inference child terminated, embedded Postgres stopped) promptly. For a
+# desktop app a quit is a quit: nobody is reading a 10s-stale stream anyway.
+GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = 10
 
 
 def parse_args():
@@ -345,8 +361,107 @@ def start_stdin_eof_watcher(server: "uvicorn.Server") -> threading.Thread:
     return thread
 
 
+def parent_watchdog_enabled() -> bool:
+    """True unless ERUDI_NO_PARENT_WATCHDOG=1 opted the watchdog out.
+
+    On by default everywhere, dev runs included: the predicate is a parent
+    CHANGE (reparenting), and a dev's shell staying alive is the normal case,
+    so plain ``python run.py`` from a terminal is unaffected. The opt-out is
+    for deliberately detached runs (nohup/setsid, daemonized QA harnesses)
+    where reparenting is expected and survival is intended (#224).
+    """
+    return os.environ.get("ERUDI_NO_PARENT_WATCHDOG") != "1"
+
+
+def _parent_alive_probe(initial_ppid: int):
+    """Build a zero-argument callable reporting whether the original parent lives.
+
+    POSIX: the kernel rewrites ppid on parent death (reparenting to pid 1 or
+    the nearest subreaper), so ``os.getppid() == initial_ppid`` is exact and
+    dependency-free.
+
+    Windows: ppid is never rewritten (a dead parent's pid may even be reused),
+    so the parent is pinned through psutil (already a base dependency), whose
+    ``is_running`` guards identity with the process create time. If the parent
+    is already gone when the probe is built, it reports dead immediately; if
+    psutil is unavailable for any reason, the probe reports alive forever and
+    shutdown stays with the stdin-EOF watcher (#216) / taskkill.
+    """
+    if os.name == "posix":
+        return lambda: os.getppid() == initial_ppid
+
+    try:
+        import psutil
+    except Exception:
+        return lambda: True  # no probe available: never force a shutdown
+
+    try:
+        parent = psutil.Process(initial_ppid)
+    except psutil.NoSuchProcess:
+        return lambda: False  # parent died before the watchdog started
+    except Exception:
+        return lambda: True
+    return parent.is_running
+
+
+def start_parent_watchdog(
+    server: "uvicorn.Server",
+    initial_ppid: int | None = None,
+    poll_seconds: float = PARENT_POLL_SECONDS,
+    parent_alive=None,
+) -> threading.Thread:
+    """Shut down cleanly when the parent process dies (#224).
+
+    A SIGKILLed Electron main (crash, force-quit, power event) leaves no one
+    to kill the backend: it survives orphaned with the embedded Postgres,
+    holding the port, until an accidental stdout write to the dead parent's
+    pipe SIGPIPEs it -- or forever. This watchdog detects parent death
+    DIRECTLY: it records the parent at startup and polls; on a change
+    (reparenting) it flips uvicorn's exit flag -- the exact same clean
+    shutdown path as the SIGTERM relay and the stdin-EOF watcher -- so the
+    FastAPI lifespan shutdown runs (inference child terminated, embedded
+    Postgres stopped) and the port is released.
+
+    The check runs BEFORE the first sleep so a parent that died during the
+    long boot imports still triggers immediately. ``parent_alive`` is
+    injectable for tests; production builds it from ``initial_ppid``.
+    Runs on a daemon thread; a broken probe exits the thread without ever
+    forcing a shutdown (signals/stdin-EOF remain in charge).
+    """
+    if initial_ppid is None:
+        initial_ppid = os.getppid()
+    if parent_alive is None:
+        parent_alive = _parent_alive_probe(initial_ppid)
+
+    def _watch() -> None:
+        while True:
+            try:
+                alive = parent_alive()
+            except Exception:
+                return  # probe broke: never crash the launcher or force an exit
+            if not alive:
+                try:
+                    from src.core.logging import logger
+
+                    logger.info("Parent process died; requesting graceful shutdown")
+                except Exception:
+                    pass  # logging must never gate the shutdown flag below
+                server.should_exit = True
+                return
+            time.sleep(poll_seconds)
+
+    thread = threading.Thread(target=_watch, name="parent-death-watchdog", daemon=True)
+    thread.start()
+    return thread
+
+
 def main() -> None:
     """Launch the backend, supervising readiness and emitting lifecycle events."""
+    # Recorded FIRST: the reference parent for the death watchdog. Captured
+    # before the heavy imports below so a parent lost during boot is still a
+    # detectable ppid CHANGE rather than the recorded baseline (#224).
+    initial_ppid = os.getppid()
+
     args = parse_args()
     requested_port = args.port
     host = "127.0.0.1"
@@ -448,8 +563,18 @@ def main() -> None:
         # access_log=False: uvicorn's unstructured per-request lines are
         # replaced by the request-logging middleware (method, path, status,
         # duration, request id — see src.core.api.RequestLoggingMiddleware).
+        # timeout_graceful_shutdown: bound the wait on in-flight requests once
+        # should_exit is set (uvicorn's None default waits forever behind a
+        # long generation), so every exit path still reaches the lifespan
+        # shutdown promptly (#224).
         uvicorn.Config(
-            fastapi_app, host=host, port=port, log_level="info", workers=1, access_log=False
+            fastapi_app,
+            host=host,
+            port=port,
+            log_level="info",
+            workers=1,
+            access_log=False,
+            timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
         )
     )
 
@@ -467,6 +592,14 @@ def main() -> None:
     # lifespan shutdown still runs and the embedded Postgres stops cleanly (#216).
     if stdin_watch_enabled():
         start_stdin_eof_watcher(server)
+
+    # Parent-death watchdog (#224): a SIGKILLed Electron main never runs its
+    # cleanup, so the backend must notice the reparenting itself and take the
+    # same clean shutdown path as SIGTERM/stdin-EOF. On by default (the
+    # predicate is a ppid CHANGE, so a dev's living shell never trips it);
+    # ERUDI_NO_PARENT_WATCHDOG=1 opts deliberately detached runs out.
+    if parent_watchdog_enabled():
+        start_parent_watchdog(server, initial_ppid=initial_ppid)
 
     server_thread = threading.Thread(target=run_server, args=(server,), daemon=True)
     server_thread.start()
