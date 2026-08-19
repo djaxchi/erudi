@@ -26,7 +26,7 @@ Example:
     boosted = service.calculate_boosted_scores(profile)
     db.commit()
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from src.domains.hardware.repository import Hardware_Repository
 from src.entities.HardwareProfile import HardwareProfile
 from src.core.logging import logger
@@ -34,52 +34,96 @@ from src.core.exceptions import HardwareException
 from src.core import config
 
 
+
 # Recommended model size window (billions of params) — drives the hardware-fit
-# "Models For You" filter in the UI (#86). Derived from the machine's actual
-# usable inference memory (#199 Part 2), not from a coarse 0-100 score bucket:
-# a score-tier lookup caps every "Excellent" machine at the same ceiling
-# whether it has 12GB or 48GB of VRAM, which is exactly the under-recommendation
-# the +20 display boost was papering over instead of fixing.
+# "Models For You" filter in the UI (#86). Two INDEPENDENT physical constraints,
+# whichever binds first (#199 Part 2):
+#
+#   capacity  — can the weights fit in memory at all?
+#   bandwidth — will generation be fast enough to be usable?
+#
+# Both matter and they fail differently. A score-tier lookup collapsed them into
+# one opaque 0-100 bucket, so a 16GB card and a 48GB card both landed on 7-12B.
+# Capacity alone is no better: two 16GB cards at 200 and 900 GB/s fit the same
+# model and generate at wildly different speeds.
 #
 # Quantized (4-bit) footprint: ~0.6 GB per billion params, matching the same
-# ratio the frontend already uses for per-model fit (hardwareFit.js
-# estimateFootprintGb). _INFERENCE_OVERHEAD_RESERVE_GB covers KV cache and
-# runtime overhead for a modest context window.
+# ratio the frontend uses for per-model fit (hardwareFit.js estimateFootprintGb).
 _GB_PER_BILLION_PARAMS_Q4 = 0.6
+# KV cache and runtime overhead for a modest context window.
 _INFERENCE_OVERHEAD_RESERVE_GB = 1.5
+
 # Unified/system memory is shared with the OS and other apps, unlike dedicated
-# VRAM — only a fraction of it is realistically usable for model weights.
+# VRAM. The share the OS takes is roughly FIXED, not proportional, so a pure
+# fraction over-promises badly on small machines: 0.75 x 16GB suggests ~17B on a
+# 16GB Mac where 12B measurably lags. Fraction for headroom pressure, then a flat
+# reserve for the OS itself.
 _MLX_UNIFIED_MEMORY_USABLE_FRACTION = 0.75
+_MLX_OS_RESERVE_GB = 4.0
 _CPU_RAM_USABLE_FRACTION = 0.5
+
+# Token generation is memory-bandwidth-bound: every token streams the whole
+# weight set, so tok/s ~= bandwidth_gbs / (GB_PER_B x params). Inverting at a
+# comfort floor gives the largest model that still generates at a usable speed.
+# 20 tok/s is comfortable reading pace. (TFLOPs govern prompt processing rather
+# than generation, and are unset on CPU profiles, so bandwidth is the honest
+# proxy here.)
+_COMFORT_FLOOR_TOKENS_PER_SEC = 20.0
+
 _MIN_PARAM_FLOOR = 1.0
 _MAX_PARAM_CEILING = 120.0
+# Keep the excellent 7-14B models in "Models For You" on every machine: an
+# uncapped max/2 floor pushes a 48GB box to a 38B minimum and empties the row.
+_MAX_RECOMMENDED_MIN_PARAMS = 8.0
 
 
 def _usable_inference_memory_gb(profile: HardwareProfile) -> float:
     """Memory actually available to load model weights into, per backend.
 
-    CUDA: dedicated VRAM (not shared with the OS). MLX: a fraction of unified
-    memory (shared with the OS and everything else running). CPU: a fraction
-    of system RAM, same reasoning.
+    CUDA: dedicated VRAM, not shared with the OS. MLX: unified memory less the
+    OS's roughly fixed share. CPU: system RAM fraction, left unchanged (no
+    validated baseline exists for it, and it is outside the reported regression).
     """
     if profile.backend_type == "cuda" and profile.vram_total_gb:
         return profile.vram_total_gb
     if profile.unified_memory and profile.total_memory_gb:
-        return profile.total_memory_gb * _MLX_UNIFIED_MEMORY_USABLE_FRACTION
+        usable = profile.total_memory_gb * _MLX_UNIFIED_MEMORY_USABLE_FRACTION
+        return max(0.0, usable - _MLX_OS_RESERVE_GB)
     return (profile.total_memory_gb or 0.0) * _CPU_RAM_USABLE_FRACTION
 
 
+def _bandwidth_param_cap(profile: HardwareProfile) -> Optional[float]:
+    """Largest model (billions of params) that still generates at the comfort
+    floor on this machine's memory bandwidth.
+
+    Returns None when bandwidth is unknown (it is nullable, and CPU fallback
+    paths leave it unset) so the caller degrades to capacity-only rather than
+    capping the window to zero.
+    """
+    try:
+        bandwidth = float(getattr(profile, "memory_bandwidth_gbs", None) or 0.0)
+    except (TypeError, ValueError):
+        return None  # unreadable value: degrade to capacity-only, never raise
+    if bandwidth <= 0:
+        return None
+    return bandwidth / (_GB_PER_BILLION_PARAMS_Q4 * _COMFORT_FLOOR_TOKENS_PER_SEC)
+
+
 def recommended_param_range(profile: HardwareProfile) -> tuple[float, float]:
-    """Recommended model size window (billions of params) this machine can
-    comfortably run at 4-bit quantization, derived from real usable memory."""
+    """Recommended model size window (billions of params) this machine runs
+    comfortably at 4-bit: the smaller of what fits and what runs fast enough."""
     usable_gb = _usable_inference_memory_gb(profile)
     weight_budget_gb = max(0.0, usable_gb - _INFERENCE_OVERHEAD_RESERVE_GB)
     max_params = weight_budget_gb / _GB_PER_BILLION_PARAMS_Q4
+
+    bandwidth_cap = _bandwidth_param_cap(profile)
+    if bandwidth_cap is not None:
+        max_params = min(max_params, bandwidth_cap)
+
     max_params = max(_MIN_PARAM_FLOOR, min(max_params, _MAX_PARAM_CEILING))
-    min_params = max(_MIN_PARAM_FLOOR, max_params * 0.5)
+    min_params = min(max_params * 0.5, _MAX_RECOMMENDED_MIN_PARAMS)
+    min_params = max(_MIN_PARAM_FLOOR, min(min_params, max_params))
     return (round(min_params, 1), round(max_params, 1))
-
-
 class Hardware_Service:
     """Service layer for hardware domain business logic.
 
