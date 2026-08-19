@@ -59,6 +59,7 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When the input is **empty or whitespace** only, then the send button is disabled.
 - [ ] When the model is loading on the first reply, then a "First response may take a bit longer while loading the model into memory…" hint shows.
 - [ ] When I have **zero local models**, then the composer is replaced by "No current local models found, please add local models to proceed."
+- [ ] When a model download **completes while I am sitting on Chat**, then the model list refreshes by itself and the composer unlocks — I don't have to navigate away and back.
 - [ ] When I open Chat via `?model=<name|id>`, then that model is pre-selected (else the first model stays).
 - [ ] When the **backend is unreachable**, then an error dialog "Failed to load models: …" shows.
 
@@ -67,8 +68,13 @@ screens, the shared chrome, and non-functional behavior.
 **Happy path**
 - [ ] When I open an existing conversation, then its **full history** renders in order (my messages right, assistant left as markdown) and the model/settings populate.
 - [ ] When I send a follow-up, then a user bubble appears immediately and the assistant reply streams live; both are saved.
-- [ ] When I send the first message of a new conversation, then a short (2–4 word) **title** appears in the sidebar.
+- [ ] When I send the first message of a new conversation, then a short (2–4 word) **title** appears in the sidebar, free of any reasoning fragments, ideally in the conversation's language.
 - [ ] When I reload the page, then the full text history re-renders from the database.
+
+**Reasoning / thinking models**
+- [ ] When a thinking model (e.g. Qwen3) generates, then its reasoning streams into a **collapsible "Reasoning" strip** above the answer — never into the answer bubble itself.
+- [ ] When the turn ends, then the strip settles to a collapsed "Reasoning — N steps" summary; expanding it shows the full trace, and the trace **survives a reload**.
+- [ ] When an agentic model narrates **before calling a tool** ("Let me search the documents…"), then that narration lands in the reasoning strip, not in the answer bubble — the answer zone holds only the final grounded answer.
 
 **Knowledge-Base / agentic behavior**
 - [ ] When the model has a KB attached and is **tool-capable (agentic)**, then on a document question the model **calls the KB search tool itself** before answering, and the answer references the source.
@@ -76,6 +82,9 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When the model has a KB attached and is **not tool-capable (systematic)**, then relevant document excerpts are **injected up-front** every turn and the answer is grounded in them.
 - [ ] When a small / uncooperative model is KB-attached, then the answer should still reference the source *(prompt-instructed only — no clickable source UI; acceptance = it mentions the doc when it complies)*.
 - [ ] When KB retrieval **fails** (broken/empty vector store), then the turn **degrades to a no-context answer** instead of erroring.
+- [ ] When I ask about something the documents **do not cover** (e.g. an undocumented product variant), then the agentic model searches, finds nothing relevant, and **says the documents don't cover it** — it never invents a value and never substitutes a nearby fact (e.g. another model's price).
+- [ ] When a follow-up returns to a **topic searched earlier in the conversation**, then the model runs a **fresh search** rather than answering from its memory of old excerpts (old tool results are placeholder-stripped from context) — it must not claim "not in the documents" without having just searched.
+- [ ] When I inspect any agentic answer, then **no raw tool markup** (`<tool_call>`, JSON arguments, function-call syntax) appears in the answer bubble or in the persisted history; the search call and its excerpts appear only inside the reasoning strip.
 
 **Multimodal / multi-turn**
 - [ ] When I send an image on a vision model, then it is used for that turn; on the **next** turn the stale image is dropped from the model's context (only the current turn's image is sent), while the display keeps all images.
@@ -111,6 +120,7 @@ screens, the shared chrome, and non-functional behavior.
 ## Knowledge Base / Create Assistant — `/erudi/attach_knowledge_base`
 
 **Happy path**
+- [ ] When I open the screen for the **first time** (embedding model not yet installed), then a dialog offers to download the embedding model (multilingual-e5-small) once; accepting downloads it and confirms "the Knowledge Base is ready to use"; declining leaves the screen usable read-only and the offer returns on the next visit.
 - [ ] When I open the screen, then I see the KB description, a chat-capabilities rating (my machine's inference label/score), the local-model library, a name field, and a drag-and-drop area.
 - [ ] When I select a base model, type a name and **click Check to lock it**, add supported files (`.pdf`/`.txt`/`.docx`/`.xlsx`/`.csv`/`.md`), and click "Create Assistant" + confirm, then a spinner polls progress.
 - [ ] When ingestion completes, then "Data attached to your Assistant successfully!" shows and the form resets.
@@ -130,7 +140,7 @@ screens, the shared chrome, and non-functional behavior.
 
 - [ ] When I click the sidebar icons, then I navigate to Models (Brain), Chat (Chat), Arena (Swords), and Knowledge Base (Book); the active screen is highlighted (Chat stays highlighted while in a conversation).
 - [ ] When I click the bug/contact icon, then `erudi.app/contact` opens in my browser.
-- [ ] When a download is in progress, then the contact icon is hidden and the sidebar is dimmed/disabled.
+- [ ] When a download is in progress, then the contact icon is hidden; navigation stays enabled and the progress widget follows me across screens.
 - [ ] When I navigate to an unknown route, then I am redirected to the Models screen.
 
 ## Non-functional (boot, offline, persistence, updates, errors)
