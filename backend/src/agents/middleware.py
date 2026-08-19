@@ -235,7 +235,11 @@ class _StripStaleKbToolMessages(AgentMiddleware):
     unaffected — symmetric to ``_StripStaleImagesMiddleware`` for images.
     """
 
-    _MARKER = "[knowledge base results from an earlier turn omitted]"
+    _MARKER = (
+        "[knowledge base results from an earlier turn omitted - call "
+        "search_knowledge_base again if this turn needs facts from the "
+        "documents]"
+    )
 
     def _strip(self, request):
         messages = list(request.messages)

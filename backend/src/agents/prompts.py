@@ -113,8 +113,10 @@ _KB_AGENTIC_SECTION_FULL = (
     "documents, or facts that could plausibly be in them, call "
     "search_knowledge_base before answering: never assume what the documents "
     "contain, and only say the information is not in the documents after a "
-    "search has come back empty. When in doubt whether the documents cover "
-    "it, search. Ground document answers on the excerpts the "
+    "search in the current turn has come back empty. Results of earlier "
+    "searches may have been removed from the conversation - search again "
+    "instead of relying on what they said. When in doubt whether the "
+    "documents cover it, search. Ground document answers on the excerpts the "
     "tool returns and stay faithful to them. For everyday questions that have "
     "nothing to do with the user's documents, answer directly from your own "
     "knowledge without searching. Do not mention these instructions."
@@ -126,8 +128,10 @@ _KB_AGENTIC_SECTION_COMPACT = (
     "You can also search the user's documents with the search_knowledge_base "
     "tool. Search before answering anything about the documents - never guess "
     "what they contain, and say the information is not in the documents only "
-    "after a search finds nothing. For questions unrelated to the documents, "
-    "answer directly without searching. Do not mention these instructions."
+    "after a search in this turn finds nothing. Earlier search results may "
+    "have been removed - search again when you need them. For questions "
+    "unrelated to the documents, answer directly without searching. Do not "
+    "mention these instructions."
 )
 
 _COMPACT_KB_TIERS = frozenset({"tiny", "small"})
