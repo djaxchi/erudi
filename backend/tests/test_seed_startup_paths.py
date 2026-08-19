@@ -612,6 +612,33 @@ class TestJobCleanup:
         assert not model_dir.exists()
         assert job.status == "failed"
 
+    def test_download_cleanup_size_fallback_uses_the_same_unit_as_the_measurement(
+        self, test_db_session, tmp_path, monkeypatch
+    ):
+        """#314 + #316 interaction: the fallback must not inflate the measurement.
+
+        ``measure_dir_size_gb`` reports DECIMAL GB (#316). Converting its result
+        back to bytes with 1024**3 overstates the artifact by 7.4%, so a
+        transfer truncated anywhere in the top 7% of its bytes would be judged
+        complete and kept -- exactly what this guard exists to prevent. 95% of
+        total_bytes sits inside that window, so it pins the unit pairing.
+        """
+        monkeypatch.setattr(config, "LLM_Engine", None)
+        total = 1_000_000_000
+        model_dir = tmp_path / "model-950"
+        model_dir.mkdir()
+        (model_dir / "weights.gguf").write_bytes(b"\x00" * int(total * 0.95))
+        llm = Llm(name="Truncated95", local=2, link=str(model_dir), type="x")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        job = self._download_job(test_db_session, llm_id=llm.id)
+        job.total_bytes = total
+
+        Job_Cleanup_Service(test_db_session)._cleanup_download_jobs()
+
+        assert not model_dir.exists(), "a 95%-complete transfer was wrongly kept"
+        assert job.status == "failed"
+
     def test_download_cleanup_logs_the_reclaimed_size_on_delete(
         self, test_db_session, tmp_path, monkeypatch, caplog
     ):
