@@ -31,6 +31,7 @@ from src.agents.runner import (
 )
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.llms.repository import detect_supports_vision
+from src.domains.user_settings.repository import User_Settings_Repository
 from src.domains.conversations.schemas import ConversationQuery
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
@@ -131,9 +132,20 @@ class ConversationService:
         top_p: float = 0.5,
         max_tokens: int = 1024,
         custom_prompt: str = "",
+        web_search_enabled: Optional[bool] = None,
     ) -> Conversation:
-        """Create a new conversation with the given LLM and generation params."""
+        """Create a new conversation with the given LLM and generation params.
+
+        ``web_search_enabled=None`` (the default) copies the GLOBAL
+        user-settings default at creation (#310); an explicit value wins (the
+        pre-conversation settings panel). The conversation owns the flag
+        afterwards — later global changes never retro-affect it.
+        """
         logger.info(f"Creating new conversation with LLM {llm_id}")
+        if web_search_enabled is None:
+            web_search_enabled = User_Settings_Repository(
+                self.db
+            ).get_web_search_enabled()
         return self.conversation_repo.create_conversation(
             llm_id=llm_id,
             name="New Conversation",
@@ -141,6 +153,7 @@ class ConversationService:
             top_p=top_p,
             max_tokens=max_tokens,
             custom_prompt=custom_prompt,
+            web_search_enabled=web_search_enabled,
         )
 
     def update_conversation(
@@ -152,6 +165,7 @@ class ConversationService:
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
         custom_prompt: Optional[str] = None,
+        web_search_enabled: Optional[bool] = None,
     ) -> Conversation:
         """Partial update of conversation metadata (only non-None fields)."""
         logger.info(f"Updating conversation {conversation_id}")
@@ -163,6 +177,7 @@ class ConversationService:
             top_p=top_p,
             max_tokens=max_tokens,
             custom_prompt=custom_prompt,
+            web_search_enabled=web_search_enabled,
         )
 
     # ===================== Deletion (DB + checkpointer thread) =====================
@@ -321,6 +336,9 @@ class ConversationService:
                 retrieve=lambda: self._retrieve_kb_excerpts(llm, payload.question),
                 custom_prompt=payload.custom_prompt,
                 starred_messages=starred,
+                # #310: the conversation OWNS its web toggle (copied from the
+                # global default at creation).
+                web_search_enabled=bool(conversation.web_search_enabled),
             )
             params = GenParams(
                 temperature=payload.temperature if payload.temperature is not None else conversation.temperature,

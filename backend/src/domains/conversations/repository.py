@@ -125,11 +125,12 @@ class ConversationRepository:
         temperature: float = 0.2,
         top_p: float = 0.5,
         max_tokens: int = 1024,
-        custom_prompt: str = ""
+        custom_prompt: str = "",
+        web_search_enabled: bool = False
     ) -> Conversation:
         """
         Create a new conversation.
-        
+
         Args:
             llm_id: ID of the LLM to use
             name: Name for the conversation
@@ -137,10 +138,13 @@ class ConversationRepository:
             top_p: Nucleus sampling threshold
             max_tokens: Maximum tokens to generate
             custom_prompt: Custom system prompt
-            
+            web_search_enabled: Per-conversation web-search toggle (#310);
+                the service resolves it from the global default when the
+                caller does not pass an explicit value
+
         Returns:
             The created Conversation
-            
+
         Raises:
             DatabaseException: If creation fails
         """
@@ -151,7 +155,8 @@ class ConversationRepository:
                 temperature=temperature,
                 top_p=top_p,
                 max_tokens=max_tokens,
-                custom_prompt=custom_prompt
+                custom_prompt=custom_prompt,
+                web_search_enabled=web_search_enabled
             )
             self.db.add(conversation)
             self.db.flush()  # Flush to get ID, no commit
@@ -173,11 +178,12 @@ class ConversationRepository:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        custom_prompt: Optional[str] = None
+        custom_prompt: Optional[str] = None,
+        web_search_enabled: Optional[bool] = None
     ) -> Conversation:
         """
         Update an existing conversation.
-        
+
         Args:
             conversation_id: ID of the conversation to update
             name: New name
@@ -186,6 +192,7 @@ class ConversationRepository:
             top_p: New top_p
             max_tokens: New max_tokens
             custom_prompt: New custom prompt
+            web_search_enabled: New per-conversation web-search toggle (#310)
             
         Returns:
             Updated Conversation object
@@ -222,7 +229,14 @@ class ConversationRepository:
             if custom_prompt is not None and custom_prompt != conversation.custom_prompt:
                 conversation.custom_prompt = custom_prompt
                 updated = True
-            
+
+            if (
+                web_search_enabled is not None
+                and web_search_enabled != conversation.web_search_enabled
+            ):
+                conversation.web_search_enabled = web_search_enabled
+                updated = True
+
             if updated:
                 self.db.flush()  # Flush changes, no commit
                 logger.info(f"Updated conversation {conversation_id}")
