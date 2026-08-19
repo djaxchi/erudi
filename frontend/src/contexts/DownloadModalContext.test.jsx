@@ -33,7 +33,7 @@ vi.mock("../components/modals/ErrorModal", () => ({ default: () => null }));
 vi.mock("../components/Spinner", () => ({ default: () => null }));
 
 import { DownloadModalProvider, useDownloadModal } from "./DownloadModalContext";
-import { DOWNLOAD_CANCELLED } from "../utils/downloadStatus";
+import { DOWNLOAD_CANCELLED, DOWNLOAD_STALLED } from "../utils/downloadStatus";
 
 // Per-test configurable responders for the POST-start / status-poll / cancel URLs.
 let postResponder;
@@ -263,5 +263,98 @@ describe("DownloadModalContext user cancel", () => {
     );
     expect(cancel).toBeTruthy();
     expect(String(cancel[0])).toMatch(/\/llms\/downloads\/job1\/cancel$/);
+  });
+});
+
+// The poll had no cap: it stopped only on completed/failed/cancelled, so when
+// #291 stranded a job at `running` with progress 100 it ran 800+ times over 25
+// minutes with the widget frozen and the sidebar dimmed (#315).
+describe("DownloadModalContext stall guard (#315)", () => {
+  const POLL_MS = 2000;
+  const STALL_TICKS = 90;
+
+  // open -> confirm -> drive N poll ticks.
+  const startAndPoll = async (ticks) => {
+    await act(async () => {
+      fireEvent.click(screen.getByText("OPEN"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("CONFIRM"));
+      await vi.advanceTimersByTimeAsync(ticks * POLL_MS);
+    });
+  };
+
+  it("gives up after the finalize threshold and hands the app back to the user", async () => {
+    statusResponder = () => ({
+      ok: true,
+      json: async () => ({ status: "running", progress: 100, time_left: 0 }),
+    });
+    renderProvider();
+
+    await startAndPoll(STALL_TICKS);
+
+    // The poll stopped, and the dimmed-sidebar/spinner state is released.
+    expect(val("downloading")).toBe("false");
+    expect(onError).toHaveBeenCalledWith(DOWNLOAD_STALLED);
+    // Not a completion: nothing finished, so consumers must not reload as if it did.
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(val("completions")).toBe("0");
+
+    // And it stays stopped: no further requests once it has given up.
+    const afterGiveUp = statusCalls().length;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20 * POLL_MS);
+    });
+    expect(statusCalls().length).toBe(afterGiveUp);
+  });
+
+  it("keeps polling while still under the threshold", async () => {
+    statusResponder = () => ({
+      ok: true,
+      json: async () => ({ status: "running", progress: 100, time_left: 0 }),
+    });
+    renderProvider();
+
+    await startAndPoll(STALL_TICKS - 1);
+
+    expect(val("downloading")).toBe("true");
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("never caps a transfer that is merely slow", async () => {
+    // Below 100% the bytes are still moving; a 70 GB pull on a bad line
+    // legitimately takes hours and must never be killed by a timer.
+    statusResponder = () => ({
+      ok: true,
+      json: async () => ({ status: "running", progress: 42, time_left: 9999 }),
+    });
+    renderProvider();
+
+    await startAndPoll(STALL_TICKS * 3);
+
+    expect(val("downloading")).toBe("true");
+    expect(onError).not.toHaveBeenCalled();
+    expect(statusCalls().length).toBeGreaterThan(STALL_TICKS);
+  });
+
+  it("does not fire when the job finalizes normally after touching 100%", async () => {
+    let polls = 0;
+    statusResponder = () => {
+      polls += 1;
+      return {
+        ok: true,
+        json: async () =>
+          polls < 5
+            ? { status: "running", progress: 100, time_left: 0 }
+            : { status: "completed", progress: 100, time_left: 0 },
+      };
+    };
+    renderProvider();
+
+    await startAndPoll(10);
+
+    expect(onError).not.toHaveBeenCalled();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(val("completions")).toBe("1");
   });
 });

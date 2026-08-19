@@ -114,6 +114,19 @@ class ParameterScale(Enum):
     MILLION = "M"
 
 
+# Bytes per gigabyte for every MODEL ARTIFACT size we display (#316).
+#
+# Decimal (10^9), NOT binary (2^30). Model sizes are quoted decimal by Hugging
+# Face, by the download progress and by `catalog_classify`, so measuring the
+# same artifact in GiB while labelling it "GB" made a model appear to shrink by
+# ~600 MB the moment it finished downloading (9.00 GB in the catalog, 8.4 GB
+# once installed, for one unchanged 9,001,752,960 byte file).
+#
+# Deliberately NOT used for RAM/VRAM/disk-capacity readouts: those are reported
+# in GiB by the OS and by every hardware vendor, and converting them here would
+# make the machine readout disagree with Task Manager.
+BYTES_PER_GB = 1_000_000_000
+
 # ============ Data Structures ============
 
 @dataclass(frozen=True)
@@ -463,8 +476,9 @@ def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
         # file, so the whole-repo sum is preserved for them.
         total_size_bytes = _chosen_artifact_bytes(repo_info)
 
-        # Convert to GB with high precision
-        size_gb = total_size_bytes / (1024**3)
+        # Convert to GB with high precision. Decimal GB (#316) so the number
+        # matches what Hugging Face itself shows for the very same file.
+        size_gb = total_size_bytes / BYTES_PER_GB
         
         logger.info(f"Retrieved actual size for {link_hf_quant_repo}: {size_gb:.2f} GB")
         
@@ -857,9 +871,10 @@ def measure_dir_size_gb(path: Union[str, Path]) -> float:
     """Measure the real on-disk footprint of a model directory, recursively, in GB.
 
     Display-layer wrapper over ``measure_dir_size_bytes``: it owns the divisor,
-    i.e. what a "GB" means on screen (base-1024 GB, matching the ``~X.X GB``
-    catalog format). Anything comparing against a byte count wants the primitive
-    instead.
+    i.e. what a "GB" means on screen. That is DECIMAL GB (#316), the unit the
+    catalog and Hugging Face quote, so a model does not appear to shrink the
+    moment it finishes downloading. Anything comparing against a byte count
+    wants the primitive instead.
 
     Args:
         path: Directory (or single file) to measure.
@@ -867,7 +882,7 @@ def measure_dir_size_gb(path: Union[str, Path]) -> float:
     Returns:
         Size in gigabytes (0.0 if the path does not exist or is empty).
     """
-    return measure_dir_size_bytes(path) / (1024**3)
+    return measure_dir_size_bytes(path) / BYTES_PER_GB
 
 
 def rewrite_size_in_metadata(metadata_str: Optional[str], size_gb: float) -> str:
@@ -914,6 +929,8 @@ def rewrite_size_in_metadata(metadata_str: Optional[str], size_gb: float) -> str
 # ============ Module Exports ============
 
 __all__ = [
+    # Units
+    "BYTES_PER_GB",
     # Data structures
     "ModelSize",
     "ParameterCount",
