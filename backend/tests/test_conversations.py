@@ -436,6 +436,42 @@ class TestConversationService:
         # No thinking/tools this turn -> no trace persisted.
         assert messages[1].trace is None
 
+    async def test_query_stream_persists_assistant_before_done_event(
+        self, test_db_session, mock_llm, monkeypatch
+    ):
+        """#303: the ``done`` event is the client's signal to refetch messages.
+        The assistant row must therefore be committed BEFORE ``done`` is
+        yielded — otherwise the refetch races the insert, returns rows without
+        the answer, and the frontend's list replacement erases the streamed
+        bubble (observed live: fetch_messages 200 at t+7ms vs threadpool
+        persist still in flight)."""
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
+        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("The answer."))
+        service = ConversationService(test_db_session, InMemorySaver())
+        conversation = service.create_conversation(llm_id=mock_llm.id, temperature=0.7, top_p=0.9, max_tokens=1024)
+
+        payload = ConversationQuery(question="A question", temperature=0.7)
+
+        messages_at_done = None
+        agen = service.query_and_respond_stream(conversation.id, payload)
+        async for chunk in agen:
+            events = _parse_ndjson(chunk)
+            if any(e.get("t") == "done" for e in events):
+                # The client acts HERE (refetch on ``done``), not after the
+                # generator's finally block has run.
+                messages_at_done = service.message_repo.get_messages_by_conversation(
+                    conversation.id
+                )
+                break
+        await agen.aclose()
+
+        assert messages_at_done is not None, "stream never yielded a done event"
+        senders = [m.sender for m in messages_at_done]
+        assert senders == ["user", "llm"], (
+            f"assistant row missing when done was emitted (got {senders})"
+        )
+        assert messages_at_done[1].content == "The answer."
+
     async def test_query_stream_with_images_multimodal_and_placeholder(
         self, test_db_session, mock_llm, monkeypatch
     ):
