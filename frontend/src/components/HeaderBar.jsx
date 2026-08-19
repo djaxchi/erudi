@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, HelpCircle, SlidersHorizontal } from "lucide-react";
 import Tooltip from "./Tooltip";
+import ToggleSwitch from "./ToggleSwitch";
 
 export default function HeaderBar({
   initialTemperature = 0.2,
@@ -24,16 +25,28 @@ export default function HeaderBar({
   // steering the user to pick a model before the composer will unblock.
   pickerAttention = false,
   pickerAttentionMessage = "",
+  // Per-conversation web-search toggle (#310). Hidden by default so the
+  // Arena (which shares this bar but has no conversation row — its turns
+  // follow the GLOBAL setting backend-side) keeps an unchanged panel;
+  // ConversationPage opts in and persists flips through onWebSearchChange.
+  showWebSearch = false,
+  initialWebSearch = false,
+  onWebSearchChange,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [temperature, setTemperature] = useState(initialTemperature);
   const [topP, setTopP] = useState(initialTopP);
   const [maxTokens, setMaxTokens] = useState(initialMaxTokens);
+  const [webSearch, setWebSearch] = useState(initialWebSearch);
 
   // Sync internal state with props when they change
   useEffect(() => {
     setTemperature(initialTemperature);
   }, [initialTemperature]);
+
+  useEffect(() => {
+    setWebSearch(initialWebSearch);
+  }, [initialWebSearch]);
 
   useEffect(() => {
     setTopP(initialTopP);
@@ -110,7 +123,9 @@ export default function HeaderBar({
           ? "Controls word variety. Lower = predictable, higher = diverse."
           : id === "prompt"
             ? "Customize system instructions that guide AI behavior."
-            : "";
+            : id === "web-search"
+              ? "Lets the model search the web for current facts. Searched queries are sent to external search engines."
+              : "";
     const widthClass = isXs ? "w-40" : isSm ? "w-52" : "w-64";
     const iconSize = isXs ? "w-3 h-3" : isSm ? "w-3.5 h-3.5" : "w-4 h-4";
     return (
@@ -438,6 +453,26 @@ export default function HeaderBar({
                         </button>
                       </div> */}
                     </div>
+                    {showWebSearch && (
+                      <div className="mt-4 flex items-center gap-3">
+                        <span
+                          className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
+                        >
+                          Web Search
+                        </span>
+                        <TooltipIcon id="web-search" side={isNarrow ? "bottom-right" : "right"} />
+                        <div className="ml-auto">
+                          <ToggleSwitch
+                            checked={webSearch}
+                            onChange={(next) => {
+                              setWebSearch(next);
+                              onWebSearchChange?.(next);
+                            }}
+                            label="Web search"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className={`flex ${actionsLayout} gap-3 w-full`}>
@@ -496,6 +531,9 @@ HeaderBar.propTypes = {
   onApply: PropTypes.func.isRequired,
   onLiveChange: PropTypes.func,
   onCustomizePrompt: PropTypes.func.isRequired,
+  showWebSearch: PropTypes.bool,
+  initialWebSearch: PropTypes.bool,
+  onWebSearchChange: PropTypes.func,
   disabled: PropTypes.bool,
   models: PropTypes.arrayOf(
     PropTypes.shape({

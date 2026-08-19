@@ -93,7 +93,11 @@ beforeEach(() => {
   tracedFetchMock.mockResolvedValue({ ok: true, json: async () => ({ id: 123 }) });
   apiClient.get.mockReset();
   apiClient.get.mockImplementation(async (path) =>
-    path === "/llms/local" ? MODELS : CONVERSATIONS
+    path === "/llms/local"
+      ? MODELS
+      : path === "/user_settings/"
+        ? { web_search_enabled: false }
+        : CONVERSATIONS
   );
 });
 afterEach(() => {
@@ -117,6 +121,7 @@ describe("ChatPage send flow", () => {
       top_p: 0.95,
       max_tokens: 1024,
       custom_prompt: "",
+      web_search_enabled: false, // inherited from the global setting (#310)
     });
 
     const [path, { state }] = navigateMock.mock.calls[0];
@@ -160,6 +165,7 @@ describe("ChatPage send flow", () => {
       top_p: 0.5,
       max_tokens: 512,
       custom_prompt: "Answer like a pirate",
+      web_search_enabled: false,
     });
     expect(navigateMock.mock.calls[0][1].state.initialCustomPrompt).toBe("Answer like a pirate");
     expect(navigateMock.mock.calls[0][1].state.initialSettings).toEqual({
@@ -167,6 +173,42 @@ describe("ChatPage send flow", () => {
       topP: 0.5,
       maxTokens: 512,
     });
+  });
+
+  it("inherits an enabled global web-search default and lets the user flip it (#310)", async () => {
+    apiClient.get.mockImplementation(async (path) =>
+      path === "/llms/local"
+        ? MODELS
+        : path === "/user_settings/"
+          ? { web_search_enabled: true }
+          : CONVERSATIONS
+    );
+    renderPage();
+    await screen.findByText("send-question");
+
+    // The pre-conversation panel shows the inherited value.
+    fireEvent.click(screen.getByLabelText("Toggle settings"));
+    const toggle = await screen.findByRole("switch", { name: "Web search" });
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("true"));
+
+    // Untouched: the creation payload carries the inherited value.
+    fireEvent.click(screen.getByText("send-question"));
+    await waitFor(() => expect(navigateMock).toHaveBeenCalled());
+    expect(JSON.parse(tracedFetchMock.mock.calls[0][1].body).web_search_enabled).toBe(true);
+  });
+
+  it("sends the flipped web-search value on creation (#310)", async () => {
+    renderPage();
+    await screen.findByText("send-question");
+
+    fireEvent.click(screen.getByLabelText("Toggle settings"));
+    const toggle = await screen.findByRole("switch", { name: "Web search" });
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("false"));
+    fireEvent.click(toggle);
+
+    fireEvent.click(screen.getByText("send-question"));
+    await waitFor(() => expect(navigateMock).toHaveBeenCalled());
+    expect(JSON.parse(tracedFetchMock.mock.calls[0][1].body).web_search_enabled).toBe(true);
   });
 
   it("shows the error modal and does not navigate when the creation fails", async () => {
