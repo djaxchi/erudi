@@ -892,15 +892,24 @@ def get_download_status_by_jobId(
             db.refresh(job)
             logger.info(f"Cleaned up {job.status} download job {job_id}")
         
-        # Handle completed jobs: mark LLM as ready
+        # Handle completed jobs: mark LLM as ready, ONCE.
+        #
+        # The frontend polls this endpoint every 2s while a download is in
+        # flight, and keeps polling a completed job until it navigates away. The
+        # write below used to run on every one of those ticks: a GET handler
+        # issuing an UPDATE plus a COMMIT, and an INFO log line, for a row that
+        # already said local = 1. Guarding on the current value makes the write
+        # idempotent in the real sense (it happens once) rather than merely
+        # convergent (it happens forever but lands on the same value).
         elif job.status == "completed":
             llm = llm_repo.get_by_id(job.local_model_id)
             if not llm:
                 raise ModelNotFoundException(f"LLM {job.local_model_id}")
-            llm_repo.update(llm, local=1)
-            db.commit()
-            db.refresh(llm)
-            logger.info(f"Marked LLM {llm.id} as ready (download job {job_id} completed)")
+            if llm.local != 1:
+                llm_repo.update(llm, local=1)
+                db.commit()
+                db.refresh(llm)
+                logger.info(f"Marked LLM {llm.id} as ready (download job {job_id} completed)")
         
         return job
     
