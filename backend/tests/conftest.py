@@ -30,6 +30,22 @@ except RuntimeError:
     # Already configured (e.g. pytest re-execution) — safe to ignore.
     pass
 
+# Match production's asyncio event loop policy BEFORE any loop can exist.
+# `run.py:set_event_loop_policy` is the single source of truth (it installs
+# WindowsSelectorEventLoopPolicy on Windows, no-op elsewhere); calling it here
+# rather than duplicating the choice keeps the two from diverging. Without it,
+# pytest-asyncio builds its loops under Windows' default Proactor policy and
+# psycopg refuses to run in async mode on them ("Psycopg cannot use the
+# 'ProactorEventLoop'"), so on Windows the suite exercised a configuration the
+# shipped app never runs in (#335). This must stay at import time: a
+# session-scoped autouse fixture runs after pytest-asyncio has already built a
+# loop for the first test. `run` is importable because pytest.ini sets
+# `pythonpath = .` (rootdir = backend/), the same import tests/test_launcher.py
+# already relies on.
+import run as _run
+
+_run.set_event_loop_policy()
+
 import os
 import sys
 import pytest
