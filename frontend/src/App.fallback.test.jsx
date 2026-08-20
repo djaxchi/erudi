@@ -68,36 +68,63 @@ describe("App fallback health polling (no preload bridge)", () => {
     expect(apiClient.get).toHaveBeenCalledTimes(2);
   });
 
+  // The three tests below wait for the BackendErrorScreen, and all three used to
+  // flake (#323). App.jsx gives up only when `Date.now() - start >= timeoutMs`,
+  // evaluated in the catch of the very first probe. With the timeout at 1ms that
+  // subtraction is usually 0, because the mocked rejection settles inside the
+  // same millisecond, so the give-up is deferred by one 2s retry -- past the 1s
+  // default of findByText/waitFor. Whether the assertion won the race came down
+  // to whether a millisecond happened to tick over, i.e. machine speed.
+  //
+  // 0 is not usable as the timeout (`Number(0) || FALLBACK_HEALTH_TIMEOUT_MS`
+  // falls back to 90s), so instead of racing the clock these drive it, the same
+  // way "retries every 2s" above already does. Deterministic, and instant in
+  // real time.
+
   it("gives up with the unreachable error screen after the timeout", async () => {
-    window.__ERUDI_BACKEND_TIMEOUT_MS__ = 1; // first failure is already too late
-    apiClient.get.mockRejectedValue(new Error("down"));
-
-    render(<App />);
-
-    await waitFor(() => expect(screen.getByText("Retry")).toBeTruthy());
-  });
-
-  it("recovers through Retry once the backend answers again", async () => {
+    vi.useFakeTimers();
     window.__ERUDI_BACKEND_TIMEOUT_MS__ = 1;
     apiClient.get.mockRejectedValue(new Error("down"));
 
     render(<App />);
-    const retry = await screen.findByText("Retry");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    expect(screen.getByText("Retry")).toBeTruthy();
+  });
+
+  it("recovers through Retry once the backend answers again", async () => {
+    vi.useFakeTimers();
+    window.__ERUDI_BACKEND_TIMEOUT_MS__ = 1;
+    apiClient.get.mockRejectedValue(new Error("down"));
+
+    render(<App />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    const retry = screen.getByText("Retry");
 
     apiClient.get.mockResolvedValue({ status: "ok" });
     await act(async () => {
       retry.click();
+      await vi.advanceTimersByTimeAsync(0);
     });
-    await waitFor(() => expect(screen.getByText("MODELS_PAGE")).toBeTruthy());
+
+    expect(screen.getByText("MODELS_PAGE")).toBeTruthy();
   });
 
   it("Quit closes the window", async () => {
+    vi.useFakeTimers();
     window.__ERUDI_BACKEND_TIMEOUT_MS__ = 1;
     apiClient.get.mockRejectedValue(new Error("down"));
     const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
 
     render(<App />);
-    const quit = await screen.findByText("Quit");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    const quit = screen.getByText("Quit");
     await act(async () => {
       quit.click();
     });
