@@ -204,34 +204,54 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
             model_link=model_link, model_id=model_id,
             temp_save_dir=temp_save_dir, final_save_dir=final_save_dir, job_id=job_id,
         ))
-        # Mark completed here, in this session, so the job is always finalized even
-        # if update_db_with_progress's session hangs (e.g. detect_supports_tools stalling
-        # or a DB connection issue in the progress thread).
         job_obj = session.query(DownloadJobModel).get(job_id)
         if job_obj and job_obj.status != "cancelled":
             # Integrity gate (#88): a model must never flip to local=1 without its
             # essential files. On failure this cleans the artifacts and raises, so
             # the except below finalizes the job as failed with an explicit message.
             _assert_downloaded_artifact_ok(final_save_dir, temp_save_dir)
+
+            # Finalize FIRST, before any capability probe (#291/#313). The transfer
+            # is done and the artifact has passed the integrity gate, so the job is
+            # genuinely complete at this point. Probing before committing is what
+            # left job 40 stuck at "running" with a complete 9GB model on disk: the
+            # probe hung, the UI polled a non-terminal status forever, and the next
+            # boot's cleanup deleted the artifact. Capabilities are refinements of a
+            # finished download, never preconditions for calling it finished.
             llm_obj = session.query(Llm).get(model_id)
             if llm_obj:
-                llm_obj.supports_tools = detect_supports_tools(llm_obj.link)
-                # Verified wire capability (#298): does the engine's server
-                # actually parse this model's tool calls? Gates agentic KB.
-                llm_obj.supports_tools_wire = detect_wire_tools(llm_obj.link)
-                llm_obj.supports_vision = detect_supports_vision(llm_obj.link)
-                # Rewrite the displayed size from the REAL on-disk footprint (#220):
-                # the catalog value was a whole-repo/estimate guess, never measured.
-                # KB assistants inherit the corrected value via COPIED_FIELDS.
-                measured_gb = measure_dir_size_gb(final_save_dir)
-                if measured_gb > 0:
-                    llm_obj.model_metadata = rewrite_size_in_metadata(
-                        llm_obj.model_metadata, measured_gb)
                 llm_obj.local = 1
             job_obj.status = "completed"
             job_obj.progress = 100.0
             job_obj.updated_at = datetime.utcnow()
             session.commit()
+
+            # Best-effort enrichment. A failure here leaves the model usable with
+            # unset capabilities (NULL = unknown, which every consumer already
+            # treats conservatively) instead of stranding a finished download.
+            if llm_obj:
+                try:
+                    llm_obj.supports_tools = detect_supports_tools(llm_obj.link)
+                    # Verified wire capability (#298): does the engine's server
+                    # actually parse this model's tool calls? Gates agentic KB.
+                    llm_obj.supports_tools_wire = detect_wire_tools(llm_obj.link)
+                    llm_obj.supports_vision = detect_supports_vision(llm_obj.link)
+                    # Rewrite the displayed size from the REAL on-disk footprint
+                    # (#220): the catalog value was a whole-repo/estimate guess,
+                    # never measured. KB assistants inherit it via COPIED_FIELDS.
+                    measured_gb = measure_dir_size_gb(final_save_dir)
+                    if measured_gb > 0:
+                        llm_obj.model_metadata = rewrite_size_in_metadata(
+                            llm_obj.model_metadata, measured_gb)
+                    session.commit()
+                except Exception as e:
+                    session.rollback()
+                    logger.warning(
+                        f"Capability detection failed for LLM {model_id} after a "
+                        f"successful download; leaving capabilities unset: {e}",
+                        exc_info=True,
+                    )
+        logger.info(f"Download job {job_id} completed successfully")
         logger.info(f"Download job {job_id} completed successfully")
     except Exception as e:
         logger.exception(f"Download job {job_id} failed: {e}")

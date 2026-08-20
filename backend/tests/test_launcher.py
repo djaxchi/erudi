@@ -5,6 +5,7 @@ import sys
 import json
 import subprocess
 import os
+import platform
 import pytest
 from pathlib import Path
 
@@ -255,6 +256,118 @@ def test_stdin_eof_watcher_survives_none_stdin(monkeypatch):
 
     assert not thread.is_alive()
     assert server.should_exit is False
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(platform.system() != "Windows", reason="Windows-only stdin path")
+def test_stdin_eof_watcher_never_blocks_in_the_crt_on_windows(monkeypatch):
+    # THE regression pin for #321/#313. A blocking os.read on the stdin fd parks
+    # this daemon thread inside the UCRT for the life of the process, and while
+    # it is parked there every off-main-thread native import in the frozen build
+    # deadlocks in LoadLibraryExW. Bisected to exactly this: same bundle, same
+    # location, same spawn shape, ERUDI_WATCH_STDIN=1 the only difference --
+    # 4 runs without it imported fine, 3 runs with it hung with identical frames.
+    #
+    # So the Windows watcher must reach EOF without ever calling os.read. Making
+    # os.read fatal is what makes a regression here fail loudly instead of
+    # silently reintroducing a deadlock nothing in CI can see.
+    import run
+
+    def _forbidden(*args, **kwargs):
+        raise AssertionError("os.read on the stdin fd reintroduces the #321 deadlock")
+
+    read_fd, write_fd = os.pipe()
+
+    class FakeServer:
+        should_exit = False
+
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(read_fd))
+    monkeypatch.setattr(run.os, "read", _forbidden)
+    server = FakeServer()
+
+    try:
+        thread = run.start_stdin_eof_watcher(server)
+        os.close(write_fd)
+        thread.join(timeout=5.0)
+    finally:
+        os.close(read_fd)
+
+    assert not thread.is_alive()
+    assert server.should_exit is True
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(platform.system() != "Windows", reason="Windows-only stdin path")
+def test_stdin_eof_watcher_keeps_watching_through_written_bytes_on_windows(monkeypatch):
+    # Only a CLOSED pipe means shutdown. Bytes on stdin must be drained and
+    # ignored: treating a write as EOF would quit the backend the first time
+    # anything spoke to it. Electron never writes, so this guards the drain
+    # branch that would otherwise only ever run in production.
+    import run
+
+    read_fd, write_fd = os.pipe()
+
+    class FakeServer:
+        should_exit = False
+
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(read_fd))
+    server = FakeServer()
+
+    try:
+        thread = run.start_stdin_eof_watcher(server)
+        os.write(write_fd, b"noise")
+        # Long enough to cover several poll ticks (0.25s each): the watcher
+        # must still be parked on the pipe, not have read the write as EOF.
+        thread.join(timeout=1.0)
+        assert thread.is_alive()
+        assert server.should_exit is False
+
+        os.close(write_fd)
+        thread.join(timeout=5.0)
+    finally:
+        os.close(read_fd)
+
+    assert not thread.is_alive()
+    assert server.should_exit is True
+
+
+@pytest.mark.unit
+def test_stdin_eof_watcher_dispatches_to_the_windows_path(monkeypatch):
+    # Cross-platform companion to the two Windows-only tests above, so CI (which
+    # runs Ubuntu) still guards the dispatch. The real Windows wait cannot run
+    # here -- it is ctypes/kernel32 -- but which branch gets taken can, and that
+    # is the half a refactor is most likely to get wrong.
+    import run
+
+    calls = []
+
+    def _fake_win_wait(fd):
+        calls.append(fd)
+
+    read_fd, write_fd = os.pipe()
+
+    class FakeServer:
+        should_exit = False
+
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(read_fd))
+    monkeypatch.setattr(run.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(run, "_win_wait_for_stdin_eof", _fake_win_wait)
+    monkeypatch.setattr(
+        run.os,
+        "read",
+        lambda *a, **k: pytest.fail("Windows must not take the os.read path (#321)"),
+    )
+    server = FakeServer()
+
+    try:
+        thread = run.start_stdin_eof_watcher(server)
+        thread.join(timeout=5.0)
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
+
+    assert calls == [read_fd]
+    assert server.should_exit is True
 
 
 @pytest.mark.unit
