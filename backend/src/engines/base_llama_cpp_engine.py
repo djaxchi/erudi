@@ -222,24 +222,23 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
 
     @classmethod
     def _load_capability_tokenizer(cls, llm_local_path: Union[str, Path]):
-        """Load the tokenizer embedded in the GGUF (metadata only, no weights).
+        """Chat-template view of the GGUF, for the static capability probes.
 
-        Used by ``compute_supports_tools`` for static tool-calling detection.
-        ``transformers`` reads the GGUF chat template via the ``gguf`` package.
+        Reads the template straight out of the GGUF key-value header and renders
+        it with plain ``jinja2`` (see ``engines.gguf_chat_template``). It used to
+        build a ``transformers.AutoTokenizer``, which pulled the whole
+        ``modeling_auto`` import graph -- sklearn, scipy BLAS and their native
+        DLLs -- and DEADLOCKED in the frozen Windows build whenever it ran off the
+        main thread: the first chat turn against any GGUF model hung forever
+        (#313), as did download finalization (#291). Nothing here imports
+        transformers, so no native extension is loaded on a request path.
+
+        Returns None when the artifact carries no readable template; every caller
+        already treats that as "unknown" and keeps its graceful default.
         """
-        from transformers import AutoTokenizer
+        from src.engines.gguf_chat_template import load_gguf_chat_template
 
-        gguf_path = cls._select_gguf(llm_local_path)
-        # local_files_only=True (#164 pattern): everything needed lives in the
-        # already-downloaded GGUF. Without it, from_pretrained reaches out to the
-        # Hub to check for updates and can hang for minutes on a slow/blocked
-        # connection, stalling the whole download finalization (#291).
-        return AutoTokenizer.from_pretrained(
-            str(gguf_path.parent),
-            gguf_file=gguf_path.name,
-            trust_remote_code=False,
-            local_files_only=True,
-        )
+        return load_gguf_chat_template(cls._select_gguf(llm_local_path))
 
     @classmethod
     def compute_wire_tools(cls, llm_local_path: Union[str, Path]) -> Optional[bool]:
