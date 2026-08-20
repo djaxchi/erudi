@@ -302,6 +302,12 @@ def run_server(server: "uvicorn.Server") -> None:
         sys.exit(1)
 
 
+# How often the Windows stdin watcher checks the pipe for EOF. Shutdown
+# latency is bounded by this and Electron allows 8s of grace, so a quarter
+# second is far inside the budget while staying invisible on the CPU.
+_STDIN_POLL_SECONDS = 0.25
+
+
 def stdin_watch_enabled() -> bool:
     """True when Electron asked the launcher to watch stdin for shutdown (opt-in).
 
@@ -312,27 +318,90 @@ def stdin_watch_enabled() -> bool:
     return os.environ.get("ERUDI_WATCH_STDIN") == "1"
 
 
+def _win_wait_for_stdin_eof(fd: int) -> None:
+    """Windows: wait for the stdin pipe to close WITHOUT parking in the CRT.
+
+    A blocking ``os.read`` here deadlocks the process loader (#321). ``os.read``
+    enters the UCRT's ``_read()``, which takes the per-fd lock and then parks in
+    ``ReadFile`` for the entire life of the process; while this daemon thread is
+    parked there, ANY off-main-thread native import that pulls the OpenBLAS
+    chain (scipy/sklearn via transformers or sentence_transformers) blocks
+    forever inside ``LoadLibraryExW``. Bisected to this single env var: with
+    ERUDI_WATCH_STDIN unset the same frozen bundle imports fine from a worker
+    thread; with it set, the import never returns (identical frames, zero CPU).
+
+    So on Windows the wait is a poll on the OS handle instead: PeekNamedPipe
+    reports the write end closing as ERROR_BROKEN_PIPE, which is our EOF, and
+    the CRT is never entered. Any bytes the parent sends are drained through
+    ReadFile on the same handle for the same reason. Electron never writes to
+    the backend's stdin, so the drain is defensive only.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    ERROR_BROKEN_PIPE = 109
+    ERROR_PIPE_NOT_CONNECTED = 233
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    msvcrt = __import__("msvcrt")
+    handle = msvcrt.get_osfhandle(fd)
+
+    avail = wintypes.DWORD()
+    read = wintypes.DWORD()
+    buf = ctypes.create_string_buffer(4096)
+
+    while True:
+        ok = kernel32.PeekNamedPipe(
+            wintypes.HANDLE(handle), None, 0, None, ctypes.byref(avail), None
+        )
+        if not ok:
+            err = ctypes.get_last_error()
+            if err in (ERROR_BROKEN_PIPE, ERROR_PIPE_NOT_CONNECTED):
+                return  # parent closed the pipe: this is EOF
+            # Not a pipe (console, file, redirected handle): no EOF to watch
+            # for, so leave shutdown to the signal paths rather than risk the
+            # blocking read this function exists to avoid.
+            raise OSError(err, "PeekNamedPipe failed on stdin")
+        if avail.value:
+            kernel32.ReadFile(
+                wintypes.HANDLE(handle),
+                buf,
+                min(avail.value, len(buf)),
+                ctypes.byref(read),
+                None,
+            )
+            continue  # data, not EOF - keep watching
+        time.sleep(_STDIN_POLL_SECONDS)
+
+
 def start_stdin_eof_watcher(server: "uvicorn.Server") -> threading.Thread:
     """Request a graceful shutdown when the controlling stdin pipe closes.
 
     Windows has no SIGTERM to relay, so Electron signals a clean quit by
-    closing the backend's stdin. A blocking read returns b"" at EOF (the pipe
-    closed because Electron closed it or died); the watcher then flips
-    uvicorn's exit flag, exactly like the POSIX signal relay, so the FastAPI
-    lifespan shutdown (checkpointer close, embedded PostgreSQL stop) runs
-    before the process exits.
+    closing the backend's stdin. EOF on that pipe flips uvicorn's exit flag,
+    exactly like the POSIX signal relay, so the FastAPI lifespan shutdown
+    (checkpointer close, embedded PostgreSQL stop) runs before the process
+    exits.
 
-    The read goes through the RAW file descriptor (os.read on
-    sys.stdin.fileno()), never sys.stdin.buffer. A blocking read on the shared
-    BufferedReader holds that object's lock for the whole time this daemon
-    thread is parked; if the interpreter finalizes while it is still parked
-    there (any exit path that is not the graceful stdin-EOF one -- e.g. a
-    PORT_TIMEOUT sys.exit), CPython's buffered-IO finalization tries to acquire
-    that same lock and aborts the process with a fatal error
-    (_enter_buffered_busy -> exit 0xC0000005). Reading the raw fd involves no
-    buffered object and therefore no lock, so every exit path stays clean
-    (#283). Runs on a daemon thread and swallows any stdin error: a broken or
-    absent stdin must never crash the launcher.
+    Two constraints shape how the wait is implemented, and they differ per
+    platform:
+
+    * It must never touch ``sys.stdin.buffer``. A blocking read on the shared
+      BufferedReader holds that object's lock for as long as this daemon thread
+      is parked; if the interpreter finalizes while it is still parked there
+      (any exit path that is not the graceful stdin-EOF one -- e.g. a
+      PORT_TIMEOUT sys.exit), CPython's buffered-IO finalization tries to
+      acquire the same lock and aborts the process (_enter_buffered_busy ->
+      exit 0xC0000005). Both platforms therefore work off the RAW fd (#283).
+    * On Windows it must not park inside the CRT either. See
+      ``_win_wait_for_stdin_eof`` -- a blocking ``os.read`` there deadlocks
+      every off-main-thread native import in the frozen build (#321/#313).
+
+    POSIX keeps the plain blocking ``os.read``: there is no loader lock to
+    contend with and the CRT is not in the picture.
+
+    Runs on a daemon thread and swallows any stdin error: a broken or absent
+    stdin must never crash the launcher.
     """
 
     def _watch() -> None:
@@ -344,8 +413,11 @@ def start_stdin_eof_watcher(server: "uvicorn.Server") -> threading.Thread:
         except Exception:
             return  # stdin closed/detached or has no real fd: leave it to signals
         try:
-            while os.read(fd, 4096):  # blocks; b"" at EOF ends the loop
-                pass
+            if platform.system() == "Windows":
+                _win_wait_for_stdin_eof(fd)
+            else:
+                while os.read(fd, 4096):  # blocks; b"" at EOF ends the loop
+                    pass
         except Exception:
             return  # broken/absent stdin: nothing to watch, leave shutdown to signals
         try:
