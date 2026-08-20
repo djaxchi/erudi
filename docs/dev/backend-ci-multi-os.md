@@ -12,6 +12,36 @@ before the legs ever ran. Treat it as a hypothesis list to check off, not as
 truth — where the real CI output disagrees with this document, the CI output
 wins, and this document should be corrected.
 
+## First real run: the two dominant causes, now fixed
+
+The first run of the new legs reported 32 Windows failures and 21 macOS
+failures. Neither of the two causes that dominate them appears anywhere in the
+predictions below — a reminder that this document is a hypothesis list.
+
+**Windows: the harness ran an event loop policy production never uses.** 25+ of
+the 32 failures were `psycopg.InterfaceError: Psycopg cannot use the
+'ProactorEventLoop' to run in async mode`, taking out every test that touches
+the async checkpointer or the vector store. Production is fine —
+`run.py:set_event_loop_policy` installs `WindowsSelectorEventLoopPolicy` — but
+`tests/conftest.py` never did, so pytest-asyncio built its loops under Windows'
+default Proactor policy. `conftest.py` now calls `run.set_event_loop_policy()`
+at **import time** (a session-scoped autouse fixture is too late: pytest-asyncio
+has already created a loop from whatever policy was in effect). Pinned by
+`tests/test_event_loop_policy.py`.
+
+**macOS: MPS is available on the runner but cannot allocate.** All 21 failures
+were `RuntimeError: MPS backend out of memory (MPS allocated: 0 bytes ...)`
+raised from `SentenceTransformer.__init__` moving the e5 weights onto Metal, so
+every path that builds the embedder died. `macos-14` runners are virtualised
+with no usable Metal allocation, yet `torch.backends.mps.is_available()` still
+answers True — availability is not usability, and a real Mac under memory
+pressure hits exactly the same wall. Forcing CPU everywhere was rejected
+(Apple Silicon is the primary desktop platform): `embedding_model.py` now
+resolves the device once, prefers MPS, and on an MPS allocation failure logs a
+warning and falls back to CPU for the rest of the process. Pinned by
+`tests/test_embedding_device.py`, which mocks torch so the coverage is real on
+Linux too.
+
 ## The matrix
 
 | Leg | Requirements | Gates merges? | `-x`? |
