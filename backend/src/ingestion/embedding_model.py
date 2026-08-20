@@ -99,6 +99,83 @@ def download_state() -> dict:
     }
 
 
+# Cached verdict for "MPS says available but cannot actually allocate" (#335).
+# Sticky for the process: once an allocation has failed, retrying it on every
+# load would pay the failure again on a hot path (the resident singleton is
+# rebuilt whenever it is dropped), and nothing about the machine has changed.
+_MPS_UNUSABLE = False
+
+
+def _mps_is_available() -> bool:
+    """True when torch reports a usable-looking MPS backend (never raises)."""
+    try:
+        import torch
+
+        return bool(torch.backends.mps.is_available())
+    except Exception:  # noqa: BLE001 - no torch, no backends.mps, probe error
+        return False
+
+
+def resolve_embedding_device() -> Optional[str]:
+    """Device for the embedding model. ``None`` = let sentence-transformers pick.
+
+    Apple Silicon is the primary desktop platform, so MPS stays preferred
+    whenever Metal genuinely works. ``is_available()`` is only a support flag
+    though: a virtualised macOS host (the ``macos-14`` CI runner) answers True
+    and then refuses the model's ~366 MiB allocation, and a real Mac under
+    memory pressure fails the same way (#335). ``load_sentence_transformer``
+    turns that failure into this cached CPU verdict.
+
+    Off Apple Silicon the choice is left untouched (``None``), so a CUDA host
+    keeps auto-selecting its GPU.
+    """
+    if _MPS_UNUSABLE:
+        return "cpu"
+    if _mps_is_available():
+        return "mps"
+    return None
+
+
+def _is_mps_allocation_failure(exc: BaseException) -> bool:
+    """True when the load died inside the Metal backend rather than elsewhere."""
+    return "mps" in str(exc).lower()
+
+
+def load_sentence_transformer(model_name: str, *, cache_folder: str, local_files_only: bool):
+    """Load a SentenceTransformer on the best device the machine can actually use.
+
+    Single entry point for every embedding-model load (the #146 download gate
+    and the resident ``E5Embeddings`` singleton), so the MPS fallback is decided
+    once and applies to both.
+    """
+    global _MPS_UNUSABLE
+    from sentence_transformers import SentenceTransformer
+
+    device = resolve_embedding_device()
+    try:
+        return SentenceTransformer(
+            model_name,
+            cache_folder=cache_folder,
+            local_files_only=local_files_only,
+            device=device,
+        )
+    except RuntimeError as exc:
+        if device != "mps" or not _is_mps_allocation_failure(exc):
+            raise
+        _MPS_UNUSABLE = True
+        logger.warning(
+            f"MPS is available but the embedding model could not be allocated on it; "
+            f"falling back to CPU: {exc}"
+        )
+
+    return SentenceTransformer(
+        model_name,
+        cache_folder=cache_folder,
+        local_files_only=local_files_only,
+        device="cpu",
+    )
+
+
 def _load_model(local_files_only: Optional[bool] = None):
     """The real load path — downloads into ``CACHE_DIR`` if absent (ISO with runtime).
 
@@ -106,11 +183,9 @@ def _load_model(local_files_only: Optional[bool] = None):
     complete the load NEVER touches the network (#164). The download path
     passes ``False`` explicitly — that IS the fetch.
     """
-    from sentence_transformers import SentenceTransformer
-
     if local_files_only is None:
         local_files_only = embedding_model_available()
-    return SentenceTransformer(
+    return load_sentence_transformer(
         EMBEDDING_MODEL_ID,
         cache_folder=str(config.CACHE_DIR),
         local_files_only=local_files_only,

@@ -26,7 +26,7 @@ from langchain_core.embeddings import Embeddings
 
 from src.core import config
 from src.core.logging import logger
-from src.ingestion.embedding_model import embedding_model_available
+from src.ingestion.embedding_model import embedding_model_available, load_sentence_transformer
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from sentence_transformers import SentenceTransformer
@@ -51,8 +51,6 @@ class E5Embeddings(Embeddings):
         if cls._model is None:
             with cls._model_lock:
                 if cls._model is None:
-                    from sentence_transformers import SentenceTransformer
-
                     logger.info(f"Loading embedding model {E5_MODEL_NAME} (resident)")
                     # cache_folder pins the model INSIDE the app data dir
                     # (CACHE_DIR = data/models_cache) instead of the global
@@ -62,7 +60,9 @@ class E5Embeddings(Embeddings):
                     # hub HEAD-revalidates every file on load and an offline
                     # machine fails on the DNS probe despite the pre-download
                     # (#164).
-                    cls._model = SentenceTransformer(
+                    # load_sentence_transformer owns the device choice: MPS when
+                    # Metal really works, CPU when it only claims to (#335).
+                    cls._model = load_sentence_transformer(
                         E5_MODEL_NAME,
                         cache_folder=str(config.CACHE_DIR),
                         local_files_only=embedding_model_available(),
