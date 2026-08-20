@@ -399,6 +399,29 @@ class TestDownloadStatusCleanup:
         test_db_session.refresh(llm)
         assert llm.local == 1
 
+    def test_completed_job_writes_once_not_on_every_poll(self, client, test_db_session):
+        # The frontend polls this endpoint every 2s and keeps polling a completed
+        # job until the user navigates away. Marking the LLM ready is a write plus
+        # a commit from a GET handler, so it has to happen once, not once per
+        # tick, for a row that already says local = 1.
+        llm = _add_llm(test_db_session, local=2)
+        job = _add_job(test_db_session, llm.id, status="completed")
+
+        with patch.object(
+            Llm_Repository, "update", autospec=True, side_effect=Llm_Repository.update
+        ) as update:
+            first = client.get(f"/erudi/llms/downloads/{job.id}/status")
+            for _ in range(4):  # the poll keeps going after the job is terminal
+                client.get(f"/erudi/llms/downloads/{job.id}/status")
+
+        assert first.status_code == 200
+        test_db_session.refresh(llm)
+        assert llm.local == 1
+        assert update.call_count == 1, (
+            f"local=1 written {update.call_count} times across 5 polls; "
+            "the completed branch must be guarded on the current value"
+        )
+
     def test_status_generic_failure_maps_to_500(self, client):
         with patch.object(
             Download_Job_Repository, "get_by_id", side_effect=RuntimeError("boom")
