@@ -144,7 +144,7 @@ frontend/src/
 
 ## CI gates (must pass before merge)
 
-- **Backend** (`.github/workflows/backend-ci.yml`, Ubuntu + Python 3.12): `compileall`, `ruff check backend/src`, `from src.main import app`, `pytest tests/ -x -q --ignore=tests/e2e`. Engine tests run against `CPU_Engine` only — keep CPU paths working.
+- **Backend** (`.github/workflows/backend-ci.yml`, Python 3.12, 3-leg matrix): `compileall`, `ruff check backend/src`, `from src.main import app`, `pytest tests/ -q --ignore=tests/e2e -m "not mlx_only"`. Only the `ubuntu-latest` leg gates merges (and keeps `-x`); `windows-latest` and `macos-14` are advisory (`continue-on-error`) until their failures are triaged — see `docs/dev/backend-ci-multi-os.md`. The Ubuntu leg runs against `CPU_Engine` only — keep CPU paths working.
 - **Frontend** (`.github/workflows/frontend-ci.yml`, Node 20): `npm ci`, `npm run lint:check`, `npm run format:check`.
 
 ## Logs

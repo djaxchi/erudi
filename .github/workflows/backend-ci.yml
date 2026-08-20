@@ -12,9 +12,41 @@ on:
 
 jobs:
   backend-ci:
-    runs-on: ubuntu-latest
+    name: backend-ci (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # The Ubuntu leg is the merge gate and must stay green. The Windows and
+    # macOS legs are new and deliberately advisory (continue-on-error) until
+    # their failures are triaged: see docs/dev/backend-ci-multi-os.md for the
+    # predicted failure classes and the promotion criteria.
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      # Never cancel the other legs when one fails: the whole point of the new
+      # legs is to collect the full failure list in a single run.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest # x64 CPU - blocking gate
+            reqs: linux-cpu.txt
+            venv_bin: bin
+            fail_fast: '-x'
+            experimental: false
+          - os: windows-latest # x64 CPU - advisory
+            reqs: win-cpu.txt
+            venv_bin: Scripts
+            # No -x: stopping at the first failure would report one failure per
+            # run, when what we need from an untriaged platform is the whole list.
+            fail_fast: ''
+            experimental: true
+          - os: macos-14 # Apple Silicon - advisory
+            reqs: mac-silicon.txt
+            venv_bin: bin
+            fail_fast: ''
+            experimental: true
     env:
       PYTHONUNBUFFERED: 1
+    defaults:
+      run:
+        shell: bash # git-bash on Windows: consistent forward-slash paths
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -23,29 +55,37 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          # setup-python already scopes its pip cache key by runner OS and
+          # architecture, so the three legs cannot collide on one key.
           cache: 'pip'
           cache-dependency-path: backend/requirements/**
 
       - name: Install pip, wheel, setuptools
         run: python -m pip install --upgrade pip wheel setuptools
 
-      - name: Create venv & install Linux CPU requirements
+      - name: Create venv & install requirements
         run: |
           python -m venv backend/venv
-          backend/venv/bin/pip install -r backend/requirements/entrypoints/dev/linux-cpu.txt
+          backend/venv/${{ matrix.venv_bin }}/python -m pip install -r backend/requirements/entrypoints/dev/${{ matrix.reqs }}
 
       - name: Syntax check
-        run: backend/venv/bin/python -m compileall backend/src -q
+        run: backend/venv/${{ matrix.venv_bin }}/python -m compileall backend/src -q
 
       - name: Lint (ruff)
-        run: backend/venv/bin/ruff check backend/src
+        run: backend/venv/${{ matrix.venv_bin }}/python -m ruff check backend/src
 
       - name: Import check
         run: |
           cd backend
-          venv/bin/python -c "from src.main import app; print('OK')"
+          venv/${{ matrix.venv_bin }}/python -c "from src.main import app; print('OK')"
 
+      # `-m "not mlx_only"` is kept on EVERY leg on purpose, macos-14 included.
+      # macos-14 is the first runner where the mlx_only tests could actually
+      # execute, and they pull a ~280 MB fixture model (mlx_test_model_path in
+      # tests/conftest.py). This workflow is here to get signal on the shared
+      # suite; adding a model download to CI is a separate decision. Deliberate
+      # exclusion, not an oversight.
       - name: Tests
         run: |
           cd backend
-          venv/bin/pytest tests/ -x -q --ignore=tests/e2e -m "not mlx_only"
+          venv/${{ matrix.venv_bin }}/python -m pytest tests/ ${{ matrix.fail_fast }} -q --ignore=tests/e2e -m "not mlx_only"
