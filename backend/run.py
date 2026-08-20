@@ -358,9 +358,15 @@ def _win_wait_for_stdin_eof(fd: int) -> None:
             err = ctypes.get_last_error()
             if err in (ERROR_BROKEN_PIPE, ERROR_PIPE_NOT_CONNECTED):
                 return  # parent closed the pipe: this is EOF
-            # Not a pipe (console, file, redirected handle): no EOF to watch
-            # for, so leave shutdown to the signal paths rather than risk the
-            # blocking read this function exists to avoid.
+            # Not a pipe (console, file, redirected handle): there is no EOF
+            # to watch for, so retire rather than fall back to the blocking read
+            # this function exists to avoid. `_watch` catches this and returns.
+            #
+            # Retiring is safe because it is not the only shutdown path: the
+            # parent-death watchdog (#224) pins the parent through psutil on its
+            # own daemon thread, with no CRT involvement, and covers exactly the
+            # case this one drops. The two are complementary; do not "fix" this
+            # raise by reinstating os.read.
             raise OSError(err, "PeekNamedPipe failed on stdin")
         if avail.value:
             kernel32.ReadFile(
