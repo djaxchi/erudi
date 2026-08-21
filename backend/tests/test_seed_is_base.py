@@ -51,7 +51,7 @@ def test_base_creators_set_is_base_true(monkeypatch):
 def test_derived_creator_sets_is_base_false(monkeypatch):
     _stub_metadata_helpers(monkeypatch)
     seeder = Model_Seeder(db=None, hf_api=_FakeHF())
-    model_info = types.SimpleNamespace(modelId="community/test-7b-GGUF")
+    model_info = types.SimpleNamespace(id="community/test-7b-GGUF")
     search_config = types.SimpleNamespace(model_type="test", default_param_size=7.0)
 
     assert seeder._create_derived_llm(model_info, search_config).is_base is False
@@ -63,7 +63,7 @@ def test_derived_creator_leaves_param_size_none_when_slug_has_no_size(monkeypatc
     # default; now it stays unknown (#201) so the fit gauge can't rate it.
     _stub_metadata_helpers(monkeypatch)
     seeder = Model_Seeder(db=None, hf_api=_FakeHF())
-    model_info = types.SimpleNamespace(modelId="community/mystery-model-GGUF")
+    model_info = types.SimpleNamespace(id="community/mystery-model-GGUF")
     search_config = types.SimpleNamespace(model_type="test", default_param_size=7.0)
 
     llm = seeder._create_derived_llm(model_info, search_config)
@@ -114,11 +114,11 @@ def test_derived_creator_sets_conversational_from_signal(monkeypatch):
     # Community rows carry the chat flag so the UI can rank IT ones first (#182).
     _stub_metadata_helpers(monkeypatch)
     seeder = Model_Seeder(db=None, hf_api=_FakeHF())
-    it = types.SimpleNamespace(modelId="cmty/Some-Model-Instruct-GGUF", tags=[],
+    it = types.SimpleNamespace(id="cmty/Some-Model-Instruct-GGUF", tags=[],
                                pipeline_tag="text-generation")
-    plain = types.SimpleNamespace(modelId="cmty/Some-Merge-GGUF",
+    plain = types.SimpleNamespace(id="cmty/Some-Merge-GGUF",
                                   tags=["conversational"], pipeline_tag="text-generation")
-    bare = types.SimpleNamespace(modelId="cmty/Some-Merge-GGUF", tags=[],
+    bare = types.SimpleNamespace(id="cmty/Some-Merge-GGUF", tags=[],
                                  pipeline_tag="text-generation")
     sc = types.SimpleNamespace(model_type="x", default_param_size=7.0)
     assert seeder._create_derived_llm(it, sc).conversational is True     # via suffix
@@ -149,7 +149,7 @@ def test_build_derived_models_drops_nonchat_task_repos(monkeypatch):
     monkeypatch.setattr(seed_mod.config, "LLM_Engine", _CommunityEngine)
 
     def mk(mid, pt):
-        return types.SimpleNamespace(modelId=mid, downloads=100000, likes=50,
+        return types.SimpleNamespace(id=mid, downloads=100000, likes=50,
                                      tags=[], pipeline_tag=pt)
 
     hits = [
