@@ -160,11 +160,9 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When a download is in progress, then the contact icon is hidden; navigation stays enabled and the progress widget follows me across screens.
 - [ ] When I navigate to an unknown route, then I am redirected to the Models screen.
 
-## Security — localhost hardening (#89, ships after the 2.0.0 candidate)
+## Security — localhost hardening (#89)
 
-*These scenarios verify the CORS/host-pinning/sandbox hardening merged after the
-2.0.0 draft was cut. Skip them on any candidate built before that merge; they
-are mandatory from the next draft on.*
+*Merged and shipping in this candidate — no longer skippable.*
 
 - [ ] When the packaged app is running and I send the API a request with a **foreign Origin** (e.g. `curl -H "Origin: https://evil.example" http://127.0.0.1:27182/erudi/health -i`), then the response carries **no** `access-control-allow-origin` header (a malicious website cannot read the local API).
 - [ ] When I send a request with `Origin: null` (what the packaged renderer sends), then the response grants exactly `access-control-allow-origin: null` — and the app's own screens all load their data normally (proof the packaged renderer's requests still pass).
@@ -187,6 +185,35 @@ are mandatory from the next draft on.*
 - [ ] When I **force-kill** the app and relaunch, then it recovers (stale DB locks pruned) and interrupted download/KB jobs are marked failed and cleaned up.
 - [ ] When I close the window on **macOS**, then the app keeps running; on **Windows/Linux**, closing the last window quits and stops the backend.
 - [ ] When I use Help → **"Clear All Data"** and confirm, then the backend stops, the data directory is deleted, and the app quits.
+
+**Shutdown & orphans (#224, #341)**
+- [ ] When I **hard-kill the app process** (Activity Monitor "Force Quit" / Task Manager "End task") rather than quitting cleanly, then the **backend stops by itself within a few seconds** — it does not survive holding port 27182 (parent-death watchdog).
+- [ ] After that same hard kill, then **no `postgres` and no `llama-server` / `mlx_vlm` process is left running** (check the process list). *Known open question on Windows — see #341; record exactly what survives, and grab the tail of `backend.log` right after the kill: whether it shows a shutdown marker or just stops decides the cause.*
+- [ ] When I hard-kill **during a generation** (not idle), then the same holds: backend gone, children gone, and relaunching immediately works (the port is free, the cluster is not locked).
+- [ ] When I relaunch after any of the above, then the app boots normally and my conversations, models and knowledge bases are intact.
+
+**Interrupted downloads (#314, #315, #291)**
+- [ ] When a download **completes** but the app is killed before the job row is finalized, then on relaunch the model is **kept and marked installed** — it is never silently deleted (a multi-GB artifact must survive; if it *is* deleted, that is a data-loss regression).
+- [ ] When a download is **genuinely truncated** and the app is killed, then on relaunch the incomplete files are removed and the log states the path and the size reclaimed (deletion is never silent).
+- [ ] When a download finishes and I stay on the screen, then the progress widget resolves and the UI **never stays stuck at 100%** — if finalization wedges, the poll gives up after a few minutes, the sidebar and contact icon come back, and the message says the files were saved (not "Download failed", which would push me to re-download gigabytes I already have).
+
+**Windows regression gate (#313, #321) — run these FIRST on any Windows candidate**
+
+*Both were release blockers on the previous 2.0.0 draft: the packaged Windows
+build deadlocked on the first chat turn and on the KB embedding download. The
+cause was a blocking stdin read parking a thread inside the Windows CRT, which
+froze every off-main-thread native import. If either of these hangs, stop the
+pass and report — the candidate is not shippable.*
+
+- [ ] When I download a **GGUF model** on Windows and send my **first chat turn**, then the answer streams within the usual model-load time — it never hangs indefinitely.
+- [ ] When I open **Knowledge Base** on a fresh Windows install and click Download on the embedding gate, then the embedding model downloads to completion — the UI never sits on "Downloading the embedding model…" forever.
+- [ ] When either of those runs, then the backend keeps answering other requests throughout (the app is not wedged as a whole).
+
+**Model sizes & recommendations (#316, #319)**
+- [ ] When I look at a model's **Size** before downloading it and again once installed, then the two figures **match** — a model must not appear to shrink (or grow) the moment it finishes downloading.
+- [ ] When I compare a model's displayed size with the figure on its Hugging Face page, then they agree (decimal GB, the unit HF quotes).
+- [ ] When I read the machine readout's recommended size window, then it reflects **both** what fits in memory **and** what my memory bandwidth can stream at a usable speed — on a 16 GB Apple Silicon machine that lands around 5–10B, not the high teens.
+- [ ] When my machine is large (high-VRAM card), then the recommended window still includes the excellent **7–14B** models rather than starting above them.
 
 **Updates & first run**
 - [ ] When I run a **packaged** build and a newer release is published, then a banner shows "downloading…", then "ready — restart to install", and it installs on click or next quit.
