@@ -625,24 +625,24 @@ class Model_Seeder:
                 # OCR/media-gen community repos would otherwise enter the catalog.
                 # Reject them by name family + non-chat pipeline (needs the
                 # pipeline_tag/tags expand added to community_search_kwargs).
-                slug = model_info.modelId.split("/")[-1]
+                slug = model_info.id.split("/")[-1]
                 if is_nonchat_task(slug, getattr(model_info, "pipeline_tag", None)):
                     continue
                 # Dedup by normalized key so the same finetune from two quanters
                 # (bartowski/Foo-GGUF vs mradermacher/Foo-GGUF) appears once.
-                mkey = base_key(model_info.modelId)
+                mkey = base_key(model_info.id)
                 if mkey in seen:
                     continue
                 # Runnable by construction (came from filter=FORMAT_TAG); only drop
                 # the rare KNOWN_BROKEN load-crashers.
-                if not config.LLM_Engine.is_runnable(model_info.modelId):
+                if not config.LLM_Engine.is_runnable(model_info.id):
                     continue
                 try:
                     out.append(self._create_derived_llm(model_info, search_config))
                     seen.add(mkey)
                     added += 1
                 except Exception as e:
-                    logger.warning(f"Failed to build derived {model_info.modelId}: {e}")
+                    logger.warning(f"Failed to build derived {model_info.id}: {e}")
         return out
     
     def _link_exists(self, link: str) -> bool:
@@ -728,16 +728,16 @@ class Model_Seeder:
     
     def _create_derived_llm(self, model_info, search_config: Search_Config) -> Llm:
         """Create derived LLM entity from search result."""
-        model_name = model_info.modelId.split("/")[-1]
+        model_name = model_info.id.split("/")[-1]
         
         # Estimate size
-        size_estimate = get_model_size_estimate(model_name, model_info.modelId)
+        size_estimate = get_model_size_estimate(model_name, model_info.id)
         
         # Extract parameters. When the id carries no size token, leave param_size
         # unknown (None) rather than substituting a plausible default (#201): a
         # defaulted number is indistinguishable from a measured one downstream and
         # rates unmeasurable models as perfect hardware fits.
-        param_count = extract_parameter_pattern(model_info.modelId)
+        param_count = extract_parameter_pattern(model_info.id)
         if param_count and param_count.scale == ParameterScale.BILLION:
             param_size = param_count.count
         elif param_count and param_count.scale == ParameterScale.MILLION:
@@ -754,9 +754,9 @@ class Model_Seeder:
 
         tags = list(getattr(model_info, "tags", None) or [])
         return Llm(
-            name=humanize_model_name(model_info.modelId),
+            name=humanize_model_name(model_info.id),
             local=0,
-            link=model_info.modelId,
+            link=model_info.id,
             type=search_config.model_type,
             # Came from a filter=FORMAT_TAG search → it IS an engine-format quant.
             quantized=True,

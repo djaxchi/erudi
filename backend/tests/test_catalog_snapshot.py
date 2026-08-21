@@ -84,7 +84,7 @@ def test_build_path_emits_classified_snapshot_entries(monkeypatch):
     assert base_entry["category"] == "code"
 
     # Derived path: _create_derived_llm classifies from the community slug/tags.
-    model_info = types.SimpleNamespace(modelId="community/foo-r1-GGUF", tags=[],
+    model_info = types.SimpleNamespace(id="community/foo-r1-GGUF", tags=[],
                                        pipeline_tag="text-generation")
     search_config = types.SimpleNamespace(model_type="x", default_param_size=7.0)
     derived_entry = snap.llm_to_dict(seeder._create_derived_llm(model_info, search_config))

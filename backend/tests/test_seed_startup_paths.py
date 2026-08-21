@@ -305,7 +305,7 @@ class TestBuildBaseModels:
         monkeypatch.setattr(seed_mod, "get_disk_size_after_quant", lambda link: _Size())
         api = MagicMock()
         api.model_info.return_value = SimpleNamespace(
-            modelId="google/gemma-2-9b-it",
+            id="google/gemma-2-9b-it",
             author="google",
             downloads=1000,
             likes=100,
