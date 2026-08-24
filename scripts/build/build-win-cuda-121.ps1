@@ -14,7 +14,7 @@
 #   .\scripts\build\build-win-cuda-121.ps1
 #
 # Output:
-#   frontend\out\installer\Erudi Setup 1.0.0.exe
+#   frontend\dist\Erudi Setup 1.0.0.exe
 
 $ErrorActionPreference = "Stop"
 
@@ -166,13 +166,13 @@ Write-OK "Build complete!"
 Write-Host ""
 Write-Host "Installer output:"
 
-$installerOut = Join-Path $FrontendRoot "out\installer"
+$installerOut = Join-Path $FrontendRoot "dist"
 if (Test-Path $installerOut) {
-    Get-ChildItem -Path $installerOut -Include "*.exe" | ForEach-Object {
+    Get-ChildItem -Path $installerOut -Filter "*.exe" | ForEach-Object {
         Write-Host "  $($_.FullName)" -ForegroundColor White
     }
 } else {
-    Write-Warn "out/installer directory not found. Check build output above."
+    Write-Warn "dist/ directory not found. Check build output above."
 }
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host ""
