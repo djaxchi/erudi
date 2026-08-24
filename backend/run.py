@@ -540,6 +540,16 @@ def main() -> None:
     # detectable ppid CHANGE rather than the recorded baseline (#224).
     initial_ppid = os.getppid()
 
+    # Also first, and Windows-only: bind Postgres/llama-server's lifetime to
+    # this process at the kernel level, before either is ever spawned. Unlike
+    # the parent-death watchdog below, this does not depend on this process
+    # staying alive to react -- see windows_job.py for why that gap matters
+    # (#341).
+    if platform.system() == "Windows":
+        from src.launcher.windows_job import bind_children_to_this_process
+
+        bind_children_to_this_process()
+
     args = parse_args()
     requested_port = args.port
     host = "127.0.0.1"

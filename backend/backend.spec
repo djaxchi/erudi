@@ -220,6 +220,7 @@ _hidden_common = [
     "src.engines.embedder_engine",
     "src.launcher",
     "src.launcher.runtime_paths",
+    "src.launcher.windows_job",
     "src.utils.file_processor",
     "src.utils.hf_model_metadata",
     "src.utils.kb_utils",
