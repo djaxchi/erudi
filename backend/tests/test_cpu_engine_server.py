@@ -55,9 +55,11 @@ class TestSpawnContextAndArgv:
         assert ctx["ctx_size"] == 8192
 
     def test_build_spawn_argv_emits_required_flags(self):
+        llama_server = Path("/bin/llama-server")
+        model_gguf = Path("/m.gguf")
         argv = CPU_Engine._build_spawn_argv(
-            llama_server=Path("/bin/llama-server"),
-            model_gguf=Path("/m.gguf"),
+            llama_server=llama_server,
+            model_gguf=model_gguf,
             alias="erudi-7",
             port=8123,
             ctx_size=4096,
@@ -65,8 +67,11 @@ class TestSpawnContextAndArgv:
             gpu_layers=0,
         )
         joined = " ".join(str(x) for x in argv)
-        assert "/bin/llama-server" in joined
-        assert "-m /m.gguf" in joined
+        # str(Path(...)) uses the OS-native separator (backslash on Windows),
+        # so the expected substrings must go through the same conversion
+        # rather than hardcoding POSIX slashes (#357 CI finding).
+        assert str(llama_server) in joined
+        assert f"-m {model_gguf}" in joined
         assert "--host 127.0.0.1" in joined
         assert "--port 8123" in joined
         assert "--alias erudi-7" in joined

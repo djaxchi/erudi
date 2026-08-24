@@ -10,6 +10,7 @@ No real GPU, subprocess or model is required anywhere in this file.
 """
 from __future__ import annotations
 
+import os
 import sys
 import types
 from pathlib import Path
@@ -526,7 +527,12 @@ class TestQuantAndSave:
         dst = tmp_path / "dst"
         install = tmp_path / "install"
         _write_converter_script(install)
-        (install / "llama-quantize").write_bytes(b"\x7fELF")
+        # Match the platform-specific name quant_and_save_from_hf_format actually
+        # looks for (cuda_engine.py: "llama-quantize.exe" if os.name == "nt" else
+        # "llama-quantize") -- a POSIX-only literal here made every one of these
+        # tests fail with "Quantizer not found" on Windows CI (#357).
+        _quantizer_name = "llama-quantize.exe" if os.name == "nt" else "llama-quantize"
+        (install / _quantizer_name).write_bytes(b"\x7fELF")
 
         def fake_call(cmd):
             Path(cmd[-1]).write_bytes(b"GGUF" + b"\x00" * 64)
@@ -571,7 +577,8 @@ class TestQuantAndSave:
 
     def test_missing_quantizer_raises(self, tmp_path, monkeypatch):
         src, dst, install = self._setup_safetensors_job(tmp_path, monkeypatch)
-        (install / "llama-quantize").unlink()
+        quantizer_name = "llama-quantize.exe" if os.name == "nt" else "llama-quantize"
+        (install / quantizer_name).unlink()
         with patch.object(CUDA_Engine, "_default_install_dir", return_value=install):
             with pytest.raises(EngineException, match="Quantizer not found"):
                 CUDA_Engine.quant_and_save_from_hf_format(src, dst)
