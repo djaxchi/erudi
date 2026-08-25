@@ -328,6 +328,33 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         except Exception:
             return False
 
+    # Cap on how much of a crashed child's merged stdout/stderr to surface in
+    # the error message -- llama-server's own startup banner and any GGUF
+    # metadata dump can be long; the actual failure reason is almost always
+    # in the last few lines.
+    _CHILD_OUTPUT_TAIL_CHARS = 2000
+
+    @classmethod
+    def _read_child_output(cls, proc: Any) -> str:
+        """Tail of the crashed child's captured stdout+stderr (merged, see
+        `_spawn_child`'s `stderr=subprocess.STDOUT`).
+
+        The process has already exited by the time this is called (that is
+        what triggered the crash report), so the write end of the pipe is
+        closed and `.read()` returns everything buffered up to EOF without
+        blocking -- never partial/blocking on a still-running child.
+        """
+        if proc is None or proc.stdout is None:
+            return "No output captured."
+        try:
+            output = proc.stdout.read()
+        except Exception as exc:
+            return f"Could not read the child's output: {exc}"
+        if not output:
+            return "Child produced no output before exiting."
+        tail = output[-cls._CHILD_OUTPUT_TAIL_CHARS :]
+        return f"Child output (last {len(tail)} chars):\n{tail}"
+
     @classmethod
     def _translate_payload_kwargs(cls, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """Translate from Erudi vocabulary (HF/transformers) to llama-server names."""
