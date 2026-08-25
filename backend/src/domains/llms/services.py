@@ -211,6 +211,40 @@ def gguf_split_siblings(chosen: str, all_repo_files: List[str]) -> List[str]:
     return [name for _part, name in sorted(siblings)]
 
 
+def _assert_split_is_complete(chosen: str, parts: List[str]) -> None:
+    """Refuse a split quant the repo listing cannot supply in full.
+
+    `gguf_split_siblings` never invents a filename, so a listing with a hole
+    comes back with fewer parts than the `-of-MMMMM` suffix promises. Downloading
+    that set would report success and leave a model llama-server cannot load --
+    the same failure #360 removed, reached from a rarer direction. Fail here,
+    where it costs seconds, rather than after a multi-gigabyte transfer.
+
+    No-op for a quant that does not ship split.
+    """
+    match = _GGUF_SPLIT_RE.match(chosen)
+    if not match:
+        return
+    expected = int(match.group("total"))
+    found = set()
+    for name in parts:
+        part_match = _GGUF_SPLIT_RE.match(name)
+        if part_match:
+            found.add(int(part_match.group("part")))
+    if len(found) == expected:
+        return
+    missing = sorted(set(range(1, expected + 1)) - found)
+    raise HuggingFaceAPIException(
+        message=(
+            f"{chosen} is part of a {expected}-part split quant, but the "
+            f"repository listing only exposes {len(found)} of them (missing "
+            f"part(s): {', '.join(str(p) for p in missing)}). llama.cpp needs "
+            f"every part to load the model, so this download would produce an "
+            f"unusable model."
+        ),
+    )
+
+
 class _DownloadSelection(NamedTuple):
     """Files chosen for download, with the GGUF picks kept for logging."""
 
@@ -254,6 +288,7 @@ def _select_download_files(
     if not best_gguf:
         return _DownloadSelection(files=[], best_gguf=None, mmproj_files=[], small_aux=[])
     gguf_parts = gguf_split_siblings(best_gguf, all_repo_files)
+    _assert_split_is_complete(best_gguf, gguf_parts)
     if len(gguf_parts) > 1:
         logger.info(f"Split GGUF detected for {best_gguf!r}: downloading all {len(gguf_parts)} parts")
     mmproj_files = [

@@ -11,6 +11,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from src.core import config
+from src.core.exceptions import HuggingFaceAPIException
 from src.domains.llms.services import _select_download_files, download_llm, gguf_split_siblings
 
 
@@ -162,6 +163,55 @@ class TestGgufSplitSiblings:
         # The total the UI shows must cover both parts, not just part 1 (#170-adjacent).
         selected_total = sum(file_sizes.get(f, 0) for f in selection.files)
         assert selected_total == 4_000_000_000 + 3_500_000_000 + 2_000
+
+
+class TestIncompleteSplitIsRejected:
+    """A split quant whose repo listing is missing a part must not be downloaded.
+
+    `gguf_split_siblings` deliberately never invents a filename, so a listing
+    with a hole yields fewer parts than the `-of-MMMMM` suffix promises. Left
+    alone that reproduces exactly the failure #360 removed -- a download that
+    reports success and leaves a model llama-server cannot load -- only reached
+    from a rarer direction. Failing at selection time costs seconds; failing
+    after the transfer costs the user a multi-gigabyte download.
+    """
+
+    def test_missing_part_raises_and_names_what_is_missing(self):
+        file_sizes = {
+            "model-q4_k_m-00001-of-00003.gguf": 4_000_000_000,
+            "model-q4_k_m-00003-of-00003.gguf": 3_500_000_000,
+            "config.json": 2_000,
+        }
+        with pytest.raises(HuggingFaceAPIException) as excinfo:
+            _select_download_files(list(file_sizes.keys()), file_sizes, uses_gguf=True)
+        message = str(excinfo.value)
+        assert "3" in message  # declares three parts
+        assert "2" in message  # part 2 is the one missing
+
+    def test_lone_part_of_a_split_raises(self):
+        """The shape `gguf_split_siblings` returns as a bare [chosen] fallback."""
+        file_sizes = {"model-q4_k_m-00001-of-00002.gguf": 4_000_000_000}
+        with pytest.raises(HuggingFaceAPIException):
+            _select_download_files(list(file_sizes.keys()), file_sizes, uses_gguf=True)
+
+    def test_complete_split_is_accepted(self):
+        file_sizes = {
+            "model-q4_k_m-00001-of-00002.gguf": 4_000_000_000,
+            "model-q4_k_m-00002-of-00002.gguf": 3_500_000_000,
+        }
+        selection = _select_download_files(list(file_sizes.keys()), file_sizes, uses_gguf=True)
+        assert set(selection.files) == set(file_sizes)
+
+    def test_unsplit_quant_is_never_checked(self):
+        file_sizes = {"model-q4_k_m.gguf": 4_000_000_000, "config.json": 2_000}
+        selection = _select_download_files(list(file_sizes.keys()), file_sizes, uses_gguf=True)
+        assert selection.best_gguf == "model-q4_k_m.gguf"
+
+    def test_non_gguf_repo_is_never_checked(self):
+        """Non-GGUF engines take a different branch entirely; no split concept."""
+        file_sizes = {"model-00001-of-00002.safetensors": 1_000, "config.json": 2_000}
+        selection = _select_download_files(list(file_sizes.keys()), file_sizes, uses_gguf=False)
+        assert set(selection.files) == set(file_sizes)
 
 
 class TestSelectDownloadFilesNonGguf:
