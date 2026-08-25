@@ -11,7 +11,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from src.core import config
-from src.domains.llms.services import _select_download_files, download_llm
+from src.domains.llms.services import _select_download_files, download_llm, gguf_split_siblings
 
 
 TEN_MB = 10 * 1024 * 1024
@@ -93,6 +93,75 @@ class TestSelectDownloadFilesGguf:
 
         assert selection.best_gguf is None
         assert selection.files == []
+
+
+class TestGgufSplitSiblings:
+    """Split-GGUF quants (e.g. Qwen2.5-7B's Q4_K_M ships as 2 files) must pull
+    in every part, not just the one pick_best_gguf named (real QA reproduction:
+    downloading only part 1 left a model that llama-server crashes loading,
+    with the exact 'failed to open GGUF file …-00002-of-00002.gguf' error)."""
+
+    def test_non_split_filename_returns_itself(self):
+        assert gguf_split_siblings("model-Q4_K_M.gguf", ["model-Q4_K_M.gguf", "config.json"]) == [
+            "model-Q4_K_M.gguf"
+        ]
+
+    def test_split_filename_pulls_in_all_parts_in_order(self):
+        repo_files = [
+            "qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf",  # deliberately out of order
+            "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf",
+            "config.json",
+            "README.md",
+        ]
+        result = gguf_split_siblings("qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf", repo_files)
+        assert result == [
+            "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf",
+            "qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf",
+        ]
+
+    def test_three_way_split_all_included(self):
+        repo_files = [f"model-q8_0-0000{n}-of-00003.gguf" for n in (1, 2, 3)]
+        result = gguf_split_siblings(repo_files[1], repo_files)
+        assert result == repo_files
+
+    def test_different_quant_with_same_part_count_not_conflated(self):
+        """Two different split quants sharing -00001-of-00002 must not cross-pollinate."""
+        repo_files = [
+            "model-q4_k_m-00001-of-00002.gguf",
+            "model-q4_k_m-00002-of-00002.gguf",
+            "model-q8_0-00001-of-00002.gguf",
+            "model-q8_0-00002-of-00002.gguf",
+        ]
+        result = gguf_split_siblings("model-q4_k_m-00001-of-00002.gguf", repo_files)
+        assert result == ["model-q4_k_m-00001-of-00002.gguf", "model-q4_k_m-00002-of-00002.gguf"]
+
+    def test_missing_sibling_in_repo_listing_falls_back_to_chosen_only(self):
+        """If the repo listing itself is missing a part, don't invent a filename."""
+        result = gguf_split_siblings(
+            "model-q4_k_m-00001-of-00002.gguf", ["model-q4_k_m-00001-of-00002.gguf"]
+        )
+        assert result == ["model-q4_k_m-00001-of-00002.gguf"]
+
+    def test_select_download_files_includes_all_split_parts(self):
+        """End-to-end through _select_download_files, not just the helper."""
+        file_sizes = {
+            "model-q4_k_m-00001-of-00002.gguf": 4_000_000_000,
+            "model-q4_k_m-00002-of-00002.gguf": 3_500_000_000,
+            "model-f16.gguf": 14_000_000_000,
+            "config.json": 2_000,
+        }
+        all_repo_files = list(file_sizes.keys())
+        selection = _select_download_files(all_repo_files, file_sizes, uses_gguf=True)
+
+        assert selection.best_gguf == "model-q4_k_m-00001-of-00002.gguf"
+        assert set(selection.files) == {
+            "model-q4_k_m-00001-of-00002.gguf",
+            "model-q4_k_m-00002-of-00002.gguf",
+            "config.json",
+        }
+        # The total the UI shows must cover both parts, not just part 1 (#170-adjacent).
+        selected_total = sum(file_sizes.get(f, 0) for f in selection.files)
+        assert selected_total == 4_000_000_000 + 3_500_000_000 + 2_000
 
 
 class TestSelectDownloadFilesNonGguf:

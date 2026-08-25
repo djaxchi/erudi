@@ -272,6 +272,45 @@ if ($ConvertScripts) {
     Write-Warn "No convert*.py scripts found in $SrcDir"
 }
 
+# -------- bundle the MSVC C++ runtime + CUDA runtime next to llama-server.exe --------
+# Same rationale as the CPU build's #144 fix: the Windows loader searches the exe's
+# own directory first, so shipping these here means the packaged app works on a
+# clean machine that has the NVIDIA display driver but NOT the multi-GB CUDA
+# Toolkit (true of virtually every end user — CUDA_PATH above only exists because
+# THIS build machine installed the full Toolkit to compile llama.cpp). Without the
+# CUDA DLLs specifically, llama-server.exe fails to launch at all on a real
+# end-user install (STATUS_DLL_NOT_FOUND) and GPU inference is silently dead.
+Write-Step "Bundling the MSVC C++ runtime and CUDA runtime next to llama-server.exe..."
+$Sys32 = Join-Path $env:SystemRoot "System32"
+$RequiredCrt = @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")
+$OptionalCrt = @("msvcp140_1.dll", "msvcp140_2.dll", "msvcp140_atomic_wait.dll", "msvcp140_codecvt_ids.dll")
+foreach ($dll in $RequiredCrt) {
+    $src = Join-Path $Sys32 $dll
+    if (-not (Test-Path $src)) {
+        Write-Fail "Required CRT DLL not found on the build machine: $src"
+    }
+    Copy-Item -Path $src -Destination $BinDir -Force
+    Write-OK "Bundled $dll"
+}
+foreach ($dll in $OptionalCrt) {
+    $src = Join-Path $Sys32 $dll
+    if (Test-Path $src) {
+        Copy-Item -Path $src -Destination $BinDir -Force
+        Write-OK "Bundled $dll"
+    }
+}
+
+$CudaBinDir = Join-Path $CudaPath "bin"
+$RequiredCudaDlls = @("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll")
+foreach ($dll in $RequiredCudaDlls) {
+    $src = Join-Path $CudaBinDir $dll
+    if (-not (Test-Path $src)) {
+        Write-Fail "Required CUDA runtime DLL not found at $src (expected next to nvcc.exe)."
+    }
+    Copy-Item -Path $src -Destination $BinDir -Force
+    Write-OK "Bundled $dll"
+}
+
 # -------- verify output --------
 Write-Host ""
 Write-Step "Verifying output..."

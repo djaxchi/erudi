@@ -100,6 +100,20 @@ class BaseChatServerEngine(BaseEngine):
         """
 
     @classmethod
+    def _read_child_output(cls, proc: Any) -> str:
+        """Best-effort tail of the crashed child's captured output.
+
+        Default: no capture available (MLX's `mp.Process` has no stdout pipe
+        to read). `BaseLlamaCppEngine` overrides this for `subprocess.Popen`
+        children, whose stderr is merged into stdout: the crash message used
+        to tell the user to "check backend logs for the child's stderr" but
+        nothing ever read or logged it, so there was nothing to check (found
+        during QA -- a Windows machine too small to run a 7B model surfaced
+        this as a dead-end error with no actual root cause visible anywhere).
+        """
+        return "Check backend logs for the child's stderr."
+
+    @classmethod
     @abstractmethod
     def _resolve_model_artifact(cls, llm_local_path: Union[str, Path]) -> Path:
         """Resolve the artifact handed to `_spawn_child`.
@@ -261,7 +275,7 @@ class BaseChatServerEngine(BaseEngine):
                 raise EngineException(
                     message=(
                         f"{cls._server_name} child exited before becoming ready "
-                        f"(early crash). Check backend logs for the child's stderr."
+                        f"(early crash). {cls._read_child_output(proc)}"
                     ),
                 )
             try:

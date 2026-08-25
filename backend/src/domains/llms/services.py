@@ -48,6 +48,7 @@ Example:
 """
 
 import os
+import re
 import time
 import threading
 import shutil
@@ -174,6 +175,42 @@ def pick_best_gguf(filenames: list[str]) -> str | None:
     return chosen
 
 
+# llama.cpp's standard split-GGUF naming convention: <name>-NNNNN-of-MMMMM.gguf.
+# The loader auto-stitches sibling parts together when pointed at part 1, but
+# only if every part is actually present on disk next to it.
+_GGUF_SPLIT_RE = re.compile(r"^(?P<prefix>.+)-(?P<part>\d{5})-of-(?P<total>\d{5})\.gguf$", re.IGNORECASE)
+
+
+def gguf_split_siblings(chosen: str, all_repo_files: List[str]) -> List[str]:
+    """All part filenames of a split GGUF `chosen` belongs to (chosen included).
+
+    A quant like Qwen2.5-7B's Q4_K_M ships as two files,
+    ``…-00001-of-00002.gguf`` and ``…-00002-of-00002.gguf``. Downloading only
+    the file `pick_best_gguf` happened to name left the model on disk with
+    part 1 present and part 2 missing: llama-server correctly detects the
+    split (it looks for the sibling next to part 1) and crashes on load with
+    "failed to open GGUF file …-00002-of-00002.gguf" -- a real QA reproduction,
+    not a hypothetical.
+
+    Returns `[chosen]` unchanged when `chosen` isn't a split filename, or if
+    no siblings with a matching prefix/total are found in the repo listing
+    (nothing to add — download proceeds with just `chosen`, same as before).
+    Order is by part number so the download list reads naturally in logs.
+    """
+    match = _GGUF_SPLIT_RE.match(chosen)
+    if not match:
+        return [chosen]
+    prefix, total = match.group("prefix"), match.group("total")
+    siblings = []
+    for name in all_repo_files:
+        sibling_match = _GGUF_SPLIT_RE.match(name)
+        if sibling_match and sibling_match.group("prefix") == prefix and sibling_match.group("total") == total:
+            siblings.append((int(sibling_match.group("part")), name))
+    if not siblings:
+        return [chosen]
+    return [name for _part, name in sorted(siblings)]
+
+
 class _DownloadSelection(NamedTuple):
     """Files chosen for download, with the GGUF picks kept for logging."""
 
@@ -216,6 +253,9 @@ def _select_download_files(
     best_gguf = pick_best_gguf(all_repo_files)
     if not best_gguf:
         return _DownloadSelection(files=[], best_gguf=None, mmproj_files=[], small_aux=[])
+    gguf_parts = gguf_split_siblings(best_gguf, all_repo_files)
+    if len(gguf_parts) > 1:
+        logger.info(f"Split GGUF detected for {best_gguf!r}: downloading all {len(gguf_parts)} parts")
     mmproj_files = [
         f for f in all_repo_files
         if "mmproj" in f.lower() and f.lower().endswith(".gguf")
@@ -227,7 +267,7 @@ def _select_download_files(
         and file_sizes.get(f, 0) < 10 * 1024 * 1024  # < 10 MB
     ]
     return _DownloadSelection(
-        files=[best_gguf] + mmproj_files + small_aux,
+        files=gguf_parts + mmproj_files + small_aux,
         best_gguf=best_gguf,
         mmproj_files=mmproj_files,
         small_aux=small_aux,
@@ -458,7 +498,8 @@ async def download_llm(
     _assert_runnable(model_link)
 
     # Everything we download is a pre-built quant → no local conversion. GGUF repos
-    # additionally need only the single best quant file picked (pick_best_gguf).
+    # additionally need only the single best quant picked (pick_best_gguf), plus
+    # every sibling part if that quant ships split (gguf_split_siblings).
     _uses_gguf = getattr(config.LLM_Engine, 'USES_GGUF', False)
 
     # Prepare local path

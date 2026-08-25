@@ -9,6 +9,7 @@ tools. No subprocess or model download happens anywhere in this file.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -251,7 +252,12 @@ class TestQuantAndSave:
         dst = tmp_path / "dst"
         install = tmp_path / "install"
         _write_converter_script(install)
-        (install / "llama-quantize").write_bytes(b"\x7fELF")
+        # Match the platform-specific name quant_and_save_from_hf_format actually
+        # looks for (cpu_engine.py: "llama-quantize.exe" if os.name == "nt" else
+        # "llama-quantize") -- a POSIX-only literal here made every one of these
+        # tests fail with "Quantizer binary not found" on Windows CI (#357).
+        _quantizer_name = "llama-quantize.exe" if os.name == "nt" else "llama-quantize"
+        (install / _quantizer_name).write_bytes(b"\x7fELF")
         monkeypatch.setattr(cpu_mod, "ROOT_DIR", tmp_path / "root")
 
         def fake_call(cmd):
@@ -306,14 +312,17 @@ class TestQuantAndSave:
 
     def test_missing_quantizer_raises(self, tmp_path, monkeypatch):
         src, dst, install = self._setup_safetensors_job(tmp_path, monkeypatch)
-        (install / "llama-quantize").unlink()
+        quantizer_name = "llama-quantize.exe" if os.name == "nt" else "llama-quantize"
+        (install / quantizer_name).unlink()
         with patch.object(CPU_Engine, "_default_install_dir", return_value=install):
             with pytest.raises(EngineException, match="Quantizer binary not found"):
                 CPU_Engine.quant_and_save_from_hf_format(src, dst)
 
     def test_legacy_quantize_binary_name_is_accepted(self, tmp_path, monkeypatch):
         src, dst, install = self._setup_safetensors_job(tmp_path, monkeypatch)
-        (install / "llama-quantize").rename(install / "quantize")
+        quantizer_name = "llama-quantize.exe" if os.name == "nt" else "llama-quantize"
+        legacy_name = "quantize.exe" if os.name == "nt" else "quantize"
+        (install / quantizer_name).rename(install / legacy_name)
         with patch.object(CPU_Engine, "_default_install_dir", return_value=install):
             CPU_Engine.quant_and_save_from_hf_format(src, dst, quantize=True)
         assert (dst / "model-q4_k_m.gguf").exists()

@@ -155,7 +155,6 @@ a = Analysis(
         "sniffio",
         "h11",
         "exceptiongroup",
-        "aiofiles",
         # ── Our own modules (some loaded dynamically via BaseEngine.get_engine)
         "src.main",
         "src.core.api",
@@ -174,8 +173,6 @@ a = Analysis(
         "src.entities.Llm",
         "src.entities.Message",
         "src.entities.StartupVariables",
-        "src.entities.TrainingJob",
-        "src.entities.VectorStore",
         "src.engines.base_engine",
         "src.engines.base_chat_server_engine",
         "src.engines.base_llama_cpp_engine",
@@ -185,10 +182,8 @@ a = Analysis(
         "mlx_vlm.server.app",  # the FastAPI app object uvicorn imports by string
         "mlx_vlm.server.cli",  # main() entrypoint the runner calls
         "src.engines.cpu_engine",
-        "src.engines.embedder_engine",
         "src.launcher",
         "src.launcher.runtime_paths",
-        "src.utils.file_processor",
         "src.utils.hf_model_metadata",
         "src.utils.kb_utils",
         "src.utils.prompt_utils",
@@ -243,9 +238,6 @@ a = Analysis(
         "src.domains.startup.endpoints",
         "src.domains.startup.repository",
         "src.domains.startup.schemas",
-        "src.domains.training.endpoints",
-        "src.domains.training.services",
-        "src.domains.training.schemas",
         # ── ML / inference
         "numpy",
                 "transformers",
