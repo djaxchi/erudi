@@ -14,34 +14,28 @@ jobs:
   backend-ci:
     name: backend-ci (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # The Ubuntu leg is the merge gate and must stay green. The Windows and
-    # macOS legs are new and deliberately advisory (continue-on-error) until
-    # their failures are triaged: see docs/dev/backend-ci-multi-os.md for the
-    # predicted failure classes and the promotion criteria.
-    continue-on-error: ${{ matrix.experimental }}
+    # All three legs are merge gates. Windows and macOS were advisory
+    # (continue-on-error) while their failures were triaged; that work is done
+    # -- the last ten were fixed in #358 and all three legs have been green on
+    # main since. Promoted per the criteria in docs/dev/backend-ci-multi-os.md.
     strategy:
-      # Never cancel the other legs when one fails: the whole point of the new
-      # legs is to collect the full failure list in a single run.
+      # Never cancel the other legs when one fails: a failure on one platform
+      # should not hide the state of the other two.
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest # x64 CPU - blocking gate
+          - os: ubuntu-latest # x64 CPU
             reqs: linux-cpu.txt
             venv_bin: bin
             fail_fast: '-x'
-            experimental: false
-          - os: windows-latest # x64 CPU - advisory
+          - os: windows-latest # x64 CPU
             reqs: win-cpu.txt
             venv_bin: Scripts
-            # No -x: stopping at the first failure would report one failure per
-            # run, when what we need from an untriaged platform is the whole list.
-            fail_fast: ''
-            experimental: true
-          - os: macos-14 # Apple Silicon - advisory
+            fail_fast: '-x'
+          - os: macos-14 # Apple Silicon
             reqs: mac-silicon.txt
             venv_bin: bin
-            fail_fast: ''
-            experimental: true
+            fail_fast: '-x'
     env:
       PYTHONUNBUFFERED: 1
     defaults:
