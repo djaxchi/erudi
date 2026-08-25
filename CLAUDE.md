@@ -152,7 +152,7 @@ frontend/src/
 
 ## CI gates (must pass before merge)
 
-- **Backend** (`.github/workflows/backend-ci.yml`, Python 3.12, 3-leg matrix): `compileall`, `ruff check backend/src`, `from src.main import app`, `pytest tests/ -q --ignore=tests/e2e -m "not mlx_only"`. Only the `ubuntu-latest` leg gates merges (and keeps `-x`); `windows-latest` and `macos-14` are advisory (`continue-on-error`) until their failures are triaged — see `docs/dev/backend-ci-multi-os.md`. The Ubuntu leg runs against `CPU_Engine` only — keep CPU paths working.
+- **Backend** (`.github/workflows/backend-ci.yml`, Python 3.12, 3-leg matrix): `compileall`, `ruff check backend/src`, `from src.main import app`, `pytest tests/ -q --ignore=tests/e2e -m "not mlx_only"`. All three legs (`ubuntu-latest`, `windows-latest`, `macos-14`) gate merges and run with `-x` — see `docs/dev/backend-ci-multi-os.md` for the triage that got them there. `pytest.ini` sets `timeout = 600` so a hung test fails instead of consuming the job. The Ubuntu leg runs against `CPU_Engine` only — keep CPU paths working.
 - **Frontend** (`.github/workflows/frontend-ci.yml`, Node 20): `npm ci`, `npm run lint:check`, `npm run format:check`.
 
 ## Logs

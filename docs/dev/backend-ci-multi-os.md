@@ -47,12 +47,13 @@ Linux too.
 | Leg | Requirements | Gates merges? | `-x`? |
 |---|---|---|---|
 | `ubuntu-latest` | `entrypoints/dev/linux-cpu.txt` | **Yes** | yes |
-| `windows-latest` | `entrypoints/dev/win-cpu.txt` | no (`continue-on-error`) | no |
-| `macos-14` (Apple Silicon) | `entrypoints/dev/mac-silicon.txt` | no (`continue-on-error`) | no |
+| `windows-latest` | `entrypoints/dev/win-cpu.txt` | **Yes** | yes |
+| `macos-14` (Apple Silicon) | `entrypoints/dev/mac-silicon.txt` | **Yes** | yes |
 
-The Ubuntu leg is unchanged in effect from before #335 — same interpreter, same
-requirements file, same `pytest` arguments including `-x`. Merge behaviour does
-not change while the new legs are noisy.
+All three legs are gates. Windows and macOS were advisory while their failures
+were triaged; that work finished when #358 fixed the last ten Windows failures,
+and all three have been green on `main` since — see *Promoting the legs to
+blocking* below for what the promotion consisted of.
 
 ## Decisions taken, and why
 
@@ -430,11 +431,35 @@ weak coverage and the other has none, so neither will show up as a red test.
 
 ## Promoting the legs to blocking
 
-Per #335's definition of done, each remaining failure must be either fixed or
+**Done.** Recorded here as history, and as the checklist for any leg added later.
+
+Per #335's definition of done, each remaining failure had to be either fixed or
 explicitly skipped with a stated reason — `pytest.mark.skipif` with a real
-`reason=` string, never a silent deselection. Once a leg is green on that basis,
-drop its `experimental: true` from the matrix and restore `-x`, and add the
-resulting check name to branch protection.
+`reason=` string, never a silent deselection. Every one was **fixed**; nothing
+was skipped to reach green. The last ten went in #358: a hardcoded POSIX path
+literal asserted against `str(Path(...))` in the spawn-argv tests, and a shared
+quantizer fixture writing a binary named `llama-quantize` with no extension when
+both engines correctly look for `llama-quantize.exe` on Windows.
+
+The promotion itself was three changes:
+
+1. `experimental` dropped from the matrix and `continue-on-error` removed from
+   the job, so a red leg fails the run.
+2. `-x` restored on all three legs. Dropping it was right for an untriaged
+   platform — you want the whole failure list per run — but a gate should fail
+   fast, and a triaged platform's failures are regressions, which come one at a
+   time.
+3. `pytest-timeout` added (`meta/dev.txt`) with `timeout = 600` in
+   `pytest.ini`, which the section above listed as recommended **before**
+   promotion. The reason is specific: the failure mode that worried us most on
+   Windows is a *hang*, not a failure, and a hung blocking leg produces no
+   signal at all while consuming the whole job limit. The ceiling is deliberately
+   generous — it is there to catch a deadlock, not to police slow tests. The
+   session-scoped pgserver fixture, which runs inside the first test's setup, is
+   the longest legitimate stretch under it.
+
+Still open, and deliberately not addressed here: the pip/HuggingFace cache
+sharing noted above, and branch protection, which needs repo-admin rights.
 
 ## Branch protection
 
@@ -448,7 +473,9 @@ Two consequences for whoever owns repo settings:
 
 1. If `backend-ci` is added to branch protection later, the context to require is
    `backend-ci (ubuntu-latest)` — the bare `backend-ci` name no longer exists.
-2. Do **not** require the `windows-latest` or `macos-14` contexts while they are
-   advisory. A `continue-on-error` job still reports its own conclusion, and
-   requiring it would gate merges on the very failures this PR exists to
-   discover.
+2. The `windows-latest` and `macos-14` contexts are no longer advisory and are
+   now safe to require. Until they are added to branch protection, a red leg
+   fails the run and is visible on the PR, but does not by itself block the
+   merge button — the gate is only as strong as the required-contexts list.
+   The three contexts to require are `backend-ci (ubuntu-latest)`,
+   `backend-ci (windows-latest)` and `backend-ci (macos-14)`.
