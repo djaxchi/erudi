@@ -100,6 +100,16 @@ class BaseChatServerEngine(BaseEngine):
         """
 
     @classmethod
+    def _read_child_output(cls, proc: Any) -> str:
+        """Best-effort tail of what the child printed before it died.
+
+        Default: nothing to show. MLX spawns an `mp.Process`, which has no
+        output pipe to read. `BaseLlamaCppEngine` overrides this to return the
+        tail its drainer collected (#361).
+        """
+        return "No child output is captured for this engine."
+
+    @classmethod
     @abstractmethod
     def _resolve_model_artifact(cls, llm_local_path: Union[str, Path]) -> Path:
         """Resolve the artifact handed to `_spawn_child`.
@@ -261,7 +271,7 @@ class BaseChatServerEngine(BaseEngine):
                 raise EngineException(
                     message=(
                         f"{cls._server_name} child exited before becoming ready "
-                        f"(early crash). Check backend logs for the child's stderr."
+                        f"(early crash). {cls._read_child_output(proc)}"
                     ),
                 )
             try:

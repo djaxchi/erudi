@@ -6,7 +6,7 @@ not:
 
 - Where the binary lives (`backend/artifacts/llama-cpp/<cpu|cuda>/bin/llama-server`)
 - How to find / pick the GGUF file in a model directory
-- The `subprocess.Popen` lifecycle (terminate, alive check)
+- The `subprocess.Popen` lifecycle (terminate, alive check, output draining)
 - Kwarg-name translation from Erudi's vocabulary (HF/transformers) to the
   llama.cpp wire names (`repetition_penalty` → `repeat_penalty`,
   `repetition_context_size` → `repeat_last_n`).
@@ -32,6 +32,7 @@ from src.core.config import ROOT_DIR
 from src.core.exceptions import EngineException
 from src.core.logging import logger
 from src.engines.base_chat_server_engine import BaseChatServerEngine
+from src.engines.child_output import ChildOutputDrainer
 from src.core.subprocess_flags import hidden_console_creationflags
 
 
@@ -328,6 +329,40 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         except Exception:
             return False
 
+    # The drainer is stored on the Popen object itself rather than in a
+    # module-level registry: its lifetime is then exactly the child's, with no
+    # cleanup to forget and no chance of a recycled pid handing out another
+    # child's output.
+    _DRAINER_ATTR: ClassVar[str] = "erudi_output_drainer"
+
+    # How much of the tail to quote in a crash message. llama-server's banner
+    # and GGUF metadata dump are long; the reason it died is in the last lines.
+    _CHILD_OUTPUT_TAIL_CHARS: ClassVar[int] = 2000
+
+    @classmethod
+    def _attach_output_drainer(cls, proc: Any, drainer: ChildOutputDrainer) -> None:
+        setattr(proc, cls._DRAINER_ATTR, drainer)
+
+    @classmethod
+    def _output_drainer_for(cls, proc: Any) -> Optional[ChildOutputDrainer]:
+        return getattr(proc, cls._DRAINER_ATTR, None)
+
+    @classmethod
+    def _read_child_output(cls, proc: Any) -> str:
+        """Tail of the child's merged stdout+stderr, as collected by the drainer.
+
+        Unlike reading `proc.stdout` here directly, this works whether or not
+        the child has exited -- the drainer has been consuming the pipe since
+        the moment the child was spawned (#361).
+        """
+        drainer = cls._output_drainer_for(proc) if proc is not None else None
+        if drainer is None:
+            return "No child output was captured."
+        tail = drainer.tail(max_chars=cls._CHILD_OUTPUT_TAIL_CHARS)
+        if not tail:
+            return "The child produced no output."
+        return f"Child output (last {len(tail)} chars):\n{tail}"
+
     @classmethod
     def _translate_payload_kwargs(cls, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         """Translate from Erudi vocabulary (HF/transformers) to llama-server names."""
@@ -383,6 +418,12 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
             # terminal window on Windows when the backend's console isn't
             # inheritable (#175). No-op (0) on POSIX.
             creationflags=hidden_console_creationflags(),
+        )
+        # Start draining immediately: llama-server writes its banner and the
+        # GGUF metadata dump before it is ever ready, and an unread pipe would
+        # wedge it mid-startup once full (#361).
+        cls._attach_output_drainer(
+            proc, ChildOutputDrainer(proc.stdout, name=f"{cls._server_name}:{proc.pid}")
         )
         handle: Dict[str, Any] = {
             "pid": proc.pid,
