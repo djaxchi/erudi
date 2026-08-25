@@ -101,17 +101,13 @@ class BaseChatServerEngine(BaseEngine):
 
     @classmethod
     def _read_child_output(cls, proc: Any) -> str:
-        """Best-effort tail of the crashed child's captured output.
+        """Best-effort tail of what the child printed before it died.
 
-        Default: no capture available (MLX's `mp.Process` has no stdout pipe
-        to read). `BaseLlamaCppEngine` overrides this for `subprocess.Popen`
-        children, whose stderr is merged into stdout: the crash message used
-        to tell the user to "check backend logs for the child's stderr" but
-        nothing ever read or logged it, so there was nothing to check (found
-        during QA -- a Windows machine too small to run a 7B model surfaced
-        this as a dead-end error with no actual root cause visible anywhere).
+        Default: nothing to show. MLX spawns an `mp.Process`, which has no
+        output pipe to read. `BaseLlamaCppEngine` overrides this to return the
+        tail its drainer collected (#360, #361).
         """
-        return "Check backend logs for the child's stderr."
+        return "No child output is captured for this engine."
 
     @classmethod
     @abstractmethod
