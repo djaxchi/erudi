@@ -540,16 +540,6 @@ def main() -> None:
     # detectable ppid CHANGE rather than the recorded baseline (#224).
     initial_ppid = os.getppid()
 
-    # Also first, and Windows-only: bind Postgres/llama-server's lifetime to
-    # this process at the kernel level, before either is ever spawned. Unlike
-    # the parent-death watchdog below, this does not depend on this process
-    # staying alive to react -- see windows_job.py for why that gap matters
-    # (#341).
-    if platform.system() == "Windows":
-        from src.launcher.windows_job import bind_children_to_this_process
-
-        bind_children_to_this_process()
-
     args = parse_args()
     requested_port = args.port
     host = "127.0.0.1"
@@ -586,6 +576,29 @@ def main() -> None:
         sys.exit(1)
     else:
         data_dir = runtime_paths.data_dir
+
+    # Windows-only: bind Postgres/llama-server's lifetime to this process at
+    # the kernel level, before either is ever spawned. Unlike the parent-death
+    # watchdog below, this does not depend on this process staying alive to
+    # react -- see windows_job.py for why that gap matters (#341).
+    #
+    # MUST run after initialize_runtime_paths() above, not before: importing
+    # this module pulls in src.core.logging, whose module-level logger setup
+    # calls ensure_runtime_paths_initialized() as a side effect. Doing that
+    # BEFORE the real initialize_runtime_paths(mode="prod", ...) call above
+    # got a chance to run silently locked in the wrong dev-mode data
+    # directory (backend_root/"data", i.e. inside the frozen bundle itself)
+    # for the rest of the process -- the later legitimate prod-mode call then
+    # raises ValueError ("already initialized") and falls back to that wrong
+    # path via get_runtime_paths(), so every model download and all app data
+    # landed inside the installed app's own folder instead of the user data
+    # dir, silently, with "mode": "prod" still printed in the ready event.
+    # Reproduced on a real packaged build during QA; do not move this above
+    # the runtime-paths block again.
+    if platform.system() == "Windows":
+        from src.launcher.windows_job import bind_children_to_this_process
+
+        bind_children_to_this_process()
 
     force_mp_spawn()
 
