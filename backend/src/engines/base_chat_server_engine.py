@@ -105,7 +105,7 @@ class BaseChatServerEngine(BaseEngine):
 
         Default: nothing to show. MLX spawns an `mp.Process`, which has no
         output pipe to read. `BaseLlamaCppEngine` overrides this to return the
-        tail its drainer collected (#361).
+        tail its drainer collected (#360, #361).
         """
         return "No child output is captured for this engine."
 
