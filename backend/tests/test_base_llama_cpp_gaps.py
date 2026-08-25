@@ -193,7 +193,11 @@ class TestSpawnChild:
         def fake_popen(argv, **kwargs):
             captured["argv"] = argv
             captured["kwargs"] = kwargs
-            return SimpleNamespace(pid=4242)
+            # `stdout` is part of the Popen contract `_spawn_child` relies on:
+            # it creates the child with stdout=PIPE and hands the stream to the
+            # output drainer (#361). None here means "this test captures no
+            # output", which the drainer accepts as a no-op.
+            return SimpleNamespace(pid=4242, stdout=None)
 
         monkeypatch.setattr(base_mod.subprocess, "Popen", fake_popen)
         handle = CPU_Engine._spawn_child(

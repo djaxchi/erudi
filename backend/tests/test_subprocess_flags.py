@@ -34,6 +34,10 @@ class TestLlamaServerSpawnHidesConsole:
 
         class _FakeProc:
             pid = 4242
+            # Part of the Popen contract `_spawn_child` relies on: it creates
+            # the child with stdout=PIPE and hands the stream to the output
+            # drainer (#361). None means "no output captured here".
+            stdout = None
 
         def fake_popen(argv, **kwargs):
             captured["argv"] = argv
