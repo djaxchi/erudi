@@ -100,7 +100,9 @@ describe("installed-model join (#348)", () => {
     expect(modelRepoKey({ link: "meta-llama/Llama-3.1-8B-Instruct" })).toBe(
       "meta-llama/llama-3.1-8b-instruct"
     );
-    expect(modelRepoKey({ name: "Local Only", link: String.raw`C:\models\42` })).toBe("name:local only");
+    expect(modelRepoKey({ name: "Local Only", link: String.raw`C:\models\42` })).toBe(
+      "name:local only"
+    );
     expect(modelRepoKey({ name: "Posix", link: "/var/models/42" })).toBe("name:posix");
     expect(modelRepoKey(null)).toBeNull();
   });

@@ -7,7 +7,15 @@ import ExploreModelCard from "./ExploreModelCard";
  * "See all" that expands into the full wrapped grid. The collapsed row keeps the
  * page calm; the right-edge fade hints there's more to scroll.
  */
-export default function ModelCarousel({ id, label, models, range, onDownload, onInfo, isInstalled }) {
+export default function ModelCarousel({
+  id,
+  label,
+  models,
+  range,
+  onDownload,
+  onInfo,
+  isInstalled,
+}) {
   const [expanded, setExpanded] = useState(false);
   if (!models || models.length === 0) {
     return null;
