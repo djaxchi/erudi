@@ -232,19 +232,33 @@ def _get_server_with_recovery(data_dir: Path):
     ``pg_ctl`` waiter, not the postmaster, which keeps recovering in the
     background.
 
-    Second-chance semantics: catch the timeout, wait (bounded) for the live
-    postmaster to report ready, then call ``get_server`` again — it reuses the
-    already-running postmaster without touching ``pg_ctl`` (a manual Retry
-    minutes after such a crash booted in 1.3s through exactly that path). If the
-    wait expires we re-raise the ORIGINAL error, preserving today's failure path
-    after real patience and clear logs.
+    ``ensure_postgres_running`` has a SECOND way to hit this same "still
+    recovering" state: when a ``postmaster.pid`` already shows a running
+    process (exactly what a retry after a timeout finds, or what a second
+    launch attempt finds), it skips ``pg_ctl`` entirely and jumps straight to
+    ``assert self._postmaster_info.status == 'ready'`` with no wait at all --
+    it never checks status before asserting on it. A recovering-but-not-yet-
+    ready postmaster then raises a bare ``AssertionError`` instead of
+    ``TimeoutExpired``, which used to skip the patience logic below entirely
+    and crash the boot on a build that would have come up fine given a few
+    more seconds (reproduced live during QA: a hard-killed prior session left
+    Postgres WAL-recovering for ~26s, longer than the fast path's zero-wait
+    tolerance, and the app showed a permanent "Backend crashed on startup").
+
+    Second-chance semantics: catch either exception, wait (bounded) for the
+    live postmaster to report ready, then call ``get_server`` again — it
+    reuses the already-running postmaster without touching ``pg_ctl`` (a
+    manual Retry minutes after such a crash booted in 1.3s through exactly
+    that path). If the wait expires we re-raise the ORIGINAL error, preserving
+    today's failure path after real patience and clear logs.
     """
     try:
         return pgserver.get_server(str(data_dir))
-    except subprocess.TimeoutExpired:
+    except (subprocess.TimeoutExpired, AssertionError):
         logger.warning(
-            "pgserver's pg_ctl waiter gave up after its hardcoded 10s timeout; "
-            "the postmaster is likely still WAL crash-recovering in the "
+            "pgserver reported the postmaster not ready yet (pg_ctl's "
+            "hardcoded 10s timeout, or its no-wait already-running fast "
+            "path); it is likely still WAL crash-recovering in the "
             "background - waiting for it to finish before retrying"
         )
         if _wait_for_postmaster_ready(data_dir, RECOVERY_WAIT_SECONDS):
