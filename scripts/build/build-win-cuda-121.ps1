@@ -54,6 +54,31 @@ if (-not (Test-Path $LlamaServer)) {
 }
 Write-OK "llama-server.exe found"
 
+# The runtime DLLs llama-server.exe links against have to sit beside it, because
+# the Windows loader searches the exe's own directory first and an end user has
+# the NVIDIA display driver but not the multi-GB CUDA Toolkit (#356, and #144
+# for the CRT). build-llamacpp-cuda-win.ps1 copies them, but THIS script is the
+# one that runs every release while that one runs once in a blue moon -- so an
+# artifacts/ directory compiled before #356 landed still passes the existence
+# check above and ships a bundle whose GPU path is dead on arrival
+# (STATUS_DLL_NOT_FOUND, silently, with no error until the first chat turn).
+# Checking here is what turns that into a build failure instead of a bad release.
+$LlamaBinDir = Split-Path $LlamaServer -Parent
+$RequiredRuntimeDlls = @(
+    "cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll",
+    "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"
+)
+$MissingRuntimeDlls = @($RequiredRuntimeDlls | Where-Object {
+    -not (Test-Path (Join-Path $LlamaBinDir $_))
+})
+if ($MissingRuntimeDlls.Count -gt 0) {
+    Write-Fail ("Runtime DLLs missing next to llama-server.exe: {0}`n" -f ($MissingRuntimeDlls -join ", ") +
+                "$LlamaBinDir was built before these were bundled, so GPU inference would be " +
+                "dead on any machine without the CUDA Toolkit.`n" +
+                "Re-run: .\scripts\dev\backend\build-llamacpp-cuda-win.ps1")
+}
+Write-OK "llama-server runtime DLLs bundled ($($RequiredRuntimeDlls.Count) checked)"
+
 if (-not (Test-Path $BackendSpec)) {
     Write-Fail "backend.spec not found at $BackendSpec."
 }
