@@ -149,20 +149,39 @@ export default function DragDropArea({ onFilesAdded }) {
       }
     }
 
-    // 4. Surface rejections inline (or clear a stale notice).
-    if (unsupportedCount || cappedCount || missingPathCount) {
+    // 4. Drop paths already in the list. The submission de-duplicates anyway,
+    //    so without this the list shows and counts entries that will never be
+    //    ingested: dropping the same file twice read "Selected Files (3)" over
+    //    two distinct files while the very next dialog said "2 files" (#350).
+    const seen = new Set(selectedFiles);
+    const fresh = [];
+    let duplicateCount = 0;
+    for (const path of paths) {
+      if (seen.has(path)) {
+        duplicateCount += 1;
+        log.warn(`File "${path}" is already in the selection; entry dropped`);
+      } else {
+        seen.add(path);
+        fresh.push(path);
+      }
+    }
+
+    // 5. Surface rejections inline (or clear a stale notice). Duplicates are
+    //    reported too, so re-adding a file is never a silent no-op.
+    if (unsupportedCount || cappedCount || missingPathCount || duplicateCount) {
       setNotice({
         unsupported: unsupportedCount,
         capped: cappedCount,
         missingPath: missingPathCount,
+        duplicate: duplicateCount,
       });
     } else {
       setNotice(null);
     }
 
-    // 5. Commit survivors.
-    if (paths.length) {
-      const newFiles = [...selectedFiles, ...paths];
+    // 6. Commit survivors.
+    if (fresh.length) {
+      const newFiles = [...selectedFiles, ...fresh];
       setSelectedFiles(newFiles);
       onFilesAdded?.(newFiles);
     }
@@ -256,6 +275,11 @@ export default function DragDropArea({ onFilesAdded }) {
   if (notice?.missingPath) {
     noticeParts.push(
       `couldn't resolve a path for ${notice.missingPath} item${notice.missingPath > 1 ? "s" : ""}`
+    );
+  }
+  if (notice?.duplicate) {
+    noticeParts.push(
+      `${notice.duplicate} file${notice.duplicate > 1 ? "s were" : " was"} already in the list`
     );
   }
 
