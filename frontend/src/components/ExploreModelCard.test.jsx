@@ -80,3 +80,26 @@ describe("ExploreModelCard", () => {
     expect(onDownload).not.toHaveBeenCalled();
   });
 });
+
+describe("ExploreModelCard installed state (#348)", () => {
+  it("reads Installed and refuses to re-download a model already on disk", () => {
+    const onDownload = vi.fn();
+    render(<ExploreModelCard model={baseModel} installed onDownload={onDownload} />);
+
+    const button = screen.getByRole("button", { name: "Installed" });
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(onDownload).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+  });
+
+  it("still offers Download for a model that is not installed", () => {
+    const onDownload = vi.fn();
+    render(<ExploreModelCard model={baseModel} onDownload={onDownload} />);
+
+    const button = screen.getByRole("button", { name: "Download" });
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    expect(onDownload).toHaveBeenCalledWith(baseModel);
+  });
+});
