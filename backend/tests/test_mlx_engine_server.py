@@ -260,13 +260,14 @@ class TestCleanupAndCache:
         assert MLX_Engine._model_id is None
 
     def test_get_model_and_tokenizer_returns_cached_when_same_id(self):
-        sentinel_model = {"pid": 7, "cached": True}
+        sentinel_model = {"pid": 7, "proc": MagicMock(), "cached": True}
         sentinel_tokenizer = {"type": "remote"}
         MLX_Engine._model = sentinel_model
         MLX_Engine._tokenizer = sentinel_tokenizer
         MLX_Engine._model_id = "abc"
 
-        with patch.object(MLX_Engine, "_start_server") as mock_start:
+        with patch.object(MLX_Engine, "_start_server") as mock_start, \
+             patch.object(MLX_Engine, "_proc_is_alive", return_value=True):
             model, tokenizer = MLX_Engine.get_model_and_tokenizer(
                 llm_id="abc", llm_local_path="/whatever",
             )
