@@ -362,6 +362,33 @@ class BaseChatServerEngine(BaseEngine):
         cls._stop_server_if_running()
         return super().cleanup()
 
+    @classmethod
+    def _should_not_reload_model(cls, llm_id: str) -> bool:
+        """Extend the base cache check with child-process liveness.
+
+        `BaseEngine`'s version only compares `llm_id` against cached state --
+        it never notices when the child behind that state has died. A
+        `llama-server` that crashes mid-generation (native abort, OOM, driver
+        reset) leaves `_model`/`_model_id` untouched, so every following
+        request for the same `llm_id` would keep reusing the dead handle and
+        fail with a connection error forever, until a *different* model is
+        loaded or the app is restarted. Reproduced on a real packaged build
+        during QA: llama-server hard-crashed (0xc0000409 in ucrtbase.dll)
+        while emitting a tool call, and the conversation stayed broken for
+        every subsequent turn.
+        """
+        if not super()._should_not_reload_model(llm_id):
+            return False
+        proc = cls._model.get("proc") if isinstance(cls._model, dict) else None
+        if not cls._proc_is_alive(proc):
+            logger.warning(
+                f"[{cls.__name__}] Cached child for model {llm_id} is no "
+                f"longer running; forcing a respawn instead of reusing a "
+                f"dead handle. {cls._read_child_output(proc)}"
+            )
+            return False
+        return True
+
     # ====================== Template methods ======================
     @classmethod
     def _start_server(cls, *, model_path: Path, alias: str, port: int) -> Dict[str, Any]:
