@@ -37,6 +37,7 @@ from src.database.seed import (
 )
 from src.entities.DownloadJob import DownloadJobModel
 from src.entities.HardwareProfile import HardwareProfile
+from src.domains.hardware.services import PROFILING_LOGIC_VERSION
 from src.entities.KBJob import KBJobModel
 from src.entities.KnowledgeBase import KnowledgeBase
 from src.entities.Llm import Llm
@@ -66,7 +67,6 @@ class _RejectingEngine:
 
 
 class _FakeEngineType:
-    __name__ = "CPU_Engine"
     FORMAT_TAG = "gguf"
 
     @classmethod
@@ -86,6 +86,16 @@ class _FakeEngineType:
             "system_platform": "Linux",
             "performance_breakdown": {},
         }
+
+
+# Hardware_Service derives the current backend from the engine's class name
+# ("CPU_Engine" -> "cpu") and compares it to the profile's backend_type, so the
+# fake has to answer "CPU_Engine" or it looks like a different machine on every
+# call. Assigning __name__ inside the class body does NOT do that: type.__name__
+# is a data descriptor on the metaclass, so it wins over the class __dict__ and
+# the attribute still reads "_FakeEngineType". Assigning after the class runs
+# goes through that descriptor's setter, which is what actually renames it.
+_FakeEngineType.__name__ = "CPU_Engine"
 
 
 # =====================================================================
@@ -779,6 +789,36 @@ class TestInitializers:
         init = Hardware_Initializer(test_db_session)
         assert init.initialize_if_needed() is True
         assert init.initialize_if_needed() is False  # second boot: cached
+
+    def test_hardware_reprofiles_when_the_profiling_logic_moved_on(
+        self, test_db_session, monkeypatch
+    ):
+        """An upgrade that fixes profiling must reach machines already profiled.
+
+        Startup used to return the moment a row existed, so #365's corrected
+        bandwidth never reached anyone who had already launched the app -- the
+        only way to get it was Clear All Data, which also wipes their models,
+        conversations and knowledge bases.
+        """
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngineType)
+        init = Hardware_Initializer(test_db_session)
+        assert init.initialize_if_needed() is True
+
+        # Simulate a row written by an older build: stale numbers, stale stamp.
+        stored = test_db_session.query(HardwareProfile).first()
+        stored.profiling_version = None
+        stored.cpu_model = "Stale CPU"
+        test_db_session.commit()
+        stale_id = stored.id
+
+        assert init.initialize_if_needed() is True  # re-profiled, not skipped
+        refreshed = test_db_session.query(HardwareProfile).first()
+        assert refreshed.id != stale_id
+        assert refreshed.cpu_model == "Seed CPU"
+        assert refreshed.profiling_version == PROFILING_LOGIC_VERSION
+
+        # And it settles: the next boot is a plain cache hit again.
+        assert init.initialize_if_needed() is False
 
     def test_hardware_failure_creates_fallback_profile(self, test_db_session, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", None)  # detection will fail

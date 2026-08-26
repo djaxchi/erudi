@@ -5,7 +5,7 @@ through the service layer.
 """
 import pytest
 from unittest.mock import Mock, patch
-from src.domains.hardware.services import Hardware_Service
+from src.domains.hardware.services import Hardware_Service, PROFILING_LOGIC_VERSION
 from src.domains.hardware.repository import Hardware_Repository
 from src.entities.HardwareProfile import HardwareProfile
 from src.core import config
@@ -58,6 +58,7 @@ class TestHardwareService:
         # Setup mock profile
         mock_profile = Mock(spec=HardwareProfile)
         mock_profile.backend_type = "mlx"
+        mock_profile.profiling_version = PROFILING_LOGIC_VERSION
         mock_repository.get_profile.return_value = mock_profile
         
         # Mock current engine with __name__
@@ -143,6 +144,68 @@ class TestHardwareService:
             assert result == new_profile
             mock_repository.create_profile.assert_called_once_with(mock_data)
     
+    def test_get_or_create_profile_reprofiles_when_logic_version_changed(
+        self, service, mock_repository
+    ):
+        """A profile produced by superseded profiling logic must be redone.
+
+        The profile is written once at first boot and read forever after, so
+        without this #365 -- a 448 GB/s card profiled at 13 GB/s because NVML
+        was read for the idle clock -- would keep serving the stored 13 on every
+        machine that had already run the app.
+        """
+        stale = Mock(spec=HardwareProfile)
+        stale.backend_type = "cuda"
+        stale.profiling_version = PROFILING_LOGIC_VERSION - 1
+        mock_repository.get_profile.return_value = stale
+
+        fresh_data = {"backend_type": "cuda", "memory_bandwidth_gbs": 448.0}
+        fresh = Mock(spec=HardwareProfile)
+        mock_repository.create_profile.return_value = fresh
+
+        mock_engine = Mock()
+        mock_engine.__name__ = "CUDA_Engine"
+        mock_engine.get_flat_hardware_data.return_value = fresh_data
+
+        with patch.object(config, "LLM_Engine", mock_engine):
+            result = service.get_or_create_profile()
+
+        assert result == fresh
+        mock_repository.delete_profile.assert_called_once_with(stale)
+        mock_repository.create_profile.assert_called_once()
+
+    def test_get_or_create_profile_reprofiles_when_version_is_null(
+        self, service, mock_repository
+    ):
+        """NULL is what every pre-existing row carries, so it must count as stale."""
+        legacy = Mock(spec=HardwareProfile)
+        legacy.backend_type = "cuda"
+        legacy.profiling_version = None
+        mock_repository.get_profile.return_value = legacy
+
+        fresh = Mock(spec=HardwareProfile)
+        mock_repository.create_profile.return_value = fresh
+
+        mock_engine = Mock()
+        mock_engine.__name__ = "CUDA_Engine"
+        mock_engine.get_flat_hardware_data.return_value = {"backend_type": "cuda"}
+
+        with patch.object(config, "LLM_Engine", mock_engine):
+            result = service.get_or_create_profile()
+
+        assert result == fresh
+        mock_repository.delete_profile.assert_called_once_with(legacy)
+
+    def test_detect_hardware_stamps_the_profiling_version(self, service):
+        """Whatever the engine reports gets tagged with the logic that read it."""
+        mock_engine = Mock()
+        mock_engine.get_flat_hardware_data.return_value = {"backend_type": "cuda"}
+
+        with patch.object(config, "LLM_Engine", mock_engine):
+            data = service._detect_hardware()
+
+        assert data["profiling_version"] == PROFILING_LOGIC_VERSION
+
     def test_calculate_boosted_scores_adds_20_points(self, service):
         """Test that the boosted score correctly adds 20 points."""
         mock_profile = Mock(spec=HardwareProfile)
