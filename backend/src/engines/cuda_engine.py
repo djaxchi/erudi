@@ -549,6 +549,29 @@ class CUDA_Engine(BaseLlamaCppEngine):
             logger.warning(f"Could not get compute capability: {e}")
             return (0, 0)
 
+    @staticmethod
+    def _rated_clock_mhz(nv, handle, domain) -> int:
+        """Return a clock domain's RATED (maximum) frequency in MHz.
+
+        The hardware profile rates what the card *can* do, so every clock it
+        reads must be the rated one. nvmlDeviceGetClockInfo reports the
+        INSTANTANEOUS frequency instead, and an idle GPU sits deep in a low
+        power state: measured on an RTX 5060 Ti at idle, memory reads 405 MHz
+        against a rated 14001, and SM reads 300 MHz against a rated 3090. Since
+        the profile is built once at startup, on an idle machine by definition,
+        that turned a 448 GB/s card into a 13 GB/s one and collapsed the
+        recommended model window to 1-1.1B on 16 GB of VRAM.
+
+        nvmlDeviceGetMaxClockInfo is supported by every driver that supports
+        nvmlDeviceGetClockInfo, but fall back to the instantaneous reading
+        rather than lose the field entirely if it ever raises.
+        """
+        try:
+            return nv.nvmlDeviceGetMaxClockInfo(handle, domain)
+        except Exception as e:
+            logger.warning(f"Max clock unavailable, falling back to current clock: {e}")
+            return nv.nvmlDeviceGetClockInfo(handle, domain)
+
     @classmethod
     def _get_sm_count(cls, device_id: int) -> int:
         """Return the SM count for a device using the CUDA Driver API (nvcuda.dll).
@@ -853,7 +876,7 @@ class CUDA_Engine(BaseLlamaCppEngine):
                         try:
                             import pynvml as nv
                             handle = best_gpu["handle"]
-                            mem_clock_mhz = nv.nvmlDeviceGetClockInfo(handle, nv.NVML_CLOCK_MEM)
+                            mem_clock_mhz = cls._rated_clock_mhz(nv, handle, nv.NVML_CLOCK_MEM)
                             bus_bits = nv.nvmlDeviceGetMemoryBusWidth(handle)
                             # Bandwidth = 2 * clock * bus_width / 8 (DDR, convert bits to bytes)
                             bandwidth_gbs = 2 * mem_clock_mhz / 1000 * bus_bits / 8
@@ -1024,9 +1047,9 @@ class CUDA_Engine(BaseLlamaCppEngine):
                     # Get GPU clocks and specs
                     try:
                         import pynvml as nv
-                        sm_clock_mhz = nv.nvmlDeviceGetClockInfo(handle, nv.NVML_CLOCK_SM)
+                        sm_clock_mhz = cls._rated_clock_mhz(nv, handle, nv.NVML_CLOCK_SM)
                         sm_clock_ghz = sm_clock_mhz / 1000
-                        mem_clock_mhz = nv.nvmlDeviceGetClockInfo(handle, nv.NVML_CLOCK_MEM)
+                        mem_clock_mhz = cls._rated_clock_mhz(nv, handle, nv.NVML_CLOCK_MEM)
                         bus_bits = nv.nvmlDeviceGetMemoryBusWidth(handle)
                         bandwidth_gbs = 2 * mem_clock_mhz / 1000 * bus_bits / 8
                     except Exception as e:
@@ -1116,9 +1139,9 @@ class CUDA_Engine(BaseLlamaCppEngine):
 
             # Build performance breakdown
             performance_breakdown = {
-                "gpu_compute_score": round(gpu_score, 2),
+                "compute_score": round(gpu_score, 2),
                 "memory_bandwidth_score": round(mem_bandwidth_score, 2),
-                "vram_capacity_score": round(vram_score, 2),
+                "memory_capacity_score": round(vram_score, 2),
                 "cpu_performance_score": round(cpu_score, 2),
                 "system_ram_score": round(ram_score, 2),
                 "pcie_score": round(pcie_score, 2),
