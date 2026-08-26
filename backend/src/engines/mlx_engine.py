@@ -897,7 +897,7 @@ class MLX_Engine(BaseChatServerEngine):
 
             # Build performance breakdown
             performance_breakdown = {
-                "gpu_compute_score": round(gpu_score, 2),
+                "compute_score": round(gpu_score, 2),
                 "memory_bandwidth_score": round(mem_bandwidth_score, 2),
                 "memory_capacity_score": round(memory_capacity_score, 2),
                 "neural_engine_score": round(neural_score, 2),
