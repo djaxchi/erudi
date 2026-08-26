@@ -17,7 +17,7 @@ const SUGGESTIONS = ["coding", "reasoning", "vision", "tiny", "uncensored", "mul
  * run on this machine's engine, and ranks hits by how well they fit the hardware
  * budget. Empty and error states give direction rather than mood.
  */
-export default function HuggingFaceSearchPanel({ range, onDownload, onInfo }) {
+export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isInstalled }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState(null); // null = not searched yet
   const [loading, setLoading] = useState(false);
@@ -191,6 +191,7 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo }) {
                       range={range}
                       onDownload={onDownload}
                       onInfo={onInfo}
+                      installed={isInstalled ? isInstalled(model) : false}
                     />
                   ))}
                 </div>
@@ -212,4 +213,5 @@ HuggingFaceSearchPanel.propTypes = {
   range: PropTypes.shape({ min: PropTypes.number, max: PropTypes.number }),
   onDownload: PropTypes.func,
   onInfo: PropTypes.func,
+  isInstalled: PropTypes.func,
 };

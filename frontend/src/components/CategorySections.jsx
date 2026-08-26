@@ -15,6 +15,7 @@ export default function CategorySections({
   searchQuery,
   onDownload,
   onInfo,
+  isInstalled,
 }) {
   const groups = groupByCategory(models);
 
@@ -45,6 +46,7 @@ export default function CategorySections({
           range={range}
           onDownload={onDownload}
           onInfo={onInfo}
+          isInstalled={isInstalled}
         />
       ))}
     </div>
@@ -58,4 +60,5 @@ CategorySections.propTypes = {
   searchQuery: PropTypes.string,
   onDownload: PropTypes.func,
   onInfo: PropTypes.func,
+  isInstalled: PropTypes.func,
 };

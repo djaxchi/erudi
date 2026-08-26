@@ -22,6 +22,45 @@ export function splitByBase(models) {
 }
 
 /**
+ * Key a model by the Hugging Face repo it came from, lowercased.
+ *
+ * This is what joins an installed model back to its catalog row (#348). The two
+ * are distinct database rows and nothing else connects them: the local row's
+ * `link` is a directory on disk, and its `link` field cannot match the catalog's
+ * repo id. Both, however, carry `Model ID: <owner>/<repo>` in their metadata,
+ * written from the repo the download was started against.
+ *
+ * Falls back to the catalog row's own `link` (a repo id for remote rows), then
+ * to the display name, so a row with no parsed metadata still keys on something
+ * stable rather than collapsing every such row onto one key.
+ */
+const isRepoId = (value) => /^[^/\\:]+\/[^/\\:]+$/.test(String(value).trim());
+
+export function modelRepoKey(model) {
+  if (!model) return null;
+  const fromMetadata = model.metadata?.model_id;
+  if (fromMetadata) return String(fromMetadata).trim().toLowerCase();
+  // A local row's link is a filesystem path, never a repo id — only a remote
+  // row's owner/name link is usable as a key.
+  if (model.link && isRepoId(model.link)) return String(model.link).trim().toLowerCase();
+  return model.name ? `name:${String(model.name).trim().toLowerCase()}` : null;
+}
+
+/**
+ * The set of repo keys the user already has on disk, for marking catalog cards.
+ * KB assistants are included deliberately: they run the weights of a base that
+ * IS installed, so the base's catalog card should read as installed too.
+ */
+export function installedRepoKeys(localModels) {
+  const keys = new Set();
+  for (const model of localModels || []) {
+    const key = modelRepoKey(model);
+    if (key) keys.add(key);
+  }
+  return keys;
+}
+
+/**
  * Capability categories (#122), mirrored from the backend catalog_classify keys.
  * `order` drives section order; `collapsed` marks sections hidden by default
  * (Safety = moderation classifiers, not chat models).

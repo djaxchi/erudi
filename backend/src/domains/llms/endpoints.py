@@ -221,6 +221,25 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
             llm_obj = session.query(Llm).get(model_id)
             if llm_obj:
                 llm_obj.local = 1
+                # Measure the real footprint BEFORE the job goes terminal (#349).
+                # This is a plain directory walk, not a probe -- no subprocess, no
+                # model load -- so it costs milliseconds and does not reintroduce
+                # what the comment above forbids. It has to happen here because the
+                # UI refreshes the instant it polls "completed": behind the probes
+                # the rewrite landed ~10s late, and the freshly installed card sat
+                # on the catalog's pre-download guess ("Size: ~4.0 GB" against a
+                # measured ~4.7 GB) until the page was reloaded by hand.
+                try:
+                    measured_gb = measure_dir_size_gb(final_save_dir)
+                    if measured_gb > 0:
+                        llm_obj.model_metadata = rewrite_size_in_metadata(
+                            llm_obj.model_metadata, measured_gb)
+                except Exception as e:
+                    logger.warning(
+                        f"Could not measure the on-disk size of LLM {model_id}; "
+                        f"leaving the catalog estimate in place: {e}",
+                        exc_info=True,
+                    )
             job_obj.status = "completed"
             job_obj.progress = 100.0
             job_obj.updated_at = datetime.utcnow()
@@ -236,13 +255,6 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
                     # actually parse this model's tool calls? Gates agentic KB.
                     llm_obj.supports_tools_wire = detect_wire_tools(llm_obj.link)
                     llm_obj.supports_vision = detect_supports_vision(llm_obj.link)
-                    # Rewrite the displayed size from the REAL on-disk footprint
-                    # (#220): the catalog value was a whole-repo/estimate guess,
-                    # never measured. KB assistants inherit it via COPIED_FIELDS.
-                    measured_gb = measure_dir_size_gb(final_save_dir)
-                    if measured_gb > 0:
-                        llm_obj.model_metadata = rewrite_size_in_metadata(
-                            llm_obj.model_metadata, measured_gb)
                     session.commit()
                 except Exception as e:
                     session.rollback()
@@ -251,7 +263,6 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
                         f"successful download; leaving capabilities unset: {e}",
                         exc_info=True,
                     )
-        logger.info(f"Download job {job_id} completed successfully")
         logger.info(f"Download job {job_id} completed successfully")
     except Exception as e:
         logger.exception(f"Download job {job_id} failed: {e}")

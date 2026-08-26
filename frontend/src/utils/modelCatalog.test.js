@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { splitByBase, recommendModels, groupByCategory } from "./modelCatalog";
+import {
+  splitByBase,
+  recommendModels,
+  groupByCategory,
+  modelRepoKey,
+  installedRepoKeys,
+} from "./modelCatalog";
 
 const m = (name, is_base, param_size) => ({ name, is_base, param_size });
 
@@ -68,5 +74,52 @@ describe("groupByCategory", () => {
     const groups = groupByCategory([c("Guard", "safety"), c("Chat", "general")]);
     expect(groups.find((g) => g.category === "safety").collapsed).toBe(true);
     expect(groups.find((g) => g.category === "general").collapsed).toBe(false);
+  });
+});
+
+describe("installed-model join (#348)", () => {
+  it("keys a model on the Hugging Face repo id both rows carry in their metadata", () => {
+    const catalogRow = {
+      id: 20,
+      name: "Qwen2.5 7B Instruct",
+      link: "Qwen/Qwen2.5-7B-Instruct-GGUF",
+      metadata: { model_id: "Qwen/Qwen2.5-7B-Instruct" },
+    };
+    const localRow = {
+      id: 617,
+      name: "Qwen2.5 7B Instruct",
+      link: String.raw`C:\Users\me\AppData\Local\erudi\backend\prod\data\models\617`,
+      metadata: { model_id: "Qwen/Qwen2.5-7B-Instruct" },
+    };
+    // The links differ (repo id vs. install directory); the repo id joins them.
+    expect(modelRepoKey(catalogRow)).toBe("qwen/qwen2.5-7b-instruct");
+    expect(modelRepoKey(localRow)).toBe(modelRepoKey(catalogRow));
+  });
+
+  it("falls back to a repo-shaped link, then to the name, never to a disk path", () => {
+    expect(modelRepoKey({ link: "meta-llama/Llama-3.1-8B-Instruct" })).toBe(
+      "meta-llama/llama-3.1-8b-instruct"
+    );
+    expect(modelRepoKey({ name: "Local Only", link: String.raw`C:\models\42` })).toBe("name:local only");
+    expect(modelRepoKey({ name: "Posix", link: "/var/models/42" })).toBe("name:posix");
+    expect(modelRepoKey(null)).toBeNull();
+  });
+
+  it("marks a catalog row installed once its repo is on disk, and leaves others alone", () => {
+    const local = [{ metadata: { model_id: "Qwen/Qwen2.5-7B-Instruct" } }];
+    const keys = installedRepoKeys(local);
+    expect(keys.has(modelRepoKey({ metadata: { model_id: "qwen/QWEN2.5-7B-instruct" } }))).toBe(
+      true
+    );
+    expect(keys.has(modelRepoKey({ metadata: { model_id: "google/gemma-3-4b-it" } }))).toBe(false);
+  });
+
+  it("counts a KB assistant as installing its base model's weights", () => {
+    // An assistant shares its base's weights, so the base's catalog card is
+    // installed too — its metadata carries the same Model ID.
+    const keys = installedRepoKeys([
+      { name: "Nimbus Docs Assistant", metadata: { model_id: "Qwen/Qwen2.5-7B-Instruct" } },
+    ]);
+    expect(keys.has("qwen/qwen2.5-7b-instruct")).toBe(true);
   });
 });

@@ -23,7 +23,7 @@ import apiClient, { tracedFetch } from "../services/api/client";
 import { transformAppStartupInfo } from "../utils/hardwareTransform";
 import { downloadErrorMessage } from "../utils/downloadStatus";
 import { createLogger } from "../utils/logger";
-import { splitByBase } from "../utils/modelCatalog";
+import { splitByBase, installedRepoKeys, modelRepoKey } from "../utils/modelCatalog";
 import { rankByFit, pickFlagships, applyCatalogFilters } from "../utils/hardwareFit";
 import { isTestedModel } from "../utils/testedModels";
 import { isKbAssistant, hasMissingWeights, findBaseModelName } from "../utils/modelWeights";
@@ -263,6 +263,16 @@ export default function LandingPage() {
   const filteredBase = applyCatalogFilters(baseModels, filters, range);
   const filteredCommunity = applyCatalogFilters(communityModels, filters, range);
   const filtersActive = filters.size !== "any" || filters.fitOnly;
+
+  // Catalog cards for models already on disk (#348). The local row and the
+  // catalog row are separate records joined only by the Hugging Face repo id
+  // both carry in their metadata, so nothing linked them before and an
+  // installed model kept an enabled Download button in every browse section.
+  const installedKeys = installedRepoKeys(localModels);
+  const isInstalled = (model) => {
+    const key = modelRepoKey(model);
+    return key ? installedKeys.has(key) : false;
+  };
 
   // Installed models an orphaned assistant can be re-bound to: local,
   // non-assistant, weights still on disk (#225).
@@ -507,6 +517,7 @@ export default function LandingPage() {
                     range={range}
                     onDownload={handleDownload}
                     onInfo={handleInfo}
+                    installed={isInstalled(model)}
                   />
                 ))}
               </div>
@@ -515,7 +526,12 @@ export default function LandingPage() {
 
           {/* Live Hugging Face search — the research tool */}
           <div id="explore-search" className="scroll-mt-6">
-            <HuggingFaceSearchPanel range={range} onDownload={handleDownload} onInfo={handleInfo} />
+            <HuggingFaceSearchPanel
+              range={range}
+              onDownload={handleDownload}
+              onInfo={handleInfo}
+              isInstalled={isInstalled}
+            />
           </div>
 
           {/* Browse by capability */}
@@ -535,6 +551,7 @@ export default function LandingPage() {
                 loading={modelsLoading}
                 onDownload={handleDownload}
                 onInfo={handleInfo}
+                isInstalled={isInstalled}
               />
             )}
           </section>
@@ -566,6 +583,7 @@ export default function LandingPage() {
                       range={range}
                       onDownload={handleDownload}
                       onInfo={handleInfo}
+                      installed={isInstalled(model)}
                     />
                   ))}
                 </div>

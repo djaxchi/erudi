@@ -13,7 +13,7 @@ import { isTestedModel } from "../utils/testedModels";
  * run on my machine?" is the one thing a local-LLM user needs at a glance. Name and
  * category up top, the gauge in the middle, monospace metrics, one clear action.
  */
-export default function ExploreModelCard({ model, range, onDownload, onInfo }) {
+export default function ExploreModelCard({ model, range, onDownload, onInfo, installed = false }) {
   const unavailable = model?.runnable === false;
   const isVision = modelSupportsVision(model);
   const tested = isTestedModel(model);
@@ -106,16 +106,21 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo }) {
           >
             Details
           </button>
+          {/* An installed model must not keep offering its own download (#348):
+              it reads as "I downloaded it and it is still asking me to", and on
+              a machine short of disk the natural worry is whether clicking it
+              fetches several gigabytes a second time. */}
           <button
-            onClick={() => !unavailable && onDownload && onDownload(model)}
-            disabled={unavailable}
+            onClick={() => !unavailable && !installed && onDownload && onDownload(model)}
+            disabled={unavailable || installed}
+            title={installed ? "Already installed — see the Installed section above" : undefined}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-              unavailable
+              unavailable || installed
                 ? "opacity-30 cursor-not-allowed text-[var(--ink-dim)]"
                 : "bg-[var(--fit-good)] text-[#07241d] hover:brightness-110"
             }`}
           >
-            Download
+            {installed ? "Installed" : "Download"}
           </button>
         </div>
       </div>
@@ -128,4 +133,5 @@ ExploreModelCard.propTypes = {
   range: PropTypes.shape({ min: PropTypes.number, max: PropTypes.number }),
   onDownload: PropTypes.func,
   onInfo: PropTypes.func,
+  installed: PropTypes.bool,
 };
