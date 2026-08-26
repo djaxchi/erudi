@@ -123,9 +123,7 @@ describe("DragDropArea duplicate handling", () => {
       dataTransfer: { items: undefined, files: [makeFile("a.pdf"), makeFile("c.md")] },
     });
 
-    await waitFor(() =>
-      expect(onFilesAdded).toHaveBeenLastCalledWith(["/abs/a.pdf", "/abs/c.md"])
-    );
+    await waitFor(() => expect(onFilesAdded).toHaveBeenLastCalledWith(["/abs/a.pdf", "/abs/c.md"]));
     expect(screen.getByText("Selected Files (2)")).toBeTruthy();
   });
 });
