@@ -413,6 +413,51 @@ class TestAtexitAndStop:
         unreg.assert_called_once_with(prev_handler)
 
 
+# =====================================================================
+# UNIT — cached-handle liveness (a crashed child must not be reused forever)
+# =====================================================================
+
+@pytest.mark.unit
+class TestCachedHandleLiveness:
+    """A child that dies mid-generation must not silently poison every later
+    request for the same llm_id (#365): the cache check must notice the proc
+    is gone and force a fresh spawn instead of handing back a dead handle."""
+
+    def test_dead_cached_proc_forces_respawn_not_reuse(self):
+        dead_proc = MagicMock()
+        _TestEngine._model = {
+            "pid": 1, "proc": dead_proc, "port": 19030,
+            "base_url": "http://127.0.0.1:19030", "alias": "test-662",
+            "model_path": Path("/m"),
+        }
+        _TestEngine._tokenizer = {"type": "remote", "provider": "test-provider"}
+        _TestEngine._model_id = "662"
+
+        with patch.object(_TestEngine, "_proc_is_alive", return_value=False), \
+             patch.object(_TestEngine, "_probe_ready", return_value=None), \
+             patch.object(_TestEngine, "_spawn_child", wraps=_TestEngine._spawn_child) as spawn:
+            model, _ = _TestEngine.get_model_and_tokenizer(llm_id="662", llm_local_path="/m")
+
+        spawn.assert_called_once()
+        assert model["proc"] is not dead_proc
+
+    def test_live_cached_proc_is_still_reused(self):
+        """Sanity check: a genuinely alive cached proc is unaffected."""
+        live_proc = MagicMock()
+        _TestEngine._model = {
+            "pid": 1, "proc": live_proc, "port": 19031,
+            "base_url": "http://127.0.0.1:19031", "alias": "test-662",
+            "model_path": Path("/m"),
+        }
+        _TestEngine._tokenizer = {"type": "remote", "provider": "test-provider"}
+        _TestEngine._model_id = "662"
+
+        with patch.object(_TestEngine, "_proc_is_alive", return_value=True), \
+             patch.object(_TestEngine, "_spawn_child") as spawn:
+            model, _ = _TestEngine.get_model_and_tokenizer(llm_id="662", llm_local_path="/m")
+
+        spawn.assert_not_called()
+        assert model["proc"] is live_proc
 
 
 # =====================================================================

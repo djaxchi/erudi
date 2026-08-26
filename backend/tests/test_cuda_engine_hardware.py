@@ -33,17 +33,44 @@ class _FakeMem:
     free = 20 * 1024**3    # 20 GB
 
 
+def _installed_toolkit_bin_dir() -> Path | None:
+    """The CUDA bin dir the platform default search would find, if any.
+
+    Mirrors steps 2 and 3 of CUDA_Engine._resolve_cuda_bin_dir (CUDA_PATH
+    excluded). The guard used to test only the Linux default, so both
+    no-toolkit tests failed on any Windows dev box with the toolkit installed
+    at its default location -- the platform-agnostic gap #358 set out to close.
+    """
+    if os.name == "nt":
+        base = Path(r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA")
+        if base.is_dir():
+            for ver in sorted(base.iterdir(), reverse=True):
+                if (ver / "bin").is_dir():
+                    return ver / "bin"
+        return None
+    linux_default = Path("/usr/local/cuda/bin")
+    return linux_default if linux_default.is_dir() else None
+
+
 def make_fake_pynvml(
     *,
     device_count: int = 1,
     compute_capability: tuple[int, int] = (8, 9),
     mem_clock_mhz: int = 10500,
     sm_clock_mhz: int = 2520,
+    idle_mem_clock_mhz: int = 405,
+    idle_sm_clock_mhz: int = 300,
     bus_bits: int = 384,
     pcie_gen: int = 4,
     pcie_width: int = 16,
 ) -> types.ModuleType:
-    """Build a plausible fake pynvml module (single RTX-4090-ish GPU)."""
+    """Build a plausible fake pynvml module (single RTX-4090-ish GPU).
+
+    `mem_clock_mhz`/`sm_clock_mhz` are the card's RATED clocks, served by
+    nvmlDeviceGetMaxClockInfo. nvmlDeviceGetClockInfo serves the far lower
+    idle clocks a real GPU reports when the profile is built at startup —
+    reading those instead is what made a 448 GB/s card look like a 13 GB/s one.
+    """
     mod = types.ModuleType("pynvml")
 
     class NVMLError(Exception):
@@ -60,6 +87,9 @@ def make_fake_pynvml(
     mod.nvmlDeviceGetCudaComputeCapability = lambda h: compute_capability
     mod.nvmlSystemGetCudaDriverVersion = lambda: 12010
     mod.nvmlDeviceGetClockInfo = (
+        lambda h, clock: idle_mem_clock_mhz if clock == mod.NVML_CLOCK_MEM else idle_sm_clock_mhz
+    )
+    mod.nvmlDeviceGetMaxClockInfo = (
         lambda h, clock: mem_clock_mhz if clock == mod.NVML_CLOCK_MEM else sm_clock_mhz
     )
     mod.nvmlDeviceGetMemoryBusWidth = lambda h: bus_bits
@@ -276,13 +306,14 @@ class TestResolveCudaBinDir:
 
     def test_cuda_path_env_without_bin_is_ignored(self, monkeypatch, tmp_path):
         monkeypatch.setenv("CUDA_PATH", str(tmp_path))  # no bin/ inside
-        # No toolkit anywhere on this host -> None (POSIX default path absent)
+        # CUDA_PATH is ignored, so the answer is whatever the platform default
+        # search finds -- None on a host with no toolkit installed.
         result = CUDA_Engine._resolve_cuda_bin_dir()
-        assert result is None or result == Path("/usr/local/cuda/bin")
+        assert result is None or result == _installed_toolkit_bin_dir()
 
     def test_no_env_no_default_returns_none(self, monkeypatch):
         monkeypatch.delenv("CUDA_PATH", raising=False)
-        if Path("/usr/local/cuda/bin").is_dir():
+        if _installed_toolkit_bin_dir() is not None:
             pytest.skip("host actually has a CUDA toolkit installed")
         assert CUDA_Engine._resolve_cuda_bin_dir() is None
 
@@ -317,10 +348,40 @@ class TestGetHardwareInfo:
             raise RuntimeError("clock query unsupported")
 
         mod.nvmlDeviceGetClockInfo = clock_boom
+        mod.nvmlDeviceGetMaxClockInfo = clock_boom
         monkeypatch.setitem(sys.modules, "pynvml", mod)
         with patch.object(CUDA_Engine, "_get_sm_count", return_value=64):
             info = CUDA_Engine.get_hardware_info()
         assert info["gpu"]["memory_bandwidth_gbs"] == 0.0
+
+    def test_bandwidth_uses_rated_clock_not_idle_clock(self, monkeypatch):
+        """An idle GPU must still be rated at its real bandwidth.
+
+        Regression for the RTX 5060 Ti profile: NVML reported 405 MHz of memory
+        clock on an idle card whose rated clock is 14001, and the profile is
+        built at startup, when the card is idle by definition. Reading the
+        instantaneous clock turned 448 GB/s into 13 GB/s.
+        """
+        mod = make_fake_pynvml(
+            mem_clock_mhz=14001, idle_mem_clock_mhz=405, bus_bits=128
+        )
+        monkeypatch.setitem(sys.modules, "pynvml", mod)
+        with patch.object(CUDA_Engine, "_get_sm_count", return_value=36):
+            info = CUDA_Engine.get_hardware_info()
+        assert info["gpu"]["memory_bandwidth_gbs"] == pytest.approx(448.0)
+
+    def test_bandwidth_falls_back_to_current_clock_when_max_unavailable(self, monkeypatch):
+        """A driver without nvmlDeviceGetMaxClockInfo keeps a usable field."""
+        mod = make_fake_pynvml(idle_mem_clock_mhz=10500)
+
+        def no_max(handle, clock):
+            raise RuntimeError("nvmlDeviceGetMaxClockInfo unsupported")
+
+        mod.nvmlDeviceGetMaxClockInfo = no_max
+        monkeypatch.setitem(sys.modules, "pynvml", mod)
+        with patch.object(CUDA_Engine, "_get_sm_count", return_value=64):
+            info = CUDA_Engine.get_hardware_info()
+        assert info["gpu"]["memory_bandwidth_gbs"] == pytest.approx(1008.0)
 
     def test_no_gpu_fallback_fields(self, no_nvml):
         info = CUDA_Engine.get_hardware_info()
@@ -377,7 +438,14 @@ class TestPerformanceEvaluation:
             "Medium", "Bad", "Very Bad", "Poor", "Terrible",
         }
         pb = result["performance_breakdown"]
-        assert set(pb) >= {"gpu_compute_score", "memory_bandwidth_score", "vram_capacity_score"}
+        # These are the names PerformanceBreakdown reads (hardware/endpoints.py
+        # _build_performance_breakdown). The engine used to publish
+        # gpu_compute_score/vram_capacity_score, which that .get() silently
+        # defaulted to 0.0, so /hardware/detailed reported a 24 GB card with
+        # 69 TFLOPs as compute_score=0, memory_capacity_score=0.
+        assert set(pb) >= {"compute_score", "memory_bandwidth_score", "memory_capacity_score"}
+        assert pb["compute_score"] > 0
+        assert pb["memory_capacity_score"] > 0
 
     def test_turing_architecture_label(self, monkeypatch):
         result = self._eval_with(
@@ -408,6 +476,7 @@ class TestPerformanceEvaluation:
             raise RuntimeError("no clocks")
 
         mod.nvmlDeviceGetClockInfo = clock_boom
+        mod.nvmlDeviceGetMaxClockInfo = clock_boom
         monkeypatch.setitem(sys.modules, "pynvml", mod)
         with patch.object(CUDA_Engine, "_get_sm_count", return_value=128):
             result = CUDA_Engine.get_performance_evaluation()

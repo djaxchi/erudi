@@ -199,7 +199,9 @@ export function KnowledgeBaseProvider({ children }) {
       {showSpinner &&
         (status === "pending" || status === "running") &&
         ReactDOM.createPortal(
-          <div className="fixed bottom-7 left-[1.5%]">
+          // Decorative only: it overlaps the rail's Settings entry, which must
+          // stay clickable while a knowledge base is being built (#347).
+          <div className="fixed bottom-7 left-[1.5%] pointer-events-none">
             <SpinnerDots className="w-6 h-6 text-emerald-400 animate-spin" />
           </div>,
           document.body

@@ -112,6 +112,18 @@ describe("Download widget progress readout", () => {
     expect(screen.getByText("42.4 %")).toBeTruthy();
   });
 
+  it("keeps the bottom-left spinner click-through so it cannot swallow the Settings gear", async () => {
+    // The spinner is fixed over the left rail's bottom-most entry, so without
+    // pointer-events-none elementFromPoint on the gear returns the spinner and
+    // the click never reaches Settings (#347).
+    renderProvider();
+    await startPollAndExpand();
+
+    const overlay = document.querySelector('div.fixed[class*="bottom-7"]');
+    expect(overlay).toBeTruthy();
+    expect(overlay.className).toContain("pointer-events-none");
+  });
+
   it("formats day-scale and minute-scale times and collapses back on demand", async () => {
     statusResponder = () => ({
       ok: true,
