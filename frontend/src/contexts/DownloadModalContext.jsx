@@ -287,7 +287,10 @@ export function DownloadModalProvider({ children }) {
             )}
             {isDownloading && (
               <>
-                <div className="fixed bottom-7 left-[1.5%]">
+                {/* Purely decorative, and it sits on top of the left rail's
+                    bottom-most entry (Settings), so it must not eat the click
+                    that was aimed at the gear behind it (#347). */}
+                <div className="fixed bottom-7 left-[1.5%] pointer-events-none">
                   <SpinnerDots className="w-6 h-6 text-emerald-400 animate-spin" />
                 </div>
                 {/* Offset above the sidebar's bottom edge so the widget never
