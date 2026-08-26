@@ -90,6 +90,46 @@ describe("DragDropArea file removal", () => {
   });
 });
 
+describe("DragDropArea duplicate handling", () => {
+  it("drops a file already in the list instead of counting it twice", async () => {
+    // The submission de-duplicates by path, so a second copy in the list is an
+    // entry that will never be ingested: the header read "Selected Files (3)"
+    // over two distinct files while the confirmation said "2 files" (#350).
+    const onFilesAdded = vi.fn();
+    const { container } = render(<DragDropArea onFilesAdded={onFilesAdded} />);
+
+    fireEvent.drop(dropZone(container), {
+      dataTransfer: { items: undefined, files: [makeFile("a.pdf"), makeFile("b.txt")] },
+    });
+    await waitFor(() => expect(onFilesAdded).toHaveBeenCalledWith(["/abs/a.pdf", "/abs/b.txt"]));
+
+    fireEvent.drop(dropZone(container), {
+      dataTransfer: { items: undefined, files: [makeFile("a.pdf")] },
+    });
+
+    await waitFor(() => expect(screen.getByText(/already in the list/)).toBeTruthy());
+    expect(screen.getByText("Selected Files (2)")).toBeTruthy();
+    expect(screen.getAllByText("a.pdf")).toHaveLength(1);
+    expect(onFilesAdded).toHaveBeenLastCalledWith(["/abs/a.pdf", "/abs/b.txt"]);
+  });
+
+  it("still adds the new files when a batch mixes fresh and duplicate paths", async () => {
+    const onFilesAdded = vi.fn();
+    const { container } = render(<DragDropArea onFilesAdded={onFilesAdded} />);
+
+    await addOneFile(container, onFilesAdded, "a.pdf");
+
+    fireEvent.drop(dropZone(container), {
+      dataTransfer: { items: undefined, files: [makeFile("a.pdf"), makeFile("c.md")] },
+    });
+
+    await waitFor(() =>
+      expect(onFilesAdded).toHaveBeenLastCalledWith(["/abs/a.pdf", "/abs/c.md"])
+    );
+    expect(screen.getByText("Selected Files (2)")).toBeTruthy();
+  });
+});
+
 describe("DragDropArea drag highlight", () => {
   it("highlights on drag enter and clears when the drag leaves", () => {
     const { container } = render(<DragDropArea onFilesAdded={vi.fn()} />);
