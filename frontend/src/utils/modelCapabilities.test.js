@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { canAttachImages, maxImagesForModel, modelSupportsVision } from "./modelCapabilities";
+import {
+  canAttachImages,
+  maxImagesForModel,
+  modelSupportsVision,
+  parseParamSizeB,
+  isVerySmallModel,
+  SMALL_MODEL_PARAM_THRESHOLD_B,
+} from "./modelCapabilities";
 
 describe("canAttachImages", () => {
   it("blocks attaching only when the model explicitly cannot see images", () => {
@@ -63,5 +70,79 @@ describe("modelSupportsVision", () => {
     expect(modelSupportsVision({ supports_vision: null, category: "chat" })).toBe(false);
     expect(modelSupportsVision({})).toBe(false);
     expect(modelSupportsVision({ supports_vision: false, category: "chat" })).toBe(false);
+  });
+});
+
+describe("parseParamSizeB", () => {
+  it("passes a positive number through as billions", () => {
+    expect(parseParamSizeB(0.6)).toBe(0.6);
+    expect(parseParamSizeB(7)).toBe(7);
+  });
+
+  it("parses B-suffixed strings, with decimals and any casing/spacing", () => {
+    expect(parseParamSizeB("0.6B")).toBe(0.6);
+    expect(parseParamSizeB("1.7B")).toBe(1.7);
+    expect(parseParamSizeB("7B")).toBe(7);
+    expect(parseParamSizeB("7b")).toBe(7);
+    expect(parseParamSizeB(" 4.0 B ")).toBe(4);
+  });
+
+  it("parses M-suffixed strings into fractional billions", () => {
+    expect(parseParamSizeB("270M")).toBeCloseTo(0.27);
+    expect(parseParamSizeB("500m")).toBeCloseTo(0.5);
+  });
+
+  it("returns null for unknown, empty, non-positive or malformed values", () => {
+    expect(parseParamSizeB(undefined)).toBeNull();
+    expect(parseParamSizeB(null)).toBeNull();
+    expect(parseParamSizeB("")).toBeNull();
+    expect(parseParamSizeB("Unknown")).toBeNull();
+    expect(parseParamSizeB("B")).toBeNull();
+    expect(parseParamSizeB("7GB")).toBeNull();
+    expect(parseParamSizeB("large")).toBeNull();
+    expect(parseParamSizeB(0)).toBeNull();
+    expect(parseParamSizeB(-3)).toBeNull();
+    expect(parseParamSizeB(NaN)).toBeNull();
+    expect(parseParamSizeB({})).toBeNull();
+  });
+});
+
+describe("isVerySmallModel (#381)", () => {
+  it("exposes the ~4B threshold the QA guidance is based on", () => {
+    expect(SMALL_MODEL_PARAM_THRESHOLD_B).toBe(4);
+  });
+
+  it("flags models strictly below the threshold from the numeric param_size", () => {
+    expect(isVerySmallModel({ param_size: 0.6 })).toBe(true);
+    expect(isVerySmallModel({ param_size: 1.7 })).toBe(true);
+    expect(isVerySmallModel({ param_size: 3.99 })).toBe(true);
+  });
+
+  it("flags models from the parameters string when param_size is absent", () => {
+    expect(isVerySmallModel({ parameters: "0.6B" })).toBe(true);
+    expect(isVerySmallModel({ parameters: "1.7B" })).toBe(true);
+    expect(isVerySmallModel({ parameters: "270M" })).toBe(true);
+  });
+
+  it("does not flag models at or above the threshold", () => {
+    expect(isVerySmallModel({ param_size: 4 })).toBe(false);
+    expect(isVerySmallModel({ param_size: 7 })).toBe(false);
+    expect(isVerySmallModel({ parameters: "4B" })).toBe(false);
+    expect(isVerySmallModel({ parameters: "7B" })).toBe(false);
+    expect(isVerySmallModel({ parameters: "12.0B" })).toBe(false);
+  });
+
+  it("prefers the numeric param_size over the parameters string", () => {
+    expect(isVerySmallModel({ param_size: 8, parameters: "0.6B" })).toBe(false);
+    expect(isVerySmallModel({ param_size: 0.5, parameters: "7B" })).toBe(true);
+  });
+
+  it("never flags a model whose size is unknown", () => {
+    expect(isVerySmallModel(undefined)).toBe(false);
+    expect(isVerySmallModel(null)).toBe(false);
+    expect(isVerySmallModel({})).toBe(false);
+    expect(isVerySmallModel({ parameters: undefined })).toBe(false);
+    expect(isVerySmallModel({ parameters: "Unknown" })).toBe(false);
+    expect(isVerySmallModel({ param_size: null, parameters: null })).toBe(false);
   });
 });
