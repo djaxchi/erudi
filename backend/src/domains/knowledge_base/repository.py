@@ -306,11 +306,20 @@ class KB_Repository:
         return db.query(KBJobModel).filter(KBJobModel.id == job_id).first()
 
     def get_kb_job_by_model_id(
-        self, 
-        db: Session, 
+        self,
+        db: Session,
         model_id: int
     ) -> Optional[KBJobModel]:
-        """Fetch KBJob by new_model_id (specialized LLM).
+        """Fetch the MOST RECENT KBJob by new_model_id (specialized LLM).
+
+        An assistant accumulates one KBJob per creation/update, all sharing
+        the same new_model_id. Without ordering, `.first()` returns whichever
+        row the database happens to hand back first -- typically the OLDEST
+        (the original creation) -- so every later update's real outcome,
+        failure included, was permanently masked behind the first job's
+        status. Reproduced live: an update job that failed with "no
+        searchable content" still reported the original creation's
+        "completed" status, surfacing a false success to the user.
 
         Args:
             db: Database session.
@@ -321,7 +330,7 @@ class KB_Repository:
         """
         return db.query(KBJobModel).filter(
             KBJobModel.new_model_id == model_id
-        ).first()
+        ).order_by(KBJobModel.id.desc()).first()
 
     def update_kb_job_status(
         self,

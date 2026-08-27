@@ -181,6 +181,62 @@ class TestAssistantLifecycle:
         assert test_db_session.query(KnowledgeBase).get(kb_id) is None
         assert service.repo.get_kb_job_by_id(test_db_session, job_id) is not None
 
+    def test_status_reflects_latest_job_not_the_first(
+        self, test_db_session, mock_llm_with_kb
+    ):
+        """An assistant accumulates one KBJob per creation/update, all
+        sharing the same new_model_id. Without ordering by recency, the
+        lookup used to return whichever row the query happened to hand back
+        first -- the original creation job -- so a later update's real
+        outcome (failure included) stayed permanently masked behind that
+        first job's "completed" status. Reproduced live: an update that
+        failed with "no searchable content" still reported success."""
+        llm, kb = mock_llm_with_kb
+        service = KB_Service()
+        first_job = service.repo.create_kb_job(
+            db=test_db_session,
+            base_model_id=llm.id,
+            new_model_id=llm.id,
+            kb_id=kb.id,
+            status="completed",
+        )
+        second_job = service.repo.create_kb_job(
+            db=test_db_session,
+            base_model_id=llm.id,
+            new_model_id=llm.id,
+            kb_id=kb.id,
+        )
+        service.repo.update_kb_job_status(test_db_session, second_job, "failed", "boom")
+        assert first_job.id < second_job.id
+
+        status = service.get_kb_job_status(test_db_session, llm.id)
+
+        assert status["status"] == "failed"
+        assert status["error_message"] == "boom"
+
+    def test_failed_update_job_does_not_delete_the_existing_assistant(
+        self, test_db_session, mock_llm_with_kb
+    ):
+        """A failed UPDATE (base_model_id == new_model_id, see
+        update_existing_kb) must never trigger the create-failure cleanup:
+        the assistant and its KB already existed and worked before this
+        update was attempted -- only a failed CREATION has nothing to lose."""
+        llm, kb = mock_llm_with_kb
+        service = KB_Service()
+        job = service.repo.create_kb_job(
+            db=test_db_session,
+            base_model_id=llm.id,
+            new_model_id=llm.id,
+            kb_id=kb.id,
+        )
+        service.repo.update_kb_job_status(test_db_session, job, "failed", "boom")
+
+        status = service.get_kb_job_status(test_db_session, llm.id)
+
+        assert status["status"] == "failed"
+        assert test_db_session.query(Llm).get(llm.id) is not None
+        assert test_db_session.query(KnowledgeBase).get(kb.id) is not None
+
 
 # ---------------------------------------------------------------------------
 # Real ingestion pipeline (committed session + live vector store)
