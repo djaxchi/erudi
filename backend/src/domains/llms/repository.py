@@ -37,6 +37,44 @@ from src.core.logging import logger
 from src.core import config
 
 
+def dir_size_bytes(path) -> int:
+    """Total size of everything under `path`, or 0 if it does not exist."""
+    total = 0
+    for root, _dirs, files in os.walk(str(path)):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(root, name))
+            except OSError:
+                pass  # vanished mid-walk, or unreadable: not our bytes to count
+    return total
+
+
+def remove_tree_reporting(path, attempts: int = 5, delay: float = 0.4) -> int:
+    """Delete a directory tree; return how many bytes are still there after.
+
+    `shutil.rmtree(..., ignore_errors=True)` is the wrong tool for download
+    artifacts on Windows. POSIX lets you unlink a file another thread still has
+    open, so a cancel that races the downloader cleans up fine there. Windows
+    refuses, rmtree fails, and ignore_errors throws the failure away -- which is
+    how a cancelled 1B download left 230 MB of temp_651 behind while the log
+    said "deleted temp LLM 651".
+
+    Cancellation is only signalled, never awaited, so the downloader may still
+    hold handles for a moment. Retry briefly to let it notice and let go, then
+    report what survived instead of pretending it is gone.
+    """
+    path = str(path)
+    for attempt in range(attempts):
+        if not os.path.exists(path):
+            return 0
+        shutil.rmtree(path, ignore_errors=True)
+        if not os.path.exists(path):
+            return 0
+        if attempt < attempts - 1:
+            time.sleep(delay)
+    return dir_size_bytes(path)
+
+
 class Llm_Repository:
     """Repository for LLM entity database operations.
 
@@ -422,25 +460,34 @@ class Download_Job_Repository:
             Removes files from disk but does not modify database records.
         """
         logger.info(f"Cleaning up files for job {job.id}")
-        
+
+        def _remove(kind: str, path) -> None:
+            if not path or not os.path.exists(str(path)):
+                return
+            left = remove_tree_reporting(path)
+            if left:
+                # Say so. Startup's orphan sweep reclaims temp_* directories on
+                # the next launch, so the bytes are not lost forever -- but a
+                # session that cancels several large downloads holds on to all
+                # of them, and claiming success hid that entirely.
+                logger.warning(
+                    f"Could not remove {kind} for job {job.id}: {path} "
+                    f"({left} bytes still on disk; startup cleanup will reclaim it)"
+                )
+            else:
+                logger.debug(f"Removed {kind}: {path}")
+
         # Clean temp directory
         if job.temp_local_model_link and job.temp_local_model_link != "":
-            if os.path.exists(job.temp_local_model_link):
-                shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
-                logger.debug(f"Removed temp directory: {job.temp_local_model_link}")
-            
+            _remove("temp directory", job.temp_local_model_link)
+
             # Also check for temp_{id} pattern if not already in path
             if "temp" not in job.temp_local_model_link and job.local_model_id:
-                temp_fallback = config.LLM_DIR / f"temp_{job.local_model_id}"
-                if temp_fallback.exists():
-                    shutil.rmtree(temp_fallback, ignore_errors=True)
-                    logger.debug(f"Removed temp fallback: {temp_fallback}")
-        
+                _remove("temp fallback", config.LLM_DIR / f"temp_{job.local_model_id}")
+
         # Clean final directory
         if job.final_local_model_link and job.final_local_model_link != "":
-            if os.path.exists(job.final_local_model_link):
-                shutil.rmtree(job.final_local_model_link, ignore_errors=True)
-                logger.debug(f"Removed final directory: {job.final_local_model_link}")
+            _remove("final directory", job.final_local_model_link)
 
 
 def detect_supports_tools(local_path: Optional[str]) -> Optional[bool]:

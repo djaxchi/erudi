@@ -83,6 +83,7 @@ from src.utils.hf_model_metadata import (
     ParameterScale,
 )
 from src.domains.hardware.repository import Hardware_Repository
+from src.domains.llms.repository import dir_size_bytes, remove_tree_reporting
 from src.domains.hardware.services import Hardware_Service
 from src.engines.model_resolver import resolve_quant, base_key
 from src.database.catalog_classify import (
@@ -932,8 +933,26 @@ class Job_Cleanup_Service:
 
                 # Delete temp files. The staging dir is scratch space in every
                 # case: on a rescue its contents were already moved into place.
+                #
+                # On a TRUNCATED download this is where nearly all the bytes are:
+                # killing the app at 26% of a 4.7 GB model left an empty final
+                # dir and 1.28 GB of staging, so the line above announced
+                # "reclaiming ~0.00 GB" and this deleted the real 1.28 GB without
+                # a word. Measure and name it too -- the comment above already
+                # asks for exactly that.
                 if job.temp_local_model_link and os.path.exists(job.temp_local_model_link):
-                    shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
+                    staged = dir_size_bytes(job.temp_local_model_link)
+                    logger.info(
+                        f"Download job {job.id}: removing staging directory "
+                        f"{job.temp_local_model_link} (reclaiming {staged} bytes)"
+                    )
+                    left = remove_tree_reporting(job.temp_local_model_link)
+                    if left:
+                        logger.warning(
+                            f"Download job {job.id}: staging directory "
+                            f"{job.temp_local_model_link} not fully removed "
+                            f"({left} bytes still on disk)"
+                        )
 
                 # The temp Llm delete above nulls local_model_id server-side
                 # (FK SET NULL); updated_at is stamped by onupdate=func.now().
@@ -1034,42 +1053,59 @@ class Job_Cleanup_Service:
         # Scan and cleanup orphaned directories
         cleaned_count = 0
         temp_cleaned_count = 0
-        
+        reclaimed_bytes = 0
+
+        def _sweep(item, kind: str) -> bool:
+            """Remove one directory, reporting its path and the bytes it freed.
+
+            Deleting a user's multi-gigabyte artifacts must never be silent: the
+            log has to name the path and the size so a surprised user can see
+            what went and how much came back.
+            """
+            nonlocal reclaimed_bytes
+            size = dir_size_bytes(item)
+            logger.info(f"Removing {kind}: {item} ({size} bytes)")
+            try:
+                left = remove_tree_reporting(item)
+            except Exception as e:
+                logger.error(f"Failed to remove {kind} {item.name}: {e}")
+                return False
+            if left:
+                logger.error(
+                    f"Failed to remove {kind} {item.name}: {left} bytes still on disk"
+                )
+                return False
+            reclaimed_bytes += size
+            return True
+
         try:
             for item in models_dir.iterdir():
                 if not item.is_dir():
                     continue
-                
+
                 dir_name = item.name
-                
+
                 # Cleanup temp directories (they start with "temp_")
                 if dir_name.startswith("temp_"):
-                    logger.info(f"Removing temporary model directory: {dir_name}")
-                    try:
-                        shutil.rmtree(item, ignore_errors=True)
+                    if _sweep(item, "temporary model directory"):
                         temp_cleaned_count += 1
-                    except Exception as e:
-                        logger.error(f"Failed to remove temp model {dir_name}: {e}")
                     continue
-                
+
                 # Cleanup orphaned model directories
                 if dir_name not in valid_model_ids:
-                    logger.info(f"Removing orphaned model directory: {dir_name}")
-                    try:
-                        shutil.rmtree(item, ignore_errors=True)
+                    if _sweep(item, "orphaned model directory"):
                         cleaned_count += 1
-                    except Exception as e:
-                        logger.error(f"Failed to remove orphaned model {dir_name}: {e}")
-            
+
             total_cleaned = cleaned_count + temp_cleaned_count
             if total_cleaned > 0:
                 logger.info(
                     f"Cleaned up {cleaned_count} orphaned model(s) and "
-                    f"{temp_cleaned_count} temp directory(ies)"
+                    f"{temp_cleaned_count} temp directory(ies), "
+                    f"reclaiming {reclaimed_bytes} bytes"
                 )
             else:
                 logger.debug("No orphaned models or temp directories found")
-            
+
             return total_cleaned
             
         except FileSystemException as e:

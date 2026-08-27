@@ -698,6 +698,36 @@ class TestJobCleanup:
         assert str(model_dir) in messages
         assert "reclaiming" in messages
 
+    def test_download_cleanup_reports_the_staging_directory_too(
+        self, test_db_session, tmp_path, monkeypatch, caplog
+    ):
+        """On a truncated download almost all the bytes are in staging.
+
+        Killing the app at 26% of a 4.7 GB model left an EMPTY final directory
+        and 1.28 GB of staging. The delete line measured only the final one, so
+        the log announced "reclaiming ~0.00 GB" and the real 1.28 GB went
+        without a word -- the opposite of what the comment above it asks for.
+        """
+        monkeypatch.setattr(config, "LLM_Engine", _RejectingEngine)
+        final_dir = tmp_path / "model-903"
+        final_dir.mkdir()  # left empty, exactly like the observed case
+        staging = tmp_path / "temp_903"
+        staging.mkdir()
+        (staging / "shard.gguf").write_bytes(b"x" * 4096)
+
+        llm = Llm(name="Truncated", local=2, link=str(final_dir), type="x")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        self._download_job(test_db_session, llm_id=llm.id, temp_dir=str(staging))
+
+        with caplog.at_level("INFO"):
+            Job_Cleanup_Service(test_db_session)._cleanup_download_jobs()
+
+        messages = " ".join(r.getMessage() for r in caplog.records)
+        assert str(staging) in messages, "the staging path must be named"
+        assert "4096 bytes" in messages, "and the bytes it actually freed"
+        assert not staging.exists()
+
     def _kb_job(self, db, base_id, new_id, kb_id, status="running"):
         job = KBJobModel(
             base_model_id=base_id, new_model_id=new_id, kb_id=kb_id, status=status
