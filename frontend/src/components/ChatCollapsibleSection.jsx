@@ -2,12 +2,15 @@ import React, { useState } from "react";
 import PropTypes from "prop-types";
 import { ChevronDown, ChevronRight, RefreshCcw, Plus, Edit3, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import ErrorModal from "./modals/ErrorModal";
 import { API_BASE_URL } from "../config/api.js";
 import { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 const log = createLogger("ChatCollapsibleSection");
+// Route of the new-chat screen (mirrors the Sidebar link).
+const CHAT_PATH = "/erudi/chat";
 
 ChatCollapsibleSection.propTypes = {
   title: PropTypes.string.isRequired,
@@ -45,6 +48,7 @@ export default function ChatCollapsibleSection({
   onRefresh,
   disabled = false,
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [tempName, setTempName] = useState("");
@@ -68,7 +72,7 @@ export default function ChatCollapsibleSection({
       onRename?.(id, name);
     } catch (err) {
       log.error(err);
-      alert("Could not rename conversation, try again: " + err.message);
+      alert(t("chat:history.renameFailed", { error: err.message }));
     } finally {
       setEditingId(null);
     }
@@ -92,7 +96,7 @@ export default function ChatCollapsibleSection({
       onDelete?.(id);
     } catch (err) {
       log.error(err);
-      alert("Deleting conversation failed: " + err.message);
+      alert(t("chat:history.deleteFailed", { error: err.message }));
     } finally {
       setEditingId(null);
     }
@@ -107,7 +111,7 @@ export default function ChatCollapsibleSection({
       );
     }
 
-    if (title === "Previous Chats" && items.length > 0) {
+    if (items.length > 0) {
       return items.map((conv) => {
         const isSelected = selectedId === conv.id;
         const isEditing = editingId === conv.id;
@@ -151,7 +155,7 @@ export default function ChatCollapsibleSection({
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-2 opacity-0 group-hover:opacity-100">
               <Edit3
                 role="button"
-                aria-label="Rename conversation"
+                aria-label={t("chat:history.renameConversation")}
                 onClick={(e) => {
                   e.stopPropagation();
                   setEditingId(conv.id);
@@ -161,7 +165,7 @@ export default function ChatCollapsibleSection({
               />
               <X
                 role="button"
-                aria-label="Delete conversation"
+                aria-label={t("chat:history.deleteConversation")}
                 onClick={(e) => {
                   e.stopPropagation();
                   setPendingDeleteId(conv.id);
@@ -175,11 +179,34 @@ export default function ChatCollapsibleSection({
       });
     }
 
-    return <p className="italic">Nothing here…</p>;
+    return <p className="italic">{t("chat:history.empty")}</p>;
   };
 
   const closeErrorModal = () => {
     setErrorMessage("");
+  };
+
+  const handleRefresh = async (e) => {
+    e.stopPropagation();
+    setLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    try {
+      await onRefresh?.();
+    } catch (err) {
+      log.error("Failed to refresh conversations:", err);
+      setErrorMessage(
+        t("chat:errors.refreshConversations", {
+          error: err.message || t("chat:errors.network"),
+        })
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNewChat = (e) => {
+    e.stopPropagation();
+    navigate(CHAT_PATH);
   };
 
   return (
@@ -198,32 +225,15 @@ export default function ChatCollapsibleSection({
         <div className="flex gap-3">
           <RefreshCcw
             role="button"
-            aria-label="Refresh conversations"
+            aria-label={t("chat:history.refreshConversations")}
             className="w-6 h-6 hover:opacity-70 hover:bg-gray-600/30 rounded-full p-1 -m-1 cursor-pointer"
-            onClick={async (e) => {
-              e.stopPropagation();
-              setLoading(true);
-              await new Promise((resolve) => setTimeout(resolve, 300));
-              try {
-                await onRefresh?.();
-              } catch (err) {
-                log.error("Failed to refresh conversations:", err);
-                setErrorMessage(
-                  `Failed to refresh conversations: ${err.message || "Network error"}`
-                );
-              } finally {
-                setLoading(false);
-              }
-            }}
+            onClick={handleRefresh}
           />
           <Plus
             role="button"
-            aria-label="New chat"
+            aria-label={t("chat:history.newChat")}
             className="w-6 h-6 hover:opacity-70 hover:bg-gray-600/30 rounded-full p-1 -m-1 cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate("/erudi/chat");
-            }}
+            onClick={handleNewChat}
           />
         </div>
       </div>
@@ -239,16 +249,14 @@ export default function ChatCollapsibleSection({
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-[#272727] text-white rounded-lg p-6 w-full max-w-sm shadow-lg">
-            <h2 className="text-lg font-semibold mb-4">
-              Are you sure to delete this conversation ?
-            </h2>
-            <p className="text-sm mb-6">This action is irreversible.</p>
+            <h2 className="text-lg font-semibold mb-4">{t("chat:history.deleteConfirmTitle")}</h2>
+            <p className="text-sm mb-6">{t("chat:history.deleteConfirmBody")}</p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
                 className="px-4 py-2 text-sm bg-gray-600 hover:bg-gray-700 rounded"
               >
-                Cancel
+                {t("common:actions.cancel")}
               </button>
               <button
                 onClick={() => {
@@ -257,7 +265,7 @@ export default function ChatCollapsibleSection({
                 }}
                 className="px-4 py-2 text-sm bg-red-600 hover:bg-red-700 rounded"
               >
-                Delete
+                {t("common:actions.delete")}
               </button>
             </div>
           </div>

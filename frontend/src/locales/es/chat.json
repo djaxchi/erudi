@@ -1,1 +1,98 @@
-{}
+{
+  "history": {
+    "title": "Historial",
+    "previousChats": "Chats anteriores",
+    "empty": "Nada por aquí…",
+    "newChat": "Nuevo chat",
+    "refreshConversations": "Actualizar conversaciones",
+    "renameConversation": "Renombrar conversación",
+    "deleteConversation": "Eliminar conversación",
+    "deleteConfirmTitle": "¿Seguro que quieres eliminar esta conversación?",
+    "deleteConfirmBody": "Esta acción es irreversible.",
+    "renameFailed": "No se pudo renombrar la conversación, inténtalo de nuevo: {{error}}",
+    "deleteFailed": "No se pudo eliminar la conversación: {{error}}"
+  },
+  "header": {
+    "chatWith": "Chatear con",
+    "selectModel": "Seleccionar modelo",
+    "selectModelPlaceholder": "Seleccionar modelo...",
+    "toggleSettings": "Mostrar u ocultar ajustes",
+    "creativity": "Creatividad",
+    "diversity": "Diversidad",
+    "maxTokens": "Tokens máx.",
+    "webSearch": "Búsqueda web",
+    "webSearchToggle": "Búsqueda web",
+    "customizePrompt": "Personalizar instrucciones",
+    "apply": "Aplicar",
+    "pickerAttention": "Selecciona un modelo",
+    "tooltips": {
+      "temperature": "Controla la creatividad. Más bajo = preciso, más alto = creativo.",
+      "topP": "Controla la variedad de palabras. Más bajo = predecible, más alto = variado.",
+      "prompt": "Personaliza las instrucciones del sistema que guían el comportamiento de la IA.",
+      "webSearch": "Permite que el modelo busque en la web información actual. Las consultas de búsqueda se envían a motores de búsqueda externos."
+    }
+  },
+  "composer": {
+    "placeholder": "Haz una pregunta…",
+    "placeholderNew": "Pregúntame lo que quieras...",
+    "attachImage": "Adjuntar imagen",
+    "attachImageHint": "Adjuntar imagen (o pegar / arrastrar y soltar)",
+    "addImage": "Añadir imagen",
+    "addAnotherImage": "Añadir otra imagen",
+    "removeImage": "Quitar imagen",
+    "attachmentAlt": "adjunto {{index}}",
+    "errors": {
+      "unsupportedFormat": "Ese formato no es compatible. Usa PNG, JPG, WebP, GIF o BMP.",
+      "tooLarge": "Esa imagen es demasiado grande (máx. 20 MB).",
+      "tooMany_one": "Puedes adjuntar hasta {{count}} imagen con este modelo.",
+      "tooMany_other": "Puedes adjuntar hasta {{count}} imágenes con este modelo.",
+      "unreadable": "No se pudo leer esa imagen. Prueba con otro archivo."
+    }
+  },
+  "message": {
+    "firstReplyHint": "La primera respuesta puede tardar un poco más mientras el modelo se carga en memoria...",
+    "imagePlaceholder": "🖼 imagen adjunta",
+    "attachmentAlt": "adjunto {{index}}",
+    "copy": "Copiar mensaje",
+    "star": "Destacar mensaje"
+  },
+  "conversation": {
+    "untitled": "Nueva conversación"
+  },
+  "trace": {
+    "summary": "Razonamiento",
+    "summaryWithSteps_one": "Razonamiento — {{count}} paso",
+    "summaryWithSteps_other": "Razonamiento — {{count}} pasos",
+    "show": "Mostrar razonamiento",
+    "hide": "Ocultar razonamiento",
+    "truncated": "(pasos anteriores omitidos)"
+  },
+  "prompt": {
+    "title": "Personalizar instrucciones del sistema",
+    "description": "Define instrucciones personalizadas que guíen cómo responde la IA. Se aplicarán a todos los mensajes de esta conversación.",
+    "placeholder": "Escribe aquí tus instrucciones del sistema personalizadas...",
+    "saveChanges": "Guardar cambios"
+  },
+  "download": {
+    "confirmTitle": "¿Seguro que quieres descargar <model>{{name}}</model>?",
+    "confirmBody": "Se instalará localmente en tu sistema."
+  },
+  "empty": {
+    "noModels": "No se encontraron modelos locales. Añade modelos locales para continuar."
+  },
+  "languageNote": {
+    "title": "Nota sobre el idioma",
+    "body": "Los modelos base se han entrenado masivamente con datos en inglés. Obtendrás resultados bastante mejores si chateas en inglés.",
+    "frenchAside": "Para quienes hablan español, será un buen entrenamiento :)"
+  },
+  "errors": {
+    "network": "Error de red",
+    "loadModels": "No se pudieron cargar los modelos: {{error}}",
+    "loadConversations": "No se pudieron cargar las conversaciones: {{error}}",
+    "refreshConversations": "No se pudieron actualizar las conversaciones: {{error}}",
+    "startConversation": "No se pudo iniciar la conversación: {{error}}",
+    "createConversation": "No se pudo crear la conversación",
+    "generationFailed": "Lo siento, se produjo un error al generar la respuesta. Vuelve a hacer tu pregunta.",
+    "connectionInterrupted": "La conexión se interrumpió mientras se generaba la respuesta."
+  }
+}

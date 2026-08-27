@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "react-i18next";
 
 CustomizePromptModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
@@ -13,13 +14,9 @@ CustomizePromptModal.defaultProps = {
   initialPrompt: "",
 };
 
-export default function CustomizePromptModal({
-  isOpen,
-  onClose,
-  customPrompt,
-  onSave,
-  title = "Customize System Prompt",
-}) {
+export default function CustomizePromptModal({ isOpen, onClose, customPrompt, onSave, title }) {
+  const { t } = useTranslation();
+  const heading = title ?? t("chat:prompt.title");
   const [localPrompt, setLocalPrompt] = useState(customPrompt);
 
   // Update local state when the prop changes (when switching conversations)
@@ -76,7 +73,7 @@ export default function CustomizePromptModal({
               <div className="relative z-10 p-6">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-semibold tracking-tight text-[#F2F7F4]">{title}</h2>
+                  <h2 className="text-xl font-semibold tracking-tight text-[#F2F7F4]">{heading}</h2>
                   <button
                     onClick={onClose}
                     className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-gray-300 hover:text-gray-100 transition"
@@ -93,10 +90,7 @@ export default function CustomizePromptModal({
                 </div>
 
                 {/* Description */}
-                <p className="text-sm text-gray-300/80 mb-4">
-                  Define custom instructions that guide how the AI responds. This will be applied to
-                  all messages in this conversation.
-                </p>
+                <p className="text-sm text-gray-300/80 mb-4">{t("chat:prompt.description")}</p>
 
                 {/* Textarea */}
                 <div className="mb-6">
@@ -110,7 +104,7 @@ export default function CustomizePromptModal({
                     ].join(" ")}
                     value={localPrompt}
                     onChange={(e) => setLocalPrompt(e.target.value)}
-                    placeholder="Enter your custom system prompt here..."
+                    placeholder={t("chat:prompt.placeholder")}
                   />
                 </div>
 
@@ -125,7 +119,7 @@ export default function CustomizePromptModal({
                       "transition active:scale-95",
                     ].join(" ")}
                   >
-                    Cancel
+                    {t("common:actions.cancel")}
                   </button>
                   <button
                     onClick={handleSave}
@@ -136,7 +130,7 @@ export default function CustomizePromptModal({
                       "transition active:scale-95",
                     ].join(" ")}
                   >
-                    Save Changes
+                    {t("chat:prompt.saveChanges")}
                   </button>
                 </div>
               </div>

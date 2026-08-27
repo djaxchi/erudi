@@ -1,1 +1,98 @@
-{}
+{
+  "history": {
+    "title": "历史记录",
+    "previousChats": "过往聊天",
+    "empty": "这里还没有内容…",
+    "newChat": "新聊天",
+    "refreshConversations": "刷新对话",
+    "renameConversation": "重命名对话",
+    "deleteConversation": "删除对话",
+    "deleteConfirmTitle": "确定要删除这个对话吗？",
+    "deleteConfirmBody": "此操作无法撤销。",
+    "renameFailed": "无法重命名对话，请重试：{{error}}",
+    "deleteFailed": "删除对话失败：{{error}}"
+  },
+  "header": {
+    "chatWith": "聊天对象",
+    "selectModel": "选择模型",
+    "selectModelPlaceholder": "选择模型...",
+    "toggleSettings": "显示或隐藏设置",
+    "creativity": "创造力",
+    "diversity": "多样性",
+    "maxTokens": "最大 token 数",
+    "webSearch": "网页搜索",
+    "webSearchToggle": "网页搜索",
+    "customizePrompt": "自定义提示词",
+    "apply": "应用",
+    "pickerAttention": "请选择一个模型",
+    "tooltips": {
+      "temperature": "控制创造力。越低越专注，越高越有创意。",
+      "topP": "控制用词的多样性。越低越可预测，越高越丰富。",
+      "prompt": "自定义引导 AI 行为的系统提示词。",
+      "webSearch": "允许模型搜索网页以获取最新信息。搜索查询会发送给外部搜索引擎。"
+    }
+  },
+  "composer": {
+    "placeholder": "提出一个问题…",
+    "placeholderNew": "有什么想问的...",
+    "attachImage": "附加图片",
+    "attachImageHint": "附加图片（或粘贴 / 拖放）",
+    "addImage": "添加图片",
+    "addAnotherImage": "再添加一张图片",
+    "removeImage": "移除图片",
+    "attachmentAlt": "附件 {{index}}",
+    "errors": {
+      "unsupportedFormat": "不支持该格式。请使用 PNG、JPG、WebP、GIF 或 BMP。",
+      "tooLarge": "该图片过大（最大 20 MB）。",
+      "tooMany_one": "使用此模型最多可附加 {{count}} 张图片。",
+      "tooMany_other": "使用此模型最多可附加 {{count}} 张图片。",
+      "unreadable": "无法读取该图片。请尝试其他文件。"
+    }
+  },
+  "message": {
+    "firstReplyHint": "首次回复可能会稍慢一些，因为模型正在加载到内存中...",
+    "imagePlaceholder": "🖼 图片附件",
+    "attachmentAlt": "附件 {{index}}",
+    "copy": "复制消息",
+    "star": "收藏消息"
+  },
+  "conversation": {
+    "untitled": "新对话"
+  },
+  "trace": {
+    "summary": "推理过程",
+    "summaryWithSteps_one": "推理过程 — {{count}} 步",
+    "summaryWithSteps_other": "推理过程 — {{count}} 步",
+    "show": "显示推理过程",
+    "hide": "隐藏推理过程",
+    "truncated": "（已省略较早的步骤）"
+  },
+  "prompt": {
+    "title": "自定义系统提示词",
+    "description": "定义引导 AI 回答方式的自定义指令。这将应用于此对话中的所有消息。",
+    "placeholder": "在此输入您的自定义系统提示词...",
+    "saveChanges": "保存更改"
+  },
+  "download": {
+    "confirmTitle": "确定要下载 <model>{{name}}</model> 吗？",
+    "confirmBody": "它将安装在您的本地系统上。"
+  },
+  "empty": {
+    "noModels": "未找到本地模型，请先添加本地模型。"
+  },
+  "languageNote": {
+    "title": "关于语言的说明",
+    "body": "基础模型主要使用英文数据训练。用英文聊天会获得明显更好的效果。",
+    "frenchAside": "对中文用户来说，这也是练习英文的好机会 :)"
+  },
+  "errors": {
+    "network": "网络错误",
+    "loadModels": "加载模型失败：{{error}}",
+    "loadConversations": "加载对话失败：{{error}}",
+    "refreshConversations": "刷新对话失败：{{error}}",
+    "startConversation": "开始对话失败：{{error}}",
+    "createConversation": "创建对话失败",
+    "generationFailed": "抱歉，生成回复时出现错误。请重新提问。",
+    "connectionInterrupted": "生成回复时连接中断。"
+  }
+}

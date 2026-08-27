@@ -1,1 +1,98 @@
-{}
+{
+  "history": {
+    "title": "Historique",
+    "previousChats": "Discussions précédentes",
+    "empty": "Rien ici…",
+    "newChat": "Nouvelle discussion",
+    "refreshConversations": "Actualiser les conversations",
+    "renameConversation": "Renommer la conversation",
+    "deleteConversation": "Supprimer la conversation",
+    "deleteConfirmTitle": "Voulez-vous vraiment supprimer cette conversation ?",
+    "deleteConfirmBody": "Cette action est irréversible.",
+    "renameFailed": "Impossible de renommer la conversation, réessayez : {{error}}",
+    "deleteFailed": "La suppression de la conversation a échoué : {{error}}"
+  },
+  "header": {
+    "chatWith": "Discuter avec",
+    "selectModel": "Sélectionner un modèle",
+    "selectModelPlaceholder": "Sélectionner un modèle...",
+    "toggleSettings": "Afficher ou masquer les réglages",
+    "creativity": "Créativité",
+    "diversity": "Diversité",
+    "maxTokens": "Tokens max",
+    "webSearch": "Recherche web",
+    "webSearchToggle": "Recherche web",
+    "customizePrompt": "Personnaliser les instructions",
+    "apply": "Appliquer",
+    "pickerAttention": "Veuillez sélectionner un modèle",
+    "tooltips": {
+      "temperature": "Contrôle la créativité. Plus bas = ciblé, plus haut = créatif.",
+      "topP": "Contrôle la variété des mots. Plus bas = prévisible, plus haut = varié.",
+      "prompt": "Personnalisez les instructions système qui guident le comportement de l'IA.",
+      "webSearch": "Permet au modèle de chercher sur le web des informations récentes. Les requêtes de recherche sont envoyées à des moteurs de recherche externes."
+    }
+  },
+  "composer": {
+    "placeholder": "Posez une question…",
+    "placeholderNew": "Demandez-moi ce que vous voulez...",
+    "attachImage": "Joindre une image",
+    "attachImageHint": "Joindre une image (ou coller / glisser-déposer)",
+    "addImage": "Ajouter une image",
+    "addAnotherImage": "Ajouter une autre image",
+    "removeImage": "Retirer l'image",
+    "attachmentAlt": "pièce jointe {{index}}",
+    "errors": {
+      "unsupportedFormat": "Ce format n'est pas pris en charge. Utilisez PNG, JPG, WebP, GIF ou BMP.",
+      "tooLarge": "Cette image est trop volumineuse (20 Mo max).",
+      "tooMany_one": "Vous pouvez joindre jusqu'à {{count}} image avec ce modèle.",
+      "tooMany_other": "Vous pouvez joindre jusqu'à {{count}} images avec ce modèle.",
+      "unreadable": "Cette image n'a pas pu être lue. Essayez un autre fichier."
+    }
+  },
+  "message": {
+    "firstReplyHint": "La première réponse peut prendre un peu plus de temps pendant le chargement du modèle en mémoire...",
+    "imagePlaceholder": "🖼 image jointe",
+    "attachmentAlt": "pièce jointe {{index}}",
+    "copy": "Copier le message",
+    "star": "Mettre le message en favori"
+  },
+  "conversation": {
+    "untitled": "Nouvelle conversation"
+  },
+  "trace": {
+    "summary": "Raisonnement",
+    "summaryWithSteps_one": "Raisonnement — {{count}} étape",
+    "summaryWithSteps_other": "Raisonnement — {{count}} étapes",
+    "show": "Afficher le raisonnement",
+    "hide": "Masquer le raisonnement",
+    "truncated": "(étapes précédentes omises)"
+  },
+  "prompt": {
+    "title": "Personnaliser les instructions système",
+    "description": "Définissez des instructions personnalisées qui guident les réponses de l'IA. Elles s'appliqueront à tous les messages de cette conversation.",
+    "placeholder": "Saisissez vos instructions système personnalisées ici...",
+    "saveChanges": "Enregistrer les modifications"
+  },
+  "download": {
+    "confirmTitle": "Voulez-vous vraiment télécharger <model>{{name}}</model> ?",
+    "confirmBody": "Il sera installé localement sur votre système."
+  },
+  "empty": {
+    "noModels": "Aucun modèle local trouvé. Ajoutez des modèles locaux pour continuer."
+  },
+  "languageNote": {
+    "title": "Remarque sur la langue",
+    "body": "Les modèles de base ont été massivement entraînés sur des données en anglais. Vous obtiendrez de bien meilleurs résultats en discutant en anglais.",
+    "frenchAside": "Pour les français, ça vous fera de l'entraînement :)"
+  },
+  "errors": {
+    "network": "Erreur réseau",
+    "loadModels": "Impossible de charger les modèles : {{error}}",
+    "loadConversations": "Impossible de charger les conversations : {{error}}",
+    "refreshConversations": "Impossible d'actualiser les conversations : {{error}}",
+    "startConversation": "Impossible de démarrer la conversation : {{error}}",
+    "createConversation": "La création de la conversation a échoué",
+    "generationFailed": "Je suis désolé, une erreur est survenue lors de la génération de la réponse. Veuillez reposer votre question.",
+    "connectionInterrupted": "Connexion interrompue pendant la génération de la réponse."
+  }
+}
