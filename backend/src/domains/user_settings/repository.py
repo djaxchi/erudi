@@ -6,7 +6,7 @@ mutations flushed (not committed) so the caller controls the transaction.
 
 from sqlalchemy.orm import Session
 
-from src.entities.UserSettings import UserSettings
+from src.entities.UserSettings import DEFAULT_LANGUAGE, UserSettings
 from src.core.logging import logger
 
 
@@ -27,12 +27,12 @@ class User_Settings_Repository:
 
         Returns:
             UserSettings: The singleton settings entity (defaults applied on
-            first creation: web_search_enabled=False).
+            first creation: web_search_enabled=False, language="en").
         """
         settings = self.db.query(UserSettings).first()
         if not settings:
             logger.info("UserSettings not found, creating singleton with defaults")
-            settings = UserSettings(web_search_enabled=False)
+            settings = UserSettings(web_search_enabled=False, language=DEFAULT_LANGUAGE)
             self.db.add(settings)
             self.db.flush()
             self.db.refresh(settings)
@@ -59,6 +59,22 @@ class User_Settings_Repository:
         """
         logger.info(f"Updating UserSettings.web_search_enabled = {value}")
         settings.web_search_enabled = value
+        self.db.flush()
+        self.db.refresh(settings)
+        return settings
+
+    def set_language(self, settings: UserSettings, value: str) -> UserSettings:
+        """Update the interface language (flushed, not committed).
+
+        Args:
+            settings: The singleton entity to update.
+            value: One of the supported language codes (validated by the entity).
+
+        Returns:
+            UserSettings: Updated entity.
+        """
+        logger.info(f"Updating UserSettings.language = {value}")
+        settings.language = value
         self.db.flush()
         self.db.refresh(settings)
         return settings

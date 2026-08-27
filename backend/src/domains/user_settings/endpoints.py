@@ -1,7 +1,8 @@
 """FastAPI endpoints for the user-settings singleton (issue #310).
 
 GET/PUT ``/erudi/user_settings/``: the app-wide settings the frontend's
-Settings page binds to. Today: the global web-search default. Follows the
+Settings page binds to: the global web-search default (#310) and the
+interface language (#385). Follows the
 startup domain's layering (endpoints -> repository) — the resource is a
 one-row singleton with no business logic beyond get-or-create.
 """
@@ -32,7 +33,7 @@ async def get_user_settings(
     """Fetch the user-settings singleton (created with defaults on first read).
 
     Example:
-        GET /erudi/user_settings/ -> {"web_search_enabled": false}
+        GET /erudi/user_settings/ -> {"web_search_enabled": false, "language": "en"}
     """
     try:
         settings = settings_repo.get_or_create()
@@ -50,18 +51,22 @@ async def update_user_settings(
     settings_repo: User_Settings_Repository = Depends(get_user_settings_repository),
     db: Session = Depends(get_db),
 ):
-    """Update the user-settings singleton.
+    """Update the user-settings singleton (partial: omitted fields are kept).
 
     Example:
-        PUT /erudi/user_settings/ {"web_search_enabled": true}
-        -> {"web_search_enabled": true}
+        PUT /erudi/user_settings/ {"language": "fr"}
+        -> {"web_search_enabled": false, "language": "fr"}
     """
     try:
         settings = settings_repo.get_or_create()
-        settings_repo.set_web_search_enabled(settings, payload.web_search_enabled)
+        if payload.web_search_enabled is not None:
+            settings_repo.set_web_search_enabled(settings, payload.web_search_enabled)
+        if payload.language is not None:
+            settings_repo.set_language(settings, payload.language)
         db.commit()
         logger.info(
-            f"User settings updated: web_search_enabled={payload.web_search_enabled}"
+            "User settings updated: "
+            f"web_search_enabled={settings.web_search_enabled} language={settings.language}"
         )
         return settings
     except Exception as e:

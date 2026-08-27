@@ -37,6 +37,18 @@ class TestUserSettingsEntity:
         with pytest.raises(ValueError):
             settings.web_search_enabled = "yes"
 
+    def test_default_language_is_english(self, test_db_session):
+        settings = UserSettings()
+        test_db_session.add(settings)
+        test_db_session.commit()
+        test_db_session.refresh(settings)
+        assert settings.language == "en"
+
+    def test_language_validator_rejects_unknown_code(self):
+        settings = UserSettings()
+        with pytest.raises(ValueError):
+            settings.language = "de"
+
 
 # ============ Repository ============
 
@@ -70,6 +82,13 @@ class TestUserSettingsRepository:
         repo = User_Settings_Repository(test_db_session)
         assert repo.get_web_search_enabled() is False
 
+    def test_set_language(self, test_db_session):
+        repo = User_Settings_Repository(test_db_session)
+        settings = repo.get_or_create()
+        repo.set_language(settings, "fr")
+        test_db_session.commit()
+        assert repo.get_or_create().language == "fr"
+
 
 # ============ Endpoints ============
 
@@ -78,16 +97,17 @@ class TestUserSettingsEndpoints:
     def test_get_returns_defaults(self, client):
         response = client.get("/erudi/user_settings/")
         assert response.status_code == 200
-        assert response.json() == {"web_search_enabled": False}
+        assert response.json() == {"web_search_enabled": False, "language": "en"}
 
     def test_put_updates_and_persists(self, client):
         response = client.put(
             "/erudi/user_settings/", json={"web_search_enabled": True}
         )
         assert response.status_code == 200
-        assert response.json() == {"web_search_enabled": True}
+        assert response.json() == {"web_search_enabled": True, "language": "en"}
         assert client.get("/erudi/user_settings/").json() == {
-            "web_search_enabled": True
+            "web_search_enabled": True,
+            "language": "en",
         }
 
     def test_put_back_to_false(self, client):
@@ -95,11 +115,34 @@ class TestUserSettingsEndpoints:
         response = client.put(
             "/erudi/user_settings/", json={"web_search_enabled": False}
         )
-        assert response.json() == {"web_search_enabled": False}
+        assert response.json()["web_search_enabled"] is False
 
     def test_put_rejects_missing_field(self, client):
         response = client.put("/erudi/user_settings/", json={})
         assert response.status_code == 422
+
+    @pytest.mark.parametrize("code", ["en", "fr", "es", "zh"])
+    def test_put_language_persists(self, client, code):
+        response = client.put("/erudi/user_settings/", json={"language": code})
+        assert response.status_code == 200, response.text
+        assert response.json()["language"] == code
+        assert client.get("/erudi/user_settings/").json()["language"] == code
+
+    def test_put_language_leaves_web_search_untouched(self, client):
+        client.put("/erudi/user_settings/", json={"web_search_enabled": True})
+        response = client.put("/erudi/user_settings/", json={"language": "es"})
+        assert response.json() == {"web_search_enabled": True, "language": "es"}
+
+    def test_put_web_search_leaves_language_untouched(self, client):
+        client.put("/erudi/user_settings/", json={"language": "zh"})
+        response = client.put("/erudi/user_settings/", json={"web_search_enabled": True})
+        assert response.json() == {"web_search_enabled": True, "language": "zh"}
+
+    @pytest.mark.parametrize("code", ["de", "EN", "fr-FR", "", 42])
+    def test_put_rejects_unknown_language(self, client, code):
+        response = client.put("/erudi/user_settings/", json={"language": code})
+        assert response.status_code == 422
+        assert client.get("/erudi/user_settings/").json()["language"] == "en"
 
 
 # ============ Conversation inheritance + PATCH ============
