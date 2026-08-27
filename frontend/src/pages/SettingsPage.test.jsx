@@ -19,6 +19,7 @@ vi.mock("../components/Sidebar", () => ({
 }));
 
 import SettingsPage from "./SettingsPage";
+import i18n from "../i18n";
 
 function renderPage() {
   return render(
@@ -29,13 +30,65 @@ function renderPage() {
 }
 
 beforeEach(() => {
-  getMock.mockResolvedValue({ web_search_enabled: false });
-  putMock.mockResolvedValue({ web_search_enabled: true });
+  getMock.mockResolvedValue({ web_search_enabled: false, language: "en" });
+  putMock.mockResolvedValue({ web_search_enabled: true, language: "en" });
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.clearAllMocks();
+  delete window.languageAPI;
+  await i18n.changeLanguage("en");
+});
+
+describe("SettingsPage — application language", () => {
+  it("renders the language section with the four languages named natively", async () => {
+    renderPage();
+    const select = await screen.findByRole("combobox", { name: "Application language" });
+    const labels = Array.from(select.querySelectorAll("option")).map((o) => o.textContent);
+    expect(labels).toEqual(["English", "Français", "Español", "中文"]);
+    const values = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+    expect(values).toEqual(["en", "fr", "es", "zh"]);
+  });
+
+  it("reflects the active language on the select (applied at boot by the App sync)", async () => {
+    await i18n.changeLanguage("es");
+    renderPage();
+    const select = await screen.findByRole("combobox", { name: "Idioma de la aplicación" });
+    expect(select.value).toBe("es");
+    expect(screen.getByText("Ajustes")).toBeTruthy();
+  });
+
+  it("PUTs the new language, switches the UI immediately and notifies main", async () => {
+    const set = vi.fn();
+    window.languageAPI = { set };
+    putMock.mockResolvedValue({ web_search_enabled: false, language: "fr" });
+    renderPage();
+    const select = await screen.findByRole("combobox", { name: "Application language" });
+    await waitFor(() => expect(getMock).toHaveBeenCalled());
+
+    fireEvent.change(select, { target: { value: "fr" } });
+
+    await waitFor(() =>
+      expect(putMock).toHaveBeenCalledWith("/user_settings/", { language: "fr" })
+    );
+    expect(await screen.findByText("Paramètres")).toBeTruthy();
+    expect(screen.getByText("Recherche web")).toBeTruthy();
+    expect(i18n.language).toBe("fr");
+    expect(set).toHaveBeenCalledWith("fr");
+  });
+
+  it("keeps the new language in the UI even if persisting fails", async () => {
+    putMock.mockRejectedValue(new Error("offline"));
+    renderPage();
+    const select = await screen.findByRole("combobox", { name: "Application language" });
+    await waitFor(() => expect(getMock).toHaveBeenCalled());
+
+    fireEvent.change(select, { target: { value: "zh" } });
+
+    expect(await screen.findByText("设置")).toBeTruthy();
+    expect(i18n.language).toBe("zh");
+  });
 });
 
 describe("SettingsPage", () => {
