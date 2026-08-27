@@ -30,7 +30,7 @@
   },
   "browse": {
     "eyebrow": "Parcourir par capacité",
-    "noMatch": "Aucun modèle ne correspond à ces filtres. Élargissez la plage de taille ou désactivez « Adapté à ma machine »."
+    "noMatch": "Aucun modèle ne correspond à ces filtres. Élargissez la plage de taille ou désactivez « Compatible avec ma machine »."
   },
   "community": {
     "title": "Fine-tunes communautaires",

@@ -3,7 +3,7 @@
     "delete": "Delete this panel",
     "deleteLast": "Cannot delete the last panel",
     "modelNotFound": "[Model not found]",
-    "error": "[Erreur]",
+    "error": "[Error]",
     "attachmentAlt": "attachment {{index}}"
   },
   "controls": {
