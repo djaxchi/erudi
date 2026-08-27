@@ -177,7 +177,14 @@ class HardwareProfile(Base):
     
     cpu_performance_units = Column(Float, nullable=True)  # CPU performance metric
     performance_breakdown = Column(JSON, nullable=True)  # Detailed breakdown
-    
+
+    # Which revision of the profiling logic produced this row. The profile is
+    # written once at first boot and read forever after, so a fix to detection
+    # or scoring never reaches a machine that already has one. Bumping
+    # PROFILING_LOGIC_VERSION re-profiles on the next boot. NULL means the row
+    # predates this column (profiled before #365).
+    profiling_version = Column(Integer, nullable=True)
+
     # ============================================================================
     # TIMESTAMPS
     # ============================================================================
