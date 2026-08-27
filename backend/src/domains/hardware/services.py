@@ -34,6 +34,20 @@ from src.core.exceptions import HardwareException
 from src.core import config
 
 
+# Revision of the hardware-profiling logic (detection + scoring). The profile is
+# written once at first boot and read forever after, so any fix to either is
+# invisible on a machine that already has a row: #365 corrected a 448 GB/s card
+# profiled at 13 GB/s, and the corrected code still served the stored 13 until
+# the profile was recomputed by hand. Nothing in the app offered that -- the only
+# path was Clear All Data, which also destroys the user's models, conversations
+# and knowledge bases.
+#
+# BUMP THIS whenever detection or scoring changes in a way that should reach
+# existing installs. Startup re-profiles when the stored value differs.
+#
+#   1 -- everything up to and including #365 (rated clocks, breakdown key names)
+PROFILING_LOGIC_VERSION = 1
+
 
 # Recommended model size window (billions of params) — drives the hardware-fit
 # "Models For You" filter in the UI (#86). Two INDEPENDENT physical constraints,
@@ -185,13 +199,23 @@ class Hardware_Service:
             current_backend = config.LLM_Engine.__name__.lower().replace('_engine', '')
             
             if profile:
-                if profile.backend_type == current_backend:
-                    logger.info(f"Using cached hardware profile: backend={profile.backend_type}")
-                    return profile
-                else:
+                stored_version = getattr(profile, "profiling_version", None)
+                if profile.backend_type != current_backend:
                     # No profile exists or backend mismatch, detect hardware
                     logger.info(f"Backend mismatch: cached={profile.backend_type}, current={current_backend}. Re-detecting.")
-                    self.repository.delete_profile(profile)      
+                    self.repository.delete_profile(profile)
+                elif stored_version != PROFILING_LOGIC_VERSION:
+                    # Same machine, but the numbers were produced by profiling
+                    # logic we have since corrected (#365). Redo them, otherwise
+                    # the fix never reaches anyone who already ran the app.
+                    logger.info(
+                        f"Profiling logic changed: cached=v{stored_version}, "
+                        f"current=v{PROFILING_LOGIC_VERSION}. Re-detecting."
+                    )
+                    self.repository.delete_profile(profile)
+                else:
+                    logger.info(f"Using cached hardware profile: backend={profile.backend_type}")
+                    return profile
             else:
                 logger.info("No cached profile found, detecting hardware")
             
@@ -233,7 +257,10 @@ class Hardware_Service:
             
             # Get flat hardware data from engine
             hardware_data = config.LLM_Engine.get_flat_hardware_data()
-            
+            # Stamp the logic that produced these numbers, so a later fix to
+            # detection or scoring can tell this row is stale and redo it.
+            hardware_data["profiling_version"] = PROFILING_LOGIC_VERSION
+
             logger.debug(f"Hardware detection complete: backend={hardware_data.get('backend_type')}")
             return hardware_data
             

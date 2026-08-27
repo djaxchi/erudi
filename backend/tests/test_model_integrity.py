@@ -318,6 +318,90 @@ class TestDownloadCompletionSize:
         measured = measure_dir_size_gb(final_dir)
         assert f"Disk Size GB: {measured:.2f}" in llm.model_metadata
 
+    def test_size_is_measured_before_the_job_goes_terminal(self, tmp_path, monkeypatch):
+        """The size rewrite must not sit behind the capability probes (#349).
+
+        The UI refreshes the instant it polls "completed". While the rewrite
+        lived after the probes -- which take ~10s on a 7B GGUF, and minutes in
+        the #291 case -- the freshly installed card rendered the catalog's
+        pre-download guess and only corrected itself on a manual reload.
+
+        Probing is best-effort, so a probe blowing up must not take the measured
+        size with it either: that is the same ordering, stated as a failure.
+        """
+        from src.domains.llms import endpoints
+        from src.domains.llms import repository
+        from src.engines.cpu_engine import CPU_Engine
+        from src.entities.Llm import Llm
+        from src.entities.DownloadJob import DownloadJobModel
+
+        monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
+
+        def _probe_boom(link):
+            raise RuntimeError("probe hung and was torn down")
+
+        monkeypatch.setattr(repository, "detect_supports_tools", _probe_boom)
+        monkeypatch.setattr(repository, "detect_supports_vision", _probe_boom)
+
+        final_dir = _write_gguf_dir(tmp_path)
+        temp_dir = tmp_path / "temp"
+        temp_dir.mkdir()
+
+        llm = Llm(
+            name="Model", local=2, type="qwen", param_size=7.0,
+            link=str(final_dir),
+            model_metadata="Model ID: org/model\nSize: ~40.2 GB\nParameters: 7B",
+        )
+        job = DownloadJobModel(
+            remote_model_id="org/model", local_model_id=1,
+            remote_model_link="org/model",
+            temp_local_model_link=str(temp_dir),
+            final_local_model_link=str(final_dir),
+            status="running",
+        )
+
+        # Record the metadata as it stood the moment the job became terminal --
+        # that is exactly what the UI's next poll would render.
+        seen = {}
+
+        class _FakeQuery:
+            def __init__(self, obj):
+                self._obj = obj
+
+            def get(self, _id):
+                return self._obj
+
+        class _FakeSession:
+            def query(self, model):
+                return _FakeQuery(job if model is DownloadJobModel else llm)
+
+            def commit(self):
+                if job.status == "completed" and "at_completion" not in seen:
+                    seen["at_completion"] = llm.model_metadata
+
+            def rollback(self):
+                pass
+
+            def close(self):
+                pass
+
+        monkeypatch.setattr(endpoints, "SessionLocal", lambda: _FakeSession())
+
+        async def _fake_download(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(endpoints, "download_llm", _fake_download)
+
+        endpoints._run_download_task("org/model", 1, temp_dir, final_dir, job_id=1)
+
+        assert job.status == "completed"
+        measured = measure_dir_size_gb(final_dir)
+        # The size was already correct at the instant the job went terminal.
+        assert f"Disk Size GB: {measured:.2f}" in seen["at_completion"]
+        assert "40.2" not in seen["at_completion"]
+        # And a failed probe left it correct rather than rolling it back.
+        assert f"Disk Size GB: {measured:.2f}" in llm.model_metadata
+
 
 # =====================================================================
 # UNIT -- runner surfaces the specific engine load error to the user
