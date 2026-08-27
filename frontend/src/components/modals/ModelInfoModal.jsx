@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Download, Users, Heart, Calendar, Tag, ChevronDown } from "lucide-react";
 
@@ -26,7 +27,12 @@ ModelInfoModal.defaultProps = {
   model: null,
 };
 
+// "Unknown" is the backend's sentinel for an absent field (also written by the
+// Hugging Face search mapping): such a field is hidden, never shown as copy.
+const isKnown = (value) => value && value !== "Unknown";
+
 export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload }) {
+  const { t } = useTranslation();
   const [showRawMetadata, setShowRawMetadata] = useState(false);
 
   return (
@@ -74,7 +80,7 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                       {modelInfo.name}
                     </h2>
                     <p className="text-sm text-gray-300/80">
-                      {modelInfo.description || "No description available"}
+                      {modelInfo.description || t("models:info.noDescription")}
                     </p>
                   </div>
                   <button
@@ -92,26 +98,34 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                     <div className="space-y-4">
                       <h3 className="text-lg font-semibold text-[#F2F7F4] flex items-center gap-2">
                         <Tag className="w-4 h-4 text-emerald-400" />
-                        Basic Info
+                        {t("models:info.basicInfo")}
                       </h3>
                       <div className="space-y-3 text-sm">
                         <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                          <span className="text-emerald-400 font-medium">Size:</span>
+                          <span className="text-emerald-400 font-medium">
+                            {t("models:info.size")}
+                          </span>
                           <span className="text-gray-200 ml-2">{modelInfo.size}</span>
                         </div>
                         <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                          <span className="text-emerald-400 font-medium">Parameters:</span>
+                          <span className="text-emerald-400 font-medium">
+                            {t("models:info.parameters")}
+                          </span>
                           <span className="text-gray-200 ml-2">{modelInfo.parameters}</span>
                         </div>
-                        {modelInfo.author && modelInfo.author !== "Unknown" && (
+                        {isKnown(modelInfo.author) && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                            <span className="text-emerald-400 font-medium">Author:</span>
+                            <span className="text-emerald-400 font-medium">
+                              {t("models:info.author")}
+                            </span>
                             <span className="text-gray-200 ml-2">{modelInfo.author}</span>
                           </div>
                         )}
-                        {modelInfo.library && modelInfo.library !== "Unknown" && (
+                        {isKnown(modelInfo.library) && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                            <span className="text-emerald-400 font-medium">Library:</span>
+                            <span className="text-emerald-400 font-medium">
+                              {t("models:info.library")}
+                            </span>
                             <span className="text-gray-200 ml-2">{modelInfo.library}</span>
                           </div>
                         )}
@@ -121,33 +135,41 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                     <div className="space-y-4">
                       <h3 className="text-lg font-semibold text-[#F2F7F4] flex items-center gap-2">
                         <Users className="w-4 h-4 text-emerald-400" />
-                        Stats
+                        {t("models:info.stats")}
                       </h3>
                       <div className="space-y-3 text-sm">
-                        {modelInfo.downloads && modelInfo.downloads !== "Unknown" && (
+                        {isKnown(modelInfo.downloads) && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex items-center gap-2">
                             <Download className="w-4 h-4 text-emerald-400" />
-                            <span className="text-emerald-400 font-medium">Downloads:</span>
+                            <span className="text-emerald-400 font-medium">
+                              {t("models:info.downloads")}
+                            </span>
                             <span className="text-gray-200">{modelInfo.downloads}</span>
                           </div>
                         )}
-                        {modelInfo.likes && modelInfo.likes !== "Unknown" && (
+                        {isKnown(modelInfo.likes) && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex items-center gap-2">
                             <Heart className="w-4 h-4 text-emerald-400" />
-                            <span className="text-emerald-400 font-medium">Likes:</span>
+                            <span className="text-emerald-400 font-medium">
+                              {t("models:info.likes")}
+                            </span>
                             <span className="text-gray-200">{modelInfo.likes}</span>
                           </div>
                         )}
-                        {modelInfo.lastUpdate && modelInfo.lastUpdate !== "Unknown" && (
+                        {isKnown(modelInfo.lastUpdate) && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-emerald-400" />
-                            <span className="text-emerald-400 font-medium">Last Update:</span>
+                            <span className="text-emerald-400 font-medium">
+                              {t("models:info.lastUpdate")}
+                            </span>
                             <span className="text-gray-200">{modelInfo.lastUpdate}</span>
                           </div>
                         )}
-                        {modelInfo.pipeline && modelInfo.pipeline !== "Unknown" && (
+                        {isKnown(modelInfo.pipeline) && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                            <span className="text-emerald-400 font-medium">Pipeline:</span>
+                            <span className="text-emerald-400 font-medium">
+                              {t("models:info.pipeline")}
+                            </span>
                             <span className="text-gray-200 ml-2">{modelInfo.pipeline}</span>
                           </div>
                         )}
@@ -168,7 +190,7 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                         >
                           <ChevronDown className="w-4 h-4" />
                         </motion.div>
-                        Show Raw Metadata
+                        {t("models:info.showRawMetadata")}
                       </button>
 
                       <AnimatePresence>
@@ -213,7 +235,7 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                       "transition active:scale-95",
                     ].join(" ")}
                   >
-                    Cancel
+                    {t("common:actions.cancel")}
                   </button>
                   <button
                     onClick={() => {
@@ -229,7 +251,7 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                     ].join(" ")}
                   >
                     <Download className="w-4 h-4" />
-                    Download
+                    {t("common:actions.download")}
                   </button>
                 </div>
               </div>

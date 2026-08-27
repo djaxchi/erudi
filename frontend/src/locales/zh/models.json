@@ -1,1 +1,155 @@
-{}
+{
+  "smallModelNote": "非常小的模型——适合快速聊天和低配置机器；在 ~{{threshold}}B 以下，工具调用、知识库搜索和多步推理并不可靠。",
+  "categories": {
+    "general": "通用",
+    "reasoning": "推理",
+    "code": "代码",
+    "vision": "视觉与多模态",
+    "math": "数学",
+    "medical": "医疗",
+    "function": "函数调用",
+    "safety": "安全与审核"
+  },
+  "fit": {
+    "labels": {
+      "ideal": "理想匹配",
+      "good": "轻松运行",
+      "tight": "勉强匹配",
+      "heavy": "需要更多内存",
+      "unknown": "匹配情况未知"
+    },
+    "footprint": "~{{size}}"
+  },
+  "sizeBuckets": {
+    "any": "任意大小",
+    "tiny": "2B 以下",
+    "small": "2–8B",
+    "medium": "8–32B",
+    "large": "32B+"
+  },
+  "filters": {
+    "sizeLabel": "大小",
+    "fitsMyMachine": "适合我的机器"
+  },
+  "card": {
+    "addTitle": "添加新模型",
+    "addSubtitle": "浏览可用模型",
+    "testedBadge": "已由 Erudi 团队测试——聊天和知识库均已验证",
+    "unavailable": "您的硬件不支持",
+    "weightsMissingBadge": "权重缺失",
+    "deleteModel": "删除模型",
+    "weightsMissing": "模型权重缺失",
+    "usesWeightsOf": "使用 {{name}} 的权重",
+    "itsBaseModel": "其基础模型",
+    "size": "大小：{{size}}",
+    "downloads": "下载量：{{value}}",
+    "likes": "点赞：{{value}}",
+    "author": "作者：{{author}}",
+    "library": "库：{{library}}",
+    "parameters": "参数量：{{parameters}}",
+    "lastUpdate": "最近更新：{{date}}",
+    "info": "详情",
+    "chatBlocked": "模型权重缺失 - 重新绑定后即可聊天",
+    "rebindTitle": "重新绑定到另一个已安装的模型",
+    "rebind": "重新绑定",
+    "noRebindTarget": "没有可用的已安装基础模型"
+  },
+  "explore": {
+    "title": "探索",
+    "buildingCatalog": "正在构建目录...",
+    "buildingCatalogInline": "正在构建目录…",
+    "recommended": "为您推荐",
+    "searchHuggingFace": "搜索 Hugging Face",
+    "community": "社区",
+    "seeAll": "查看全部",
+    "notSupported": "您的硬件不支持",
+    "sizeUnknown": "大小未知",
+    "visionBadge": "支持图片输入（视觉）",
+    "gated": "受限访问",
+    "details": "详情",
+    "installed": "已安装",
+    "alreadyInstalled": "已安装——请查看上方的“已安装”部分",
+    "noBaseModelsFor": "未找到与“{{query}}”匹配的基础模型",
+    "noBaseModels": "没有可用的基础模型"
+  },
+  "library": {
+    "title": "模型库",
+    "refresh": "刷新模型",
+    "empty": "未找到本地 LLM。",
+    "newNameTitle": "新模型名称",
+    "newNameHint": "为您的模型选择一个名称",
+    "namePlaceholder": "输入模型名称...",
+    "selectFirst": "请先选择一个模型",
+    "cancelUnlock": "取消并解锁",
+    "validateLock": "确认并锁定名称"
+  },
+  "attachKnowledgeBase": "附加知识库",
+  "machine": {
+    "readingHardware": "正在读取硬件…",
+    "yourMachine": "您的机器",
+    "runtime": "{{backend}} 运行时",
+    "catchphrase": {
+      "excellent": "顶级配置，尽情发挥。",
+      "good": "配置扎实，大多数模型都能飞速运行。",
+      "fair": "够用，但要留意大模型。",
+      "poor": "在这里小模型是您最好的朋友。",
+      "weak": "轻量级选手，请坚持使用小模型。"
+    },
+    "tier": {
+      "excellent": "优秀",
+      "good": "良好",
+      "fair": "一般",
+      "poor": "较弱",
+      "weak": "很弱"
+    },
+    "unifiedMemory": "统一内存",
+    "ram": "内存",
+    "vram": "显存",
+    "gpuCores": "GPU 核心",
+    "bandwidth": "带宽",
+    "bandwidthUnit": "GB/s",
+    "inference": "推理",
+    "notAvailable": "不可用",
+    "sweetSpot": "最佳区间",
+    "rangeValue": "{{min}}–{{max}}",
+    "paramUnit": "B",
+    "comfortable": "~{{max}}B 以内的模型可在此流畅运行。",
+    "gaugeHint": "运行一个模型以评估匹配情况。"
+  },
+  "search": {
+    "title": "搜索 Hugging Face",
+    "description": "超越精选列表。我们会搜索所有能在您的引擎上运行的模型，并按其与您机器的匹配程度排序。",
+    "placeholder": "试试“qwen coder”、“a tiny model”、“vision”…",
+    "searching": "搜索中…",
+    "tryLabel": "试试",
+    "searchingFor": "正在 hugging face 上搜索“{{query}}”…",
+    "resultsFor_one": "“{{term}}”的 {{count}} 条结果",
+    "resultsFor_other": "“{{term}}”的 {{count}} 条结果",
+    "show": "展开",
+    "collapse": "收起",
+    "noMatch": "没有可运行的模型与“{{term}}”匹配。请尝试更宽泛的词，或使用“qwen”、“llama”等系列名称。",
+    "offline": "当前没有网络连接。",
+    "unreachable": "搜索无法连接到 Hugging Face。请检查您的网络连接后重试。",
+    "sort": {
+      "fit": "最佳匹配",
+      "downloads": "下载最多",
+      "likes": "点赞最多",
+      "smallest": "最小",
+      "largest": "最大"
+    }
+  },
+  "info": {
+    "noDescription": "暂无描述",
+    "basicInfo": "基本信息",
+    "size": "大小：",
+    "parameters": "参数量：",
+    "author": "作者：",
+    "library": "库：",
+    "stats": "统计",
+    "downloads": "下载量：",
+    "likes": "点赞：",
+    "lastUpdate": "最近更新：",
+    "pipeline": "流水线：",
+    "showRawMetadata": "显示原始元数据"
+  }
+}

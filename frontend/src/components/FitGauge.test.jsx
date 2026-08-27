@@ -32,7 +32,9 @@ describe("FitGauge", () => {
 
   it("doubles the footprint estimate for non-quantized models", () => {
     render(<FitGauge paramSize={4} quantized={false} range={range} />);
-    expect(screen.getByText("~8.0 GB")).toBeTruthy();
+    // Sizes go through the locale-aware formatter (#385), which drops a
+    // trailing ".0" the way Intl does — "8 GB", not "8.0 GB".
+    expect(screen.getByText("~8 GB")).toBeTruthy();
   });
 
   it("renders the neutral state when no benchmark window is known", () => {

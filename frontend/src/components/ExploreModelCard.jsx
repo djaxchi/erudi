@@ -1,5 +1,6 @@
 import React from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import { BadgeCheck, Download, Heart, Image as ImageIcon } from "lucide-react";
 import GradientBox from "./GradientBox";
 import FitGauge from "./FitGauge";
@@ -14,10 +15,12 @@ import { isTestedModel } from "../utils/testedModels";
  * category up top, the gauge in the middle, monospace metrics, one clear action.
  */
 export default function ExploreModelCard({ model, range, onDownload, onInfo, installed = false }) {
+  const { t } = useTranslation();
   const unavailable = model?.runnable === false;
   const isVision = modelSupportsVision(model);
   const tested = isTestedModel(model);
   const cat = CATEGORY_META[model.category];
+  // Compact parameter count ("7B", "270M"): a technical label, not copy.
   const params =
     typeof model.param_size === "number"
       ? model.param_size >= 1
@@ -25,6 +28,7 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo, ins
         : `${Math.round(model.param_size * 1000)}M`
       : null;
 
+  // Compact download/like counts ("123k", "2M"), the Hugging Face convention.
   const formatCount = (val) => {
     const n = parseInt(String(val ?? "").replace(/[^\d]/g, ""), 10);
     if (!n) return null;
@@ -39,6 +43,7 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo, ins
   return (
     <GradientBox
       className="h-full bg-[#1a1a1a]/60 backdrop-blur-sm border border-white/10 transition-colors duration-200 hover:border-[var(--fit-good)]/40 after:pointer-events-none after:absolute after:inset-0 after:z-[5] after:bg-[var(--fit-good)] after:opacity-0 after:transition-opacity after:duration-200 hover:after:opacity-[0.07]"
+      // eslint-disable-next-line i18next/no-literal-string -- Tailwind class list, not copy
       contentClassName="relative z-10 flex flex-col h-full p-4"
     >
       <div className="flex items-start justify-between gap-3 mb-3">
@@ -47,7 +52,7 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo, ins
           {tested && (
             <span
               className="flex items-center shrink-0 text-[var(--fit-good)]"
-              title="Tested by the Erudi team — verified for chat and Knowledge Base"
+              title={t("models:card.testedBadge")}
             >
               <BadgeCheck className="w-4 h-4" />
             </span>
@@ -55,7 +60,7 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo, ins
         </div>
         {cat && (
           <span className="eyebrow !text-[9px] !tracking-[0.12em] whitespace-nowrap pt-1 text-[var(--ink-faint)]">
-            {cat.label}
+            {t(cat.labelKey)}
           </span>
         )}
       </div>
@@ -69,18 +74,22 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo, ins
 
       {unavailable && (
         <div className="mt-1.5 mono text-[11px] text-[var(--fit-heavy)]">
-          Not supported on your hardware
+          {t("models:explore.notSupported")}
         </div>
       )}
 
       <div className="mt-auto pt-4">
         <div className="mono text-xs text-[var(--ink-dim)] flex items-center gap-2 mb-2.5">
           {/* Unmeasured size (#201): say so plainly rather than implying a value. */}
-          {params ? <span>{params}</span> : <span className="italic">Size unknown</span>}
+          {params ? (
+            <span>{params}</span>
+          ) : (
+            <span className="italic">{t("models:explore.sizeUnknown")}</span>
+          )}
           {isVision && (
             <span
               className="flex items-center gap-1 text-[var(--fit-good)]"
-              title="Supports image input (vision)"
+              title={t("models:explore.visionBadge")}
             >
               <ImageIcon className="w-3.5 h-3.5" />
             </span>
@@ -97,14 +106,16 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo, ins
               <span className="text-[var(--ink)] font-semibold">{likes}</span>
             </span>
           )}
-          {model.gated && <span className="text-[var(--fit-tight)]">gated</span>}
+          {model.gated && (
+            <span className="text-[var(--fit-tight)]">{t("models:explore.gated")}</span>
+          )}
         </div>
         <div className="flex items-center justify-end gap-3">
           <button
             onClick={() => onInfo && onInfo(model)}
             className="text-sm text-[var(--ink-dim)] hover:text-[var(--ink)] transition-colors"
           >
-            Details
+            {t("models:explore.details")}
           </button>
           {/* An installed model must not keep offering its own download (#348):
               it reads as "I downloaded it and it is still asking me to", and on
@@ -113,14 +124,14 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo, ins
           <button
             onClick={() => !unavailable && !installed && onDownload && onDownload(model)}
             disabled={unavailable || installed}
-            title={installed ? "Already installed — see the Installed section above" : undefined}
+            title={installed ? t("models:explore.alreadyInstalled") : undefined}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
               unavailable || installed
                 ? "opacity-30 cursor-not-allowed text-[var(--ink-dim)]"
                 : "bg-[var(--fit-good)] text-[#07241d] hover:brightness-110"
             }`}
           >
-            {installed ? "Installed" : "Download"}
+            {installed ? t("models:explore.installed") : t("common:actions.download")}
           </button>
         </div>
       </div>

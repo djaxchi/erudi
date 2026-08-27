@@ -4,27 +4,38 @@
  * The startup benchmark gives a recommended parameter window [min, max] for the
  * user's machine. Here we judge each model against it so the UI can show, per
  * card, whether it fits comfortably, fits tight, or needs more memory — and draw
- * a gauge positioned against the user's budget. Pure + framework-free for tests.
+ * a gauge positioned against the user's budget. Pure + framework-free for tests
+ * (the only side effect is reading the active translation for the labels).
  */
+import i18n from "../i18n";
 
-/** Tiers, ordered best→worst, with user-facing copy and the token color they map to. */
+/**
+ * Tiers, ordered best→worst, with the translation key of their user-facing copy
+ * and the token color they map to. `fitForModel` resolves the key at call time
+ * so a language switch is reflected on the next render.
+ */
 export const FIT_META = {
-  ideal: { label: "Ideal fit", color: "var(--fit-good)", tone: "good" },
-  good: { label: "Runs easily", color: "var(--fit-good)", tone: "good" },
-  tight: { label: "Tight fit", color: "var(--fit-tight)", tone: "tight" },
-  heavy: { label: "Needs more memory", color: "var(--fit-heavy)", tone: "heavy" },
-  unknown: { label: "", color: "var(--ink-faint)", tone: "unknown" },
+  ideal: { labelKey: "models:fit.labels.ideal", color: "var(--fit-good)", tone: "good" },
+  good: { labelKey: "models:fit.labels.good", color: "var(--fit-good)", tone: "good" },
+  tight: { labelKey: "models:fit.labels.tight", color: "var(--fit-tight)", tone: "tight" },
+  heavy: { labelKey: "models:fit.labels.heavy", color: "var(--fit-heavy)", tone: "heavy" },
+  unknown: { labelKey: null, color: "var(--ink-faint)", tone: "unknown" },
 };
+
+const fitLabel = (tier) => (FIT_META[tier].labelKey ? i18n.t(FIT_META[tier].labelKey) : "");
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
-/** Size buckets for the catalog filter, by billions of parameters. */
+/**
+ * Size buckets for the catalog filter, by billions of parameters. `labelKey` is
+ * the translation key of the chip label (components resolve it with `t`).
+ */
 export const SIZE_BUCKETS = [
-  { key: "any", label: "Any size", test: () => true },
-  { key: "tiny", label: "Under 2B", test: (p) => p > 0 && p < 2 },
-  { key: "small", label: "2–8B", test: (p) => p >= 2 && p <= 8 },
-  { key: "medium", label: "8–32B", test: (p) => p > 8 && p <= 32 },
-  { key: "large", label: "32B+", test: (p) => p > 32 },
+  { key: "any", labelKey: "models:sizeBuckets.any", test: () => true },
+  { key: "tiny", labelKey: "models:sizeBuckets.tiny", test: (p) => p > 0 && p < 2 },
+  { key: "small", labelKey: "models:sizeBuckets.small", test: (p) => p >= 2 && p <= 8 },
+  { key: "medium", labelKey: "models:sizeBuckets.medium", test: (p) => p > 8 && p <= 32 },
+  { key: "large", labelKey: "models:sizeBuckets.large", test: (p) => p > 32 },
 ];
 
 /**
@@ -60,14 +71,20 @@ export function estimateFootprintGb(paramSize, quantized = true) {
  * Classify a model against the recommended window.
  * @param {number} paramSize - billions of params
  * @param {{min:number, max:number}|null} range - recommended window from the benchmark
- * @returns {{tier:string, fraction:number, tickFraction:number} & FIT_META[tier]}
+ * @returns {{tier:string, fraction:number, tickFraction:number, label:string} & FIT_META[tier]}
  */
 export function fitForModel(paramSize, range) {
   const hasRange =
     range && typeof range.min === "number" && typeof range.max === "number" && range.max > 0;
 
   if (!paramSize || paramSize <= 0 || !hasRange) {
-    return { tier: "unknown", fraction: 0, tickFraction: 0.5, ...FIT_META.unknown };
+    return {
+      tier: "unknown",
+      fraction: 0,
+      tickFraction: 0.5,
+      ...FIT_META.unknown,
+      label: fitLabel("unknown"),
+    };
   }
 
   // The recommended max is a soft sweet-spot ceiling, not a hard limit: a model
@@ -85,7 +102,7 @@ export function fitForModel(paramSize, range) {
 
   // Gauge runs 0 → 2× the comfortable ceiling; the tick sits at the ceiling (0.5).
   const fraction = clamp(paramSize / (max * 2), 0.03, 1);
-  return { tier, fraction, tickFraction: 0.5, ...FIT_META[tier] };
+  return { tier, fraction, tickFraction: 0.5, ...FIT_META[tier], label: fitLabel(tier) };
 }
 
 /**

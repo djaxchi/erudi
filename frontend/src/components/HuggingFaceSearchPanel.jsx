@@ -1,5 +1,6 @@
-﻿import React, { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import { Search } from "lucide-react";
 import ExploreModelCard from "./ExploreModelCard";
 import { rankByFit } from "../utils/hardwareFit";
@@ -8,8 +9,12 @@ import { createLogger } from "../utils/logger";
 
 const log = createLogger("HuggingFaceSearch");
 
-// Starting points that map to real capabilities people look for.
+// Starting points that map to real capabilities people look for. These are the
+// literal query terms sent to Hugging Face (whose model names and tags are in
+// English), so they are deliberately not translated.
 const SUGGESTIONS = ["coding", "reasoning", "vision", "tiny", "uncensored", "multilingual"];
+
+const SORT_KEYS = ["fit", "downloads", "likes", "smallest", "largest"];
 
 /**
  * Live Hugging Face search, reframed as a first-class discovery tool (#122):
@@ -18,6 +23,7 @@ const SUGGESTIONS = ["coding", "reasoning", "vision", "tiny", "uncensored", "mul
  * budget. Empty and error states give direction rather than mood.
  */
 export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isInstalled }) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState(null); // null = not searched yet
   const [loading, setLoading] = useState(false);
@@ -25,14 +31,6 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
   const [searchedTerm, setSearchedTerm] = useState("");
   const [collapsed, setCollapsed] = useState(false);
   const [sortBy, setSortBy] = useState("fit");
-
-  const SORT_OPTIONS = [
-    { value: "fit", label: "Best fit" },
-    { value: "downloads", label: "Most downloads" },
-    { value: "likes", label: "Most liked" },
-    { value: "smallest", label: "Smallest" },
-    { value: "largest", label: "Largest" },
-  ];
 
   const sortedResults = useMemo(() => {
     if (!results) return results;
@@ -66,7 +64,7 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
     // instead of returning an empty "no matches" or throwing.
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       setResults([]);
-      setError("No internet connection for the moment.");
+      setError(t("models:search.offline"));
       return;
     }
     setLoading(true);
@@ -80,7 +78,8 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
         quantized: m.quantized,
         gated: m.gated,
         runnable: true,
-        // Details-modal fields, from the search hit.
+        // Details-modal fields, from the search hit. "Unknown" is the sentinel
+        // the details modal compares against to hide an absent field.
         parameters: m.param_size ? `${m.param_size}B` : "Unknown",
         downloads: m.downloads ? String(m.downloads) : "Unknown",
         likes: m.likes ? String(m.likes) : "Unknown",
@@ -92,7 +91,7 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
       // A failed fetch here is a request error (timeout, HF unreachable, 5xx),
       // not proof the machine is offline — the genuine-offline case is caught by
       // the navigator.onLine guard above. Don't mislabel it as "no internet" (#210).
-      setError("Search couldn’t reach Hugging Face. Check your connection and try again.");
+      setError(t("models:search.unreachable"));
       setResults([]);
     } finally {
       setLoading(false);
@@ -101,10 +100,9 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
 
   return (
     <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5">
-      <span className="eyebrow !text-[var(--fit-good)]">Search Hugging Face</span>
+      <span className="eyebrow !text-[var(--fit-good)]">{t("models:search.title")}</span>
       <p className="text-[13px] text-[var(--ink-dim)] mt-1.5 mb-4 max-w-xl">
-        Look beyond the curated list. We search every model that runs on your engine and rank them
-        by how well they fit your machine.
+        {t("models:search.description")}
       </p>
 
       {/* Search field */}
@@ -115,7 +113,7 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && runSearch()}
-          placeholder={'Try "qwen coder", "a tiny model", "vision"…'}
+          placeholder={t("models:search.placeholder")}
           className="flex-1 bg-transparent border-0 text-sm text-[var(--ink)] placeholder-[var(--ink-faint)] focus:outline-none focus:ring-0"
         />
         <button
@@ -123,13 +121,15 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
           disabled={!query.trim() || loading}
           className="rounded-lg bg-[var(--fit-good)] text-[#07241d] px-4 py-1.5 text-[13px] font-medium transition-[filter] hover:brightness-110 disabled:opacity-30 disabled:cursor-not-allowed"
         >
-          {loading ? "Searching…" : "Search"}
+          {loading ? t("models:search.searching") : t("common:actions.search")}
         </button>
       </div>
 
       {/* Suggestion chips */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="mono text-[11px] text-[var(--ink-faint)] mr-1">try</span>
+        <span className="mono text-[11px] text-[var(--ink-faint)] mr-1">
+          {t("models:search.tryLabel")}
+        </span>
         {SUGGESTIONS.map((s) => (
           <button
             key={s}
@@ -147,7 +147,7 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
           {loading ? (
             <div className="flex items-center gap-2 text-[var(--ink-faint)] mono text-xs py-6 justify-center">
               <span className="w-2 h-2 rounded-full bg-[var(--fit-good)] animate-pulse" />
-              searching hugging face for &ldquo;{query}&rdquo;…
+              {t("models:search.searchingFor", { query })}
             </div>
           ) : error ? (
             <p className="text-[var(--fit-tight)] text-sm py-3">{error}</p>
@@ -155,7 +155,7 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
             <>
               <div className="flex items-center gap-3 mb-3 flex-wrap">
                 <span className="eyebrow">
-                  {results.length} results for &ldquo;{searchedTerm}&rdquo;
+                  {t("models:search.resultsFor", { count: results.length, term: searchedTerm })}
                 </span>
                 <span className="h-px flex-1 bg-white/10" />
                 <select
@@ -163,9 +163,9 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
                   onChange={(e) => setSortBy(e.target.value)}
                   className="mono text-[11px] rounded-lg border border-[var(--line)] bg-[var(--canvas)] text-[var(--ink-dim)] px-2 py-1 focus:outline-none focus:border-[var(--fit-good)] transition-colors cursor-pointer"
                 >
-                  {SORT_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
+                  {SORT_KEYS.map((key) => (
+                    <option key={key} value={key}>
+                      {t(`models:search.sort.${key}`)}
                     </option>
                   ))}
                 </select>
@@ -173,13 +173,13 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
                   onClick={() => setCollapsed((c) => !c)}
                   className="mono text-[11px] text-[var(--ink-dim)] hover:text-[var(--fit-good)] transition-colors"
                 >
-                  {collapsed ? "Show" : "Collapse"}
+                  {collapsed ? t("models:search.show") : t("models:search.collapse")}
                 </button>
                 <button
                   onClick={clear}
                   className="mono text-[11px] text-[var(--ink-dim)] hover:text-[var(--ink)] transition-colors"
                 >
-                  Clear
+                  {t("common:actions.clear")}
                 </button>
               </div>
               {!collapsed && (
@@ -199,8 +199,7 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
             </>
           ) : (
             <p className="text-[var(--ink-dim)] text-sm py-3">
-              Nothing runnable matched &ldquo;{searchedTerm}&rdquo;. Try a broader term, or a family
-              name like &ldquo;qwen&rdquo; or &ldquo;llama&rdquo;.
+              {t("models:search.noMatch", { term: searchedTerm })}
             </p>
           )}
         </div>

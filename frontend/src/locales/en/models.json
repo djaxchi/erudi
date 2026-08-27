@@ -1,1 +1,155 @@
-{}
+{
+  "smallModelNote": "Very small model — good for quick chat and low-end machines; tool use, knowledge-base search and multi-step reasoning are unreliable below ~{{threshold}}B.",
+  "categories": {
+    "general": "General",
+    "reasoning": "Reasoning",
+    "code": "Code",
+    "vision": "Vision & Multimodal",
+    "math": "Math",
+    "medical": "Medical",
+    "function": "Function Calling",
+    "safety": "Safety & Moderation"
+  },
+  "fit": {
+    "labels": {
+      "ideal": "Ideal fit",
+      "good": "Runs easily",
+      "tight": "Tight fit",
+      "heavy": "Needs more memory",
+      "unknown": "Fit unknown"
+    },
+    "footprint": "~{{size}}"
+  },
+  "sizeBuckets": {
+    "any": "Any size",
+    "tiny": "Under 2B",
+    "small": "2–8B",
+    "medium": "8–32B",
+    "large": "32B+"
+  },
+  "filters": {
+    "sizeLabel": "size",
+    "fitsMyMachine": "Fits my machine"
+  },
+  "card": {
+    "addTitle": "Add New Model",
+    "addSubtitle": "Browse available models",
+    "testedBadge": "Tested by the Erudi team — verified for chat and Knowledge Base",
+    "unavailable": "Unavailable on your hardware",
+    "weightsMissingBadge": "Weights missing",
+    "deleteModel": "Delete model",
+    "weightsMissing": "Model weights missing",
+    "usesWeightsOf": "Uses the weights of {{name}}",
+    "itsBaseModel": "its base model",
+    "size": "Size: {{size}}",
+    "downloads": "Downloads: {{value}}",
+    "likes": "Likes: {{value}}",
+    "author": "Author: {{author}}",
+    "library": "Library: {{library}}",
+    "parameters": "Parameters: {{parameters}}",
+    "lastUpdate": "Last update: {{date}}",
+    "info": "Info",
+    "chatBlocked": "Model weights missing - re-bind to chat",
+    "rebindTitle": "Re-bind to another installed model",
+    "rebind": "Re-bind",
+    "noRebindTarget": "No installed base model available"
+  },
+  "explore": {
+    "title": "Explore",
+    "buildingCatalog": "Building catalog...",
+    "buildingCatalogInline": "building catalog…",
+    "recommended": "Recommended for you",
+    "searchHuggingFace": "Search Hugging Face",
+    "community": "Community",
+    "seeAll": "See all",
+    "notSupported": "Not supported on your hardware",
+    "sizeUnknown": "Size unknown",
+    "visionBadge": "Supports image input (vision)",
+    "gated": "gated",
+    "details": "Details",
+    "installed": "Installed",
+    "alreadyInstalled": "Already installed — see the Installed section above",
+    "noBaseModelsFor": "No base models found for “{{query}}”",
+    "noBaseModels": "No base models available"
+  },
+  "library": {
+    "title": "Model Library",
+    "refresh": "Refresh models",
+    "empty": "No local LLMs found.",
+    "newNameTitle": "New Model Name",
+    "newNameHint": "Choose a name for your model",
+    "namePlaceholder": "Enter model name...",
+    "selectFirst": "Select a model first",
+    "cancelUnlock": "Cancel and unlock",
+    "validateLock": "Validate and lock name"
+  },
+  "attachKnowledgeBase": "Attach Knowledge Base",
+  "machine": {
+    "readingHardware": "reading hardware…",
+    "yourMachine": "Your machine",
+    "runtime": "{{backend}} runtime",
+    "catchphrase": {
+      "excellent": "Big rig energy. Go wild.",
+      "good": "Solid setup, most models will fly.",
+      "fair": "Gets the job done, mind the big ones.",
+      "poor": "Small models are your best friend here.",
+      "weak": "Featherweight champion. Stick to the tiny stuff."
+    },
+    "tier": {
+      "excellent": "Excellent",
+      "good": "Good",
+      "fair": "Fair",
+      "poor": "Poor",
+      "weak": "Weak"
+    },
+    "unifiedMemory": "Unified memory",
+    "ram": "RAM",
+    "vram": "VRAM",
+    "gpuCores": "GPU cores",
+    "bandwidth": "Bandwidth",
+    "bandwidthUnit": "GB/s",
+    "inference": "Inference",
+    "notAvailable": "n/a",
+    "sweetSpot": "Sweet spot",
+    "rangeValue": "{{min}}–{{max}}",
+    "paramUnit": "B",
+    "comfortable": "Models up to ~{{max}}B run comfortably here.",
+    "gaugeHint": "Run a model to gauge your fit."
+  },
+  "search": {
+    "title": "Search Hugging Face",
+    "description": "Look beyond the curated list. We search every model that runs on your engine and rank them by how well they fit your machine.",
+    "placeholder": "Try \"qwen coder\", \"a tiny model\", \"vision\"…",
+    "searching": "Searching…",
+    "tryLabel": "try",
+    "searchingFor": "searching hugging face for “{{query}}”…",
+    "resultsFor_one": "{{count}} result for “{{term}}”",
+    "resultsFor_other": "{{count}} results for “{{term}}”",
+    "show": "Show",
+    "collapse": "Collapse",
+    "noMatch": "Nothing runnable matched “{{term}}”. Try a broader term, or a family name like “qwen” or “llama”.",
+    "offline": "No internet connection for the moment.",
+    "unreachable": "Search couldn’t reach Hugging Face. Check your connection and try again.",
+    "sort": {
+      "fit": "Best fit",
+      "downloads": "Most downloads",
+      "likes": "Most liked",
+      "smallest": "Smallest",
+      "largest": "Largest"
+    }
+  },
+  "info": {
+    "noDescription": "No description available",
+    "basicInfo": "Basic Info",
+    "size": "Size:",
+    "parameters": "Parameters:",
+    "author": "Author:",
+    "library": "Library:",
+    "stats": "Stats",
+    "downloads": "Downloads:",
+    "likes": "Likes:",
+    "lastUpdate": "Last Update:",
+    "pipeline": "Pipeline:",
+    "showRawMetadata": "Show Raw Metadata"
+  }
+}

@@ -1,6 +1,8 @@
 import React from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import { fitForModel, estimateFootprintGb, FIT_META } from "../utils/hardwareFit";
+import { formatGigabytes } from "../i18n/format";
 
 /**
  * The signature element: a compact meter showing a model's on-device footprint
@@ -9,6 +11,7 @@ import { fitForModel, estimateFootprintGb, FIT_META } from "../utils/hardwareFit
  * benchmark window is known it renders a neutral, label-only state.
  */
 export default function FitGauge({ paramSize, quantized, range, showLabel = true }) {
+  const { t } = useTranslation();
   const fit = fitForModel(paramSize, range);
   const footprint = estimateFootprintGb(paramSize, quantized);
   const known = fit.tier !== "unknown";
@@ -38,10 +41,10 @@ export default function FitGauge({ paramSize, quantized, range, showLabel = true
             className="mono text-[11px]"
             style={{ color: known ? fit.color : "var(--ink-faint)" }}
           >
-            {known ? fit.label : "Fit unknown"}
+            {known ? fit.label : t("models:fit.labels.unknown")}
           </span>
           <span className="mono text-[11px] text-[var(--ink-faint)]">
-            {footprint ? `~${footprint.toFixed(1)} GB` : ""}
+            {footprint ? t("models:fit.footprint", { size: formatGigabytes(footprint) }) : ""}
           </span>
         </div>
       )}
@@ -58,8 +61,9 @@ FitGauge.propTypes = {
 
 /** Small standalone fit dot for dense lists (category cards). */
 export function FitDot({ paramSize, range }) {
+  const { t } = useTranslation();
   const fit = fitForModel(paramSize, range);
-  const title = fit.tier === "unknown" ? "Fit unknown" : fit.label;
+  const title = fit.tier === "unknown" ? t("models:fit.labels.unknown") : fit.label;
   return (
     <span
       className="inline-block w-2 h-2 rounded-full flex-shrink-0"
