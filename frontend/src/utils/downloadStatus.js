@@ -5,6 +5,8 @@
 // dialog (#133). Centralizing the status string + the error-vs-cancel decision here
 // keeps the two paths distinct and testable.
 
+import i18n from "../i18n";
+
 /** The status a cancelled download job reports (backend + poll path). */
 export const DOWNLOAD_CANCELLED = "cancelled";
 
@@ -19,12 +21,12 @@ export const DOWNLOAD_STALLED = "stalled";
  * Shown when the transfer finished but the job never reached a terminal state.
  * Deliberately not phrased as a failure: the weights are on disk, only the
  * finalization bookkeeping did not complete (#291), so telling the user the
- * download failed would be wrong.
+ * download failed would be wrong. Resolved at call time so it follows the
+ * active app language (#385).
  */
-export const DOWNLOAD_STALLED_MESSAGE =
-  "The download finished but the app is taking longer than expected to finalize it. " +
-  "The files have been saved. Restart Erudi and check your installed models before " +
-  "downloading again.";
+export function downloadStalledMessage() {
+  return i18n.t("downloads:errors.stalled");
+}
 
 /**
  * Map a download `onError` reason to a user-facing message, or `null` when there is
@@ -32,6 +34,6 @@ export const DOWNLOAD_STALLED_MESSAGE =
  */
 export function downloadErrorMessage(reason) {
   if (reason === DOWNLOAD_CANCELLED) return null;
-  if (reason === DOWNLOAD_STALLED) return DOWNLOAD_STALLED_MESSAGE;
-  return "Download failed. Please try again.";
+  if (reason === DOWNLOAD_STALLED) return downloadStalledMessage();
+  return i18n.t("downloads:errors.failedRetry");
 }

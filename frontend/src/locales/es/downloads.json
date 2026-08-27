@@ -1,1 +1,56 @@
-{}
+{
+  "widget": {
+    "downloadingTitle": "Descargando: {{name}}",
+    "errorTitle": "Error: {{name}}",
+    "timeLeft": "Tiempo restante:",
+    "progress": "Progreso:",
+    "expand": "Expandir",
+    "collapse": "Contraer",
+    "duration": {
+      "daysHours": "{{days}} d {{hours}} h",
+      "hoursMinutes": "{{hours}} h {{minutes}} min",
+      "minutesSeconds": "{{minutes}} min {{seconds}} s",
+      "seconds": "{{seconds}} s"
+    }
+  },
+  "errors": {
+    "failedUnexpectedly": "La descarga falló de forma inesperada",
+    "pollFailed": "Se produjo un error durante la descarga. Comprueba tu conexión e inténtalo de nuevo. Si el problema persiste, contacta con el equipo de Erudi.",
+    "startFailed": "No se pudo iniciar la descarga ({{status}}): {{detail}}",
+    "unexpected": "Se produjo un error inesperado",
+    "cancelFailed": "No se pudo cancelar la descarga: {{detail}}",
+    "failedRetry": "La descarga falló. Inténtalo de nuevo.",
+    "stalled": "La descarga terminó, pero la aplicación está tardando más de lo esperado en finalizarla. Los archivos se han guardado. Reinicia Erudi y revisa tus modelos instalados antes de volver a descargar."
+  },
+  "hardwareWait": {
+    "title": "⏳ Espera un momento",
+    "evaluating": "Evaluando el hardware",
+    "body": "Todavía estamos comprobando las capacidades de tu sistema. Solo tardará un momento.",
+    "stepLabel": "Evaluación del hardware",
+    "stepLoading": "⏳ Cargando...",
+    "stepComplete": "✅ Completada"
+  },
+  "delete": {
+    "title": "Eliminar modelo",
+    "confirmQuestion": "¿Seguro que quieres eliminar el modelo <name>{{name}}</name>?",
+    "irreversible": "Esta acción no se puede deshacer.",
+    "dependentsSummary": "<name>{{name}}</name> impulsa <strong>{{assistants}}</strong> ({{names}}) y <strong>{{conversations}}</strong>.",
+    "assistantCount_one": "{{count}} asistente",
+    "assistantCount_other": "{{count}} asistentes",
+    "conversationCount_one": "{{count}} conversación",
+    "conversationCount_other": "{{count}} conversaciones",
+    "frees": "Eliminarlo libera {{size}}.",
+    "dependentsNote": "Los asistentes se conservarán y deberán vincularse a otro modelo; las conversaciones se mantienen.",
+    "deleteAnyway": "Eliminar de todos modos"
+  },
+  "embeddingGate": {
+    "promptTitle": "Se necesita un modelo de embeddings",
+    "promptBody": "La Base de conocimiento necesita un modelo de embeddings para indexar y buscar en tus documentos. ¿Descargar el modelo recomendado (multilingual-e5-small)? Se descarga una sola vez y se guarda localmente.",
+    "notNow": "Ahora no",
+    "downloadingBody": "Descargando el modelo de embeddings… Puede tardar un minuto. Puedes salir de esta página; la descarga sigue en curso.",
+    "doneTitle": "Modelo de embeddings descargado",
+    "doneBody": "El modelo de embeddings se descargó correctamente. La Base de conocimiento está lista para usarse.",
+    "errorTitle": "La descarga falló",
+    "errorBody": "No se pudo descargar el modelo de embeddings. Comprueba tu conexión e inténtalo de nuevo."
+  }
+}
