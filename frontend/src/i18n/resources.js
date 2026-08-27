@@ -11,6 +11,7 @@
 import enArena from "../locales/en/arena.json";
 import enChat from "../locales/en/chat.json";
 import enCommon from "../locales/en/common.json";
+import enDownloads from "../locales/en/downloads.json";
 import enErrors from "../locales/en/errors.json";
 import enKnowledgeBase from "../locales/en/knowledgeBase.json";
 import enLanding from "../locales/en/landing.json";
@@ -21,6 +22,7 @@ import enSettings from "../locales/en/settings.json";
 import frArena from "../locales/fr/arena.json";
 import frChat from "../locales/fr/chat.json";
 import frCommon from "../locales/fr/common.json";
+import frDownloads from "../locales/fr/downloads.json";
 import frErrors from "../locales/fr/errors.json";
 import frKnowledgeBase from "../locales/fr/knowledgeBase.json";
 import frLanding from "../locales/fr/landing.json";
@@ -31,6 +33,7 @@ import frSettings from "../locales/fr/settings.json";
 import esArena from "../locales/es/arena.json";
 import esChat from "../locales/es/chat.json";
 import esCommon from "../locales/es/common.json";
+import esDownloads from "../locales/es/downloads.json";
 import esErrors from "../locales/es/errors.json";
 import esKnowledgeBase from "../locales/es/knowledgeBase.json";
 import esLanding from "../locales/es/landing.json";
@@ -41,6 +44,7 @@ import esSettings from "../locales/es/settings.json";
 import zhArena from "../locales/zh/arena.json";
 import zhChat from "../locales/zh/chat.json";
 import zhCommon from "../locales/zh/common.json";
+import zhDownloads from "../locales/zh/downloads.json";
 import zhErrors from "../locales/zh/errors.json";
 import zhKnowledgeBase from "../locales/zh/knowledgeBase.json";
 import zhLanding from "../locales/zh/landing.json";
@@ -52,6 +56,7 @@ export const NAMESPACES = [
   "common",
   "settings",
   "models",
+  "downloads",
   "chat",
   "arena",
   "knowledgeBase",
@@ -67,6 +72,7 @@ export const resources = {
     arena: enArena,
     chat: enChat,
     common: enCommon,
+    downloads: enDownloads,
     errors: enErrors,
     knowledgeBase: enKnowledgeBase,
     landing: enLanding,
@@ -78,6 +84,7 @@ export const resources = {
     arena: frArena,
     chat: frChat,
     common: frCommon,
+    downloads: frDownloads,
     errors: frErrors,
     knowledgeBase: frKnowledgeBase,
     landing: frLanding,
@@ -89,6 +96,7 @@ export const resources = {
     arena: esArena,
     chat: esChat,
     common: esCommon,
+    downloads: esDownloads,
     errors: esErrors,
     knowledgeBase: esKnowledgeBase,
     landing: esLanding,
@@ -100,6 +108,7 @@ export const resources = {
     arena: zhArena,
     chat: zhChat,
     common: zhCommon,
+    downloads: zhDownloads,
     errors: zhErrors,
     knowledgeBase: zhKnowledgeBase,
     landing: zhLanding,
