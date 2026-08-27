@@ -65,8 +65,14 @@ class KB_Service:
         if not kb_job:
             raise ValueError(f"KB job not found for LLM ID {llm_id}")
 
-        # Cleanup failed jobs
-        if kb_job.status == "failed":
+        # Cleanup failed jobs -- but ONLY failed creations. An update job
+        # shares its new_model_id with base_model_id (see update_existing_kb);
+        # a creation job's new_model_id is a freshly-minted specialized LLM
+        # distinct from its base. Deleting on any failure would wipe out an
+        # already-working assistant just because a LATER update to it failed
+        # (e.g. one bad file) -- the assistant and its existing KB content
+        # must survive; only the half-built creation has nothing to lose.
+        if kb_job.status == "failed" and kb_job.base_model_id != kb_job.new_model_id:
             self._cleanup_failed_job(db, llm_id, kb_job)
 
         return {
