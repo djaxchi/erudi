@@ -123,7 +123,7 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When two panels use the **same** model, then the loaded model is reused (no reload between them).
 - [ ] When a panel's model **errors**, then that panel shows "[Erreur]" in red while the others still resolve.
 - [ ] When a panel's model has a **KB attached**, then KB context is auto-injected for that panel (no toggle).
-- [ ] When I attach an **image** in Arena, then note it is currently ignored *(images dropped — see #136)*.
+- [ ] When I attach an **image** in Arena, then attaching is allowed as soon as **any** panel's model is vision-capable; vision panels use the image for that turn (Arena is stateless — the image lives for this turn only), and a non-vision panel answers text-only with a notice that the images were ignored.
 - [ ] When a generation is running, then settings/model pickers are disabled; there is **no stop button** — the run must finish.
 - [ ] When I submit an **empty** prompt, then it does not send.
 
