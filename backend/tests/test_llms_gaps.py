@@ -515,6 +515,59 @@ class TestCleanupJobFiles:
         )
         Download_Job_Repository(db=MagicMock()).cleanup_job_files(job)
 
+    def test_undeletable_temp_dir_is_reported_not_swallowed(self, monkeypatch, tmp_path):
+        """A cancel that cannot delete the partial files must say so.
+
+        Cancellation is signalled, not awaited, so on Windows the downloader may
+        still hold the .gguf open -- rmtree fails, ignore_errors discards the
+        failure, and the log claims success. Observed on a cancelled 1B
+        download: 230 MB of temp_651 survived while the log read "Cancelled
+        download job 2 and deleted temp LLM 651".
+        """
+        stuck = tmp_path / "partial"
+        stuck.mkdir()
+        (stuck / "model.gguf").write_bytes(b"\x00" * 2048)
+
+        # Simulate the Windows behaviour: rmtree cannot remove the open file.
+        monkeypatch.setattr(
+            llm_repo_mod.shutil, "rmtree", lambda *a, **kw: None
+        )
+        monkeypatch.setattr(llm_repo_mod.time, "sleep", lambda _s: None)
+
+        job = SimpleNamespace(
+            id=9,
+            local_model_id=9,
+            temp_local_model_link=str(stuck),
+            final_local_model_link="",
+        )
+
+        with patch.object(llm_repo_mod.logger, "warning") as warn:
+            Download_Job_Repository(db=MagicMock()).cleanup_job_files(job)
+
+        assert warn.called, "surviving bytes must be reported, not swallowed"
+        message = warn.call_args[0][0]
+        assert str(stuck) in message          # names the path
+        assert "2048 bytes" in message        # and how much is still there
+
+    def test_remove_tree_reporting_returns_zero_when_the_tree_goes(self, tmp_path):
+        doomed = tmp_path / "gone"
+        doomed.mkdir()
+        (doomed / "f.bin").write_bytes(b"\x00" * 16)
+
+        assert llm_repo_mod.remove_tree_reporting(doomed) == 0
+        assert not doomed.exists()
+
+    def test_remove_tree_reporting_is_a_noop_on_a_missing_path(self, tmp_path):
+        assert llm_repo_mod.remove_tree_reporting(tmp_path / "never-existed") == 0
+
+    def test_dir_size_bytes_sums_the_tree(self, tmp_path):
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "a.bin").write_bytes(b"\x00" * 100)
+        (tmp_path / "sub" / "b.bin").write_bytes(b"\x00" * 23)
+
+        assert llm_repo_mod.dir_size_bytes(tmp_path) == 123
+        assert llm_repo_mod.dir_size_bytes(tmp_path / "nope") == 0
+
 
 @pytest.mark.unit
 class TestUpdateDbWithProgress:

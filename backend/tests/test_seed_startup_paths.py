@@ -37,6 +37,7 @@ from src.database.seed import (
 )
 from src.entities.DownloadJob import DownloadJobModel
 from src.entities.HardwareProfile import HardwareProfile
+from src.domains.hardware.services import PROFILING_LOGIC_VERSION
 from src.entities.KBJob import KBJobModel
 from src.entities.KnowledgeBase import KnowledgeBase
 from src.entities.Llm import Llm
@@ -66,7 +67,6 @@ class _RejectingEngine:
 
 
 class _FakeEngineType:
-    __name__ = "CPU_Engine"
     FORMAT_TAG = "gguf"
 
     @classmethod
@@ -86,6 +86,16 @@ class _FakeEngineType:
             "system_platform": "Linux",
             "performance_breakdown": {},
         }
+
+
+# Hardware_Service derives the current backend from the engine's class name
+# ("CPU_Engine" -> "cpu") and compares it to the profile's backend_type, so the
+# fake has to answer "CPU_Engine" or it looks like a different machine on every
+# call. Assigning __name__ inside the class body does NOT do that: type.__name__
+# is a data descriptor on the metaclass, so it wins over the class __dict__ and
+# the attribute still reads "_FakeEngineType". Assigning after the class runs
+# goes through that descriptor's setter, which is what actually renames it.
+_FakeEngineType.__name__ = "CPU_Engine"
 
 
 # =====================================================================
@@ -688,6 +698,36 @@ class TestJobCleanup:
         assert str(model_dir) in messages
         assert "reclaiming" in messages
 
+    def test_download_cleanup_reports_the_staging_directory_too(
+        self, test_db_session, tmp_path, monkeypatch, caplog
+    ):
+        """On a truncated download almost all the bytes are in staging.
+
+        Killing the app at 26% of a 4.7 GB model left an EMPTY final directory
+        and 1.28 GB of staging. The delete line measured only the final one, so
+        the log announced "reclaiming ~0.00 GB" and the real 1.28 GB went
+        without a word -- the opposite of what the comment above it asks for.
+        """
+        monkeypatch.setattr(config, "LLM_Engine", _RejectingEngine)
+        final_dir = tmp_path / "model-903"
+        final_dir.mkdir()  # left empty, exactly like the observed case
+        staging = tmp_path / "temp_903"
+        staging.mkdir()
+        (staging / "shard.gguf").write_bytes(b"x" * 4096)
+
+        llm = Llm(name="Truncated", local=2, link=str(final_dir), type="x")
+        test_db_session.add(llm)
+        test_db_session.flush()
+        self._download_job(test_db_session, llm_id=llm.id, temp_dir=str(staging))
+
+        with caplog.at_level("INFO"):
+            Job_Cleanup_Service(test_db_session)._cleanup_download_jobs()
+
+        messages = " ".join(r.getMessage() for r in caplog.records)
+        assert str(staging) in messages, "the staging path must be named"
+        assert "4096 bytes" in messages, "and the bytes it actually freed"
+        assert not staging.exists()
+
     def _kb_job(self, db, base_id, new_id, kb_id, status="running"):
         job = KBJobModel(
             base_model_id=base_id, new_model_id=new_id, kb_id=kb_id, status=status
@@ -779,6 +819,36 @@ class TestInitializers:
         init = Hardware_Initializer(test_db_session)
         assert init.initialize_if_needed() is True
         assert init.initialize_if_needed() is False  # second boot: cached
+
+    def test_hardware_reprofiles_when_the_profiling_logic_moved_on(
+        self, test_db_session, monkeypatch
+    ):
+        """An upgrade that fixes profiling must reach machines already profiled.
+
+        Startup used to return the moment a row existed, so #365's corrected
+        bandwidth never reached anyone who had already launched the app -- the
+        only way to get it was Clear All Data, which also wipes their models,
+        conversations and knowledge bases.
+        """
+        monkeypatch.setattr(config, "LLM_Engine", _FakeEngineType)
+        init = Hardware_Initializer(test_db_session)
+        assert init.initialize_if_needed() is True
+
+        # Simulate a row written by an older build: stale numbers, stale stamp.
+        stored = test_db_session.query(HardwareProfile).first()
+        stored.profiling_version = None
+        stored.cpu_model = "Stale CPU"
+        test_db_session.commit()
+        stale_id = stored.id
+
+        assert init.initialize_if_needed() is True  # re-profiled, not skipped
+        refreshed = test_db_session.query(HardwareProfile).first()
+        assert refreshed.id != stale_id
+        assert refreshed.cpu_model == "Seed CPU"
+        assert refreshed.profiling_version == PROFILING_LOGIC_VERSION
+
+        # And it settles: the next boot is a plain cache hit again.
+        assert init.initialize_if_needed() is False
 
     def test_hardware_failure_creates_fallback_profile(self, test_db_session, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", None)  # detection will fail
