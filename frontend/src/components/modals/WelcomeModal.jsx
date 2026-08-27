@@ -1,71 +1,51 @@
 import React from "react";
 import PropTypes from "prop-types";
 import { HelpCircle, Cpu, AlertTriangle } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import logoErudi from "../../assets/images/logos/logoerudifinal.png";
+import { formatPercent } from "../../i18n/format";
 
 WelcomeModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
 };
 
+// Badge colors for the labels the backend actually emits
+// (hardware/services.py _get_label: Excellent / Good / Fair / Poor / Weak).
+const COLOR_BY_LABEL = {
+  Excellent: "bg-emerald-700/30 text-white",
+  Good: "bg-green-600/30 text-white",
+  Fair: "bg-yellow-600/30 text-white",
+  Poor: "bg-red-600/30 text-white",
+  Weak: "bg-red-600/30 text-white",
+};
+
+// The caption below the score derives from the SAME thresholds as the label
+// badge (80+ Excellent, 60+ Good, 40+ Fair, below Poor/Weak) so the two
+// never contradict each other — a 53% "Fair" must not read "Great
+// Performance!" (#303).
+const recommendationTier = (inferenceScore) => {
+  if (inferenceScore >= 80) return "excellent";
+  if (inferenceScore >= 60) return "good";
+  if (inferenceScore >= 40) return "fair";
+  return "limited";
+};
+
 export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading }) {
+  const { t } = useTranslation();
+
   if (!isOpen) {
     return null;
   }
 
-  // Badge colors for the labels the backend actually emits
-  // (hardware/services.py _get_label: Excellent / Good / Fair / Poor / Weak).
-  const getColorForLabel = (label) => {
-    switch (label) {
-      case "Excellent":
-        return "bg-emerald-700/30 text-white";
-      case "Good":
-        return "bg-green-600/30 text-white";
-      case "Fair":
-        return "bg-yellow-600/30 text-white";
-      case "Poor":
-      case "Weak":
-        return "bg-red-600/30 text-white";
-      default:
-        return "bg-gray-600/30 text-white";
-    }
-  };
+  // The backend emits the label in English; show it in the app language when
+  // it is one of the known tiers, verbatim otherwise.
+  const labelText = (label) =>
+    label
+      ? t(`landing:welcome.label.${String(label).toLowerCase()}`, { defaultValue: label })
+      : t("common:status.unknown");
 
-  // The caption below the score derives from the SAME thresholds as the label
-  // badge (80+ Excellent, 60+ Good, 40+ Fair, below Poor/Weak) so the two
-  // never contradict each other — a 53% "Fair" must not read "Great
-  // Performance!" (#303).
-  const getRecommendations = (inferenceScore) => {
-    if (inferenceScore >= 80) {
-      return {
-        title: "Excellent Hardware! 🚀",
-        description:
-          "Your system can handle any model from 1B to 12B parameters with ease. We recommend trying the power of Mistral 8B or Gemma 12B for the best experience. We're also working on adding support for much larger models—stay tuned!",
-      };
-    } else if (inferenceScore >= 60) {
-      return {
-        title: "Good Performance 👍",
-        description:
-          "Your hardware runs models from 1B to 12B parameters smoothly. Mistral 8B and Gemma 12B are within comfortable reach, and smaller models will feel instant.",
-      };
-    } else if (inferenceScore >= 40) {
-      return {
-        title: "Fair Performance",
-        description:
-          "Good news: models like Gemma 4B and smaller will run well on your machine. Larger models such as Mistral 7B will work too, but expect some delays.",
-      };
-    } else {
-      return {
-        title: "Optimized for Smaller Models 💡",
-        description:
-          "We recommend starting with our optimized smaller models like Gemma 1B, 2B, or 4B. These models are specifically tuned to deliver real, impressive results even on limited hardware. You can still experiment with larger models, but performance may vary.",
-      };
-    }
-  };
-
-  const recommendations = hardwareInfo
-    ? getRecommendations(hardwareInfo.global_inference_score)
-    : null;
+  const tier = hardwareInfo ? recommendationTier(hardwareInfo.global_inference_score) : null;
 
   return (
     <div
@@ -84,15 +64,22 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
         {/* Header */}
         <div className="text-center py-6 px-6 sm:py-8 sm:px-8">
           <h1 className="text-4xl sm:text-5xl font-bold mb-4">
-            <span className="text-[#00B574]">Welcome!</span>
+            <span className="text-[#00B574]">{t("landing:welcome.title")}</span>
           </h1>
           <p className="text-lg sm:text-xl text-gray-300 mb-2 flex items-center justify-center gap-2">
-            <img src={logoErudi} alt="erudi" className="h-7 sm:h-7 -mt-2" /> is a{" "}
-            <span className="text-[#00B574]">personal</span> AI training platform.
+            <Trans
+              i18nKey="landing:welcome.intro"
+              components={{
+                logo: <img src={logoErudi} alt="erudi" className="h-7 sm:h-7 -mt-2" />,
+                accent: <span className="text-[#00B574]" />,
+              }}
+            />
           </p>
           <p className="text-lg sm:text-xl text-gray-300">
-            Get ready to chat and <span className="text-[#00B574]">specialize</span> your{" "}
-            <span className="text-[#00B574]">own</span> AI models!
+            <Trans
+              i18nKey="landing:welcome.tagline"
+              components={{ accent: <span className="text-[#00B574]" /> }}
+            />
           </p>
         </div>
 
@@ -105,21 +92,21 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                 <AlertTriangle className="w-8 h-8 text-[#E5D07D] mt-1" />
                 <div className="flex-1">
                   <h3 className="text-[#E5D07D] font-semibold text-lg mb-3 flex items-center gap-2">
-                    Important Notice
+                    {t("landing:welcome.notice.title")}
                   </h3>
                   <div className="space-y-3 text-sm sm:text-base">
                     <p className="text-gray-300 leading-relaxed">
-                      Erudi runs entirely on your device — no data leaves your machine. Performance
-                      depends on your hardware.
+                      {t("landing:welcome.notice.local")}
                     </p>
                     <p className="text-gray-300 leading-relaxed">
-                      This is an early release and some rough edges may remain. If you encounter an
-                      issue, we&apos;d love to hear about it.
+                      {t("landing:welcome.notice.earlyRelease")}
                     </p>
                     <p className="text-gray-300 leading-relaxed">
-                      Your feedback shapes what we build next — thank you for using Erudi.
+                      {t("landing:welcome.notice.feedback")}
                     </p>
-                    <p className="text-[#E5D07D] font-bold">Welcome to your private AI workspace</p>
+                    <p className="text-[#E5D07D] font-bold">
+                      {t("landing:welcome.notice.closing")}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -132,19 +119,21 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                 <div className="flex items-center gap-3 mb-4">
                   {/* Remove the container div and use a larger CPU icon */}
                   <Cpu className="w-8 h-8 text-[#00B574]" />
-                  <h3 className="text-[#00B574] font-semibold text-lg">Hardware Evaluation</h3>
+                  <h3 className="text-[#00B574] font-semibold text-lg">
+                    {t("landing:welcome.hardware.title")}
+                  </h3>
                 </div>
 
                 {loading ? (
                   <div className="flex items-center justify-center py-6 sm:py-8">
                     <div className="w-6 h-6 sm:w-8 sm:h-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
                     <span className="ml-3 text-gray-300 text-sm sm:text-base">
-                      We are evaluating your hardware...
+                      {t("landing:welcome.hardware.evaluating")}
                     </span>
                   </div>
                 ) : hardwareInfo?.error ? (
                   <div className="text-red-400 bg-red-900/20 border border-red-600/30 rounded-lg p-3">
-                    <p className="font-medium">⚠️ Evaluation Failed</p>
+                    <p className="font-medium">{t("landing:welcome.hardware.failed")}</p>
                     <p className="text-sm mt-1">{hardwareInfo.error}</p>
                   </div>
                 ) : hardwareInfo ? (
@@ -153,15 +142,22 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                     <div className="space-y-3">
                       <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
                         <div className="flex items-center justify-between">
-                          <span className="text-gray-400 text-sm">Chat Performance</span>
+                          <span className="text-gray-400 text-sm">
+                            {t("landing:welcome.hardware.chatPerformance")}
+                          </span>
                           <div className="flex items-center gap-2">
                             <span className="text-lg sm:text-xl font-bold text-white">
-                              {Math.round(hardwareInfo.global_inference_score)}%
+                              {formatPercent(hardwareInfo.global_inference_score, {
+                                maximumFractionDigits: 0,
+                              })}
                             </span>
                             <span
-                              className={`px-2 py-1 rounded-full text-xs font-medium ${getColorForLabel(hardwareInfo.global_inference_label)}`}
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                COLOR_BY_LABEL[hardwareInfo.global_inference_label] ||
+                                "bg-gray-600/30 text-white"
+                              }`}
                             >
-                              {hardwareInfo.global_inference_label || "Unknown"}
+                              {labelText(hardwareInfo.global_inference_label)}
                             </span>
                           </div>
                         </div>
@@ -169,16 +165,16 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                     </div>
 
                     {/* Recommendations Summary */}
-                    {recommendations && (
+                    {tier && (
                       <div className="bg-[#242424]/60 border border-white/10 rounded-lg p-3 sm:p-4 backdrop-blur-[8px] saturate-[1.1]">
                         <div className="flex items-start gap-3">
                           <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5 text-orange-300 transition-colors cursor-help mt-0.5" />
                           <div className="flex-1 min-w-0">
                             <h4 className="text-orange-300 font-semibold mb-2">
-                              {recommendations.title}
+                              {t(`landing:welcome.recommendation.${tier}.title`)}
                             </h4>
                             <p className="text-gray-300 text-sm leading-relaxed">
-                              {recommendations.description}
+                              {t(`landing:welcome.recommendation.${tier}.description`)}
                             </p>
                           </div>
                         </div>
@@ -205,7 +201,7 @@ export default function WelcomeModal({ isOpen, onClose, hardwareInfo, loading })
                 "flex items-center gap-2",
               ].join(" ")}
             >
-              Get Started
+              {t("landing:welcome.getStarted")}
             </button>
           </div>
         </div>

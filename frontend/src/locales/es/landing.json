@@ -1,1 +1,99 @@
-{}
+{
+  "sidebar": {
+    "localModels": "Modelos locales",
+    "remoteModels": "Modelos remotos",
+    "localTooltip": "Modelos descargados y listos para usar en su equipo. ¡Están disponibles para chatear y especializar!",
+    "remoteTooltip": "Modelos disponibles para descargar. Haga clic en cualquier modelo para descargarlo en su almacenamiento local.",
+    "searchPlaceholder": "¿Busca un modelo?",
+    "loading": "Cargando modelos...",
+    "deleteModel": "Eliminar modelo",
+    "unavailableTitle": "No disponible en su hardware",
+    "unavailableBadge": "no disponible",
+    "noneFound": "No se encontraron modelos...",
+    "noneLocal": "No hay modelos aquí...",
+    "noneRemote": "No hay modelos disponibles..."
+  },
+  "installed": {
+    "eyebrow": "Instalados",
+    "refreshTitle": "Actualizar modelos instalados",
+    "loading": "cargando modelos instalados…",
+    "empty": "Aún no hay modelos instalados. Elija uno a continuación. Su equipo maneja <fit>{{range}}</fit> con comodidad.",
+    "range": "{{min}}–{{max}}B",
+    "rangeFallback": "modelos pequeños"
+  },
+  "machine": {
+    "fallbackChip": "Su hardware"
+  },
+  "recommended": {
+    "eyebrow": "Recomendados para su equipo",
+    "description": "Modelos populares y listos para chatear que funcionan bien en su {{chip}}."
+  },
+  "browse": {
+    "eyebrow": "Explorar por capacidad",
+    "noMatch": "Ningún modelo coincide con estos filtros. Amplíe el rango de tamaño o desactive «Compatible con mi equipo»."
+  },
+  "community": {
+    "title": "Ajustes finos de la comunidad",
+    "hide": "Ocultar",
+    "showAll": "Mostrar todo"
+  },
+  "messages": {
+    "successTitle": "Éxito",
+    "modelDeleted": "El modelo {{name}} se ha eliminado correctamente.",
+    "assistantRebound": "{{assistant}} ahora usa los pesos de {{target}}.",
+    "fetchLocalModelsFailed": "No se pudieron obtener los modelos locales. Inténtelo de nuevo y contacte con el equipo de Erudi para obtener ayuda.",
+    "fetchModelsFailed": "No se pudieron obtener los modelos disponibles. Inténtelo de nuevo y contacte con el equipo de Erudi para obtener ayuda.",
+    "deleteModelFailed": "No se pudo eliminar el modelo. Inténtelo de nuevo y contacte con el equipo de Erudi para obtener ayuda.",
+    "rebindFailed": "No se pudo volver a vincular el asistente. Inténtelo de nuevo y contacte con el equipo de Erudi para obtener ayuda.",
+    "hardwareEvaluationFailed": "No se pudieron evaluar las capacidades del hardware. Contacte con el equipo de Erudi para obtener ayuda.",
+    "downloadFailed": "Error en la descarga."
+  },
+  "welcome": {
+    "title": "¡Bienvenido!",
+    "intro": "<logo/> es una plataforma <accent>personal</accent> de entrenamiento de IA.",
+    "tagline": "¡Prepárese para chatear y <accent>especializar</accent> sus <accent>propios</accent> modelos de IA!",
+    "notice": {
+      "title": "Aviso importante",
+      "local": "Erudi se ejecuta por completo en su dispositivo: ningún dato sale de su equipo. El rendimiento depende de su hardware.",
+      "earlyRelease": "Esta es una versión temprana y pueden quedar algunos detalles por pulir. Si encuentra un problema, nos encantaría saberlo.",
+      "feedback": "Sus comentarios definen lo que construiremos a continuación. Gracias por usar Erudi.",
+      "closing": "Bienvenido a su espacio de IA privado"
+    },
+    "hardware": {
+      "title": "Evaluación del hardware",
+      "evaluating": "Estamos evaluando su hardware...",
+      "failed": "⚠️ Error en la evaluación",
+      "chatPerformance": "Rendimiento del chat"
+    },
+    "label": {
+      "excellent": "Excelente",
+      "good": "Bueno",
+      "fair": "Aceptable",
+      "poor": "Bajo",
+      "weak": "Muy bajo"
+    },
+    "recommendation": {
+      "excellent": {
+        "title": "¡Hardware excelente! 🚀",
+        "description": "Su sistema puede ejecutar con facilidad cualquier modelo de 1B a 12B parámetros. Le recomendamos probar la potencia de Mistral 8B o Gemma 12B para obtener la mejor experiencia. También estamos trabajando para admitir modelos mucho más grandes. ¡Manténgase atento!"
+      },
+      "good": {
+        "title": "Buen rendimiento 👍",
+        "description": "Su hardware ejecuta con fluidez modelos de 1B a 12B parámetros. Mistral 8B y Gemma 12B están cómodamente a su alcance, y los modelos más pequeños se sentirán instantáneos."
+      },
+      "fair": {
+        "title": "Rendimiento aceptable",
+        "description": "Buenas noticias: modelos como Gemma 4B y más pequeños funcionarán bien en su equipo. Los modelos más grandes, como Mistral 7B, también funcionarán, pero espere cierta demora."
+      },
+      "limited": {
+        "title": "Optimizado para modelos pequeños 💡",
+        "description": "Le recomendamos empezar con nuestros modelos pequeños optimizados, como Gemma 1B, 2B o 4B. Estos modelos están ajustados específicamente para ofrecer resultados reales e impresionantes incluso en hardware limitado. Puede experimentar con modelos más grandes, pero el rendimiento puede variar."
+      }
+    },
+    "getStarted": "Empezar"
+  },
+  "comingSoon": {
+    "title": "Próximamente",
+    "body": "La función <feature>{{name}}</feature> está en desarrollo y estará disponible en una futura actualización."
+  }
+}

@@ -1,1 +1,99 @@
-{}
+{
+  "sidebar": {
+    "localModels": "Local Models",
+    "remoteModels": "Remote Models",
+    "localTooltip": "Models downloaded and ready to use on your computer. These are available for chat, and specialization!",
+    "remoteTooltip": "Models available for download. Click on any model to download it to your local storage.",
+    "searchPlaceholder": "Looking for a model?",
+    "loading": "Loading models...",
+    "deleteModel": "Delete model",
+    "unavailableTitle": "Unavailable on your hardware",
+    "unavailableBadge": "unavailable",
+    "noneFound": "No models found...",
+    "noneLocal": "No models here...",
+    "noneRemote": "No models available..."
+  },
+  "installed": {
+    "eyebrow": "Installed",
+    "refreshTitle": "Refresh installed models",
+    "loading": "loading installed models…",
+    "empty": "No models installed yet. Pick one below. Your machine handles <fit>{{range}}</fit> comfortably.",
+    "range": "{{min}}–{{max}}B",
+    "rangeFallback": "small"
+  },
+  "machine": {
+    "fallbackChip": "Your hardware"
+  },
+  "recommended": {
+    "eyebrow": "Recommended for your machine",
+    "description": "Popular, ready-to-chat models that run well on your {{chip}}."
+  },
+  "browse": {
+    "eyebrow": "Browse by capability",
+    "noMatch": "No models match these filters. Widen the size range or turn off “Fits my machine”."
+  },
+  "community": {
+    "title": "Community fine-tunes",
+    "hide": "Hide",
+    "showAll": "Show all"
+  },
+  "messages": {
+    "successTitle": "Success",
+    "modelDeleted": "Model {{name}} has been successfully deleted.",
+    "assistantRebound": "{{assistant}} now uses the weights of {{target}}.",
+    "fetchLocalModelsFailed": "Failed to fetch local models. Please try again and contact the Erudi team for support.",
+    "fetchModelsFailed": "Failed to fetch available models. Please try again and contact the Erudi team for support.",
+    "deleteModelFailed": "Failed to delete the model. Please try again and contact the Erudi team for support.",
+    "rebindFailed": "Failed to re-bind the assistant. Please try again and contact the Erudi team for support.",
+    "hardwareEvaluationFailed": "Failed to evaluate hardware capabilities. Please contact the Erudi team for support.",
+    "downloadFailed": "Download failed."
+  },
+  "welcome": {
+    "title": "Welcome!",
+    "intro": "<logo/> is a <accent>personal</accent> AI training platform.",
+    "tagline": "Get ready to chat and <accent>specialize</accent> your <accent>own</accent> AI models!",
+    "notice": {
+      "title": "Important Notice",
+      "local": "Erudi runs entirely on your device — no data leaves your machine. Performance depends on your hardware.",
+      "earlyRelease": "This is an early release and some rough edges may remain. If you encounter an issue, we'd love to hear about it.",
+      "feedback": "Your feedback shapes what we build next — thank you for using Erudi.",
+      "closing": "Welcome to your private AI workspace"
+    },
+    "hardware": {
+      "title": "Hardware Evaluation",
+      "evaluating": "We are evaluating your hardware...",
+      "failed": "⚠️ Evaluation Failed",
+      "chatPerformance": "Chat Performance"
+    },
+    "label": {
+      "excellent": "Excellent",
+      "good": "Good",
+      "fair": "Fair",
+      "poor": "Poor",
+      "weak": "Weak"
+    },
+    "recommendation": {
+      "excellent": {
+        "title": "Excellent Hardware! 🚀",
+        "description": "Your system can handle any model from 1B to 12B parameters with ease. We recommend trying the power of Mistral 8B or Gemma 12B for the best experience. We're also working on adding support for much larger models—stay tuned!"
+      },
+      "good": {
+        "title": "Good Performance 👍",
+        "description": "Your hardware runs models from 1B to 12B parameters smoothly. Mistral 8B and Gemma 12B are within comfortable reach, and smaller models will feel instant."
+      },
+      "fair": {
+        "title": "Fair Performance",
+        "description": "Good news: models like Gemma 4B and smaller will run well on your machine. Larger models such as Mistral 7B will work too, but expect some delays."
+      },
+      "limited": {
+        "title": "Optimized for Smaller Models 💡",
+        "description": "We recommend starting with our optimized smaller models like Gemma 1B, 2B, or 4B. These models are specifically tuned to deliver real, impressive results even on limited hardware. You can still experiment with larger models, but performance may vary."
+      }
+    },
+    "getStarted": "Get Started"
+  },
+  "comingSoon": {
+    "title": "Coming Soon",
+    "body": "The <feature>{{name}}</feature> feature is currently under development and will be available in a future update."
+  }
+}

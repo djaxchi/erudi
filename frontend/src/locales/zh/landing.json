@@ -1,1 +1,99 @@
-{}
+{
+  "sidebar": {
+    "localModels": "本地模型",
+    "remoteModels": "远程模型",
+    "localTooltip": "已下载并可在您的电脑上直接使用的模型。这些模型可用于聊天和专项训练！",
+    "remoteTooltip": "可供下载的模型。点击任意模型即可将其下载到本地存储。",
+    "searchPlaceholder": "在找模型吗？",
+    "loading": "正在加载模型...",
+    "deleteModel": "删除模型",
+    "unavailableTitle": "在您的硬件上不可用",
+    "unavailableBadge": "不可用",
+    "noneFound": "未找到模型...",
+    "noneLocal": "这里还没有模型...",
+    "noneRemote": "没有可用的模型..."
+  },
+  "installed": {
+    "eyebrow": "已安装",
+    "refreshTitle": "刷新已安装的模型",
+    "loading": "正在加载已安装的模型…",
+    "empty": "尚未安装任何模型。请从下方选择一个。您的机器可以轻松运行 <fit>{{range}}</fit> 的模型。",
+    "range": "{{min}}–{{max}}B",
+    "rangeFallback": "小型"
+  },
+  "machine": {
+    "fallbackChip": "您的硬件"
+  },
+  "recommended": {
+    "eyebrow": "为您的机器推荐",
+    "description": "热门且可直接聊天的模型，在您的 {{chip}} 上运行良好。"
+  },
+  "browse": {
+    "eyebrow": "按能力浏览",
+    "noMatch": "没有符合这些筛选条件的模型。请放宽大小范围或关闭“适合我的机器”。"
+  },
+  "community": {
+    "title": "社区微调模型",
+    "hide": "隐藏",
+    "showAll": "显示全部"
+  },
+  "messages": {
+    "successTitle": "成功",
+    "modelDeleted": "模型 {{name}} 已成功删除。",
+    "assistantRebound": "{{assistant}} 现在使用 {{target}} 的权重。",
+    "fetchLocalModelsFailed": "无法获取本地模型。请重试，并联系 Erudi 团队获取支持。",
+    "fetchModelsFailed": "无法获取可用模型。请重试，并联系 Erudi 团队获取支持。",
+    "deleteModelFailed": "无法删除该模型。请重试，并联系 Erudi 团队获取支持。",
+    "rebindFailed": "无法重新绑定该助手。请重试，并联系 Erudi 团队获取支持。",
+    "hardwareEvaluationFailed": "无法评估硬件性能。请联系 Erudi 团队获取支持。",
+    "downloadFailed": "下载失败。"
+  },
+  "welcome": {
+    "title": "欢迎！",
+    "intro": "<logo/> 是一个<accent>个人</accent> AI 训练平台。",
+    "tagline": "准备好与您<accent>自己的</accent> AI 模型聊天并对其进行<accent>专项训练</accent>吧！",
+    "notice": {
+      "title": "重要提示",
+      "local": "Erudi 完全在您的设备上运行——任何数据都不会离开您的机器。性能取决于您的硬件。",
+      "earlyRelease": "这是一个早期版本，可能仍有一些不完善之处。如果您遇到问题，我们很乐意听取您的反馈。",
+      "feedback": "您的反馈决定我们接下来要构建的内容——感谢您使用 Erudi。",
+      "closing": "欢迎来到您的私人 AI 工作空间"
+    },
+    "hardware": {
+      "title": "硬件评估",
+      "evaluating": "我们正在评估您的硬件...",
+      "failed": "⚠️ 评估失败",
+      "chatPerformance": "聊天性能"
+    },
+    "label": {
+      "excellent": "优秀",
+      "good": "良好",
+      "fair": "一般",
+      "poor": "较差",
+      "weak": "很差"
+    },
+    "recommendation": {
+      "excellent": {
+        "title": "硬件优秀！🚀",
+        "description": "您的系统可以轻松运行 1B 到 12B 参数的任何模型。我们建议您试试 Mistral 8B 或 Gemma 12B 的强大性能，以获得最佳体验。我们也在努力支持更大的模型——敬请期待！"
+      },
+      "good": {
+        "title": "性能良好 👍",
+        "description": "您的硬件可以流畅运行 1B 到 12B 参数的模型。Mistral 8B 和 Gemma 12B 都在轻松可及的范围内，更小的模型则几乎即时响应。"
+      },
+      "fair": {
+        "title": "性能一般",
+        "description": "好消息：Gemma 4B 及更小的模型可以在您的机器上良好运行。Mistral 7B 等更大的模型也可以运行，但会有一些延迟。"
+      },
+      "limited": {
+        "title": "针对小型模型优化 💡",
+        "description": "我们建议您从我们优化过的小型模型开始，例如 Gemma 1B、2B 或 4B。这些模型经过专门调优，即使在有限的硬件上也能提供真实、出色的效果。您仍然可以尝试更大的模型，但性能可能有所不同。"
+      }
+    },
+    "getStarted": "开始使用"
+  },
+  "comingSoon": {
+    "title": "即将推出",
+    "body": "<feature>{{name}}</feature> 功能目前正在开发中，将在未来的更新中推出。"
+  }
+}
