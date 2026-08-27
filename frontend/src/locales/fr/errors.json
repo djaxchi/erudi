@@ -1,1 +1,128 @@
-{}
+{
+  "backend": {
+    "defaultTitle": "Le backend n'a pas pu démarrer",
+    "footerWithCode": "Code d'erreur : {{code}} · {{message}}",
+    "checkLogsAt": "Consultez les journaux dans {{path}} et contactez-nous.",
+    "checkLogs": "Consultez les journaux du backend et contactez-nous.",
+    "codes": {
+      "portInUse": {
+        "title": "Port déjà utilisé",
+        "detail": "Un autre processus utilise le port dont Erudi a besoin pour son serveur local.",
+        "hint": "Quittez toute autre instance d'Erudi (ou l'application qui occupe le port), puis relancez."
+      },
+      "noPortAvailable": {
+        "title": "Aucun port libre",
+        "detail": "Erudi n'a pas trouvé de port libre pour démarrer son serveur local.",
+        "hint": "Fermez les autres applications qui utilisent des ports locaux, puis relancez Erudi."
+      },
+      "portTimeout": {
+        "title": "Le backend n'a pas démarré à temps",
+        "detail": "Le serveur local n'a pas démarré dans le délai imparti.",
+        "hint": "Relancez Erudi. Si le problème se répète, consultez le fichier journal du backend."
+      },
+      "crashBeforeReady": {
+        "title": "Le backend a planté au démarrage",
+        "detail": "Le serveur local s'est arrêté avant d'être prêt.",
+        "hint": "Relancez Erudi ; si le problème persiste, consultez le fichier journal du backend."
+      },
+      "importError": {
+        "title": "Le backend n'a pas pu se charger",
+        "detail": "Un composant indispensable du backend n'a pas pu être chargé.",
+        "hint": "Réinstallez ou mettez à jour Erudi, puis consultez le fichier journal du backend."
+      },
+      "dataPrepError": {
+        "title": "Impossible de préparer les données de l'application",
+        "detail": "Erudi n'a pas pu créer son dossier de données.",
+        "hint": "Vérifiez l'espace disque disponible et les permissions, puis relancez."
+      },
+      "databaseError": {
+        "title": "Erreur de base de données",
+        "detail": "La base de données locale d'Erudi n'a pas pu démarrer.",
+        "hint": "Relancez Erudi ; si le problème persiste, consultez le fichier journal du backend."
+      },
+      "cudaRuntimeError": {
+        "title": "Erreur d'exécution GPU",
+        "detail": "Le runtime CUDA n'a pas pu s'initialiser.",
+        "hint": "Mettez à jour votre pilote NVIDIA, ou utilisez la version CPU d'Erudi."
+      },
+      "missingDependency": {
+        "title": "Dépendance système manquante",
+        "detail": "Une bibliothèque système nécessaire à Erudi est manquante.",
+        "hint": "Réinstallez Erudi, puis consultez le fichier journal du backend."
+      },
+      "backendNotFound": {
+        "title": "Backend introuvable",
+        "detail": "L'exécutable du backend embarqué est introuvable.",
+        "hint": "Réinstallez Erudi."
+      },
+      "backendStartupFailed": {
+        "title": "Le backend n'a pas pu démarrer",
+        "detail": "Le serveur local n'a pas pu démarrer après plusieurs tentatives.",
+        "hint": "Relancez Erudi ; si le problème persiste, consultez le fichier journal du backend."
+      },
+      "backendExitError": {
+        "title": "Le backend s'est arrêté de façon inattendue",
+        "detail": "Le processus du serveur local s'est terminé avec une erreur.",
+        "hint": "Relancez Erudi ; si le problème persiste, consultez le fichier journal du backend."
+      },
+      "backendSpawnFailed": {
+        "title": "Le backend n'a pas pu être lancé",
+        "detail": "Erudi n'a pas pu démarrer le processus de son serveur local.",
+        "hint": "Réinstallez Erudi (ou autorisez-le dans votre antivirus/SmartScreen), puis relancez."
+      },
+      "unexpectedError": {
+        "title": "Erreur de démarrage inattendue",
+        "detail": "Un problème est survenu au démarrage d'Erudi.",
+        "hint": "Relancez Erudi, puis consultez le fichier journal du backend."
+      },
+      "pollingError": {
+        "title": "Le backend a été perdu de vue",
+        "detail": "Erudi a cessé de surveiller le backend pendant le démarrage.",
+        "hint": "Relancez Erudi."
+      },
+      "backendUnreachable": {
+        "title": "Impossible de joindre le backend",
+        "detail": "Le serveur local d'Erudi ne répond pas.",
+        "hint": "Relancez Erudi ; si le problème persiste, consultez le fichier journal du backend."
+      },
+      "unknown": {
+        "title": "Le backend n'a pas pu démarrer",
+        "detail": "Le serveur local d'Erudi n'a pas démarré.",
+        "hint": "Relancez Erudi ; si le problème persiste, consultez le fichier journal du backend."
+      }
+    }
+  },
+  "connection": {
+    "restart": "Redémarrer",
+    "restartTitle": "Redémarrer le backend",
+    "unreachable": {
+      "label": "Backend injoignable",
+      "title": "Le backend local ne répond pas",
+      "tooltip": "Le backend local a cessé de répondre. Redémarrez-le pour vous reconnecter."
+    },
+    "recovering": {
+      "label": "Restauration de la base de données...",
+      "title": "La base de données locale est en cours de récupération",
+      "tooltip": "La base de données locale est en cours de restauration. Vos données sont en sécurité ; cela se résout de soi-même."
+    },
+    "databaseError": {
+      "label": "Erreur de base de données",
+      "title": "La base de données locale a rencontré une erreur",
+      "tooltip": "La base de données locale a rencontré une erreur. Redémarrez le backend pour la rétablir."
+    },
+    "offline": {
+      "label": "Hors ligne",
+      "title": "Aucune connexion Internet",
+      "tooltip": "Sans Internet : le catalogue et les téléchargements sont indisponibles, mais vous pouvez toujours discuter avec les modèles installés."
+    },
+    "connected": {
+      "label": "Connecté",
+      "title": "Connecté à Internet",
+      "tooltip": "Vous pouvez discuter hors ligne avec les modèles installés. En installer de nouveaux nécessite une connexion."
+    }
+  },
+  "api": {
+    "timeout": "Délai de la requête dépassé",
+    "httpStatus": "Erreur API : {{status}}"
+  }
+}

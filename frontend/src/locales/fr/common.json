@@ -69,5 +69,11 @@
     },
     "elapsed": "({{seconds}} s)",
     "firstRun": "Premier lancement — cela peut prendre une minute pendant qu'Erudi s'installe."
+  },
+  "update": {
+    "available": "Mise à jour <v>v{{version}}</v> disponible - téléchargement…",
+    "downloading": "Téléchargement de <v>v{{version}}</v>… <pct>{{percent}}</pct>",
+    "ready": "<v>v{{version}}</v> prête — <install>redémarrer pour installer</install>",
+    "dismiss": "Ignorer la notification de mise à jour"
   }
 }

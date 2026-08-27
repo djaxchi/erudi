@@ -1,1 +1,128 @@
-{}
+{
+  "backend": {
+    "defaultTitle": "El backend no pudo iniciarse",
+    "footerWithCode": "Código de error: {{code}} · {{message}}",
+    "checkLogsAt": "Consulte los registros en {{path}} y contáctenos.",
+    "checkLogs": "Consulte los registros del backend y contáctenos.",
+    "codes": {
+      "portInUse": {
+        "title": "Puerto ya en uso",
+        "detail": "Otro proceso está usando el puerto que Erudi necesita para su servidor local.",
+        "hint": "Cierre cualquier otra instancia de Erudi (o la aplicación que ocupa el puerto) y vuelva a iniciar."
+      },
+      "noPortAvailable": {
+        "title": "No hay puertos libres",
+        "detail": "Erudi no encontró un puerto libre para iniciar su servidor local.",
+        "hint": "Cierre otras aplicaciones que usen puertos locales y vuelva a iniciar Erudi."
+      },
+      "portTimeout": {
+        "title": "El backend no se inició a tiempo",
+        "detail": "El servidor local no arrancó dentro del tiempo de inicio.",
+        "hint": "Vuelva a iniciar Erudi. Si se repite, consulte el archivo de registro del backend."
+      },
+      "crashBeforeReady": {
+        "title": "El backend falló al iniciarse",
+        "detail": "El servidor local se detuvo antes de estar listo.",
+        "hint": "Vuelva a iniciar Erudi; si persiste, consulte el archivo de registro del backend."
+      },
+      "importError": {
+        "title": "El backend no pudo cargarse",
+        "detail": "No se pudo cargar un componente necesario del backend.",
+        "hint": "Reinstale o actualice Erudi y luego consulte el archivo de registro del backend."
+      },
+      "dataPrepError": {
+        "title": "No se pudieron preparar los datos de la aplicación",
+        "detail": "Erudi no pudo configurar su directorio de datos.",
+        "hint": "Compruebe el espacio en disco y los permisos, y vuelva a iniciar."
+      },
+      "databaseError": {
+        "title": "Error de base de datos",
+        "detail": "La base de datos local de Erudi no pudo iniciarse.",
+        "hint": "Vuelva a iniciar Erudi; si persiste, consulte el archivo de registro del backend."
+      },
+      "cudaRuntimeError": {
+        "title": "Error del entorno de ejecución de la GPU",
+        "detail": "No se pudo inicializar el entorno de ejecución CUDA.",
+        "hint": "Actualice su controlador NVIDIA o use la versión CPU de Erudi."
+      },
+      "missingDependency": {
+        "title": "Falta una dependencia del sistema",
+        "detail": "Falta una biblioteca del sistema que Erudi necesita.",
+        "hint": "Reinstale Erudi y luego consulte el archivo de registro del backend."
+      },
+      "backendNotFound": {
+        "title": "Backend no encontrado",
+        "detail": "No se pudo localizar el ejecutable del backend incluido.",
+        "hint": "Reinstale Erudi."
+      },
+      "backendStartupFailed": {
+        "title": "El backend no pudo iniciarse",
+        "detail": "El servidor local no pudo iniciarse tras varios intentos.",
+        "hint": "Vuelva a iniciar Erudi; si persiste, consulte el archivo de registro del backend."
+      },
+      "backendExitError": {
+        "title": "El backend se detuvo inesperadamente",
+        "detail": "El proceso del servidor local terminó con un error.",
+        "hint": "Vuelva a iniciar Erudi; si persiste, consulte el archivo de registro del backend."
+      },
+      "backendSpawnFailed": {
+        "title": "No se pudo lanzar el backend",
+        "detail": "Erudi no pudo iniciar el proceso de su servidor local.",
+        "hint": "Reinstale Erudi (o permítalo en su antivirus/SmartScreen) y vuelva a iniciar."
+      },
+      "unexpectedError": {
+        "title": "Error de inicio inesperado",
+        "detail": "Algo salió mal al iniciar Erudi.",
+        "hint": "Vuelva a iniciar Erudi y luego consulte el archivo de registro del backend."
+      },
+      "pollingError": {
+        "title": "Se perdió el rastro del backend",
+        "detail": "Erudi dejó de supervisar el backend durante el inicio.",
+        "hint": "Vuelva a iniciar Erudi."
+      },
+      "backendUnreachable": {
+        "title": "No se puede contactar con el backend",
+        "detail": "El servidor local de Erudi no responde.",
+        "hint": "Vuelva a iniciar Erudi; si persiste, consulte el archivo de registro del backend."
+      },
+      "unknown": {
+        "title": "El backend no pudo iniciarse",
+        "detail": "El servidor local de Erudi no se inició.",
+        "hint": "Vuelva a iniciar Erudi; si persiste, consulte el archivo de registro del backend."
+      }
+    }
+  },
+  "connection": {
+    "restart": "Reiniciar",
+    "restartTitle": "Reiniciar el backend",
+    "unreachable": {
+      "label": "Backend inaccesible",
+      "title": "El backend local no responde",
+      "tooltip": "El backend local dejó de responder. Reinícielo para volver a conectar."
+    },
+    "recovering": {
+      "label": "Restaurando la base de datos...",
+      "title": "La base de datos local se está recuperando",
+      "tooltip": "La base de datos local se está restaurando. Sus datos están a salvo; esto se resuelve por sí solo."
+    },
+    "databaseError": {
+      "label": "Error de base de datos",
+      "title": "La base de datos local encontró un error",
+      "tooltip": "La base de datos local encontró un error. Reinicie el backend para recuperarla."
+    },
+    "offline": {
+      "label": "Sin conexión",
+      "title": "Sin conexión a Internet",
+      "tooltip": "Sin Internet: el catálogo y las descargas no están disponibles, pero puede seguir chateando con los modelos instalados."
+    },
+    "connected": {
+      "label": "Conectado",
+      "title": "Conectado a Internet",
+      "tooltip": "Puede chatear sin conexión con los modelos instalados. Instalar nuevos requiere conexión."
+    }
+  },
+  "api": {
+    "timeout": "Tiempo de espera de la solicitud agotado",
+    "httpStatus": "Error de API: {{status}}"
+  }
+}

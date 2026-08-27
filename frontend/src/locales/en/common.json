@@ -69,5 +69,11 @@
     },
     "elapsed": "({{seconds}}s)",
     "firstRun": "First launch — this can take a minute while Erudi sets things up."
+  },
+  "update": {
+    "available": "Update <v>v{{version}}</v> available - downloading…",
+    "downloading": "Downloading <v>v{{version}}</v>… <pct>{{percent}}</pct>",
+    "ready": "<v>v{{version}}</v> ready — <install>restart to install</install>",
+    "dismiss": "Dismiss update notification"
   }
 }

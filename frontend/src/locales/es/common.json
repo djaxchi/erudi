@@ -69,5 +69,11 @@
     },
     "elapsed": "({{seconds}} s)",
     "firstRun": "Primer inicio: puede tardar un minuto mientras Erudi se configura."
+  },
+  "update": {
+    "available": "Actualización <v>v{{version}}</v> disponible - descargando…",
+    "downloading": "Descargando <v>v{{version}}</v>… <pct>{{percent}}</pct>",
+    "ready": "<v>v{{version}}</v> lista — <install>reiniciar para instalar</install>",
+    "dismiss": "Descartar la notificación de actualización"
   }
 }

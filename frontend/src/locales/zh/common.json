@@ -69,5 +69,11 @@
     },
     "elapsed": "（{{seconds}} 秒）",
     "firstRun": "首次启动 — Erudi 正在进行初始化，可能需要一分钟。"
+  },
+  "update": {
+    "available": "更新 <v>v{{version}}</v> 可用 - 正在下载…",
+    "downloading": "正在下载 <v>v{{version}}</v>… <pct>{{percent}}</pct>",
+    "ready": "<v>v{{version}}</v> 已就绪 — <install>重启以安装</install>",
+    "dismiss": "关闭更新通知"
   }
 }
