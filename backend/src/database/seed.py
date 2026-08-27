@@ -933,8 +933,26 @@ class Job_Cleanup_Service:
 
                 # Delete temp files. The staging dir is scratch space in every
                 # case: on a rescue its contents were already moved into place.
+                #
+                # On a TRUNCATED download this is where nearly all the bytes are:
+                # killing the app at 26% of a 4.7 GB model left an empty final
+                # dir and 1.28 GB of staging, so the line above announced
+                # "reclaiming ~0.00 GB" and this deleted the real 1.28 GB without
+                # a word. Measure and name it too -- the comment above already
+                # asks for exactly that.
                 if job.temp_local_model_link and os.path.exists(job.temp_local_model_link):
-                    shutil.rmtree(job.temp_local_model_link, ignore_errors=True)
+                    staged = dir_size_bytes(job.temp_local_model_link)
+                    logger.info(
+                        f"Download job {job.id}: removing staging directory "
+                        f"{job.temp_local_model_link} (reclaiming {staged} bytes)"
+                    )
+                    left = remove_tree_reporting(job.temp_local_model_link)
+                    if left:
+                        logger.warning(
+                            f"Download job {job.id}: staging directory "
+                            f"{job.temp_local_model_link} not fully removed "
+                            f"({left} bytes still on disk)"
+                        )
 
                 # The temp Llm delete above nulls local_model_id server-side
                 # (FK SET NULL); updated_at is stamped by onupdate=func.now().
