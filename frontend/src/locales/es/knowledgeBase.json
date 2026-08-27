@@ -4,8 +4,8 @@
     "intro": {
       "p1": "Una base de conocimiento le permite enseñar a su IA sobre sus propios documentos, archivos e información sin modificar el modelo de IA en sí.",
       "p2": "Piense en ella como una biblioteca personal que su IA consulta al responder preguntas. Suba sus PDF, documentos, notas o cualquier archivo de texto, y su IA los usará para dar respuestas más precisas y relevantes sobre sus temas.",
-      "p3": "Es ideal cuando quiere que su IA conozca sus documentos de empresa, investigación o personales, sin cambiar de forma permanente su manera de razonar. Es más rápido y sencillo que entrenar un nuevo modelo, y puede actualizar el conocimiento en cualquier momento añadiendo o quitando documentos.",
-      "p4": "Use las bases de conocimiento para: documentos de empresa, artículos de investigación, manuales, notas personales o cualquier información que quiera que su IA consulte al conversar con usted."
+      "p3": "Es ideal cuando quieres que tu IA conozca tus documentos de empresa, investigación o personales, sin cambiar de forma permanente su manera de razonar. Es más rápido y sencillo que entrenar un nuevo modelo, y puedes actualizar el conocimiento en cualquier momento añadiendo o quitando documentos.",
+      "p4": "Usa las bases de conocimiento para: documentos de empresa, artículos de investigación, manuales, notas personales o cualquier información que quieras que tu IA consulte al conversar contigo."
     },
     "rating": {
       "label": "Nivel de rendimiento en chat:",
@@ -16,14 +16,14 @@
     },
     "form": {
       "title": "Indique a su asistente para qué lo va a usar",
-      "descriptionPlaceholder": "Escriba una descripción",
+      "descriptionPlaceholder": "Escribe una descripción",
       "success": "Datos adjuntados a su asistente correctamente",
       "create": "Crear asistente",
       "creating": "Creando asistente..."
     },
     "errors": {
       "missingFields": "Rellene todos los campos obligatorios",
-      "duplicateName": "Ya existe un modelo llamado \"{{name}}\". Elija otro nombre para el asistente."
+      "duplicateName": "Ya existe un modelo llamado \"{{name}}\". Elige otro nombre para el asistente."
     }
   },
   "confirm": {
@@ -47,7 +47,7 @@
     "dragAndDrop": "Arrastre y suelte",
     "or": "o",
     "browseFiles": "Explorar archivos",
-    "selectFolder": "o seleccione una carpeta",
+    "selectFolder": "o selecciona una carpeta",
     "selectedFiles": "Archivos seleccionados ({{fileCount}})",
     "addFolder": "Añadir carpeta",
     "addMore": "Añadir más",

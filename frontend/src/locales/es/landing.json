@@ -2,8 +2,8 @@
   "sidebar": {
     "localModels": "Modelos locales",
     "remoteModels": "Modelos remotos",
-    "localTooltip": "Modelos descargados y listos para usar en su equipo. ¡Están disponibles para chatear y especializar!",
-    "remoteTooltip": "Modelos disponibles para descargar. Haga clic en cualquier modelo para descargarlo en su almacenamiento local.",
+    "localTooltip": "Modelos descargados y listos para usar en tu equipo. ¡Están disponibles para chatear y especializar!",
+    "remoteTooltip": "Modelos disponibles para descargar. Haz clic en cualquier modelo para descargarlo en tu almacenamiento local.",
     "searchPlaceholder": "¿Busca un modelo?",
     "loading": "Cargando modelos...",
     "deleteModel": "Eliminar modelo",
@@ -17,7 +17,7 @@
     "eyebrow": "Instalados",
     "refreshTitle": "Actualizar modelos instalados",
     "loading": "cargando modelos instalados…",
-    "empty": "Aún no hay modelos instalados. Elija uno a continuación. Su equipo maneja <fit>{{range}}</fit> con comodidad.",
+    "empty": "Aún no hay modelos instalados. Elige uno a continuación. Tu equipo maneja <fit>{{range}}</fit> con comodidad.",
     "range": "{{min}}–{{max}}B",
     "rangeFallback": "modelos pequeños"
   },
@@ -25,12 +25,12 @@
     "fallbackChip": "Su hardware"
   },
   "recommended": {
-    "eyebrow": "Recomendados para su equipo",
+    "eyebrow": "Recomendados para tu equipo",
     "description": "Modelos populares y listos para chatear que funcionan bien en su {{chip}}."
   },
   "browse": {
     "eyebrow": "Explorar por capacidad",
-    "noMatch": "Ningún modelo coincide con estos filtros. Amplíe el rango de tamaño o desactive «Compatible con mi equipo»."
+    "noMatch": "Ningún modelo coincide con estos filtros. Amplía el rango de tamaño o desactiva «Compatible con mi equipo»."
   },
   "community": {
     "title": "Ajustes finos de la comunidad",
@@ -54,7 +54,7 @@
     "tagline": "¡Prepárese para chatear y <accent>especializar</accent> sus <accent>propios</accent> modelos de IA!",
     "notice": {
       "title": "Aviso importante",
-      "local": "Erudi se ejecuta por completo en su dispositivo: ningún dato sale de su equipo. El rendimiento depende de su hardware.",
+      "local": "Erudi se ejecuta por completo en tu dispositivo: ningún dato sale de tu equipo. El rendimiento depende de tu hardware.",
       "earlyRelease": "Esta es una versión temprana y pueden quedar algunos detalles por pulir. Si encuentra un problema, nos encantaría saberlo.",
       "feedback": "Sus comentarios definen lo que construiremos a continuación. Gracias por usar Erudi.",
       "closing": "Bienvenido a su espacio de IA privado"
@@ -75,7 +75,7 @@
     "recommendation": {
       "excellent": {
         "title": "¡Hardware excelente! 🚀",
-        "description": "Su sistema puede ejecutar con facilidad cualquier modelo de 1B a 12B parámetros. Le recomendamos probar la potencia de Mistral 8B o Gemma 12B para obtener la mejor experiencia. También estamos trabajando para admitir modelos mucho más grandes. ¡Manténgase atento!"
+        "description": "Tu sistema puede ejecutar con facilidad cualquier modelo de 1B a 12B parámetros. Te recomendamos probar la potencia de Mistral 8B o Gemma 12B para obtener la mejor experiencia. También estamos trabajando para admitir modelos mucho más grandes. ¡Mantente atento!"
       },
       "good": {
         "title": "Buen rendimiento 👍",
@@ -83,11 +83,11 @@
       },
       "fair": {
         "title": "Rendimiento aceptable",
-        "description": "Buenas noticias: modelos como Gemma 4B y más pequeños funcionarán bien en su equipo. Los modelos más grandes, como Mistral 7B, también funcionarán, pero espere cierta demora."
+        "description": "Buenas noticias: modelos como Gemma 4B y más pequeños funcionarán bien en tu equipo. Los modelos más grandes, como Mistral 7B, también funcionarán, pero espera cierta demora."
       },
       "limited": {
         "title": "Optimizado para modelos pequeños 💡",
-        "description": "Le recomendamos empezar con nuestros modelos pequeños optimizados, como Gemma 1B, 2B o 4B. Estos modelos están ajustados específicamente para ofrecer resultados reales e impresionantes incluso en hardware limitado. Puede experimentar con modelos más grandes, pero el rendimiento puede variar."
+        "description": "Te recomendamos empezar con nuestros modelos pequeños optimizados, como Gemma 1B, 2B o 4B. Estos modelos están ajustados específicamente para ofrecer resultados reales e impresionantes incluso en hardware limitado. Puedes experimentar con modelos más grandes, pero el rendimiento puede variar."
       }
     },
     "getStarted": "Empezar"

@@ -113,12 +113,12 @@
     "offline": {
       "label": "Sin conexión",
       "title": "Sin conexión a Internet",
-      "tooltip": "Sin Internet: el catálogo y las descargas no están disponibles, pero puede seguir chateando con los modelos instalados."
+      "tooltip": "Sin Internet: el catálogo y las descargas no están disponibles, pero puedes seguir chateando con los modelos instalados."
     },
     "connected": {
       "label": "Conectado",
       "title": "Conectado a Internet",
-      "tooltip": "Puede chatear sin conexión con los modelos instalados. Instalar nuevos requiere conexión."
+      "tooltip": "Puedes chatear sin conexión con los modelos instalados. Instalar nuevos requiere conexión."
     }
   },
   "api": {
