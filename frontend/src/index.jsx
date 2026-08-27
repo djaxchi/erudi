@@ -1,5 +1,8 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
+// Initializes i18next synchronously (bundled catalogs, language from the
+// local mirror or the OS locale) before the first render (#385).
+import "./i18n";
 import App from "./App.jsx";
 // Self-hosted Montserrat (latin), bundled so the app's typography works offline.
 import "@fontsource/montserrat/latin-400.css";
