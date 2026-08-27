@@ -8,7 +8,8 @@ Architecture:
     1. download_llm() orchestrates the full pipeline (select files → download → move).
     2. _select_download_files() picks the exact files to fetch (single best GGUF quant).
     3. DownloadTracker monitors progress and ETA across concurrent file downloads.
-    4. make_callback() creates fsspec hooks to update DownloadTracker on each chunk.
+    4. make_callback() creates fsspec hooks to update DownloadTracker on each chunk
+       and to abort the transfer (DownloadCancelled) once the tracker is cancelled.
     5. update_db_with_progress() runs in background thread to persist status to DB.
     6. download_files_concurrent() parallelizes .safetensors shard downloads.
 
@@ -309,6 +310,18 @@ def _select_download_files(
     )
 
 
+class DownloadCancelled(Exception):
+    """Raised from inside a transfer once its DownloadTracker has been cancelled.
+
+    Cancellation is signal-and-check (#372): `cancel_download_job` flips the
+    tracker flag and returns. This exception is how the download side reacts to
+    that flag from where it is looked at -- before each shard starts and on every
+    progress chunk -- so a cancelled job stops transferring instead of running
+    every remaining shard to the end (#377). `download_llm` catches it and
+    returns early; it never reaches the endpoint.
+    """
+
+
 class DownloadTracker:
     """Thread-safe progress tracker for multi-file downloads with ETA estimation.
 
@@ -432,6 +445,11 @@ def make_callback(job: DownloadTracker) -> Callback:
     state = {"prev": 0}
 
     def after_chunk(size: int, value: int, **kwargs) -> None:
+        if not job.should_continue():
+            # Abort the transfer from inside fsspec's read loop (#377): raising here
+            # unwinds fs.get_file in its worker thread, so the shard stops now
+            # instead of streaming to the end after the user cancelled.
+            raise DownloadCancelled("download cancelled during transfer")
         if value is None:
             return
         prev = state["prev"]
@@ -447,7 +465,8 @@ async def download_files_concurrent(
     fs: HfFileSystem,
     callback: Callback,
     tasks: List[Tuple[str, str]],
-    local_dir: str
+    local_dir: str,
+    tracker: Optional[DownloadTracker] = None,
 ) -> None:
     """Download multiple HuggingFace files in parallel using asyncio executor pool.
 
@@ -459,6 +478,13 @@ async def download_files_concurrent(
         callback: fsspec Callback for progress tracking (shared across all files).
         tasks: List of (repo_id, file_path) tuples to download.
         local_dir: Base directory to save files (subdirectories created as needed).
+        tracker: When given, each shard checks `tracker.should_continue()` right
+            before its transfer starts and raises DownloadCancelled otherwise, so a
+            cancelled job never opens the shards still queued behind the in-flight
+            ones (#377). The in-flight ones abort through the callback.
+
+    Raises:
+        DownloadCancelled: the tracker was cancelled before or during a transfer.
 
     Example:
         >>> fs = HfFileSystem(token=HF_TOKEN)
@@ -467,12 +493,18 @@ async def download_files_concurrent(
         >>> await download_files_concurrent(fs, callback, tasks, config.LLM_DIR / "temp_42")
     """
     loop = asyncio.get_running_loop()
+
+    def get_file_unless_cancelled(remote: str, dest: str) -> None:
+        if tracker is not None and not tracker.should_continue():
+            raise DownloadCancelled(f"download cancelled before {remote} started")
+        fs.get_file(remote, dest, callback)
+
     coros = []
     for repo_id, path in tasks:
         remote = f"{repo_id}/{path}"
         dest = os.path.join(local_dir, path)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
-        coros.append(loop.run_in_executor(None, fs.get_file, remote, dest, callback))
+        coros.append(loop.run_in_executor(None, get_file_unless_cancelled, remote, dest))
     await asyncio.gather(*coros)
 
 
@@ -599,18 +631,29 @@ async def download_llm(
         misc = [f for f in all_files if not f.endswith(".safetensors")]
         shards = [f for f in all_files if f.endswith(".safetensors")]
 
-        # Download misc sequentially
-        for path in misc:
-            await asyncio.to_thread(fs.get_file, f"{actual_download_link}/{path}", os.path.join(temp_save_dir, path), callback)
-            logger.info(f"Downloaded {path}")
+        try:
+            # Download misc sequentially
+            for path in misc:
+                if not job.should_continue():
+                    raise DownloadCancelled(f"download cancelled before {path} started")
+                await asyncio.to_thread(fs.get_file, f"{actual_download_link}/{path}", os.path.join(temp_save_dir, path), callback)
+                logger.info(f"Downloaded {path}")
 
-        # Download shards concurrently
-        shard_tasks = [(actual_download_link, path) for path in shards]
-        await download_files_concurrent(fs, callback, shard_tasks, temp_save_dir)
-        logger.info("All shards downloaded")
+            # Download shards concurrently
+            shard_tasks = [(actual_download_link, path) for path in shards]
+            await download_files_concurrent(fs, callback, shard_tasks, temp_save_dir, tracker=job)
+            logger.info("All shards downloaded")
+        except DownloadCancelled:
+            # Raised from the pre-shard check or from inside a transfer (#377).
+            # The cancel endpoint already marked the job and cleaned the temp dir;
+            # there is nothing to finalize and nothing to report as an error.
+            eta_task.cancel()
+            logger.info(f"Download job {job_id} was cancelled during transfer, skipping finalization")
+            return temp_save_dir
 
-        # If cancelled while shards were in-flight, stop here — cancel endpoint already cleaned up
+        # Cancel landed between the last chunk and here: same outcome, no finalization.
         if not job.should_continue():
+            eta_task.cancel()
             logger.info(f"Download job {job_id} was cancelled during transfer, skipping finalization")
             return temp_save_dir
 
