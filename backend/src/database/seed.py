@@ -1139,18 +1139,32 @@ class Hardware_Initializer:
             True if initialization was performed, False if already existed.
         """
         try:
-            existing = self.db.query(HardwareProfile).first()
-            if existing:
-                logger.debug("Hardware info already initialized, skipping")
-                return False
-            
-            # Use service to get or create profile
+            # Deliberately no "a row exists, skip" short-circuit here. That is
+            # what stranded every existing install on the numbers its FIRST boot
+            # produced: #365 fixed a 448 GB/s card being profiled at 13 GB/s, and
+            # the corrected build still served the stored 13 because this method
+            # returned before the service could look at it. The only way out was
+            # Clear All Data, which also destroys models and conversations.
+            #
+            # get_or_create_profile owns validity (backend match AND profiling
+            # version) and returns the cached row untouched when it is still
+            # good, so the common boot stays as cheap as it was.
+            previous = self.db.query(HardwareProfile).first()
+            previous_id = previous.id if previous else None
+
             profile = self.service.get_or_create_profile()
             self.db.commit()
-            
-            logger.info(f"Hardware info initialized: backend={profile.backend_type}")
-            return True
-            
+
+            if previous_id is None:
+                logger.info(f"Hardware info initialized: backend={profile.backend_type}")
+                return True
+            if profile.id != previous_id:
+                logger.info(f"Hardware info re-profiled: backend={profile.backend_type}")
+                return True
+
+            logger.debug("Hardware info already initialized, skipping")
+            return False
+
         except Exception as e:
             logger.exception(f"Hardware initialization failed: {e}")
             self.db.rollback()
