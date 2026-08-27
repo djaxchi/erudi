@@ -279,6 +279,53 @@ class TestRecoverySecondChance:
         assert calls["n"] == 2  # first timed out, second reused the live postmaster
 
     @pytest.mark.unit
+    def test_get_server_with_recovery_retries_after_bare_assertion_error(
+        self, tmp_path, monkeypatch
+    ):
+        """ensure_postgres_running's already-running fast path never waits: it
+        asserts status == 'ready' with no check first, so a postmaster that is
+        running-but-still-WAL-recovering raises a bare AssertionError instead
+        of TimeoutExpired. That must get the same second chance (reproduced on
+        a real packaged build: a hard-killed prior session left Postgres
+        recovering for ~26s, and the app showed a permanent crash screen
+        because only TimeoutExpired used to trigger the retry)."""
+        sentinel = object()
+        calls = {"n": 0}
+
+        def fake_get_server(path):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise AssertionError
+            return sentinel
+
+        monkeypatch.setattr(postgres_runtime.pgserver, "get_server", fake_get_server)
+        monkeypatch.setattr(
+            postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: True
+        )
+
+        assert postgres_runtime._get_server_with_recovery(tmp_path) is sentinel
+        assert calls["n"] == 2
+
+    @pytest.mark.unit
+    def test_get_server_with_recovery_reraises_assertion_error_when_wait_fails(
+        self, tmp_path, monkeypatch
+    ):
+        calls = {"n": 0}
+
+        def fake_get_server(path):
+            calls["n"] += 1
+            raise AssertionError
+
+        monkeypatch.setattr(postgres_runtime.pgserver, "get_server", fake_get_server)
+        monkeypatch.setattr(
+            postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: False
+        )
+
+        with pytest.raises(AssertionError):
+            postgres_runtime._get_server_with_recovery(tmp_path)
+        assert calls["n"] == 1
+
+    @pytest.mark.unit
     def test_get_server_with_recovery_reraises_when_wait_fails(self, tmp_path, monkeypatch):
         calls = {"n": 0}
 
