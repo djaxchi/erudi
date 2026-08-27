@@ -1263,3 +1263,35 @@ class TestModelDeletionAndRebind:
         )
 
         assert resp.status_code == status.HTTP_409_CONFLICT
+
+    def test_local_listing_weights_missing_assistant_logs_no_phantom_500(
+        self, client, test_db_session, tmp_path, caplog
+    ):
+        """A weights-missing assistant must not make the listing log 500s (#376).
+
+        The listing already knows the weights are gone (``weights_available``
+        False), so the on-the-fly vision probe must not resolve a path that
+        cannot exist: the engine raises a 500-class exception whose constructor
+        logs it at ERROR on every poll, while the request itself returns 200.
+        """
+        import logging
+
+        base, model_dir = self._make_base_with_files(test_db_session, tmp_path)
+        assistant, _ = self._make_assistant(test_db_session, base)
+        test_db_session.commit()
+        assistant_id = assistant.id
+        shutil.rmtree(model_dir)
+
+        with caplog.at_level(logging.ERROR, logger="erudi"):
+            resp = client.get("/erudi/llms/local")
+
+        assert resp.status_code == status.HTTP_200_OK
+        row = next(r for r in resp.json() if r["id"] == assistant_id)
+        assert row["weights_available"] is False
+        assert row["supports_vision"] is None
+        phantom = [
+            r.getMessage() for r in caplog.records
+            if r.levelno >= logging.ERROR
+            and ("Status Code: 500" in r.getMessage() or "FILESYSTEM_ERROR" in r.getMessage())
+        ]
+        assert phantom == []

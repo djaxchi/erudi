@@ -95,11 +95,12 @@ def test_llamacpp_vision_none_when_no_gguf(tmp_path):
 
 
 @pytest.mark.unit
-def test_llm_response_computes_vision_for_local(monkeypatch):
+def test_llm_response_computes_vision_for_local(monkeypatch, tmp_path):
     monkeypatch.setattr("src.core.config.LLM_Engine", _VisionEngine)
     from src.domains.llms.schemas import LLMResponse
 
-    resp = LLMResponse(id=1, name="VLM", local=1, link="/m/path")
+    # The link must exist on disk: a missing one short-circuits the probe (#376).
+    resp = LLMResponse(id=1, name="VLM", local=1, link=str(tmp_path))
     assert resp.supports_vision is True
     assert resp.model_dump()["supports_vision"] is True
 
@@ -115,11 +116,11 @@ def test_llm_response_vision_none_for_remote(monkeypatch):
 
 
 @pytest.mark.unit
-def test_llm_response_vision_false_for_text_model(monkeypatch):
+def test_llm_response_vision_false_for_text_model(monkeypatch, tmp_path):
     monkeypatch.setattr("src.core.config.LLM_Engine", _TextEngine)
     from src.domains.llms.schemas import LLMResponse
 
-    resp = LLMResponse(id=1, name="Text", local=1, link="/m/path")
+    resp = LLMResponse(id=1, name="Text", local=1, link=str(tmp_path))
     assert resp.supports_vision is False
 
 
