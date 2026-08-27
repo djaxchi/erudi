@@ -1,0 +1,73 @@
+{
+  "appName": "Erudi",
+  "tagline": "与你同行的 AI，为你而生",
+  "actions": {
+    "cancel": "取消",
+    "close": "关闭",
+    "confirm": "确认",
+    "delete": "删除",
+    "save": "保存",
+    "retry": "重试",
+    "back": "返回",
+    "continue": "继续",
+    "done": "完成",
+    "copy": "复制",
+    "copied": "已复制",
+    "rename": "重命名",
+    "download": "下载",
+    "remove": "移除",
+    "open": "打开",
+    "refresh": "刷新",
+    "search": "搜索",
+    "clear": "清除",
+    "quit": "退出",
+    "ok": "确定",
+    "yes": "是",
+    "no": "否",
+    "gotIt": "知道了",
+    "learnMore": "了解更多",
+    "showMore": "显示更多",
+    "showLess": "收起",
+    "select": "选择",
+    "send": "发送",
+    "stop": "停止",
+    "edit": "编辑"
+  },
+  "status": {
+    "loading": "加载中…",
+    "saving": "保存中…",
+    "error": "错误",
+    "ready": "就绪",
+    "unknown": "未知"
+  },
+  "units": {
+    "b": "B",
+    "kb": "KB",
+    "mb": "MB",
+    "gb": "GB",
+    "tb": "TB"
+  },
+  "nav": {
+    "models": "模型",
+    "chat": "聊天",
+    "arena": "竞技场",
+    "knowledgeBase": "知识库",
+    "settings": "设置",
+    "reportBug": "报告问题",
+    "toggleModelsSidebar": "显示或隐藏模型侧栏",
+    "toggleChatSidebar": "显示或隐藏聊天侧栏"
+  },
+  "boot": {
+    "logoAlt": "erudi 标志",
+    "phase": {
+      "starting": "正在启动 Erudi…",
+      "preparing_database": "正在准备数据库…",
+      "recovering_database": "正在恢复数据库…",
+      "running_migrations": "正在更新数据库…",
+      "loading_catalog": "正在加载模型目录…",
+      "ready": "即将就绪…"
+    },
+    "elapsed": "（{{seconds}} 秒）",
+    "firstRun": "首次启动 — Erudi 正在进行初始化，可能需要一分钟。"
+  }
+}

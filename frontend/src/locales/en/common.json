@@ -1,0 +1,73 @@
+{
+  "appName": "Erudi",
+  "tagline": "AI with you, for you",
+  "actions": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "save": "Save",
+    "retry": "Retry",
+    "back": "Back",
+    "continue": "Continue",
+    "done": "Done",
+    "copy": "Copy",
+    "copied": "Copied",
+    "rename": "Rename",
+    "download": "Download",
+    "remove": "Remove",
+    "open": "Open",
+    "refresh": "Refresh",
+    "search": "Search",
+    "clear": "Clear",
+    "quit": "Quit",
+    "ok": "OK",
+    "yes": "Yes",
+    "no": "No",
+    "gotIt": "Got it",
+    "learnMore": "Learn more",
+    "showMore": "Show more",
+    "showLess": "Show less",
+    "select": "Select",
+    "send": "Send",
+    "stop": "Stop",
+    "edit": "Edit"
+  },
+  "status": {
+    "loading": "Loading…",
+    "saving": "Saving…",
+    "error": "Error",
+    "ready": "Ready",
+    "unknown": "Unknown"
+  },
+  "units": {
+    "b": "B",
+    "kb": "KB",
+    "mb": "MB",
+    "gb": "GB",
+    "tb": "TB"
+  },
+  "nav": {
+    "models": "Models",
+    "chat": "Chat",
+    "arena": "Arena",
+    "knowledgeBase": "Knowledge Base",
+    "settings": "Settings",
+    "reportBug": "Report a bug",
+    "toggleModelsSidebar": "Toggle models sidebar",
+    "toggleChatSidebar": "Toggle chat sidebar"
+  },
+  "boot": {
+    "logoAlt": "erudi Logo",
+    "phase": {
+      "starting": "Starting Erudi…",
+      "preparing_database": "Preparing the database…",
+      "recovering_database": "Recovering the database…",
+      "running_migrations": "Updating the database…",
+      "loading_catalog": "Loading the model catalog…",
+      "ready": "Almost ready…"
+    },
+    "elapsed": "({{seconds}}s)",
+    "firstRun": "First launch — this can take a minute while Erudi sets things up."
+  }
+}

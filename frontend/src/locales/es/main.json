@@ -1,0 +1,33 @@
+{
+  "menu": {
+    "file": "Archivo",
+    "edit": "Edición",
+    "speech": "Voz",
+    "view": "Ver",
+    "window": "Ventana",
+    "help": {
+      "openDataFolder": "Abrir carpeta de datos",
+      "clearAllData": "Borrar todos los datos…",
+      "learnMore": "Más información"
+    }
+  },
+  "dialogs": {
+    "errorTitle": "Error",
+    "ok": "Aceptar",
+    "cancel": "Cancelar",
+    "openDataFolderFailed": "No se pudo abrir la carpeta de datos: {{error}}",
+    "clearAll": {
+      "title": "Borrar todos los datos",
+      "message": "¿Seguro que quieres eliminar todos los datos?",
+      "detail": "Esto eliminará de forma permanente:\n• Todos los modelos de IA descargados\n• El historial de conversaciones\n• Los ajustes personalizados\n• Las bases de conocimiento\n\nEsta acción no se puede deshacer.\n\nLa aplicación se cerrará tras la eliminación.",
+      "confirm": "Eliminar todos los datos",
+      "failed": "No se pudieron borrar los datos",
+      "failedWithError": "No se pudieron borrar los datos: {{error}}"
+    },
+    "dataCleared": {
+      "title": "Datos borrados",
+      "message": "Todos los datos se han eliminado correctamente.",
+      "detail": "La aplicación se cerrará ahora."
+    }
+  }
+}

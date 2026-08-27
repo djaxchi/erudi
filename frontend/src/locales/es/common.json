@@ -1,0 +1,73 @@
+{
+  "appName": "Erudi",
+  "tagline": "IA contigo, para ti",
+  "actions": {
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "confirm": "Confirmar",
+    "delete": "Eliminar",
+    "save": "Guardar",
+    "retry": "Reintentar",
+    "back": "Atrás",
+    "continue": "Continuar",
+    "done": "Listo",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "rename": "Renombrar",
+    "download": "Descargar",
+    "remove": "Quitar",
+    "open": "Abrir",
+    "refresh": "Actualizar",
+    "search": "Buscar",
+    "clear": "Borrar",
+    "quit": "Salir",
+    "ok": "Aceptar",
+    "yes": "Sí",
+    "no": "No",
+    "gotIt": "Entendido",
+    "learnMore": "Más información",
+    "showMore": "Mostrar más",
+    "showLess": "Mostrar menos",
+    "select": "Seleccionar",
+    "send": "Enviar",
+    "stop": "Detener",
+    "edit": "Editar"
+  },
+  "status": {
+    "loading": "Cargando…",
+    "saving": "Guardando…",
+    "error": "Error",
+    "ready": "Listo",
+    "unknown": "Desconocido"
+  },
+  "units": {
+    "b": "B",
+    "kb": "KB",
+    "mb": "MB",
+    "gb": "GB",
+    "tb": "TB"
+  },
+  "nav": {
+    "models": "Modelos",
+    "chat": "Chat",
+    "arena": "Arena",
+    "knowledgeBase": "Base de conocimiento",
+    "settings": "Ajustes",
+    "reportBug": "Informar de un error",
+    "toggleModelsSidebar": "Mostrar u ocultar el panel de modelos",
+    "toggleChatSidebar": "Mostrar u ocultar el panel de chat"
+  },
+  "boot": {
+    "logoAlt": "Logotipo de erudi",
+    "phase": {
+      "starting": "Iniciando Erudi…",
+      "preparing_database": "Preparando la base de datos…",
+      "recovering_database": "Recuperando la base de datos…",
+      "running_migrations": "Actualizando la base de datos…",
+      "loading_catalog": "Cargando el catálogo de modelos…",
+      "ready": "Casi listo…"
+    },
+    "elapsed": "({{seconds}} s)",
+    "firstRun": "Primer inicio: puede tardar un minuto mientras Erudi se configura."
+  }
+}
