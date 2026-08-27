@@ -1,6 +1,7 @@
 // src/contexts/KnowledgeBaseContext.jsx
 import React, { createContext, useContext, useState, useCallback, useRef } from "react";
 import ReactDOM from "react-dom";
+import { Trans, useTranslation } from "react-i18next";
 import SpinnerDots from "../components/Spinner";
 import { API_BASE_URL } from "../config/api";
 import { tracedFetch } from "../services/api/client";
@@ -10,6 +11,7 @@ const log = createLogger("KnowledgeBaseContext");
 const KnowledgeBaseContext = createContext();
 
 export function KnowledgeBaseProvider({ children }) {
+  const { t } = useTranslation();
   const [task, setTask] = useState(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -56,7 +58,10 @@ export function KnowledgeBaseProvider({ children }) {
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(
-          `Failed to start assistant creation (${response.status}): ${errorData.detail || "Unknown error"}`
+          t("knowledgeBase:creation.errors.startFailed", {
+            status: response.status,
+            detail: errorData.detail || t("knowledgeBase:creation.errors.unknownDetail"),
+          })
         );
       }
 
@@ -78,44 +83,47 @@ export function KnowledgeBaseProvider({ children }) {
     } catch (err) {
       log.error("Knowledge base creation error:", err);
       setIsStarting(false);
-      setErrorMessage(err.message || "Failed to start assistant creation");
+      setErrorMessage(err.message || t("knowledgeBase:creation.errors.startFailedGeneric"));
       callbacksRef.current.onError?.(err.message);
     }
-  }, [task]);
+  }, [task, t]);
 
-  const checkCreationStatus = useCallback(async (assistantId) => {
-    try {
-      const res = await tracedFetch(`${API_BASE_URL}/knowledge_base/${assistantId}/status`);
-      if (!res.ok) {
-        throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
-      }
-      const data = await res.json();
+  const checkCreationStatus = useCallback(
+    async (assistantId) => {
+      try {
+        const res = await tracedFetch(`${API_BASE_URL}/knowledge_base/${assistantId}/status`);
+        if (!res.ok) {
+          throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
+        }
+        const data = await res.json();
 
-      setStatus(data.status);
+        setStatus(data.status);
 
-      if (data.status === "completed" || data.status === "failed") {
+        if (data.status === "completed" || data.status === "failed") {
+          clearInterval(intervalRef.current);
+          setIsCreating(false);
+          setShowSpinner(false);
+          if (data.status === "completed") {
+            callbacksRef.current.onComplete?.();
+          } else {
+            const errorMsg =
+              data.error_message || t("knowledgeBase:creation.errors.failedUnexpectedly");
+            setErrorMessage(errorMsg);
+            callbacksRef.current.onError?.(errorMsg);
+          }
+        }
+      } catch (err) {
+        log.error("Status check error:", err);
         clearInterval(intervalRef.current);
         setIsCreating(false);
         setShowSpinner(false);
-        if (data.status === "completed") {
-          callbacksRef.current.onComplete?.();
-        } else {
-          const errorMsg = data.error_message || "Assistant creation failed unexpectedly";
-          setErrorMessage(errorMsg);
-          callbacksRef.current.onError?.(errorMsg);
-        }
+        const errorMsg = t("knowledgeBase:creation.errors.statusCheckFailed");
+        setErrorMessage(errorMsg);
+        callbacksRef.current.onError?.(errorMsg);
       }
-    } catch (err) {
-      log.error("Status check error:", err);
-      clearInterval(intervalRef.current);
-      setIsCreating(false);
-      setShowSpinner(false);
-      const errorMsg =
-        "An error occurred during assistant creation. Please try again or contact the Erudi team.";
-      setErrorMessage(errorMsg);
-      callbacksRef.current.onError?.(errorMsg);
-    }
-  }, []);
+    },
+    [t]
+  );
 
   const closeModal = useCallback(() => {
     if (intervalRef.current) {
@@ -157,21 +165,27 @@ export function KnowledgeBaseProvider({ children }) {
               {task.isUpdate ? (
                 <>
                   <h2 className="text-xl font-semibold text-white pr-4">
-                    Update <span className="font-bold">{task.modelName}</span>&apos;s knowledge base
-                    with {task.paths?.length || 0} file(s)?
+                    <Trans
+                      i18nKey="knowledgeBase:confirm.updateTitle"
+                      values={{ name: task.modelName, fileCount: task.paths?.length || 0 }}
+                      components={{ b: <span className="font-bold" /> }}
+                    />
                   </h2>
-                  <p className="mt-1 text-gray-300">
-                    The new documents will be added to this assistant&apos;s existing knowledge base
-                  </p>
+                  <p className="mt-1 text-gray-300">{t("knowledgeBase:confirm.updateBody")}</p>
                 </>
               ) : (
                 <>
                   <h2 className="text-xl font-semibold text-white pr-4">
-                    Are you sure you want to create{" "}
-                    <span className="font-bold">{task.modelName}</span>?
+                    <Trans
+                      i18nKey="knowledgeBase:confirm.createTitle"
+                      values={{ name: task.modelName }}
+                      components={{ b: <span className="font-bold" /> }}
+                    />
                   </h2>
                   <p className="mt-1 text-gray-300">
-                    This will create a knowledge base assistant with {task.paths?.length || 0} files
+                    {t("knowledgeBase:confirm.createBody", {
+                      fileCount: task.paths?.length || 0,
+                    })}
                   </p>
                 </>
               )}
@@ -181,13 +195,15 @@ export function KnowledgeBaseProvider({ children }) {
                   onClick={cancelConfirm}
                   className="px-4 py-1 border border-red-500 text-red-500 rounded-full hover:bg-red-500/10 transition-shadow shadow-none hover:shadow-lg"
                 >
-                  Cancel
+                  {t("common:actions.cancel")}
                 </button>
                 <button
                   onClick={startCreation}
                   className="px-4 py-2 border border-emerald-500 text-emerald-500 rounded-full hover:bg-emerald-500/10 transition-shadow shadow-none hover:shadow-lg"
                 >
-                  {task.isUpdate ? "Update Knowledge Base" : "Create Assistant"}
+                  {task.isUpdate
+                    ? t("knowledgeBase:confirm.update")
+                    : t("knowledgeBase:confirm.create")}
                 </button>
               </div>
             </div>

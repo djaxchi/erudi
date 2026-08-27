@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import { Upload, File, X, Plus, Folder, FolderPlus, AlertTriangle } from "lucide-react";
 import GradientBox from "./GradientBox";
 import { createLogger } from "../utils/logger";
@@ -26,6 +27,7 @@ const MAX_FILES_PER_ADD = 500;
  * @param {function(string[])} onFilesAdded – receives absolute paths of dropped/selected files.
  */
 export default function DragDropArea({ onFilesAdded }) {
+  const { t } = useTranslation();
   const [isOver, setIsOver] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [, setDragCounter] = useState(0);
@@ -196,6 +198,9 @@ export default function DragDropArea({ onFilesAdded }) {
     return parts[parts.length - 1] || path;
   };
 
+  // Returns a stable code: "folder", "other", or the upper-cased extension
+  // ("PDF", "TXT", …). Only the two codes are translated for display; an
+  // extension is a technical token shown as-is.
   const getFileType = (path) => {
     if (!path) {
       return "other";
@@ -204,12 +209,15 @@ export default function DragDropArea({ onFilesAdded }) {
 
     // Check if it's a folder (no file extension)
     if (!fileName.includes(".")) {
-      return "Folder";
+      return "folder";
     }
 
     const extension = fileName.split(".").pop()?.toLowerCase();
-    return extension ? extension.toUpperCase() : "Other";
+    return extension ? extension.toUpperCase() : "other";
   };
+
+  const fileTypeLabel = (type) =>
+    type === "folder" || type === "other" ? t(`knowledgeBase:upload.fileType.${type}`) : type;
 
   const openPicker = () => inputRef.current?.click();
   const openFolderPicker = () => folderInputRef.current?.click();
@@ -228,6 +236,31 @@ export default function DragDropArea({ onFilesAdded }) {
   const handleSelect = (e) => {
     addFiles(e.target.files);
     e.target.value = ""; // reset picker so re-selecting the same path re-fires
+  };
+
+  const handleDragOver = (e) => {
+    log.log("🔄 REACT DRAG OVER triggered");
+    e.preventDefault(); // required for windows
+    e.dataTransfer.dropEffect = "copy"; // ← Chrome/Edge need this line
+  };
+
+  const handleDragEnter = (e) => {
+    log.log("➡️ REACT DRAG ENTER triggered");
+    e.preventDefault(); // required for Windows
+    setDragCounter((prev) => prev + 1);
+    setIsOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    log.log("⬅️ REACT DRAG LEAVE triggered");
+    e.preventDefault();
+    setDragCounter((prev) => {
+      const newCounter = prev - 1;
+      if (newCounter === 0) {
+        setIsOver(false);
+      }
+      return newCounter;
+    });
   };
 
   const handleDrop = async (e) => {
@@ -265,22 +298,18 @@ export default function DragDropArea({ onFilesAdded }) {
   /* ---------------------------------- UI ---------------------------------- */
   const noticeParts = [];
   if (notice?.unsupported) {
-    noticeParts.push(
-      `${notice.unsupported} unsupported file${notice.unsupported > 1 ? "s" : ""} skipped`
-    );
+    noticeParts.push(t("knowledgeBase:upload.notice.unsupported", { count: notice.unsupported }));
   }
   if (notice?.capped) {
-    noticeParts.push(`capped at ${MAX_FILES_PER_ADD} files (${notice.capped} more ignored)`);
+    noticeParts.push(
+      t("knowledgeBase:upload.notice.capped", { max: MAX_FILES_PER_ADD, ignored: notice.capped })
+    );
   }
   if (notice?.missingPath) {
-    noticeParts.push(
-      `couldn't resolve a path for ${notice.missingPath} item${notice.missingPath > 1 ? "s" : ""}`
-    );
+    noticeParts.push(t("knowledgeBase:upload.notice.missingPath", { count: notice.missingPath }));
   }
   if (notice?.duplicate) {
-    noticeParts.push(
-      `${notice.duplicate} file${notice.duplicate > 1 ? "s were" : " was"} already in the list`
-    );
+    noticeParts.push(t("knowledgeBase:upload.notice.duplicate", { count: notice.duplicate }));
   }
 
   return (
@@ -289,28 +318,9 @@ export default function DragDropArea({ onFilesAdded }) {
       className={`h-full min-h-[230px] flex items-start justify-center cursor-pointer select-none transition border-2 border-dashed rounded-4xl ${
         isOver ? "border-emerald-400 bg-emerald-400/10" : "border-white/20"
       }`}
-      onDragOver={(e) => {
-        log.log("🔄 REACT DRAG OVER triggered");
-        e.preventDefault(); // required for windows
-        e.dataTransfer.dropEffect = "copy"; // ← Chrome/Edge need this line
-      }}
-      onDragEnter={(e) => {
-        log.log("➡️ REACT DRAG ENTER triggered");
-        e.preventDefault(); // required for Windows
-        setDragCounter((prev) => prev + 1);
-        setIsOver(true);
-      }}
-      onDragLeave={(e) => {
-        log.log("⬅️ REACT DRAG LEAVE triggered");
-        e.preventDefault();
-        setDragCounter((prev) => {
-          const newCounter = prev - 1;
-          if (newCounter === 0) {
-            setIsOver(false);
-          }
-          return newCounter;
-        });
-      }}
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onClick={selectedFiles.length === 0 ? openPicker : undefined}
     >
@@ -318,8 +328,8 @@ export default function DragDropArea({ onFilesAdded }) {
         /* Initial state - no files selected */
         <div className="flex flex-col items-center text-center gap-2 pt-8">
           <Upload className="w-14 h-14 text-white" />
-          <p className="text-white text-xl font-medium">Drag and Drop</p>
-          <span className="text-white/60 text-base">or</span>
+          <p className="text-white text-xl font-medium">{t("knowledgeBase:upload.dragAndDrop")}</p>
+          <span className="text-white/60 text-base">{t("knowledgeBase:upload.or")}</span>
           <button
             type="button"
             onClick={(e) => {
@@ -328,7 +338,7 @@ export default function DragDropArea({ onFilesAdded }) {
             }}
             className="text-emerald-400 text-base font-semibold underline-offset-4 hover:underline"
           >
-            Browse files
+            {t("knowledgeBase:upload.browseFiles")}
           </button>
           <button
             type="button"
@@ -339,7 +349,7 @@ export default function DragDropArea({ onFilesAdded }) {
             className="inline-flex items-center gap-1.5 text-white/60 text-sm hover:text-white transition"
           >
             <FolderPlus className="w-4 h-4" />
-            or select a folder
+            {t("knowledgeBase:upload.selectFolder")}
           </button>
         </div>
       ) : (
@@ -352,7 +362,7 @@ export default function DragDropArea({ onFilesAdded }) {
             {" "}
             {/* Add flex-shrink-0 */}
             <h3 className="text-white text-lg font-medium">
-              Selected Files ({selectedFiles.length})
+              {t("knowledgeBase:upload.selectedFiles", { fileCount: selectedFiles.length })}
             </h3>
             <div className="flex items-center gap-2">
               <button
@@ -364,7 +374,7 @@ export default function DragDropArea({ onFilesAdded }) {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3A3A3A] border border-gray-600/50 text-white text-xs font-medium hover:bg-[#404040] hover:border-gray-500/70 transition-all duration-200"
               >
                 <FolderPlus className="w-3.5 h-3.5" />
-                Add Folder
+                {t("knowledgeBase:upload.addFolder")}
               </button>
               <button
                 type="button"
@@ -375,7 +385,7 @@ export default function DragDropArea({ onFilesAdded }) {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#3A3A3A] border border-gray-600/50 text-white text-xs font-medium hover:bg-[#404040] hover:border-gray-500/70 transition-all duration-200"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Add More
+                {t("knowledgeBase:upload.addMore")}
               </button>
             </div>
           </div>
@@ -387,7 +397,7 @@ export default function DragDropArea({ onFilesAdded }) {
                 className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10 group hover:bg-white/10 transition flex-shrink-0" // Add flex-shrink-0
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  {getFileType(filePath) === "Folder" ? (
+                  {getFileType(filePath) === "folder" ? (
                     <Folder className="w-5 h-5 text-blue-400 flex-shrink-0" />
                   ) : (
                     <File className="w-5 h-5 text-emerald-400 flex-shrink-0" />
@@ -403,12 +413,12 @@ export default function DragDropArea({ onFilesAdded }) {
                             ? "bg-red-500/20 text-red-300 border border-red-500/30"
                             : getFileType(filePath) === "TXT"
                               ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
-                              : getFileType(filePath) === "Folder"
+                              : getFileType(filePath) === "folder"
                                 ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
                                 : "bg-gray-500/20 text-gray-300 border border-gray-500/30"
                         }`}
                       >
-                        {getFileType(filePath)}
+                        {fileTypeLabel(getFileType(filePath))}
                       </span>
                     </div>
                     <p
@@ -426,7 +436,7 @@ export default function DragDropArea({ onFilesAdded }) {
                     removeFile(index);
                   }}
                   className="p-1 rounded-full text-white/60 hover:text-red-400 hover:bg-red-400/20 transition opacity-0 group-hover:opacity-100"
-                  aria-label="Remove file"
+                  aria-label={t("knowledgeBase:upload.removeFile")}
                 >
                   <X className="w-4 h-4" />
                 </button>
