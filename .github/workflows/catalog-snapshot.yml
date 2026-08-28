@@ -88,7 +88,18 @@ jobs:
           BRANCH="chore/catalog-snapshot-refresh"
           git commit -m "chore(catalog): refresh build-time snapshots from CI (#112)"
           git push -f origin "HEAD:$BRANCH"
-          gh pr create --base "${{ github.ref_name }}" --head "$BRANCH" \
+          # Only an OPEN PR counts as "already open" (#391): the previous check
+          # treated any failure of `gh pr create` as "a PR exists", so once the last
+          # refresh PR was merged every run force-pushed the branch and opened
+          # nothing. Ask for open PRs on the branch explicitly and let a real
+          # `gh pr create` failure fail the step instead of being swallowed.
+          EXISTING=$(gh pr list --state open --head "$BRANCH" --base "${{ github.ref_name }}" \
+            --json url --jq '.[0].url // empty')
+          if [ -n "$EXISTING" ]; then
+            echo "PR already open for $BRANCH — updated via force-push: $EXISTING"
+            exit 0
+          fi
+          URL=$(gh pr create --base "${{ github.ref_name }}" --head "$BRANCH" \
             --title "chore(catalog): refresh build-time snapshots" \
-            --body "Automated per-engine catalog snapshot refresh, resolved from HuggingFace on clean runners. Re-run the checks before merging." \
-            2>/dev/null || echo "PR already open for $BRANCH — updated via force-push."
+            --body "Automated per-engine catalog snapshot refresh, resolved from HuggingFace on clean runners. Re-run the checks before merging.")
+          echo "Opened snapshot-refresh PR: $URL"
