@@ -1,11 +1,12 @@
 // Per-model sampling defaults (#388).
 //
 // The backend resolves, per catalog row, the sampling a fresh conversation or
-// arena panel should start from (`sampling_defaults`: curated profile > the
-// base repo's generation_config.json > fallback) and the ceiling of the
-// max-tokens field (`max_tokens_cap` = min(model context window, engine
-// window)). The UI seeds its sliders from that block and never hard-codes a
-// per-model value itself.
+// arena panel should start from (`sampling_defaults`: what the publisher ships
+// in the base repo's generation_config.json, else the quant repo's, else what
+// the base model card recommends in prose — the winning stage is `source`) and
+// the ceiling of the max-tokens field (`max_tokens_cap` = min(model context
+// window, engine window)). The UI seeds its sliders from that block and never
+// hard-codes a per-model value itself.
 //
 // The fallback mirrors the backend's constants (src/database/generation_hints.py):
 // 0.2 / 0.95 / 1024, validated by the #129 eval campaign, and the API's own
@@ -16,6 +17,10 @@ export const FALLBACK_SAMPLING = Object.freeze({
   maxTokens: 1024,
   maxTokensCap: 32768,
 });
+
+// `sampling_defaults.source` when the publisher gives no usable sampling
+// recommendation and the neutral constants above apply.
+export const SAMPLING_SOURCE_NONE = "none";
 
 const numberOr = (value, fallback) =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -44,4 +49,14 @@ export function defaultsFor(model) {
     maxTokens: Math.min(maxTokens, maxTokensCap),
     maxTokensCap,
   };
+}
+
+/**
+ * True when the backend resolved `model`'s sampling from nothing: the
+ * publisher ships no generation_config values and its model card carries no
+ * recommendation. Unknown (no block at all — a Hugging Face search result, a
+ * model not selected yet) is NOT "none": the note is only shown on a verdict.
+ */
+export function hasNoPublisherRecommendation(model) {
+  return model?.sampling_defaults?.source === SAMPLING_SOURCE_NONE;
 }

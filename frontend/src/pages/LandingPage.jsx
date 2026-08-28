@@ -105,6 +105,9 @@ export default function LandingPage() {
       param_size: model.param_size,
       link: model.link,
       quantized: model.quantized,
+      // Resolved sampling defaults (#388): the details modal reads `source`
+      // to say when the publisher gives no recommendation.
+      sampling_defaults: model.sampling_defaults,
       metadata,
       rawMetadata: model.model_metadata,
     };
@@ -130,6 +133,8 @@ export default function LandingPage() {
       kb_id: model.kb_id ?? null,
       is_attached_to_kb: model.is_attached_to_kb === true,
       weights_available: model.weights_available,
+      // Resolved sampling defaults (#388), read by the details modal.
+      sampling_defaults: model.sampling_defaults,
       metadata,
       rawMetadata: model.model_metadata,
     };

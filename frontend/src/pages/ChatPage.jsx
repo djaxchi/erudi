@@ -18,7 +18,7 @@ import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 import { canAttachImages } from "../utils/modelCapabilities";
-import { defaultsFor } from "../utils/samplingDefaults";
+import { defaultsFor, hasNoPublisherRecommendation } from "../utils/samplingDefaults";
 import { formatNumber } from "../i18n/format";
 
 const log = createLogger("ChatPage");
@@ -528,6 +528,16 @@ export default function ChatPage() {
                               />
                             </div>
                           </div>
+                          {hasNoPublisherRecommendation(
+                            models.find((m) => m.name === selectedModel)
+                          ) && (
+                            <p
+                              data-testid="no-publisher-recommendation"
+                              className="-mt-3 text-[11px] leading-snug text-gray-400/80"
+                            >
+                              {t("chat:header.noPublisherRecommendation")}
+                            </p>
+                          )}
                         </div>
 
                         <div className="flex flex-col justify-center gap-6">

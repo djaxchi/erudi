@@ -30,7 +30,8 @@
       "topP": "Controla la variedad de palabras. Más bajo = predecible, más alto = variado.",
       "prompt": "Personaliza las instrucciones del sistema que guían el comportamiento de la IA.",
       "webSearch": "Permite que el modelo busque en la web información actual. Las consultas de búsqueda se envían a motores de búsqueda externos."
-    }
+    },
+    "noPublisherRecommendation": "El editor de este modelo no recomienda ajustes de muestreo; se aplican valores neutros."
   },
   "composer": {
     "placeholder": "Haz una pregunta…",

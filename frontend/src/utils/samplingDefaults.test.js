@@ -1,10 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { FALLBACK_SAMPLING, defaultsFor } from "./samplingDefaults";
+import {
+  FALLBACK_SAMPLING,
+  SAMPLING_SOURCE_NONE,
+  defaultsFor,
+  hasNoPublisherRecommendation,
+} from "./samplingDefaults";
 
 // Per-model sampling defaults (#388): the backend resolves them per row
-// (`sampling_defaults`, curated > HF generation_config > fallback) and the
-// UI seeds its sliders from that block. Without one, the fallback is the
-// exact triple the backend uses (0.2 / 0.95 / 1024).
+// (`sampling_defaults`: base generation_config > quant generation_config >
+// model card, else "none") and the UI seeds its sliders from that block.
+// Without one, the fallback is the exact triple the backend uses
+// (0.2 / 0.95 / 1024).
 
 const QWEN3 = {
   id: 1,
@@ -15,7 +21,7 @@ const QWEN3 = {
     max_tokens: 1024,
     max_tokens_cap: 8192,
     top_k: 20,
-    source: "hf_generation_config",
+    source: "base_generation_config",
   },
 };
 
@@ -58,5 +64,28 @@ describe("defaultsFor", () => {
     const d = defaultsFor({ sampling_defaults: { max_tokens: 4096, max_tokens_cap: 2048 } });
     expect(d.maxTokens).toBe(2048);
     expect(d.maxTokensCap).toBe(2048);
+  });
+});
+
+describe("hasNoPublisherRecommendation", () => {
+  it("is true only on the backend's explicit 'none' verdict", () => {
+    expect(
+      hasNoPublisherRecommendation({ sampling_defaults: { source: SAMPLING_SOURCE_NONE } })
+    ).toBe(true);
+    expect(hasNoPublisherRecommendation({ sampling_defaults: { source: "none" } })).toBe(true);
+  });
+
+  it("is false when a recommendation exists, whatever the stage", () => {
+    for (const source of ["base_generation_config", "quant_generation_config", "model_card"]) {
+      expect(hasNoPublisherRecommendation({ sampling_defaults: { source } })).toBe(false);
+    }
+  });
+
+  it("is false when nothing is known (no model, no block, no source)", () => {
+    expect(hasNoPublisherRecommendation(null)).toBe(false);
+    expect(hasNoPublisherRecommendation(undefined)).toBe(false);
+    expect(hasNoPublisherRecommendation({ name: "hf search hit" })).toBe(false);
+    expect(hasNoPublisherRecommendation({ sampling_defaults: null })).toBe(false);
+    expect(hasNoPublisherRecommendation({ sampling_defaults: { temperature: 0.2 } })).toBe(false);
   });
 });

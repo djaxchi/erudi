@@ -15,7 +15,7 @@ import apiClient, { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 import { canAttachImages, maxImagesForModel } from "../utils/modelCapabilities";
-import { defaultsFor } from "../utils/samplingDefaults";
+import { defaultsFor, hasNoPublisherRecommendation } from "../utils/samplingDefaults";
 import { getDisplayContent } from "../utils/messageContent";
 
 const log = createLogger("ConversationPage");
@@ -822,6 +822,9 @@ export default function ConversationPage() {
             initialTopP={settings.topP}
             initialMaxTokens={settings.maxTokens}
             maxTokensCap={defaultsFor(models.find((m) => m.id === conversationLlmId)).maxTokensCap}
+            noPublisherRecommendation={hasNoPublisherRecommendation(
+              models.find((m) => m.id === conversationLlmId)
+            )}
             onApply={(newSettings) => {
               setSettings((prev) => ({ ...prev, ...newSettings }));
               saveConversationParameters(newSettings, customPrompt);
