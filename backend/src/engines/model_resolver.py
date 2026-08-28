@@ -5,7 +5,9 @@ Given a base model id (e.g. ``google/gemma-3-1b-it``) and an engine *format tag*
 carrying that tag and returns the one whose name, once normalized, is an EXACT
 match of the base slug. There is intentionally **no override table**: a base that
 has no exact-format quant simply resolves to ``None`` (it won't appear on that
-engine), rather than being patched by hand.
+engine), rather than being patched by hand. Gated repos are never candidates
+(:func:`is_gated`): the app downloads anonymously, so a gated quant is as good
+as no quant.
 
 ``normalize`` is the shared heart of the system: it strips a leading
 ``<vendor>_`` prefix (how bartowski names repos, e.g. ``google_gemma-3-1b-it``)
@@ -105,30 +107,57 @@ def _trust_rank(repo_id: str, base_owner: str = "") -> int:
     return 2
 
 
+def is_gated(model_info) -> bool:
+    """True when the Hub lists the repo as gated (``"auto"`` / ``"manual"`` / True).
+
+    A gated repo needs an accepted license AND a token to download, and Erudi is
+    account-less: the app downloads anonymously, so a gated repo lists fine but
+    401s on download. It is therefore not runnable, whoever publishes it — the
+    official org included. ``gated`` is only serialized when the ``list_models``
+    call asks for it (``expand=["gated", ...]``); ``None`` (not requested) reads as
+    public, so callers MUST request it to be protected.
+    """
+    return bool(getattr(model_info, "gated", None))
+
+
+# ``list_models`` only serializes the fields it is asked for once ``expand`` is set,
+# so the two the resolver reads travel together: ``gated`` for the runnability
+# gate, ``downloads`` for the tie-breaker.
+_RESOLVE_EXPAND = ("gated", "downloads")
+
+
 def resolve_quant(base_id: str, format_tag: str, hf_api, *, limit: int = 40,
                   trace: bool = False) -> Optional[str]:
     """Return the canonical ``format_tag`` quant repo id for ``base_id``, or None.
 
     Searches ``list_models(filter=format_tag, search=<slug>)`` and keeps only
-    candidates whose normalized name EQUALS the base key. Among those, prefers a
-    trusted source (official org > mlx-community/lmstudio-community > anyone), then
-    the canonical 4-bit quant, breaking ties by download count (#122). No exact
-    match → None.
+    candidates whose normalized name EQUALS the base key and that are NOT gated
+    (see :func:`is_gated` — the app has no token, a gated quant is un-downloadable
+    however official it is). Among those, prefers a trusted source (official org >
+    mlx-community/lmstudio-community > anyone), then the canonical 4-bit quant,
+    breaking ties by download count (#122). No public exact match → None: a base
+    whose only quant is gated simply is not listed.
     """
     owner, _, slug = base_id.partition("/")
     key = base_key(base_id)
     try:
         cands = list(hf_api.list_models(
             filter=format_tag, search=slug, sort="downloads", limit=limit,
+            expand=list(_RESOLVE_EXPAND),
         ))
     except Exception as e:  # network/HF hiccup → treat as "not found", never crash seed
         logger.warning(f"resolve_quant({base_id}, {format_tag}) search failed: {e}")
         return None
 
     exact = [m for m in cands if normalize(m.id.split("/")[-1], owner) == key]
+    gated = [m for m in exact if is_gated(m)]
+    if gated:
+        logger.info(f"[resolve {format_tag}] {base_id}: skipping gated "
+                    f"{', '.join(m.id for m in gated)} (no token in the app)")
+        exact = [m for m in exact if not is_gated(m)]
     if trace:
         logger.info(f"[resolve {format_tag}] {base_id} key='{key}' "
-                    f"{len(cands)} cands, {len(exact)} exact")
+                    f"{len(cands)} cands, {len(exact)} exact, {len(gated)} gated")
     if not exact:
         return None
     best = min(exact, key=lambda m: (_trust_rank(m.id, owner), _quant_rank(m.id),

@@ -125,6 +125,27 @@ class TestReconcileCatalogFromSnapshot:
         links = {r.link for r in db.query(Llm).filter(Llm.local == 0).all()}
         assert links == {"org/base-GGUF"}
 
+    def test_gated_row_disappears_once_snapshot_drops_it(self, test_db_session, monkeypatch):
+        # The resolver used to pick google/gemma-2b-it (gated: manual) as the GGUF
+        # quant of its own base, so shipped snapshots carried it. Once a refreshed
+        # snapshot no longer lists it, the boot reconcile must drop the catalog row
+        # -- and only that one: a user's installed copy of the same model (local=1)
+        # is theirs and stays.
+        db = test_db_session
+        db.add_all([
+            _llm(name="Gemma 2B Instruct", local=0, link="google/gemma-2b-it", is_base=True),
+            _llm(name="Gemma 2B Instruct", local=1, link="/data/models/gemma-2b-it"),
+            _llm(name="Qwen", local=0, link="org/base-GGUF"),
+        ])
+        db.commit()
+
+        _use_snapshot(monkeypatch, [_entry("org/base-GGUF")])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+
+        rows = {r.link: r.local for r in db.query(Llm).all()}
+        assert "google/gemma-2b-it" not in rows
+        assert rows == {"/data/models/gemma-2b-it": 1, "org/base-GGUF": 0}
+
     def test_downloaded_and_in_progress_rows_never_touched(self, test_db_session, monkeypatch):
         db = test_db_session
         db.add_all([

@@ -128,11 +128,13 @@ class BaseEngine(ABC, metaclass=EngineMeta):
 
         ``expand`` pulls pipeline_tag + tags (alongside the downloads/likes the
         quality floor needs) in the one call, so the non-chat task filter (#242)
-        can gate ASR/embedding/OCR/media-gen repos out of the derived catalog.
+        can gate ASR/embedding/OCR/media-gen repos out of the derived catalog,
+        plus ``gated`` so a repo the token-less app cannot download is dropped
+        (``model_resolver.is_gated``).
         """
         kwargs = {
             "filter": cls.FORMAT_TAG,
-            "expand": ["pipeline_tag", "tags", "downloads", "likes"],
+            "expand": ["pipeline_tag", "tags", "downloads", "likes", "gated"],
         }
         if term:
             kwargs["search"] = term
