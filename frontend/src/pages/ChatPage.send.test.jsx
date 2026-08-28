@@ -130,7 +130,8 @@ describe("ChatPage send flow", () => {
       initialQuestion: "What is the sun?",
       initialImages: ["data:img"],
       initialImagePaths: ["/tmp/img.png"],
-      initialSettings: { temperature: 0.2, topP: 0.95, maxTokens: 1024 },
+      // Models without hints seed from the backend fallback, cap included (#388).
+      initialSettings: { temperature: 0.2, topP: 0.95, maxTokens: 1024, maxTokensCap: 32768 },
       initialCustomPrompt: "",
     });
   });
@@ -172,6 +173,7 @@ describe("ChatPage send flow", () => {
       temperature: 0.8,
       topP: 0.5,
       maxTokens: 512,
+      maxTokensCap: 32768,
     });
   });
 

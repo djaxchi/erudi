@@ -134,11 +134,12 @@ describe("ArenaPage live settings (#218)", () => {
     expect(edited.top_p).toBe(0.5);
     expect(edited.max_new_tokens).toBe(256);
 
-    // ...while the untouched panel keeps the arena defaults (no cross-panel leak).
+    // ...while the untouched panel keeps its model's defaults (no cross-panel
+    // leak): a model without hints seeds from the backend fallback (#388).
     const untouched = bodyFor(2);
-    expect(untouched.temperature).toBe(1.0);
+    expect(untouched.temperature).toBe(0.2);
     expect(untouched.top_p).toBe(0.95);
-    expect(untouched.max_new_tokens).toBe(512);
+    expect(untouched.max_new_tokens).toBe(1024);
   });
 });
 

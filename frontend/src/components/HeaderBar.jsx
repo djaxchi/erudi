@@ -9,6 +9,10 @@ export default function HeaderBar({
   initialTemperature = 0.2,
   initialTopP = 0.2,
   initialMaxTokens = 1024,
+  // Ceiling of the max-tokens field (#388): min(model context window, engine
+  // window) resolved by the backend per model; the API's own upper bound
+  // when the consumer has no model to derive it from.
+  maxTokensCap = 32768,
   onApply,
   // Optional live callback (#218): when provided, every slider/token edit is
   // pushed to the parent immediately, so the displayed value is the value used
@@ -424,7 +428,7 @@ export default function HeaderBar({
                         <input
                           type="number"
                           min="1"
-                          max="8192"
+                          max={maxTokensCap}
                           value={maxTokens}
                           onChange={(e) => {
                             const value = parseInt(e.target.value || "0", 10);
@@ -528,6 +532,7 @@ HeaderBar.propTypes = {
   initialTemperature: PropTypes.number,
   initialTopP: PropTypes.number,
   initialMaxTokens: PropTypes.number,
+  maxTokensCap: PropTypes.number,
   onApply: PropTypes.func.isRequired,
   onLiveChange: PropTypes.func,
   onCustomizePrompt: PropTypes.func.isRequired,

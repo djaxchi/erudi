@@ -45,7 +45,9 @@ describe("HeaderBar settings bounds (#136)", () => {
     openSettings();
 
     const maxTokens = await screen.findByRole("spinbutton");
-    expect(maxTokens.getAttribute("max")).toBe("8192");
+    // The API's own upper bound; a model-derived cap comes through the
+    // maxTokensCap prop (#388, HeaderBar.maxTokensCap.test.jsx).
+    expect(maxTokens.getAttribute("max")).toBe("32768");
     expect(maxTokens.getAttribute("min")).toBe("1");
   });
 

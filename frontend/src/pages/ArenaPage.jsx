@@ -4,6 +4,7 @@ import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
 import { askArena } from "../services/arenaService.js";
 import { canAttachImages, maxImagesForModel } from "../utils/modelCapabilities";
+import { defaultsFor } from "../utils/samplingDefaults";
 import { Trash, Plus, Square } from "lucide-react";
 import HeaderBar from "../components/HeaderBar";
 import CustomizePromptModal from "../components/modals/CustomizePromptModal";
@@ -12,21 +13,17 @@ import apiClient from "../services/api/client";
 import { createLogger } from "../utils/logger";
 
 const MAX_PANELS = 4;
-const DEFAULT_SETTINGS = {
-  temperature: 1.0,
-  topP: 0.95,
-  maxTokens: 512,
-  customPrompt: "",
-};
 
+// A panel is model-scoped: its sampling seeds from ITS model's resolved
+// defaults (#388, `sampling_defaults` on the /llms/local row; the backend
+// fallback for a model without hints) and follows the model on switch.
 function makePanel(id, modelName = "", models = []) {
+  const selectedModel = modelName || (models[0]?.name ?? "");
   return {
     id,
-    selectedModel: modelName || (models[0]?.name ?? ""),
-    temperature: DEFAULT_SETTINGS.temperature,
-    topP: DEFAULT_SETTINGS.topP,
-    maxTokens: DEFAULT_SETTINGS.maxTokens,
-    customPrompt: DEFAULT_SETTINGS.customPrompt,
+    selectedModel,
+    ...defaultsFor(models.find((m) => m.name === selectedModel)),
+    customPrompt: "",
     messages: [],
     showPromptModal: false,
     isAnimating: false,
@@ -68,9 +65,20 @@ export default function ArenaPage() {
       .catch((err) => log.error("Erreur lors du fetch des modèles:", err));
   }, []);
 
+  // Switching a panel's model re-defaults its sampling to the new model's
+  // values, touched or not (#388): the arena compares MODELS, and a model is
+  // compared at its own defaults.
   const handleModelChange = (panelId, newModel) =>
     setPanels((prev) =>
-      prev.map((p) => (p.id === panelId ? { ...p, selectedModel: newModel } : p))
+      prev.map((p) =>
+        p.id === panelId
+          ? {
+              ...p,
+              selectedModel: newModel,
+              ...defaultsFor(models.find((m) => m.name === newModel)),
+            }
+          : p
+      )
     );
 
   const handleSettingsChange = (panelId, newSettings) =>
@@ -257,6 +265,7 @@ export default function ArenaPage() {
             initialTemperature={panel.temperature}
             initialTopP={panel.topP}
             initialMaxTokens={panel.maxTokens}
+            maxTokensCap={panel.maxTokensCap}
             // #218: settings take effect at send time. Slider/token edits flow
             // straight into the panel state via onLiveChange, so the displayed
             // value is the value the next run sends - no silent Apply divergence.

@@ -17,6 +17,7 @@ import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 import { canAttachImages } from "../utils/modelCapabilities";
+import { defaultsFor } from "../utils/samplingDefaults";
 
 const log = createLogger("ChatPage");
 
@@ -32,15 +33,17 @@ export default function ChatPage() {
   const [collapsed, setCollapsed] = useState(false);
   const [isLanguageWarningExpanded, setIsLanguageWarningExpanded] = useState(false);
 
-  // Parameters state
-  // Default temperature aligned with the backend default (0.2): small local
-  // models stay coherent/instruction-following at low temperature (high values
-  // like 1.0 made Gemma-270M ramble). User-adjustable via the settings slider.
-  const [settings, setSettings] = useState({
-    temperature: 0.2,
-    topP: 0.95,
-    maxTokens: 1024,
-  });
+  // Parameters state (#388): seeded from the selected model's resolved
+  // defaults (`sampling_defaults` on the /llms/local row; the backend
+  // fallback 0.2 / 0.95 / 1024 before a model is known or for a model
+  // without hints). They follow the model on switch while untouched; once
+  // the user moves a slider, that intent survives a model switch.
+  const [settings, setSettings] = useState(() => defaultsFor(null));
+  const settingsTouchedRef = useRef(false);
+  const touchSettings = (patch) => {
+    settingsTouchedRef.current = true;
+    setSettings((prev) => ({ ...prev, ...patch }));
+  };
   const [customPrompt, setCustomPrompt] = useState("");
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -155,6 +158,18 @@ export default function ChatPage() {
     }
   }, [searchParams, models]); // Re-run when the models list arrives (#211 lesson)
 
+  // Re-seed the panel from the selected model unless the user already
+  // touched the sliders (#388). The max-tokens ceiling always follows the
+  // model, touched or not: it is a bound, not a value.
+  useEffect(() => {
+    const model = models.find((m) => m.name === selectedModel);
+    if (!model) return;
+    const next = defaultsFor(model);
+    setSettings((prev) =>
+      settingsTouchedRef.current ? { ...prev, maxTokensCap: next.maxTokensCap } : next
+    );
+  }, [selectedModel, models]);
+
   const handleConversationClick = (id) => {
     navigate(conversationPath(id));
   };
@@ -245,8 +260,8 @@ export default function ChatPage() {
     );
   };
 
-  const sliderBg = (value) => {
-    const pct = Math.round(value * 100);
+  const sliderBg = (value, max = 1) => {
+    const pct = Math.round((value / max) * 100);
     return {
       background: `linear-gradient(to right, #25C08A 0%, #1EAB78 ${pct}%, rgba(255,255,255,0.06) ${pct}%, rgba(255,255,255,0.06) 100%)`,
     };
@@ -473,17 +488,14 @@ export default function ChatPage() {
                               <input
                                 type="range"
                                 min="0"
-                                max="1"
+                                max="2"
                                 step="0.01"
                                 value={settings.temperature}
                                 onChange={(e) =>
-                                  setSettings((prev) => ({
-                                    ...prev,
-                                    temperature: parseFloat(e.target.value),
-                                  }))
+                                  touchSettings({ temperature: parseFloat(e.target.value) })
                                 }
                                 className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
-                                style={sliderBg(settings.temperature)}
+                                style={sliderBg(settings.temperature, 2)}
                               />
                             </div>
                           </div>
@@ -507,10 +519,7 @@ export default function ChatPage() {
                                 step="0.01"
                                 value={settings.topP}
                                 onChange={(e) =>
-                                  setSettings((prev) => ({
-                                    ...prev,
-                                    topP: parseFloat(e.target.value),
-                                  }))
+                                  touchSettings({ topP: parseFloat(e.target.value) })
                                 }
                                 className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
                                 style={sliderBg(settings.topP)}
@@ -532,13 +541,12 @@ export default function ChatPage() {
                                 <input
                                   type="number"
                                   min="1"
-                                  max="2000"
+                                  max={settings.maxTokensCap}
                                   value={settings.maxTokens}
                                   onChange={(e) =>
-                                    setSettings((prev) => ({
-                                      ...prev,
+                                    touchSettings({
                                       maxTokens: parseInt(e.target.value || "0", 10),
-                                    }))
+                                    })
                                   }
                                   className="bg-transparent border-0 outline-none w-28 text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 />
