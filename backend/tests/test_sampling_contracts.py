@@ -74,7 +74,10 @@ class TestLlmListingCarriesSamplingDefaults:
         body = client.get("/erudi/llms/local").json()
         row = next(r for r in body if r["id"] == hinted_llm.id)
         sd = row["sampling_defaults"]
-        assert sd["source"] == "hf_generation_config"
+        # Hints captured before the cascade carry no stage: they came from
+        # the base repo's generation_config.json, which is what is reported.
+        assert sd["source"] == "base_generation_config"
+        assert sd["evidence"] is None
         assert (sd["temperature"], sd["top_p"], sd["top_k"]) == (0.6, 0.95, 20)
         assert sd["max_tokens"] == FALLBACK_MAX_TOKENS
         # The model's 40960-token window is clipped to the Conversation
@@ -84,16 +87,46 @@ class TestLlmListingCarriesSamplingDefaults:
         assert sd["min_p"] is None and sd["presence_penalty"] is None
         assert row["generation_hints"] == _QWEN3_HINTS
 
-    def test_row_without_hints_is_fallback(self, client, mock_llm):
+    def test_row_without_hints_is_none(self, client, mock_llm):
         body = client.get("/erudi/llms/local").json()
         row = next(r for r in body if r["id"] == mock_llm.id)
         sd = row["sampling_defaults"]
-        assert sd["source"] == "fallback"
+        assert sd["source"] == "none"
+        assert sd["evidence"] is None
         assert (sd["temperature"], sd["top_p"], sd["max_tokens"]) == (
             FALLBACK_TEMPERATURE, FALLBACK_TOP_P, FALLBACK_MAX_TOKENS)
         assert sd["max_tokens_cap"] == UNBOUNDED_CONTEXT_TOKENS
         assert sd["top_k"] is None
         assert row["generation_hints"] is None
+
+    def test_row_with_facts_but_no_sampling_value_is_none(self, client, test_db_session):
+        # The gated-base / no-numbers-in-the-card case: facts stored, source none.
+        hints = {"base_repo": "meta-llama/Llama-3.2-1B-Instruct", "supports_thinking": False,
+                 "context_length": 131072, "captured_at": "2026-08-28",
+                 "source_stage": None, "evidence": None}
+        llm = Llm(name="Llama 3.2 1B", local=1, link="/models/llama", type="llama",
+                  param_size=1.0, quantized=True, generation_hints=hints)
+        test_db_session.add(llm)
+        test_db_session.commit()
+        sd = client.get(f"/erudi/llms/{llm.id}").json()["sampling_defaults"]
+        assert sd["source"] == "none"
+        assert sd["base_repo"] == "meta-llama/Llama-3.2-1B-Instruct"
+        assert (sd["temperature"], sd["top_p"]) == (FALLBACK_TEMPERATURE, FALLBACK_TOP_P)
+
+    def test_model_card_row_exposes_stage_and_evidence(self, client, test_db_session):
+        hints = {"base_repo": "mistralai/Mistral-Small-24B-Instruct-2501",
+                 "generation_config": {"temperature": 0.15}, "supports_thinking": False,
+                 "context_length": 32768, "captured_at": "2026-08-28",
+                 "source_stage": "model_card",
+                 "evidence": "We recommend using a relatively low temperature, such as `temperature=0.15`."}
+        llm = Llm(name="Mistral Small", local=1, link="/models/mistral", type="mistral",
+                  param_size=24.0, quantized=True, generation_hints=hints)
+        test_db_session.add(llm)
+        test_db_session.commit()
+        sd = client.get(f"/erudi/llms/{llm.id}").json()["sampling_defaults"]
+        assert sd["source"] == "model_card"
+        assert sd["temperature"] == 0.15
+        assert sd["evidence"] == hints["evidence"]
 
     def test_by_id_and_full_listing_carry_it_too(self, client, hinted_llm):
         assert client.get(f"/erudi/llms/{hinted_llm.id}").json()["sampling_defaults"]["top_k"] == 20
@@ -237,7 +270,8 @@ class TestDownloadCarriesHints:
         # callable standing in for the capture itself (to make it raise).
         monkeypatch.setattr(
             llm_endpoints, "capture_generation_hints",
-            remote_hints if callable(remote_hints) else (lambda base_repo, hf_api: remote_hints),
+            remote_hints if callable(remote_hints)
+            else (lambda base_repo, hf_api, quant_repo=None: remote_hints),
         )
         monkeypatch.setattr(config, "get_hf_api", lambda: MagicMock(
             model_info=lambda *a, **k: SimpleNamespace(tags=[])))
@@ -257,6 +291,34 @@ class TestDownloadCarriesHints:
         llm = self._run_task(monkeypatch, tmp_path, initial_hints=None, local_hints=None,
                              remote_hints=dict(_QWEN3_HINTS, captured_at="remote"))
         assert llm.generation_hints["captured_at"] == "remote"
+
+    def test_local_facts_without_sampling_go_through_the_cascade(self, monkeypatch, tmp_path):
+        # A Mistral MLX dir ships config.json but no usable generation_config:
+        # the network cascade runs (base card) and the artifact's facts fill in
+        # what the network could not read.
+        local = {"base_repo": "org/model", "supports_thinking": False, "context_length": 32768,
+                 "captured_at": "local", "source_stage": None, "evidence": None}
+        seen = {}
+
+        def capture(base_repo, hf_api, quant_repo=None):
+            seen["args"] = (base_repo, quant_repo)
+            return {"base_repo": base_repo, "generation_config": {"temperature": 0.15},
+                    "supports_thinking": None, "context_length": None, "captured_at": "remote",
+                    "source_stage": "model_card", "evidence": "We recommend `temperature=0.15`."}
+
+        llm = self._run_task(monkeypatch, tmp_path, initial_hints=None, local_hints=local,
+                             remote_hints=capture)
+        assert seen["args"] == ("org/model", "org/model")
+        assert llm.generation_hints["source_stage"] == "model_card"
+        assert llm.generation_hints["context_length"] == 32768
+        assert llm.generation_hints["supports_thinking"] is False
+
+    def test_local_facts_are_kept_when_the_network_has_nothing(self, monkeypatch, tmp_path):
+        local = {"base_repo": "org/model", "supports_thinking": False, "context_length": 32768,
+                 "captured_at": "local", "source_stage": None, "evidence": None}
+        llm = self._run_task(monkeypatch, tmp_path, initial_hints=None, local_hints=local,
+                             remote_hints=None)
+        assert llm.generation_hints == local
 
     def test_catalog_hints_are_kept(self, monkeypatch, tmp_path):
         llm = self._run_task(monkeypatch, tmp_path, initial_hints=_QWEN3_HINTS,

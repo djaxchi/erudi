@@ -150,6 +150,7 @@
     "likes": "点赞：",
     "lastUpdate": "最近更新：",
     "pipeline": "流水线：",
-    "showRawMetadata": "显示原始元数据"
+    "showRawMetadata": "显示原始元数据",
+    "noPublisherRecommendation": "此模型的发布者未提供任何生成参数建议；Erudi 使用中性默认值。"
   }
 }

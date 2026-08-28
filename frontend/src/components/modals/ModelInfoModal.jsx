@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Download, Users, Heart, Calendar, Tag, ChevronDown } from "lucide-react";
+import { hasNoPublisherRecommendation } from "../../utils/samplingDefaults";
 
 /**
  * Props:
@@ -128,6 +129,14 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                             </span>
                             <span className="text-gray-200 ml-2">{modelInfo.library}</span>
                           </div>
+                        )}
+                        {hasNoPublisherRecommendation(modelInfo) && (
+                          <p
+                            data-testid="no-publisher-recommendation"
+                            className="text-xs leading-snug text-gray-400/80 px-1"
+                          >
+                            {t("models:info.noPublisherRecommendation")}
+                          </p>
                         )}
                       </div>
                     </div>

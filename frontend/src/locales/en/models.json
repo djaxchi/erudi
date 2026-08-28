@@ -150,6 +150,7 @@
     "likes": "Likes:",
     "lastUpdate": "Last Update:",
     "pipeline": "Pipeline:",
-    "showRawMetadata": "Show Raw Metadata"
+    "showRawMetadata": "Show Raw Metadata",
+    "noPublisherRecommendation": "This model's publisher gives no sampling recommendation; Erudi applies neutral defaults."
   }
 }

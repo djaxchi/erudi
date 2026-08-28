@@ -74,7 +74,7 @@ const MODELS = [
       max_tokens: 1024,
       max_tokens_cap: 8192,
       top_k: 20,
-      source: "hf_generation_config",
+      source: "base_generation_config",
     },
   },
   { id: 2, name: "plain", supports_vision: false },

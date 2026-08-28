@@ -690,10 +690,12 @@ class Model_Seeder:
             # scale (#113). supports_tools stays null and is computed post-download
             # (where the tokenizer is already on disk).
             supports_tools=None,
-            # Sampling facts from the BASE repo (#388): model_config.link is the
-            # base id (the resolver only rewrote the quant link). Three tiny file
-            # fetches, memoized per base, best-effort (None on gated/missing).
-            generation_hints=capture_generation_hints(model_config.link, self.hf_api),
+            # Sampling facts (#388): model_config.link is the BASE id (the
+            # resolver only rewrote the quant link). Cascade base
+            # generation_config > quant generation_config > base model card,
+            # tiny file fetches memoized per repo, best-effort (None on failure).
+            generation_hints=capture_generation_hints(model_config.link, self.hf_api,
+                                                      quant_repo=quant_link),
         )
 
     def _create_base_llm_fallback(self, model_config: Model_Config, quant_link: str) -> Llm:
@@ -725,8 +727,9 @@ class Model_Seeder:
             category=model_config.category,
             # Deferred to post-download (see _create_base_llm / #113).
             supports_tools=None,
-            # Sampling facts from the base repo -- see _create_base_llm (#388).
-            generation_hints=capture_generation_hints(model_config.link, self.hf_api),
+            # Sampling facts cascade -- see _create_base_llm (#388).
+            generation_hints=capture_generation_hints(model_config.link, self.hf_api,
+                                                      quant_repo=quant_link),
         )
     
     def _passes_quality_filters(self, model_info) -> bool:
@@ -784,9 +787,11 @@ class Model_Seeder:
             category=categorize(model_name, tags,
                                 getattr(model_info, "pipeline_tag", None)),
             # Sampling facts (#388): a community quant inherits its base's
-            # generation_config (first base_model:* card tag), else its own.
+            # generation_config (first base_model:* card tag), else its own; the
+            # quant repo itself is the cascade's second stage.
             generation_hints=capture_generation_hints(
-                resolve_base_repo(model_info.id, tags), self.hf_api),
+                resolve_base_repo(model_info.id, tags), self.hf_api,
+                quant_repo=model_info.id),
         )
 
 

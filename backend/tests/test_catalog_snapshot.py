@@ -120,8 +120,8 @@ def _seeder_with_capture_spy(monkeypatch):
     """Model_Seeder over a stub HF api, with the hints capture spied (#388)."""
     captured = []
 
-    def spy(base_repo, hf_api):
-        captured.append(base_repo)
+    def spy(base_repo, hf_api, quant_repo=None):
+        captured.append((base_repo, quant_repo))
         return dict(_HINTS, base_repo=base_repo)
 
     monkeypatch.setattr(seed_mod, "capture_generation_hints", spy)
@@ -138,10 +138,10 @@ def _seeder_with_capture_spy(monkeypatch):
     return Model_Seeder(db=None, hf_api=api), captured
 
 
-def test_base_creators_capture_hints_from_the_base_repo_not_the_quant(monkeypatch):
+def test_base_creators_capture_hints_from_the_base_repo_with_the_quant_as_second_stage(monkeypatch):
     """#388: the snapshot generation path captures the BASE repo's generation
-    facts (Model_Config.link) -- never the resolved quant link -- and carries
-    them onto the row that llm_to_dict dumps."""
+    facts (Model_Config.link) with the resolved quant link as the cascade's
+    second stage, and carries them onto the row that llm_to_dict dumps."""
     seeder, captured = _seeder_with_capture_spy(monkeypatch)
     cfg = seed_mod.Model_Config(name="Qwen3-8B", link="Qwen/Qwen3-8B", model_type="qwen")
 
@@ -152,7 +152,7 @@ def test_base_creators_capture_hints_from_the_base_repo_not_the_quant(monkeypatc
     fallback = snap.llm_to_dict(
         seeder._create_base_llm_fallback(cfg, "lmstudio/Qwen3-8B-MLX-4bit"))
     assert fallback["generation_hints"]["base_repo"] == "Qwen/Qwen3-8B"
-    assert captured == ["Qwen/Qwen3-8B", "Qwen/Qwen3-8B"]
+    assert captured == [("Qwen/Qwen3-8B", "lmstudio/Qwen3-8B-MLX-4bit")] * 2
 
 
 def test_derived_creator_captures_from_the_base_model_tag_else_itself(monkeypatch):
@@ -169,7 +169,8 @@ def test_derived_creator_captures_from_the_base_model_tag_else_itself(monkeypatc
                                      tags=[])
     entry = snap.llm_to_dict(seeder._create_derived_llm(untagged, search_config))
     assert entry["generation_hints"]["base_repo"] == "community/foo-GGUF"
-    assert captured == ["Qwen/Qwen3-8B", "community/foo-GGUF"]
+    assert captured == [("Qwen/Qwen3-8B", "mlx-community/Qwen3-8B-4bit"),
+                        ("community/foo-GGUF", "community/foo-GGUF")]
 
 
 def test_capture_failure_leaves_hints_none(monkeypatch):

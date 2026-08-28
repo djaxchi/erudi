@@ -41,6 +41,10 @@ export default function HeaderBar({
   showWebSearch = false,
   initialWebSearch = false,
   onWebSearchChange,
+  // The model's publisher gives no sampling recommendation (#388,
+  // `sampling_defaults.source === "none"`): a discreet line under the sliders
+  // says the neutral defaults apply. Nothing is shown when one exists.
+  noPublisherRecommendation = false,
 }) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
@@ -407,6 +411,14 @@ export default function HeaderBar({
                       />
                     </div>
                   </div>
+                  {noPublisherRecommendation && (
+                    <p
+                      data-testid="no-publisher-recommendation"
+                      className="-mt-3 text-[11px] leading-snug text-gray-400/80"
+                    >
+                      {t("chat:header.noPublisherRecommendation")}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-col justify-center gap-6">
@@ -556,4 +568,5 @@ HeaderBar.propTypes = {
   onModelChange: PropTypes.func,
   pickerAttention: PropTypes.bool,
   pickerAttentionMessage: PropTypes.string,
+  noPublisherRecommendation: PropTypes.bool,
 };

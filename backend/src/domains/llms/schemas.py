@@ -36,11 +36,15 @@ class SamplingDefaultsResponse(BaseModel):
     """Resolved per-model sampling defaults (#388), the shape
     ``src.database.generation_hints.SamplingDefaults.to_dict`` produces.
 
-    ``source`` says which layer won (``curated`` / ``hf_generation_config`` /
-    ``fallback``) for debuggability. ``top_k`` / ``min_p`` / ``presence_penalty``
-    are None unless a layer defines them (and are then the only case the
-    backend puts them on the wire). ``max_tokens_cap`` is the UI ceiling for the
-    max-tokens field: min(model context window, engine context window).
+    ``source`` says which capture stage the values came from
+    (``base_generation_config`` / ``quant_generation_config`` / ``model_card``)
+    or ``none`` when the publisher gives no usable recommendation and the
+    neutral defaults apply -- the UI tells the user in that case. ``evidence``
+    is the model-card sentence the values were read from (``model_card`` only;
+    debugging aid, not displayed). ``top_k`` / ``min_p`` / ``presence_penalty``
+    are None unless the captured block defines them (and are then the only case
+    the backend puts them on the wire). ``max_tokens_cap`` is the UI ceiling for
+    the max-tokens field: min(model context window, engine context window).
     """
     temperature: float
     top_p: float
@@ -53,6 +57,7 @@ class SamplingDefaultsResponse(BaseModel):
     min_p: Optional[float] = None
     presence_penalty: Optional[float] = None
     base_repo: Optional[str] = None
+    evidence: Optional[str] = None
 
 
 class LLMBase(BaseModel):
@@ -118,7 +123,8 @@ class LLMResponse(LLMBase):
     def sampling_defaults(self) -> SamplingDefaultsResponse:
         """Per-model sampling defaults resolved at read time (#388): the values a
         new conversation / arena panel seeds its sliders from. Pure function over
-        this row (``curated > hf generation_config > fallback``), no DB column."""
+        this row (captured generation_config, else the neutral constants), no DB
+        column."""
         from src.database.generation_hints import resolve_sampling_defaults
 
         return SamplingDefaultsResponse(**resolve_sampling_defaults(self).to_dict())

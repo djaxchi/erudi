@@ -3,11 +3,9 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 
-// Mid-conversation model switch (#388, maintainer decision 1): the sampling
-// re-defaults to the NEW model's values whether or not the user touched the
-// sliders, and the switch persists llm_id AND the new sampling in one PATCH
-// so the next turn already runs on them. The header's max-tokens ceiling
-// follows the conversation's model.
+// The conversation header tells the user when the conversation's model has no
+// publisher sampling recommendation (#388, `sampling_defaults.source ===
+// "none"`), and the flag follows a mid-conversation model switch.
 
 const { tracedFetchMock, navigateMock, locationMock } = vi.hoisted(() => ({
   tracedFetchMock: vi.fn(),
@@ -34,23 +32,11 @@ vi.mock("../components/TypingIndicator", () => ({ default: () => null }));
 vi.mock("../components/MarkdownRenderer", () => ({ default: () => null }));
 vi.mock("../components/modals/CustomizePromptModal", () => ({ default: () => null }));
 vi.mock("../components/HeaderBar", () => ({
-  default: ({
-    currentModel,
-    initialTemperature,
-    initialTopP,
-    initialMaxTokens,
-    maxTokensCap,
-    onModelChange,
-    onApply,
-  }) => (
+  default: ({ currentModel, noPublisherRecommendation, onModelChange }) => (
     <div>
-      <div data-testid="header">
-        {`${currentModel}|${initialTemperature}|${initialTopP}|${initialMaxTokens}|${maxTokensCap}`}
-      </div>
+      <div data-testid="header">{`${currentModel}|${String(noPublisherRecommendation)}`}</div>
       <button onClick={() => onModelChange("qwen3")}>PICK_QWEN3</button>
-      <button onClick={() => onApply({ temperature: 1.3, topP: 0.9, maxTokens: 512 })}>
-        TOUCH
-      </button>
+      <button onClick={() => onModelChange("llama")}>PICK_LLAMA</button>
     </div>
   ),
 }));
@@ -67,19 +53,29 @@ const models = [
       top_p: 0.95,
       max_tokens: 1024,
       max_tokens_cap: 8192,
-      top_k: 20,
       source: "base_generation_config",
     },
   },
-  { id: 2, name: "plain", weights_available: true },
+  {
+    id: 2,
+    name: "llama",
+    weights_available: true,
+    sampling_defaults: {
+      temperature: 0.2,
+      top_p: 0.95,
+      max_tokens: 1024,
+      max_tokens_cap: 32768,
+      source: "none",
+    },
+  },
 ];
 
 const detail = {
   id: 7,
   llm_id: 2,
-  temperature: 0.7,
-  top_p: 0.9,
-  max_tokens: 512,
+  temperature: 0.2,
+  top_p: 0.95,
+  max_tokens: 1024,
   custom_prompt: "",
 };
 
@@ -94,10 +90,6 @@ const routeFetch = async (url, opts = {}) => {
 };
 
 const header = () => screen.getByTestId("header").textContent;
-const patchBodies = () =>
-  tracedFetchMock.mock.calls
-    .filter(([, opts]) => opts?.method === "PATCH")
-    .map(([, opts]) => JSON.parse(opts.body));
 
 beforeEach(() => {
   Element.prototype.scrollTo = () => {};
@@ -108,36 +100,20 @@ afterEach(() => {
   cleanup();
 });
 
-describe("ConversationPage sampling on model switch (#388)", () => {
-  it("hydrates from the conversation row and caps max tokens on the conversation's model", async () => {
+describe("ConversationPage publisher recommendation flag (#388)", () => {
+  it("flags the conversation's model when its source is none", async () => {
     render(<ConversationPage />);
-    await waitFor(() => expect(header()).toBe("plain|0.7|0.9|512|32768"));
+    await waitFor(() => expect(header()).toBe("llama|true"));
   });
 
-  it("re-defaults the sampling to the new model's values and persists them with llm_id", async () => {
+  it("follows a model switch in both directions", async () => {
     render(<ConversationPage />);
-    await waitFor(() => expect(header()).toBe("plain|0.7|0.9|512|32768"));
+    await waitFor(() => expect(header()).toBe("llama|true"));
 
     fireEvent.click(screen.getByText("PICK_QWEN3"));
+    await waitFor(() => expect(header()).toBe("qwen3|false"));
 
-    await waitFor(() => expect(header()).toBe("qwen3|0.6|0.95|1024|8192"));
-    await waitFor(() => expect(patchBodies()).toHaveLength(1));
-    expect(patchBodies()[0]).toEqual({
-      llm_id: 1,
-      temperature: 0.6,
-      top_p: 0.95,
-      max_tokens: 1024,
-    });
-  });
-
-  it("re-defaults even after the user touched the sliders", async () => {
-    render(<ConversationPage />);
-    await waitFor(() => expect(header()).toBe("plain|0.7|0.9|512|32768"));
-
-    fireEvent.click(screen.getByText("TOUCH"));
-    await waitFor(() => expect(header()).toBe("plain|1.3|0.9|512|32768"));
-
-    fireEvent.click(screen.getByText("PICK_QWEN3"));
-    await waitFor(() => expect(header()).toBe("qwen3|0.6|0.95|1024|8192"));
+    fireEvent.click(screen.getByText("PICK_LLAMA"));
+    await waitFor(() => expect(header()).toBe("llama|true"));
   });
 });
