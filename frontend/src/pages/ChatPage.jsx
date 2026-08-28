@@ -18,6 +18,7 @@ import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 import { canAttachImages } from "../utils/modelCapabilities";
+import { hasMissingWeights } from "../utils/modelWeights";
 import { defaultsFor, hasNoPublisherRecommendation } from "../utils/samplingDefaults";
 import { formatNumber } from "../i18n/format";
 
@@ -97,9 +98,17 @@ export default function ChatPage() {
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
           setModels(data);
-          // Keep the user's current selection on refreshes; default to the
-          // first local model only when nothing is selected yet.
-          setSelectedModel((prev) => prev || data[0].name);
+          // Keep the user's current selection on refreshes while it is still
+          // selectable; otherwise default to the first model whose weights
+          // are on disk. An orphaned KB assistant (weights_available === false,
+          // #376) is listed but never auto-selected: a turn on it can only
+          // fail. With nothing selectable the selection stays empty and the
+          // composer disabled.
+          setSelectedModel((prev) => {
+            const current = data.find((m) => m.name === prev);
+            if (current && !hasMissingWeights(current)) return prev;
+            return data.find((m) => !hasMissingWeights(m))?.name ?? "";
+          });
         }
       })
       .catch((err) => {
@@ -157,7 +166,10 @@ export default function ChatPage() {
       models.find((model) => String(model.id) === modelParam) ??
       models.find((model) => model.name === modelParam);
 
-    if (foundModel) {
+    if (foundModel && hasMissingWeights(foundModel)) {
+      // A deep link to an orphaned assistant (#376) keeps the default pick.
+      log.warn("Model from URL parameter has no weights on disk:", modelParam);
+    } else if (foundModel) {
       log.log("Setting model from URL parameter:", foundModel);
       setSelectedModel(foundModel.name);
     } else {
@@ -180,8 +192,8 @@ export default function ChatPage() {
   const handleAsk = useCallback(
     async (question, images = [], imagePaths = []) => {
       const llm = models.find((m) => m.name === selectedModel);
-      if (!llm) {
-        log.error("Selected model not found");
+      if (!llm || hasMissingWeights(llm)) {
+        log.error("Selected model not found or has no weights on disk");
         return;
       }
       try {
@@ -429,19 +441,37 @@ export default function ChatPage() {
                       {/* Custom Dropdown */}
                       {isDropdownOpen && (
                         <div className="absolute top-full left-0 right-0 mt-1 bg-[#2a2a2a] border border-white/20 rounded-lg shadow-lg z-[9999] max-h-60 overflow-y-auto">
-                          {models.map((m) => (
-                            <div
-                              key={m.id ?? m.name}
-                              className="px-3 py-2 hover:bg-white/10 cursor-pointer text-gray-100 border-b border-white/10 last:border-b-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedModel(m.name);
-                                setIsDropdownOpen(false);
-                              }}
-                            >
-                              {m.name}
-                            </div>
-                          ))}
+                          {models.map((m) => {
+                            // Orphaned assistant (#376): listed but not
+                            // selectable, with the remedy spelled out.
+                            const weightsMissing = hasMissingWeights(m);
+                            return (
+                              <div
+                                key={m.id ?? m.name}
+                                data-testid={`model-option-${m.id ?? m.name}`}
+                                aria-disabled={weightsMissing}
+                                className={[
+                                  "px-3 py-2 border-b border-white/10 last:border-b-0",
+                                  weightsMissing
+                                    ? "text-gray-500 cursor-not-allowed"
+                                    : "hover:bg-white/10 cursor-pointer text-gray-100",
+                                ].join(" ")}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (weightsMissing) return;
+                                  setSelectedModel(m.name);
+                                  setIsDropdownOpen(false);
+                                }}
+                              >
+                                {m.name}
+                                {weightsMissing && (
+                                  <div className="text-[11px] leading-snug text-gray-500">
+                                    {t("chat:header.weightsMissingHint")}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -609,6 +639,7 @@ export default function ChatPage() {
                 <div className="mt-6">
                   <QuestionInput
                     onSend={handleAsk}
+                    disabled={!selectedModel}
                     placeholder={t("chat:composer.placeholderNew")}
                     canAttachImages={canAttachImages(models.find((m) => m.name === selectedModel))}
                   />
