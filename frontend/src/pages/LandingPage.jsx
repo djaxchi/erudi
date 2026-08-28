@@ -620,6 +620,7 @@ export default function LandingPage() {
         isOpen={!!selectedModelInfo}
         onClose={() => setSelectedModelInfo(null)}
         onDownload={handleDownload}
+        installed={!!selectedModelInfo && isInstalled(selectedModelInfo)}
       />
       <DeleteModelModal
         isOpen={deleteConfirmation.show}
