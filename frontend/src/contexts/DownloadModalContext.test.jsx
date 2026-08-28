@@ -264,6 +264,41 @@ describe("DownloadModalContext user cancel", () => {
     expect(cancel).toBeTruthy();
     expect(String(cancel[0])).toMatch(/\/llms\/downloads\/job1\/cancel$/);
   });
+
+  // Once the backend acknowledges the cancel the job is gone: any further
+  // status poll can only be answered with a not-found warning in the backend
+  // log. The widget must settle locally on the acknowledgement instead.
+  it("stops polling the status as soon as the cancel is acknowledged", async () => {
+    statusResponder = () => ({
+      ok: true,
+      json: async () => ({ status: "running", progress: 10, time_left: 60 }),
+    });
+    renderProvider();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("OPEN"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("CONFIRM"));
+      await vi.advanceTimersByTimeAsync(2000); // one poll while running
+    });
+    expect(statusCalls().length).toBe(1);
+
+    // The bar auto-expands after 2s, so the Cancel control is already exposed.
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Cancel"));
+      await vi.advanceTimersByTimeAsync(0); // cancel POST acknowledged
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3 * 2000);
+    });
+    expect(statusCalls().length).toBe(1);
+    expect(val("downloading")).toBe("false");
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(DOWNLOAD_CANCELLED);
+    expect(onComplete).not.toHaveBeenCalled();
+  });
 });
 
 // The poll had no cap: it stopped only on completed/failed/cancelled, so when
