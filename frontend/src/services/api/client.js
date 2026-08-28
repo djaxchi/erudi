@@ -1,6 +1,7 @@
 import { createLogger } from "../../utils/logger";
 import { getApiBaseUrl } from "../../config/api";
 import { truncateValue } from "../../utils/interactionLogger";
+import i18n from "../../i18n";
 
 const log = createLogger("APIClient");
 
@@ -256,11 +257,12 @@ class APIClient {
     } catch (error) {
       const durationMs = Date.now() - startedAt;
 
-      // Handle timeout
+      // Handle timeout. The thrown message is user-facing (pages surface
+      // `err.message`), so it is translated; the log entry stays English.
       if (error.name === "AbortError") {
-        const timeoutError = new Error("Request timeout");
+        const timeoutError = new Error(i18n.t("errors:api.timeout"));
         timeoutError.code = "TIMEOUT";
-        log.error("api.failure", { rid, error: timeoutError.message, duration_ms: durationMs });
+        log.error("api.failure", { rid, error: "Request timeout", duration_ms: durationMs });
         throw timeoutError;
       }
 
@@ -300,8 +302,12 @@ class APIClient {
       errorData = { detail: response.statusText };
     }
 
+    // The backend's own `detail`/`message` is passed through as-is; only the
+    // generic fallback is translated (it is what pages show the user).
     const error = new Error(
-      errorData.detail || errorData.message || `API Error: ${response.status}`
+      errorData.detail ||
+        errorData.message ||
+        i18n.t("errors:api.httpStatus", { status: response.status })
     );
     error.status = response.status;
     error.code = `HTTP_${response.status}`;

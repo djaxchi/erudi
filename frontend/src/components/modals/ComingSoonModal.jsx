@@ -2,6 +2,7 @@ import React from "react";
 import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Construction } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 
 ComingSoonModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
@@ -19,6 +20,7 @@ export default function ComingSoonModal({
   featureName,
   featureDescription,
 }) {
+  const { t } = useTranslation();
   return (
     <AnimatePresence>
       {showComingSoonModal && (
@@ -62,7 +64,7 @@ export default function ComingSoonModal({
                       <Construction className="w-4 h-4 text-amber-400" />
                     </div>
                     <h2 className="text-xl font-semibold tracking-tight text-[#F2F7F4]">
-                      Coming Soon
+                      {t("landing:comingSoon.title")}
                     </h2>
                   </div>
                   <button
@@ -76,8 +78,11 @@ export default function ComingSoonModal({
                 {/* Content */}
                 <div className="text-center mb-6">
                   <p className="text-sm text-gray-300/80 mb-3">
-                    The <span className="font-semibold text-emerald-400">{featureName}</span>{" "}
-                    feature is currently under development and will be available in a future update.
+                    <Trans
+                      i18nKey="landing:comingSoon.body"
+                      values={{ name: featureName }}
+                      components={{ feature: <span className="font-semibold text-emerald-400" /> }}
+                    />
                   </p>
                   {featureDescription && (
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
@@ -97,7 +102,7 @@ export default function ComingSoonModal({
                       "transition active:scale-95",
                     ].join(" ")}
                   >
-                    Got it
+                    {t("common:actions.gotIt")}
                   </button>
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import React from "react";
 import PropTypes from "prop-types";
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 MessageModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
@@ -19,6 +20,7 @@ export default function MessageModal({
   type = "info", // "success", "error", "info"
   onClose,
 }) {
+  const { t } = useTranslation();
   if (!isOpen) {
     return null;
   }
@@ -61,7 +63,7 @@ export default function MessageModal({
               onClick={onClose}
               className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors font-medium"
             >
-              Close
+              {t("common:actions.close")}
             </button>
           </div>
         </div>

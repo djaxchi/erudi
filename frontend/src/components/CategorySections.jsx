@@ -1,5 +1,6 @@
 import React from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import ModelCarousel from "./ModelCarousel";
 import { groupByCategory } from "../utils/modelCatalog";
 
@@ -17,12 +18,13 @@ export default function CategorySections({
   onInfo,
   isInstalled,
 }) {
+  const { t } = useTranslation();
   const groups = groupByCategory(models);
 
   if (loading) {
     return (
       <div className="text-[var(--ink-faint)] mono text-xs py-10 text-center">
-        building catalog…
+        {t("models:explore.buildingCatalogInline")}
       </div>
     );
   }
@@ -30,7 +32,9 @@ export default function CategorySections({
   if (groups.length === 0) {
     return (
       <p className="text-[var(--ink-dim)] text-sm py-8 text-center">
-        {searchQuery ? `No base models found for “${searchQuery}”` : "No base models available"}
+        {searchQuery
+          ? t("models:explore.noBaseModelsFor", { query: searchQuery })
+          : t("models:explore.noBaseModels")}
       </p>
     );
   }

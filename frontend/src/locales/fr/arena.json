@@ -1,0 +1,14 @@
+{
+  "panel": {
+    "delete": "Supprimer ce panneau",
+    "deleteLast": "Impossible de supprimer le dernier panneau",
+    "modelNotFound": "[Modèle introuvable]",
+    "error": "[Erreur]",
+    "attachmentAlt": "pièce jointe {{index}}"
+  },
+  "controls": {
+    "stop": "Arrêter la génération",
+    "addPanel": "Ajouter un panneau de discussion",
+    "maxPanels": "Maximum {{max}} panneaux"
+  }
+}

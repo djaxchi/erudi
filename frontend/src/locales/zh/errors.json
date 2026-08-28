@@ -1,0 +1,128 @@
+{
+  "backend": {
+    "defaultTitle": "后端启动失败",
+    "footerWithCode": "错误代码：{{code}} · {{message}}",
+    "checkLogsAt": "请查看 {{path}} 中的日志并联系我们。",
+    "checkLogs": "请查看后端日志并联系我们。",
+    "codes": {
+      "portInUse": {
+        "title": "端口已被占用",
+        "detail": "另一个进程正在使用 Erudi 本地服务器所需的端口。",
+        "hint": "请退出其他正在运行的 Erudi（或占用该端口的应用），然后重新启动。"
+      },
+      "noPortAvailable": {
+        "title": "没有可用端口",
+        "detail": "Erudi 找不到可用端口来启动本地服务器。",
+        "hint": "请关闭其他占用本地端口的应用，然后重新启动 Erudi。"
+      },
+      "portTimeout": {
+        "title": "后端未能及时启动",
+        "detail": "本地服务器未在启动时限内就绪。",
+        "hint": "请重新启动 Erudi。如果问题持续出现，请查看后端日志文件。"
+      },
+      "crashBeforeReady": {
+        "title": "后端在启动时崩溃",
+        "detail": "本地服务器在就绪前已停止。",
+        "hint": "请重新启动 Erudi；如果问题持续出现，请查看后端日志文件。"
+      },
+      "importError": {
+        "title": "后端加载失败",
+        "detail": "无法加载后端所需的组件。",
+        "hint": "请重新安装或更新 Erudi，然后查看后端日志文件。"
+      },
+      "dataPrepError": {
+        "title": "无法准备应用数据",
+        "detail": "Erudi 无法设置其数据目录。",
+        "hint": "请检查可用磁盘空间和权限，然后重新启动。"
+      },
+      "databaseError": {
+        "title": "数据库错误",
+        "detail": "Erudi 的本地数据库启动失败。",
+        "hint": "请重新启动 Erudi；如果问题持续出现，请查看后端日志文件。"
+      },
+      "cudaRuntimeError": {
+        "title": "GPU 运行时错误",
+        "detail": "CUDA 运行时初始化失败。",
+        "hint": "请更新您的 NVIDIA 驱动程序，或使用 Erudi 的 CPU 版本。"
+      },
+      "missingDependency": {
+        "title": "缺少系统依赖",
+        "detail": "缺少 Erudi 所需的系统库。",
+        "hint": "请重新安装 Erudi，然后查看后端日志文件。"
+      },
+      "backendNotFound": {
+        "title": "未找到后端",
+        "detail": "无法找到内置的后端可执行文件。",
+        "hint": "请重新安装 Erudi。"
+      },
+      "backendStartupFailed": {
+        "title": "后端启动失败",
+        "detail": "本地服务器经过多次尝试仍无法启动。",
+        "hint": "请重新启动 Erudi；如果问题持续出现，请查看后端日志文件。"
+      },
+      "backendExitError": {
+        "title": "后端意外停止",
+        "detail": "本地服务器进程因错误退出。",
+        "hint": "请重新启动 Erudi；如果问题持续出现，请查看后端日志文件。"
+      },
+      "backendSpawnFailed": {
+        "title": "无法启动后端",
+        "detail": "Erudi 无法启动其本地服务器进程。",
+        "hint": "请重新安装 Erudi（或在杀毒软件/SmartScreen 中允许它），然后重新启动。"
+      },
+      "unexpectedError": {
+        "title": "意外的启动错误",
+        "detail": "启动 Erudi 时出现问题。",
+        "hint": "请重新启动 Erudi，然后查看后端日志文件。"
+      },
+      "pollingError": {
+        "title": "与后端失去联系",
+        "detail": "Erudi 在启动期间停止了对后端的监控。",
+        "hint": "请重新启动 Erudi。"
+      },
+      "backendUnreachable": {
+        "title": "无法连接到后端",
+        "detail": "Erudi 的本地服务器没有响应。",
+        "hint": "请重新启动 Erudi；如果问题持续出现，请查看后端日志文件。"
+      },
+      "unknown": {
+        "title": "后端启动失败",
+        "detail": "Erudi 的本地服务器未启动。",
+        "hint": "请重新启动 Erudi；如果问题持续出现，请查看后端日志文件。"
+      }
+    }
+  },
+  "connection": {
+    "restart": "重启",
+    "restartTitle": "重启后端",
+    "unreachable": {
+      "label": "后端无法连接",
+      "title": "本地后端没有响应",
+      "tooltip": "本地后端已停止响应。请重启以重新连接。"
+    },
+    "recovering": {
+      "label": "正在恢复数据库...",
+      "title": "本地数据库正在恢复",
+      "tooltip": "本地数据库正在恢复。您的数据是安全的；此状态会自行解除。"
+    },
+    "databaseError": {
+      "label": "数据库错误",
+      "title": "本地数据库出现错误",
+      "tooltip": "本地数据库出现错误。请重启后端以恢复。"
+    },
+    "offline": {
+      "label": "离线",
+      "title": "没有互联网连接",
+      "tooltip": "没有互联网：模型目录和下载不可用，但仍可与已安装的模型聊天。"
+    },
+    "connected": {
+      "label": "已连接",
+      "title": "已连接到互联网",
+      "tooltip": "您可以离线与已安装的模型聊天。安装新模型需要网络连接。"
+    }
+  },
+  "api": {
+    "timeout": "请求超时",
+    "httpStatus": "API 错误：{{status}}"
+  }
+}

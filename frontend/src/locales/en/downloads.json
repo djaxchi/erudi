@@ -1,0 +1,56 @@
+{
+  "widget": {
+    "downloadingTitle": "Downloading: {{name}}",
+    "errorTitle": "Error: {{name}}",
+    "timeLeft": "Time Left:",
+    "progress": "Progress:",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "duration": {
+      "daysHours": "{{days}}d {{hours}}h",
+      "hoursMinutes": "{{hours}}h {{minutes}}m",
+      "minutesSeconds": "{{minutes}}m {{seconds}}s",
+      "seconds": "{{seconds}}s"
+    }
+  },
+  "errors": {
+    "failedUnexpectedly": "Download failed unexpectedly",
+    "pollFailed": "An error occured during download. Please check your connection and try again. If the problem persists, please contact the Erudi team.",
+    "startFailed": "Failed to start download ({{status}}): {{detail}}",
+    "unexpected": "An unexpected error occurred",
+    "cancelFailed": "Failed to cancel download: {{detail}}",
+    "failedRetry": "Download failed. Please try again.",
+    "stalled": "The download finished but the app is taking longer than expected to finalize it. The files have been saved. Restart Erudi and check your installed models before downloading again."
+  },
+  "hardwareWait": {
+    "title": "⏳ Please Wait",
+    "evaluating": "Evaluating Hardware",
+    "body": "We're still checking your system capabilities. This will only take a moment.",
+    "stepLabel": "Hardware Evaluation",
+    "stepLoading": "⏳ Loading...",
+    "stepComplete": "✅ Complete"
+  },
+  "delete": {
+    "title": "Delete Model",
+    "confirmQuestion": "Are you sure you want to delete the model <name>{{name}}</name>?",
+    "irreversible": "This action cannot be undone.",
+    "dependentsSummary": "<name>{{name}}</name> powers <strong>{{assistants}}</strong> ({{names}}) and <strong>{{conversations}}</strong>.",
+    "assistantCount_one": "{{count}} assistant",
+    "assistantCount_other": "{{count}} assistants",
+    "conversationCount_one": "{{count}} conversation",
+    "conversationCount_other": "{{count}} conversations",
+    "frees": "Deleting it frees {{size}}.",
+    "dependentsNote": "Assistants will remain and must be re-bound to another model; conversations are kept.",
+    "deleteAnyway": "Delete anyway"
+  },
+  "embeddingGate": {
+    "promptTitle": "Embedding model required",
+    "promptBody": "The Knowledge Base needs an embedding model to index and search your documents. Download the recommended model (multilingual-e5-small)? It is fetched once and stored locally.",
+    "notNow": "Not now",
+    "downloadingBody": "Downloading the embedding model… This can take a minute. You can leave this page — the download keeps running.",
+    "doneTitle": "Embedding model downloaded",
+    "doneBody": "The embedding model was downloaded successfully. The Knowledge Base is ready to use.",
+    "errorTitle": "Download failed",
+    "errorBody": "The embedding model could not be downloaded. Check your connection and try again."
+  }
+}

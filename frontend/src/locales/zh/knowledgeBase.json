@@ -1,0 +1,69 @@
+{
+  "page": {
+    "title": "知识库",
+    "intro": {
+      "p1": "知识库让您无需修改 AI 模型本身，就能让 AI 了解您的专属文档、文件和信息。",
+      "p2": "可以把它想象成给 AI 一座私人图书馆，回答问题时随时查阅。上传您的 PDF、文档、笔记或任何文本文件，AI 就会据此针对您的主题给出更准确、更相关的回答。",
+      "p3": "当您希望 AI 了解您的业务、研究或个人文档，却又不想永久改变它的思考方式时，这是理想的选择。它比训练新模型更快、更简单，而且您随时可以通过添加或删除文档来更新知识。",
+      "p4": "知识库适用于：公司文档、研究论文、手册、个人笔记，或任何您希望 AI 在聊天时参考的信息。"
+    },
+    "rating": {
+      "label": "聊天能力评级：",
+      "fetching": "获取中…",
+      "error": "获取失败",
+      "notAvailable": "不可用",
+      "score": "{{score}}/100"
+    },
+    "form": {
+      "title": "告诉助手您打算用它做什么！",
+      "descriptionPlaceholder": "填写描述",
+      "success": "数据已成功关联到您的助手！",
+      "create": "创建助手",
+      "creating": "正在创建助手..."
+    },
+    "errors": {
+      "missingFields": "请填写所有必填项",
+      "duplicateName": "已存在名为“{{name}}”的模型。请为助手选择另一个名称。"
+    }
+  },
+  "confirm": {
+    "updateTitle": "使用 {{fileCount}} 个文件更新 <b>{{name}}</b> 的知识库？",
+    "updateBody": "新文档将添加到该助手现有的知识库中",
+    "createTitle": "确定要创建 <b>{{name}}</b> 吗？",
+    "createBody": "这将创建一个包含 {{fileCount}} 个文件的知识库助手",
+    "update": "更新知识库",
+    "create": "创建助手"
+  },
+  "creation": {
+    "errors": {
+      "startFailed": "无法开始创建助手（{{status}}）：{{detail}}",
+      "startFailedGeneric": "无法开始创建助手",
+      "unknownDetail": "未知错误",
+      "failedUnexpectedly": "助手创建意外失败",
+      "statusCheckFailed": "创建助手时发生错误。请重试或联系 Erudi 团队。"
+    }
+  },
+  "upload": {
+    "dragAndDrop": "拖放文件",
+    "or": "或",
+    "browseFiles": "浏览文件",
+    "selectFolder": "或选择一个文件夹",
+    "selectedFiles": "已选文件（{{fileCount}}）",
+    "addFolder": "添加文件夹",
+    "addMore": "添加更多",
+    "removeFile": "移除文件",
+    "fileType": {
+      "folder": "文件夹",
+      "other": "其他"
+    },
+    "notice": {
+      "unsupported_one": "已跳过 {{count}} 个不支持的文件",
+      "unsupported_other": "已跳过 {{count}} 个不支持的文件",
+      "capped": "已限制为 {{max}} 个文件（另有 {{ignored}} 个被忽略）",
+      "missingPath_one": "无法解析 {{count}} 个项目的路径",
+      "missingPath_other": "无法解析 {{count}} 个项目的路径",
+      "duplicate_one": "{{count}} 个文件已在列表中",
+      "duplicate_other": "{{count}} 个文件已在列表中"
+    }
+  }
+}

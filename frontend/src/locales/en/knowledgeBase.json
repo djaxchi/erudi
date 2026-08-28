@@ -1,0 +1,69 @@
+{
+  "page": {
+    "title": "Knowledge Base",
+    "intro": {
+      "p1": "A Knowledge Base lets you teach your AI about your specific documents, files, and information without changing the AI model itself.",
+      "p2": "Think of it like giving your AI a personal library to reference when answering questions. Upload your PDFs, documents, notes, or any text files, and your AI will use them to give more accurate and relevant answers about your specific topics.",
+      "p3": "This is perfect when you want your AI to know about your business, research, or personal documents, but don't need to permanently change how the AI thinks. It's faster and easier than training a new model, and you can update your knowledge anytime by adding or removing documents.",
+      "p4": "Use Knowledge Bases for: company documents, research papers, manuals, personal notes, or any information you want your AI to reference when chatting with you."
+    },
+    "rating": {
+      "label": "Chat Capabilities Rating :",
+      "fetching": "fetching…",
+      "error": "Error fetching",
+      "notAvailable": "N/A",
+      "score": "{{score}}/100"
+    },
+    "form": {
+      "title": "Tell your assistant what you would use it for!",
+      "descriptionPlaceholder": "Write a description",
+      "success": "Data attached to your Assistant successfully!",
+      "create": "Create Assistant",
+      "creating": "Creating Assistant..."
+    },
+    "errors": {
+      "missingFields": "Please fill in all required fields",
+      "duplicateName": "A model named \"{{name}}\" already exists. Choose a different assistant name."
+    }
+  },
+  "confirm": {
+    "updateTitle": "Update <b>{{name}}</b>'s knowledge base with {{fileCount}} file(s)?",
+    "updateBody": "The new documents will be added to this assistant's existing knowledge base",
+    "createTitle": "Are you sure you want to create <b>{{name}}</b>?",
+    "createBody": "This will create a knowledge base assistant with {{fileCount}} files",
+    "update": "Update Knowledge Base",
+    "create": "Create Assistant"
+  },
+  "creation": {
+    "errors": {
+      "startFailed": "Failed to start assistant creation ({{status}}): {{detail}}",
+      "startFailedGeneric": "Failed to start assistant creation",
+      "unknownDetail": "Unknown error",
+      "failedUnexpectedly": "Assistant creation failed unexpectedly",
+      "statusCheckFailed": "An error occurred during assistant creation. Please try again or contact the Erudi team."
+    }
+  },
+  "upload": {
+    "dragAndDrop": "Drag and Drop",
+    "or": "or",
+    "browseFiles": "Browse files",
+    "selectFolder": "or select a folder",
+    "selectedFiles": "Selected Files ({{fileCount}})",
+    "addFolder": "Add Folder",
+    "addMore": "Add More",
+    "removeFile": "Remove file",
+    "fileType": {
+      "folder": "Folder",
+      "other": "Other"
+    },
+    "notice": {
+      "unsupported_one": "{{count}} unsupported file skipped",
+      "unsupported_other": "{{count}} unsupported files skipped",
+      "capped": "capped at {{max}} files ({{ignored}} more ignored)",
+      "missingPath_one": "couldn't resolve a path for {{count}} item",
+      "missingPath_other": "couldn't resolve a path for {{count}} items",
+      "duplicate_one": "{{count}} file was already in the list",
+      "duplicate_other": "{{count}} files were already in the list"
+    }
+  }
+}

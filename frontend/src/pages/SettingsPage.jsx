@@ -1,21 +1,74 @@
 import React from "react";
-import { Globe } from "lucide-react";
+import PropTypes from "prop-types";
+import { Globe, Languages } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import Sidebar from "../components/Sidebar";
 import ToggleSwitch from "../components/ToggleSwitch";
 import { useUserSettings } from "../shared/hooks/api";
+import { setAppLanguage } from "../i18n";
+import { LANGUAGE_NAMES, SUPPORTED_LANGUAGES } from "../i18n/languages";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("SettingsPage");
 
 /**
+ * One settings card: icon, title, description, optional fine-print note and
+ * the control on the right. Shared by every section so they look identical.
+ */
+function SettingsCard({ icon, title, description, note, control }) {
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] rise">
+      <div
+        className="pointer-events-none absolute -right-24 -top-24 w-72 h-72 rounded-full blur-3xl"
+        style={{
+          background: "radial-gradient(circle, rgba(52,214,165,0.10), transparent 70%)",
+        }}
+      />
+      <div className="relative p-6">
+        <div className="flex items-start justify-between gap-6">
+          <div className="flex items-start gap-3.5">
+            <div className="mt-0.5 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-2.5">
+              {icon}
+            </div>
+            <div>
+              <h2 className="text-[15px] font-semibold text-[var(--ink)] tracking-tight">
+                {title}
+              </h2>
+              <p className="text-[13px] text-[var(--ink-dim)] mt-1.5 max-w-md leading-relaxed">
+                {description}
+              </p>
+              {note && (
+                <p className="text-[12px] text-[var(--ink-faint)] mt-2.5 leading-relaxed">{note}</p>
+              )}
+            </div>
+          </div>
+          <div className="pt-1">{control}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+SettingsCard.propTypes = {
+  icon: PropTypes.node.isRequired,
+  title: PropTypes.string.isRequired,
+  description: PropTypes.string.isRequired,
+  note: PropTypes.string,
+  control: PropTypes.node.isRequired,
+};
+
+/**
  * App-wide settings page (gear icon in the sidebar rail).
  *
- * First section: the global Web Search default. Enabling it lets tool-capable
- * models search the web; the searched query is sent to external search
- * engines, so it ships OFF by default and new conversations inherit whatever
- * the user picks here (each conversation then owns its own toggle).
+ * Sections: the global Web Search default (#310) and the application
+ * language (#385). Enabling web search lets tool-capable models search the
+ * web; the searched query is sent to external search engines, so it ships
+ * OFF by default and new conversations inherit whatever the user picks here
+ * (each conversation then owns its own toggle). The language applies
+ * immediately through i18next and is persisted with the other settings.
  */
 export default function SettingsPage() {
+  const { t, i18n } = useTranslation();
   const { settings, loading, updateSettings } = useUserSettings();
   const webSearchEnabled = settings?.web_search_enabled ?? false;
 
@@ -27,60 +80,66 @@ export default function SettingsPage() {
     }
   };
 
+  const handleLanguageChange = async (event) => {
+    const next = event.target.value;
+    // Switch the UI first so the change is instant; persistence follows.
+    await setAppLanguage(next);
+    try {
+      await updateSettings({ language: next });
+    } catch (error) {
+      log.error("Failed to persist the language setting", error);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-[#071b18]">
       <Sidebar />
       <main className="flex-1 bg-[var(--canvas)] relative custom-scroll overflow-auto">
         <div className="mx-auto max-w-3xl px-8 py-10 space-y-9">
           <header className="rise">
-            <span className="eyebrow">Application</span>
+            <span className="eyebrow">{t("settings:eyebrow")}</span>
             <h1 className="text-2xl font-semibold text-[var(--ink)] tracking-tight mt-1.5">
-              Settings
+              {t("settings:title")}
             </h1>
-            <p className="text-[13px] text-[var(--ink-dim)] mt-1.5">
-              Preferences that apply across the whole app.
-            </p>
+            <p className="text-[13px] text-[var(--ink-dim)] mt-1.5">{t("settings:subtitle")}</p>
           </header>
 
-          <section className="relative overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--surface)] rise">
-            <div
-              className="pointer-events-none absolute -right-24 -top-24 w-72 h-72 rounded-full blur-3xl"
-              style={{
-                background: "radial-gradient(circle, rgba(52,214,165,0.10), transparent 70%)",
-              }}
-            />
-            <div className="relative p-6">
-              <div className="flex items-start justify-between gap-6">
-                <div className="flex items-start gap-3.5">
-                  <div className="mt-0.5 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-2.5">
-                    <Globe className="w-5 h-5 text-[var(--fit-good)]" />
-                  </div>
-                  <div>
-                    <h2 className="text-[15px] font-semibold text-[var(--ink)] tracking-tight">
-                      Web Search
-                    </h2>
-                    <p className="text-[13px] text-[var(--ink-dim)] mt-1.5 max-w-md leading-relaxed">
-                      Let models that support tools search the web when a question needs current or
-                      external facts. When the model decides to search, the searched query is sent
-                      to external search engines — nothing else leaves your machine.
-                    </p>
-                    <p className="text-[12px] text-[var(--ink-faint)] mt-2.5 leading-relaxed">
-                      Off by default. New conversations inherit this setting; each conversation
-                      keeps its own toggle afterwards.
-                    </p>
-                  </div>
-                </div>
-                <div className="pt-1">
-                  <ToggleSwitch
-                    checked={webSearchEnabled}
-                    onChange={handleWebSearchToggle}
-                    label="Web search"
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-            </div>
-          </section>
+          <SettingsCard
+            icon={<Globe className="w-5 h-5 text-[var(--fit-good)]" />}
+            title={t("settings:webSearch.title")}
+            description={t("settings:webSearch.description")}
+            note={t("settings:webSearch.note")}
+            control={
+              <ToggleSwitch
+                checked={webSearchEnabled}
+                onChange={handleWebSearchToggle}
+                label={t("settings:webSearch.toggleLabel")}
+                disabled={loading}
+              />
+            }
+          />
+
+          <SettingsCard
+            icon={<Languages className="w-5 h-5 text-[var(--fit-good)]" />}
+            title={t("settings:language.title")}
+            description={t("settings:language.description")}
+            note={t("settings:language.note")}
+            control={
+              <select
+                aria-label={t("settings:language.selectLabel")}
+                value={i18n.language}
+                onChange={handleLanguageChange}
+                disabled={loading}
+                className="text-[13px] rounded-lg border border-[var(--line)] bg-[var(--canvas)] text-[var(--ink)] px-3 py-1.5 focus:outline-none focus:border-[var(--fit-good)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {SUPPORTED_LANGUAGES.map((code) => (
+                  <option key={code} value={code} lang={code}>
+                    {LANGUAGE_NAMES[code]}
+                  </option>
+                ))}
+              </select>
+            }
+          />
         </div>
       </main>
     </div>

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import ExploreModelCard from "./ExploreModelCard";
 
 /**
@@ -16,6 +17,7 @@ export default function ModelCarousel({
   onInfo,
   isInstalled,
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   if (!models || models.length === 0) {
     return null;
@@ -35,7 +37,7 @@ export default function ModelCarousel({
             onClick={() => setExpanded((e) => !e)}
             className="mono text-[11px] text-[var(--ink-dim)] hover:text-[var(--fit-good)] transition-colors"
           >
-            {expanded ? "Show less" : "See all"}
+            {expanded ? t("common:actions.showLess") : t("models:explore.seeAll")}
           </button>
         )}
       </div>

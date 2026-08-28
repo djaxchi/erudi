@@ -53,7 +53,7 @@ const dependentsCalls = () =>
 const settle = { timeout: 4000 };
 
 const renderRail = async (rows) => {
-  render(<ModelCollapsibleSection title="Local Models" />);
+  render(<ModelCollapsibleSection kind="local" />);
   await waitFor(() => expect(screen.getByText(rows[0].name)).toBeDefined(), settle);
 };
 

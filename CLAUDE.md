@@ -132,6 +132,7 @@ frontend/src/
 - **Async-first.** Don't block the event loop with synchronous I/O in endpoints/services.
 - **Ruff config** (`backend/ruff.toml`) only enforces `F` + `E7`. `E501`/`E402`/`F841`/`E701` are intentionally ignored — don't reintroduce them as blockers. Black uses `--line-length=100` via pre-commit.
 - **Frontend**: ESLint + Prettier are enforced by CI (`lint:check`, `format:check`).
+- **Frontend copy is translated**: no hardcoded user-facing string in JSX or in the Electron menus/dialogs — every string is a `t('ns:key')` over `frontend/src/locales/<lang>/*.json` (`en` source of truth; `fr`, `es`, `zh`), guarded by `locales.test.js` and the `i18next/no-literal-string` ESLint rule. See `docs/i18n.md`.
 - **Commits**: `type(scope): description` (`feat`, `fix`, `docs`, `chore`, `ci`). Don't mention Claude/AI or add `Co-Authored-By: Claude`.
 - **Branches and pushes**: `main` is protected, PRs are **squash-merged**, and the
   repo requires branches to be **up to date** before merging. Two consequences:

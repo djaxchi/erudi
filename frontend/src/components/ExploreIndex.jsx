@@ -1,5 +1,6 @@
 import React from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import { Globe } from "lucide-react";
 import { groupByCategory } from "../utils/modelCatalog";
 
@@ -10,6 +11,14 @@ import { groupByCategory } from "../utils/modelCatalog";
  * the rail navigates the page instead of duplicating it. Header styled to match the
  * Local Models section above it.
  */
+// DOM anchors of the explore panel's fixed sections (LandingPage renders them
+// with these ids); category sections use `cat-<category>`.
+const SECTION_IDS = {
+  recommended: "explore-recommended",
+  search: "explore-search",
+  community: "explore-community",
+};
+
 function Row({ label, count, onClick, accent }) {
   return (
     <button
@@ -32,6 +41,7 @@ Row.propTypes = {
 };
 
 export default function ExploreIndex({ models, communityCount, hasRecommended, loading, onJump }) {
+  const { t } = useTranslation();
   const groups = groupByCategory(models);
 
   return (
@@ -39,17 +49,25 @@ export default function ExploreIndex({ models, communityCount, hasRecommended, l
       {/* Header matches the Local Models section header (icon + bold title) */}
       <div className="flex items-center gap-3 px-4 py-3">
         <Globe className="w-5 h-5 text-white" />
-        <span className="font-bold text-lg text-gray-200">Explore</span>
+        <span className="font-bold text-lg text-gray-200">{t("models:explore.title")}</span>
       </div>
 
       {loading ? (
-        <div className="px-6 py-2 text-sm text-gray-500">Building catalog...</div>
+        <div className="px-6 py-2 text-sm text-gray-500">{t("models:explore.buildingCatalog")}</div>
       ) : (
         <nav className="px-4 pb-3 space-y-0.5">
           {hasRecommended && (
-            <Row label="Recommended for you" accent onClick={() => onJump("explore-recommended")} />
+            <Row
+              label={t("models:explore.recommended")}
+              accent
+              onClick={() => onJump(SECTION_IDS.recommended)}
+            />
           )}
-          <Row label="Search Hugging Face" accent onClick={() => onJump("explore-search")} />
+          <Row
+            label={t("models:explore.searchHuggingFace")}
+            accent
+            onClick={() => onJump(SECTION_IDS.search)}
+          />
 
           {groups.length > 0 && <div className="h-px bg-white/10 my-2 mx-2" />}
 
@@ -64,9 +82,9 @@ export default function ExploreIndex({ models, communityCount, hasRecommended, l
 
           {communityCount > 0 && (
             <Row
-              label="Community"
+              label={t("models:explore.community")}
               count={communityCount}
-              onClick={() => onJump("explore-community")}
+              onClick={() => onJump(SECTION_IDS.community)}
             />
           )}
         </nav>

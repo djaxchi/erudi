@@ -43,10 +43,6 @@ export function modelSupportsVision(model) {
 // the floor for anything involving tools, retrieval or reasoning.
 export const SMALL_MODEL_PARAM_THRESHOLD_B = 4;
 
-// The card copy for models under that threshold. Shared so both card variants
-// say the same thing.
-export const SMALL_MODEL_NOTE = `Very small model — good for quick chat and low-end machines; tool use, knowledge-base search and multi-step reasoning are unreliable below ~${SMALL_MODEL_PARAM_THRESHOLD_B}B.`;
-
 // Parameter count in billions from either signal the frontend carries: the
 // backend's numeric `param_size` (billions, null when unmeasured) or the
 // metadata string `parameters` ("7B", "1.5B", "270M", "Unknown"). Anything that

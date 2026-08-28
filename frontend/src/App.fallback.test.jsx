@@ -21,6 +21,9 @@ vi.mock("./contexts/DownloadModalContext", () => ({
 vi.mock("./contexts/KnowledgeBaseContext", () => ({
   KnowledgeBaseProvider: ({ children }) => <>{children}</>,
 }));
+// The language sync (#385) also calls the client once ready; keep the health
+// poll counts below about the health poll only.
+vi.mock("./i18n/sync", () => ({ syncLanguageWithBackend: vi.fn() }));
 vi.mock("./services/api/client", () => ({
   apiClient: { get: vi.fn() },
   default: { get: vi.fn() },

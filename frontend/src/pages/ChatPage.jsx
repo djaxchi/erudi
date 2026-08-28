@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import Sidebar from "../components/Sidebar";
 import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import GradientBox from "../components/GradientBox";
@@ -17,10 +18,15 @@ import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 import { canAttachImages } from "../utils/modelCapabilities";
+import { formatNumber } from "../i18n/format";
 
 const log = createLogger("ChatPage");
 
+// Temperature / top-p read-outs: two decimals in the active locale.
+const TWO_DECIMALS = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+
 export default function ChatPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { completionCount } = useDownloadModal();
@@ -98,9 +104,11 @@ export default function ChatPage() {
       })
       .catch((err) => {
         log.error("Erreur lors du fetch des modèles:", err);
-        setErrorMessage(`Failed to load models: ${err.message || "Network error"}`);
+        setErrorMessage(
+          t("chat:errors.loadModels", { error: err.message || t("chat:errors.network") })
+        );
       });
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchModels();
@@ -127,12 +135,14 @@ export default function ChatPage() {
         setConversations(sorted);
       } catch (err) {
         log.error("Failed to fetch conversations:", err);
-        setErrorMessage(`Failed to load conversations: ${err.message || "Network error"}`);
+        setErrorMessage(
+          t("chat:errors.loadConversations", { error: err.message || t("chat:errors.network") })
+        );
       }
     };
 
     fetchConversations();
-  }, []);
+  }, [t]);
 
   // Preselect the model referenced by the ?model= URL parameter (#223).
   // Producers pass either the numeric id or the exact name; the id from the
@@ -183,7 +193,7 @@ export default function ChatPage() {
           }),
         });
         if (!res.ok) {
-          throw new Error("Failed to create conversation");
+          throw new Error(t("chat:errors.createConversation"));
         }
         const conversation = await res.json();
 
@@ -199,10 +209,12 @@ export default function ChatPage() {
         });
       } catch (err) {
         log.error("Failed to start conversation:", err);
-        setErrorMessage(`Failed to start conversation: ${err.message || "Network error"}`);
+        setErrorMessage(
+          t("chat:errors.startConversation", { error: err.message || t("chat:errors.network") })
+        );
       }
     },
-    [models, selectedModel, navigate, settings, customPrompt, webSearch]
+    [models, selectedModel, navigate, settings, customPrompt, webSearch, t]
   );
 
   const handleRename = (id, newName) => {
@@ -222,7 +234,9 @@ export default function ChatPage() {
       setConversations(sorted);
     } catch (err) {
       log.error("Failed to refresh conversations:", err);
-      setErrorMessage(`Failed to refresh conversations: ${err.message || "Network error"}`);
+      setErrorMessage(
+        t("chat:errors.refreshConversations", { error: err.message || t("chat:errors.network") })
+      );
     }
   };
 
@@ -230,13 +244,13 @@ export default function ChatPage() {
   const TooltipIcon = ({ id, side = "right" }) => {
     const text =
       id === "temperature"
-        ? "Controls creativity. Lower = focused, higher = creative."
+        ? t("chat:header.tooltips.temperature")
         : id === "top-p"
-          ? "Controls word variety. Lower = predictable, higher = diverse."
+          ? t("chat:header.tooltips.topP")
           : id === "prompt"
-            ? "Customize system instructions that guide AI behavior."
+            ? t("chat:header.tooltips.prompt")
             : id === "web-search"
-              ? "Lets the model search the web for current facts. Searched queries are sent to external search engines."
+              ? t("chat:header.tooltips.webSearch")
               : "";
     return (
       <Tooltip content={text} side={side} width="w-64">
@@ -265,13 +279,13 @@ export default function ChatPage() {
         {/* Content only when expanded */}
         {!collapsed && (
           <>
-            <h1 className="text-3xl font-bold">History</h1>
+            <h1 className="text-3xl font-bold">{t("chat:history.title")}</h1>
 
             {/*<ChatCollapsibleSection title="Hot Chats"
               disabled={loading}
             />} coming in next version*/}
             <ChatCollapsibleSection
-              title="Previous Chats"
+              title={t("chat:history.previousChats")}
               items={conversations}
               onItemClick={handleConversationClick}
               onRename={handleRename}
@@ -287,9 +301,7 @@ export default function ChatPage() {
         {/* Si aucun modèle local */}
         {models.length === 0 ? (
           <GradientBox className="w-[700px] max-w-full">
-            <div className="text-white text-center py-10">
-              No current local models found, please add local models to proceed.
-            </div>
+            <div className="text-white text-center py-10">{t("chat:empty.noModels")}</div>
             {/* Language Warning */}
             <div className="flex justify-center px-2 pb-1">
               <div className="w-[700px] max-w-full">
@@ -312,14 +324,11 @@ export default function ChatPage() {
                   {/* Content */}
                   <div className="relative z-10 p-6">
                     <h2 className="text-lg font-semibold tracking-tight text-orange-100 mb-3">
-                      Note on Language
+                      {t("chat:languageNote.title")}
                     </h2>
-                    <p className="text-sm text-orange-200/80 mb-3">
-                      Base models have been massively trained on English data. You will get
-                      significantly better results by chatting in English.
-                    </p>
+                    <p className="text-sm text-orange-200/80 mb-3">{t("chat:languageNote.body")}</p>
                     <p className="text-sm text-orange-200/70 italic">
-                      Pour les français, ça vous fera de l&apos;entraînement :)
+                      {t("chat:languageNote.frenchAside")}
                     </p>
                   </div>
                 </div>
@@ -381,7 +390,7 @@ export default function ChatPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 flex-wrap min-w-0">
                     <h3 className="text-[1.15rem] font-semibold tracking-tight text-[#F2F7F4] truncate">
-                      Chat with
+                      {t("chat:header.chatWith")}
                     </h3>
 
                     <div
@@ -400,7 +409,7 @@ export default function ChatPage() {
                         className="font-medium truncate pr-5 max-w-[150px]"
                         title={selectedModel}
                       >
-                        {selectedModel || "Select model..."}
+                        {selectedModel || t("chat:header.selectModelPlaceholder")}
                       </div>
                       <ChevronDown
                         size={16}
@@ -432,7 +441,7 @@ export default function ChatPage() {
 
                   <button
                     type="button"
-                    aria-label="Toggle settings"
+                    aria-label={t("chat:header.toggleSettings")}
                     onClick={() => setIsSettingsOpen((v) => !v)}
                     className={[
                       "inline-flex items-center justify-center",
@@ -461,11 +470,11 @@ export default function ChatPage() {
                           <div className="relative">
                             <div className="flex items-center gap-1.5 mb-1">
                               <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
-                                Creativity
+                                {t("chat:header.creativity")}
                               </span>
                               <TooltipIcon id="temperature" side="right" />
                               <span className="ml-auto text-[11px] font-semibold text-emerald-200/90 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-400/25">
-                                {settings.temperature.toFixed(2)}
+                                {formatNumber(settings.temperature, TWO_DECIMALS)}
                               </span>
                             </div>
 
@@ -491,11 +500,11 @@ export default function ChatPage() {
                           <div className="relative">
                             <div className="flex items-center gap-1.5 mb-1">
                               <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
-                                Diversity
+                                {t("chat:header.diversity")}
                               </span>
                               <TooltipIcon id="top-p" side="right" />
                               <span className="ml-auto text-[11px] font-semibold text-emerald-200/90 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-400/25">
-                                {settings.topP.toFixed(2)}
+                                {formatNumber(settings.topP, TWO_DECIMALS)}
                               </span>
                             </div>
 
@@ -524,7 +533,7 @@ export default function ChatPage() {
                             <div className="grid grid-cols-2 items-start justify-items-start gap-x-6 gap-y-2 mb-2">
                               <div>
                                 <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
-                                  Max Tokens
+                                  {t("chat:header.maxTokens")}
                                 </span>
                               </div>
                               {/* Controls row */}
@@ -546,14 +555,14 @@ export default function ChatPage() {
                             </div>
                             <div className="mt-4 flex items-center gap-3">
                               <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
-                                Web Search
+                                {t("chat:header.webSearch")}
                               </span>
                               <TooltipIcon id="web-search" side="right" />
                               <div className="ml-auto">
                                 <ToggleSwitch
                                   checked={webSearch === true}
                                   onChange={(next) => setWebSearch(next)}
-                                  label="Web search"
+                                  label={t("chat:header.webSearchToggle")}
                                 />
                               </div>
                             </div>
@@ -572,7 +581,7 @@ export default function ChatPage() {
                                   "transition active:scale-95",
                                 ].join(" ")}
                               >
-                                Customize Prompt
+                                {t("chat:header.customizePrompt")}
                               </button>
                               <div>
                                 <TooltipIcon id="prompt" side="top-left" />
@@ -589,7 +598,7 @@ export default function ChatPage() {
                 <div className="mt-6">
                   <QuestionInput
                     onSend={handleAsk}
-                    placeholder="Ask me anything..."
+                    placeholder={t("chat:composer.placeholderNew")}
                     canAttachImages={canAttachImages(models.find((m) => m.name === selectedModel))}
                   />
                 </div>
@@ -618,7 +627,7 @@ export default function ChatPage() {
                       <div className="relative z-10 p-4 px-6">
                         <div className="flex items-center justify-between">
                           <h2 className="text-base font-semibold tracking-tight text-orange-100">
-                            Note on Language
+                            {t("chat:languageNote.title")}
                           </h2>
                           <motion.div
                             animate={{ rotate: isLanguageWarningExpanded ? 180 : 0 }}
@@ -638,11 +647,10 @@ export default function ChatPage() {
                               className="overflow-hidden"
                             >
                               <p className="text-sm text-orange-200/80 mb-3 mt-3">
-                                Base models have been massively trained on English data. You will
-                                get significantly better results by chatting in English.
+                                {t("chat:languageNote.body")}
                               </p>
                               <p className="text-sm text-orange-200/70 italic">
-                                Pour les français, ça vous fera de l&apos;entraînement :)
+                                {t("chat:languageNote.frenchAside")}
                               </p>
                             </motion.div>
                           )}
@@ -666,7 +674,7 @@ export default function ChatPage() {
         onClose={() => setShowPromptModal(false)}
         customPrompt={customPrompt}
         onSave={(newPrompt) => setCustomPrompt(newPrompt)}
-        title="Customize System Prompt"
+        title={t("chat:prompt.title")}
       />
     </div>
   );

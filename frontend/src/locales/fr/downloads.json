@@ -1,0 +1,56 @@
+{
+  "widget": {
+    "downloadingTitle": "Téléchargement : {{name}}",
+    "errorTitle": "Erreur : {{name}}",
+    "timeLeft": "Temps restant :",
+    "progress": "Progression :",
+    "expand": "Développer",
+    "collapse": "Réduire",
+    "duration": {
+      "daysHours": "{{days}} j {{hours}} h",
+      "hoursMinutes": "{{hours}} h {{minutes}} min",
+      "minutesSeconds": "{{minutes}} min {{seconds}} s",
+      "seconds": "{{seconds}} s"
+    }
+  },
+  "errors": {
+    "failedUnexpectedly": "Le téléchargement a échoué de manière inattendue",
+    "pollFailed": "Une erreur est survenue pendant le téléchargement. Vérifiez votre connexion et réessayez. Si le problème persiste, contactez l'équipe Erudi.",
+    "startFailed": "Impossible de démarrer le téléchargement ({{status}}) : {{detail}}",
+    "unexpected": "Une erreur inattendue est survenue",
+    "cancelFailed": "Impossible d'annuler le téléchargement : {{detail}}",
+    "failedRetry": "Le téléchargement a échoué. Veuillez réessayer.",
+    "stalled": "Le téléchargement est terminé, mais l'application met plus de temps que prévu à le finaliser. Les fichiers ont été enregistrés. Redémarrez Erudi et vérifiez vos modèles installés avant de télécharger à nouveau."
+  },
+  "hardwareWait": {
+    "title": "⏳ Veuillez patienter",
+    "evaluating": "Évaluation du matériel",
+    "body": "Nous vérifions encore les capacités de votre système. Cela ne prendra qu'un instant.",
+    "stepLabel": "Évaluation du matériel",
+    "stepLoading": "⏳ Chargement...",
+    "stepComplete": "✅ Terminée"
+  },
+  "delete": {
+    "title": "Supprimer le modèle",
+    "confirmQuestion": "Voulez-vous vraiment supprimer le modèle <name>{{name}}</name> ?",
+    "irreversible": "Cette action est irréversible.",
+    "dependentsSummary": "<name>{{name}}</name> alimente <strong>{{assistants}}</strong> ({{names}}) et <strong>{{conversations}}</strong>.",
+    "assistantCount_one": "{{count}} assistant",
+    "assistantCount_other": "{{count}} assistants",
+    "conversationCount_one": "{{count}} conversation",
+    "conversationCount_other": "{{count}} conversations",
+    "frees": "Sa suppression libère {{size}}.",
+    "dependentsNote": "Les assistants seront conservés et devront être associés à un autre modèle ; les conversations sont conservées.",
+    "deleteAnyway": "Supprimer quand même"
+  },
+  "embeddingGate": {
+    "promptTitle": "Modèle d'embedding requis",
+    "promptBody": "La Base de connaissances a besoin d'un modèle d'embedding pour indexer et rechercher dans vos documents. Télécharger le modèle recommandé (multilingual-e5-small) ? Il n'est récupéré qu'une seule fois et stocké localement.",
+    "notNow": "Pas maintenant",
+    "downloadingBody": "Téléchargement du modèle d'embedding… Cela peut prendre une minute. Vous pouvez quitter cette page — le téléchargement continue en arrière-plan.",
+    "doneTitle": "Modèle d'embedding téléchargé",
+    "doneBody": "Le modèle d'embedding a été téléchargé avec succès. La Base de connaissances est prête à l'emploi.",
+    "errorTitle": "Échec du téléchargement",
+    "errorBody": "Le modèle d'embedding n'a pas pu être téléchargé. Vérifiez votre connexion et réessayez."
+  }
+}

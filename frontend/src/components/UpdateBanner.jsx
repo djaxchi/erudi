@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Download, RefreshCw, X } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
+import { formatPercent } from "../i18n/format";
 
 /**
  * Non-intrusive update notification banner.
@@ -12,6 +14,7 @@ import { Download, RefreshCw, X } from "lucide-react";
  *      (autoInstallOnAppQuit is enabled in main.js)
  */
 export default function UpdateBanner() {
+  const { t } = useTranslation();
   const [state, setState] = useState(null);
   // state shape:
   //   { phase: "available", version }
@@ -96,16 +99,25 @@ export default function UpdateBanner() {
       <div className="flex-1 min-w-0">
         {state.phase === "available" && (
           <p className="text-gray-200">
-            Update <span className="text-[#00B574] font-semibold">v{state.version}</span> available
-            - downloading…
+            <Trans
+              i18nKey="common:update.available"
+              values={{ version: state.version }}
+              components={{ v: <span className="text-[#00B574] font-semibold" /> }}
+            />
           </p>
         )}
 
         {state.phase === "downloading" && (
           <>
             <p className="text-gray-200 mb-1">
-              Downloading <span className="text-[#00B574] font-semibold">v{state.version}</span>…{" "}
-              <span className="text-gray-400">{state.percent}%</span>
+              <Trans
+                i18nKey="common:update.downloading"
+                values={{ version: state.version, percent: formatPercent(state.percent) }}
+                components={{
+                  v: <span className="text-[#00B574] font-semibold" />,
+                  pct: <span className="text-gray-400" />,
+                }}
+              />
             </p>
             <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
               <div
@@ -118,13 +130,19 @@ export default function UpdateBanner() {
 
         {state.phase === "ready" && (
           <p className="text-gray-200">
-            <span className="text-[#00B574] font-semibold">v{state.version}</span> ready —{" "}
-            <button
-              onClick={handleInstall}
-              className="underline text-[#00B574] hover:text-white transition-colors"
-            >
-              restart to install
-            </button>
+            <Trans
+              i18nKey="common:update.ready"
+              values={{ version: state.version }}
+              components={{
+                v: <span className="text-[#00B574] font-semibold" />,
+                install: (
+                  <button
+                    onClick={handleInstall}
+                    className="underline text-[#00B574] hover:text-white transition-colors"
+                  />
+                ),
+              }}
+            />
           </p>
         )}
       </div>
@@ -134,7 +152,7 @@ export default function UpdateBanner() {
         <button
           onClick={() => setDismissed(true)}
           className="shrink-0 text-gray-500 hover:text-gray-300 transition-colors"
-          aria-label="Dismiss update notification"
+          aria-label={t("common:update.dismiss")}
         >
           <X className="w-4 h-4" />
         </button>

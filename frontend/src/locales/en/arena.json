@@ -1,0 +1,14 @@
+{
+  "panel": {
+    "delete": "Delete this panel",
+    "deleteLast": "Cannot delete the last panel",
+    "modelNotFound": "[Model not found]",
+    "error": "[Error]",
+    "attachmentAlt": "attachment {{index}}"
+  },
+  "controls": {
+    "stop": "Stop generation",
+    "addPanel": "Add chat panel",
+    "maxPanels": "Maximum {{max}} panels"
+  }
+}

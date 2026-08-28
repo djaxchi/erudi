@@ -1,0 +1,17 @@
+{
+  "eyebrow": "Application",
+  "title": "Settings",
+  "subtitle": "Preferences that apply across the whole app.",
+  "webSearch": {
+    "title": "Web Search",
+    "description": "Let models that support tools search the web when a question needs current or external facts. When the model decides to search, the searched query is sent to external search engines — nothing else leaves your machine.",
+    "note": "Off by default. New conversations inherit this setting; each conversation keeps its own toggle afterwards.",
+    "toggleLabel": "Web search"
+  },
+  "language": {
+    "title": "Application language",
+    "description": "The language of menus, buttons and messages across the whole app. Model answers stay in whatever language you write in.",
+    "note": "Applied immediately and remembered for the next launch. Set from your system language on first launch.",
+    "selectLabel": "Application language"
+  }
+}

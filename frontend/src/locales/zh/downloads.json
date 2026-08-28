@@ -1,0 +1,56 @@
+{
+  "widget": {
+    "downloadingTitle": "正在下载：{{name}}",
+    "errorTitle": "错误：{{name}}",
+    "timeLeft": "剩余时间：",
+    "progress": "进度：",
+    "expand": "展开",
+    "collapse": "收起",
+    "duration": {
+      "daysHours": "{{days}}天{{hours}}小时",
+      "hoursMinutes": "{{hours}}小时{{minutes}}分钟",
+      "minutesSeconds": "{{minutes}}分{{seconds}}秒",
+      "seconds": "{{seconds}}秒"
+    }
+  },
+  "errors": {
+    "failedUnexpectedly": "下载意外失败",
+    "pollFailed": "下载过程中出现错误。请检查网络连接后重试。如果问题持续存在，请联系 Erudi 团队。",
+    "startFailed": "无法开始下载（{{status}}）：{{detail}}",
+    "unexpected": "发生了意外错误",
+    "cancelFailed": "无法取消下载：{{detail}}",
+    "failedRetry": "下载失败。请重试。",
+    "stalled": "下载已完成，但应用完成收尾所需的时间比预期更长。文件已保存。请重启 Erudi，并在再次下载前检查已安装的模型。"
+  },
+  "hardwareWait": {
+    "title": "⏳ 请稍候",
+    "evaluating": "正在评估硬件",
+    "body": "我们仍在检测您的系统性能，只需片刻即可完成。",
+    "stepLabel": "硬件评估",
+    "stepLoading": "⏳ 加载中...",
+    "stepComplete": "✅ 已完成"
+  },
+  "delete": {
+    "title": "删除模型",
+    "confirmQuestion": "确定要删除模型 <name>{{name}}</name> 吗？",
+    "irreversible": "此操作无法撤销。",
+    "dependentsSummary": "<name>{{name}}</name> 正在支撑 <strong>{{assistants}}</strong>（{{names}}）和 <strong>{{conversations}}</strong>。",
+    "assistantCount_one": "{{count}} 个助手",
+    "assistantCount_other": "{{count}} 个助手",
+    "conversationCount_one": "{{count}} 个对话",
+    "conversationCount_other": "{{count}} 个对话",
+    "frees": "删除后可释放 {{size}}。",
+    "dependentsNote": "助手将被保留，需要重新绑定到其他模型；对话会被保留。",
+    "deleteAnyway": "仍然删除"
+  },
+  "embeddingGate": {
+    "promptTitle": "需要嵌入模型",
+    "promptBody": "知识库需要嵌入模型来索引和搜索您的文档。是否下载推荐的模型（multilingual-e5-small）？它只需下载一次并保存在本地。",
+    "notNow": "暂不",
+    "downloadingBody": "正在下载嵌入模型… 这可能需要一分钟。您可以离开此页面，下载会继续进行。",
+    "doneTitle": "嵌入模型已下载",
+    "doneBody": "嵌入模型已成功下载。知识库已可以使用。",
+    "errorTitle": "下载失败",
+    "errorBody": "无法下载嵌入模型。请检查网络连接后重试。"
+  }
+}
