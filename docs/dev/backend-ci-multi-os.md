@@ -358,7 +358,7 @@ expected and correct; it just means a green macOS leg is a weaker statement than
 a green Ubuntu one.
 
 **Install size and time.** `entrypoints/dev/mac-silicon.txt` composes
-`meta/mac-silicon-specs.txt`, which pulls `mlx-vlm==0.6.13` and transitively mlx,
+`meta/mac-silicon-specs.txt`, which pulls `mlx-vlm==0.6.17` (with `mlx` pinned) and transitively
 torch, opencv, Pillow and mlx-audio. Every wheel in both new trees was checked
 against PyPI for cp312: all resolve, none is source-only, and no C or Rust
 toolchain is needed (even `llguidance`, `miniaudio` and `opencv-python` ship

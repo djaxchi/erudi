@@ -211,7 +211,14 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
             temp_save_dir=temp_save_dir, final_save_dir=final_save_dir, job_id=job_id,
         ))
         job_obj = session.query(DownloadJobModel).get(job_id)
-        if job_obj and job_obj.status != "cancelled":
+        if job_obj is None:
+            logger.warning(f"Download job {job_id} row vanished before finalization")
+        elif job_obj.status == "cancelled":
+            # The cancel endpoint already finalized the row and cleaned the temp
+            # dir; the transfer aborted on its flag (#377). Say so instead of
+            # claiming success for a job the user stopped.
+            logger.info(f"Download job {job_id} was cancelled; transfer stopped, nothing finalized")
+        else:
             # Integrity gate (#88): a model must never flip to local=1 without its
             # essential files. On failure this cleans the artifacts and raises, so
             # the except below finalizes the job as failed with an explicit message.
@@ -286,7 +293,7 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
                             f"successful download; keeping the fallback sampling: {e}",
                             exc_info=True,
                         )
-        logger.info(f"Download job {job_id} completed successfully")
+            logger.info(f"Download job {job_id} completed successfully")
     except Exception as e:
         logger.exception(f"Download job {job_id} failed: {e}")
         job_obj = session.query(DownloadJobModel).get(job_id)

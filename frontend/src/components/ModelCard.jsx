@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import PropTypes from "prop-types";
 import GradientBox from "./GradientBox";
 import {
+  AlertTriangle,
   BadgeCheck,
   Download,
   Info,
@@ -14,6 +15,7 @@ import {
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { isKbAssistant, hasMissingWeights } from "../utils/modelWeights";
 import { isTestedModel } from "../utils/testedModels";
+import { isVerySmallModel, SMALL_MODEL_NOTE } from "../utils/modelCapabilities";
 
 /**
  * ModelCard component - displays model information with actions
@@ -51,6 +53,7 @@ function ModelCard({
   // base models appears.
   const isAssistant = isKbAssistant(model);
   const weightsMissing = type === "local" && hasMissingWeights(model);
+  const verySmall = isVerySmallModel(model);
   const handleDownload = () => {
     if (model) {
       open(model, {
@@ -153,6 +156,19 @@ function ModelCard({
               <p>Last update: {model.lastUpdate}</p>
             </>
           )}
+
+          {/* Very small models (#381): warn on the card that tools, KB search
+              and multi-step reasoning are unreliable, so a silent no-tool-call
+              later does not read as a broken feature. */}
+          {verySmall && (
+            <p
+              data-testid="small-model-note"
+              className="flex items-start gap-1.5 pt-1 text-[11px] leading-snug text-gray-400"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px text-amber-500/80" />
+              <span>{SMALL_MODEL_NOTE}</span>
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2 mt-auto">
@@ -250,6 +266,7 @@ ModelCard.propTypes = {
     author: PropTypes.string,
     library: PropTypes.string,
     parameters: PropTypes.string,
+    param_size: PropTypes.number,
     lastUpdate: PropTypes.string,
     runnable: PropTypes.bool,
     link: PropTypes.string,
