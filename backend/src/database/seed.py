@@ -62,6 +62,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from src.core.logging import logger
+from src.database.generation_hints import capture_generation_hints, resolve_base_repo
 from src.core import config
 from src.database import core
 from src.database.core import Base, SessionLocal
@@ -684,6 +685,10 @@ class Model_Seeder:
             # scale (#113). supports_tools stays null and is computed post-download
             # (where the tokenizer is already on disk).
             supports_tools=None,
+            # Sampling facts from the BASE repo (#388): model_config.link is the
+            # base id (the resolver only rewrote the quant link). Three tiny file
+            # fetches, memoized per base, best-effort (None on gated/missing).
+            generation_hints=capture_generation_hints(model_config.link, self.hf_api),
         )
 
     def _create_base_llm_fallback(self, model_config: Model_Config, quant_link: str) -> Llm:
@@ -715,6 +720,8 @@ class Model_Seeder:
             category=model_config.category,
             # Deferred to post-download (see _create_base_llm / #113).
             supports_tools=None,
+            # Sampling facts from the base repo -- see _create_base_llm (#388).
+            generation_hints=capture_generation_hints(model_config.link, self.hf_api),
         )
     
     def _passes_quality_filters(self, model_info) -> bool:
@@ -771,6 +778,10 @@ class Model_Seeder:
             conversational=is_conversational(tags, model_name),
             category=categorize(model_name, tags,
                                 getattr(model_info, "pipeline_tag", None)),
+            # Sampling facts (#388): a community quant inherits its base's
+            # generation_config (first base_model:* card tag), else its own.
+            generation_hints=capture_generation_hints(
+                resolve_base_repo(model_info.id, tags), self.hf_api),
         )
 
 
@@ -1323,7 +1334,12 @@ class Database_Seeder:
     # Mutable catalog fields refreshed in place on a resync. supports_tools is
     # excluded on purpose: it is detected post-download and must not be clobbered.
     _RESYNC_FIELDS = ("name", "type", "param_size", "model_metadata", "quantized",
-                      "is_base", "conversational", "category", "description")
+                      "is_base", "conversational", "category", "description",
+                      "generation_hints")
+    # Fields where a None in the fresh set means "unknown", never "clear": the
+    # existing value is preserved (#192 for category; #388 for the sampling
+    # facts, which an old snapshot simply does not carry).
+    _PRESERVE_ON_NONE = ("category", "generation_hints")
 
     def reconcile_remote_catalog(
         self, db: Session, fresh_base: List[Llm], fresh_derived: List[Llm]
@@ -1362,7 +1378,7 @@ class Database_Seeder:
                     # KEEP the existing category (#192, regression of #184: stale
                     # snapshots collapsed the whole catalog to "general" at every
                     # boot). Fresh rows carrying a REAL category still propagate.
-                    if field == "category" and value is None:
+                    if field in self._PRESERVE_ON_NONE and value is None:
                         continue
                     setattr(current, field, value)
                 updated += 1
