@@ -44,6 +44,10 @@ export default function KnowledgeBasePage() {
   const [description, setDescription] = useState("");
   const [paths, setPaths] = useState([]);
   const [models, setModels] = useState([]);
+  // Bumped once a submission completes, so ModelLibrary and DragDropArea drop
+  // the state they own (the locked name, the staged file list) along with the
+  // parent's.
+  const [formResetKey, setFormResetKey] = useState(0);
 
   // --- Embedding-model gate (#146): the KB needs the e5 model on disk. ---
   const [gateState, setGateState] = useState(GATE.CHECKING);
@@ -146,6 +150,11 @@ export default function KnowledgeBasePage() {
           setPaths([]);
           setModelName("");
           setDescription("");
+          // The file list and the name lock live inside the children, so
+          // clearing the parent state is not enough: bump the key to remount
+          // them, otherwise the form keeps showing files it no longer holds
+          // and a locked-but-empty name field the user cannot type into.
+          setFormResetKey((k) => k + 1);
         }, 3000);
       },
       onError: (error) => {
@@ -334,6 +343,7 @@ export default function KnowledgeBasePage() {
           </div>
 
           <ModelLibrary
+            key={`model-library-${formResetKey}`}
             models={models}
             selectedModel={selectedModel}
             modelName={modelName}
@@ -390,7 +400,7 @@ export default function KnowledgeBasePage() {
             </div>
 
             <div className="w-full lg:w-[56%] h-full overflow-hidden">
-              <DragDropArea onFilesAdded={addDroppedFiles} />
+              <DragDropArea key={`drag-drop-${formResetKey}`} onFilesAdded={addDroppedFiles} />
             </div>
           </div>
         </div>
