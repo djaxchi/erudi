@@ -5,9 +5,10 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import { MemoryRouter } from "react-router-dom";
 
 // Per-model sampling defaults on the pre-conversation panel (#388): the
-// sliders seed from the selected model's `sampling_defaults`, follow the
-// model on switch while untouched, keep a touched value across a switch,
-// and the creation POST sends what the panel shows. The settings ceilings
+// sliders seed from the selected model's `sampling_defaults`, re-default on
+// every model switch whether or not they were touched (maintainer decision
+// 1), keep a touched value while the model stays the same, and the creation
+// POST sends what the panel shows. The settings ceilings
 // follow the model too (temperature up to 2, max tokens up to the cap).
 
 const { tracedFetchMock, navigateMock } = vi.hoisted(() => ({
@@ -128,7 +129,7 @@ describe("ChatPage per-model sampling defaults (#388)", () => {
     await waitFor(() => expect(temperatureSlider().value).toBe("0.6"));
   });
 
-  it("keeps a touched value across a model switch", async () => {
+  it("re-defaults on a model switch even after the user touched a slider", async () => {
     renderPage();
     await screen.findByTitle("Qwen3 0.6B");
     openSettings();
@@ -139,7 +140,24 @@ describe("ChatPage per-model sampling defaults (#388)", () => {
 
     await pickModel("Plain Model");
     await screen.findByTitle("Plain Model");
-    expect(temperatureSlider().value).toBe("1.3");
+    await waitFor(() => expect(temperatureSlider().value).toBe("0.2"));
+  });
+
+  it("keeps a touched value while the model stays the same and sends it at creation", async () => {
+    renderPage();
+    await screen.findByTitle("Qwen3 0.6B");
+    openSettings();
+    await waitFor(() => expect(temperatureSlider().value).toBe("0.6"));
+
+    fireEvent.change(temperatureSlider(), { target: { value: "1.3" } });
+    fireEvent.click(screen.getByText("send-question"));
+
+    await waitFor(() => expect(tracedFetchMock).toHaveBeenCalled());
+    const [, opts] = tracedFetchMock.mock.calls.find(([url]) =>
+      String(url).endsWith("/conversations/")
+    );
+    const body = JSON.parse(opts.body);
+    expect([body.temperature, body.top_p, body.max_tokens]).toEqual([1.3, 0.95, 1024]);
   });
 
   it("creates the conversation with the model's defaults when untouched", async () => {

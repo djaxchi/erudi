@@ -36,14 +36,11 @@ export default function ChatPage() {
   // Parameters state (#388): seeded from the selected model's resolved
   // defaults (`sampling_defaults` on the /llms/local row; the backend
   // fallback 0.2 / 0.95 / 1024 before a model is known or for a model
-  // without hints). They follow the model on switch while untouched; once
-  // the user moves a slider, that intent survives a model switch.
+  // without hints). Every model switch re-defaults them to the new model's
+  // values, touched or not (maintainer decision 1); a touched value persists
+  // while the model stays the same and is what the creation POST sends.
   const [settings, setSettings] = useState(() => defaultsFor(null));
-  const settingsTouchedRef = useRef(false);
-  const touchSettings = (patch) => {
-    settingsTouchedRef.current = true;
-    setSettings((prev) => ({ ...prev, ...patch }));
-  };
+  const patchSettings = (patch) => setSettings((prev) => ({ ...prev, ...patch }));
   const [customPrompt, setCustomPrompt] = useState("");
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -158,16 +155,12 @@ export default function ChatPage() {
     }
   }, [searchParams, models]); // Re-run when the models list arrives (#211 lesson)
 
-  // Re-seed the panel from the selected model unless the user already
-  // touched the sliders (#388). The max-tokens ceiling always follows the
-  // model, touched or not: it is a bound, not a value.
+  // Re-seed the panel from the selected model on every switch (#388): the
+  // previous values were the previous model's.
   useEffect(() => {
     const model = models.find((m) => m.name === selectedModel);
     if (!model) return;
-    const next = defaultsFor(model);
-    setSettings((prev) =>
-      settingsTouchedRef.current ? { ...prev, maxTokensCap: next.maxTokensCap } : next
-    );
+    setSettings(defaultsFor(model));
   }, [selectedModel, models]);
 
   const handleConversationClick = (id) => {
@@ -492,7 +485,7 @@ export default function ChatPage() {
                                 step="0.01"
                                 value={settings.temperature}
                                 onChange={(e) =>
-                                  touchSettings({ temperature: parseFloat(e.target.value) })
+                                  patchSettings({ temperature: parseFloat(e.target.value) })
                                 }
                                 className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
                                 style={sliderBg(settings.temperature, 2)}
@@ -519,7 +512,7 @@ export default function ChatPage() {
                                 step="0.01"
                                 value={settings.topP}
                                 onChange={(e) =>
-                                  touchSettings({ topP: parseFloat(e.target.value) })
+                                  patchSettings({ topP: parseFloat(e.target.value) })
                                 }
                                 className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
                                 style={sliderBg(settings.topP)}
@@ -544,7 +537,7 @@ export default function ChatPage() {
                                   max={settings.maxTokensCap}
                                   value={settings.maxTokens}
                                   onChange={(e) =>
-                                    touchSettings({
+                                    patchSettings({
                                       maxTokens: parseInt(e.target.value || "0", 10),
                                     })
                                   }
