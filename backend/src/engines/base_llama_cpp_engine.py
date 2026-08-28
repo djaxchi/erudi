@@ -106,6 +106,13 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
 
     # ====================== Concrete shared methods ======================
     @classmethod
+    def max_context_tokens(cls) -> int:
+        """llama-server runs with a fixed context window (``-c``): 4096 tokens by
+        default, ``ERUDI_CTX`` to override. Shared by the spawn context and the
+        sampling resolver's ``max_tokens_cap`` (#388)."""
+        return int(os.environ.get("ERUDI_CTX", "4096"))
+
+    @classmethod
     def _default_install_dir(cls) -> Path:
         """Resolve the directory that holds `llama-server` for this engine."""
         flavour = "cuda" if cls._use_cuda_build else "cpu"

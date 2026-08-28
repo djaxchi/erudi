@@ -217,6 +217,13 @@ class _RetryingHfApi(HfApi):
         time.sleep(self._PACE_SECONDS)
         return _call_with_429_retry(super().model_info, *args, **kwargs)
 
+    def hf_hub_download(self, *args, **kwargs):
+        # Small per-repo file fetches (generation_config.json & co for the
+        # sampling hints, #388) ride the same pacing + 429 ladder as the
+        # metadata calls: the snapshot generator fires ~300 of them in a burst.
+        time.sleep(self._PACE_SECONDS)
+        return _call_with_429_retry(super().hf_hub_download, *args, **kwargs)
+
 
 def get_hf_api() -> HfApi:
     """Get or initialize HuggingFace API client (lazy-loaded singleton).
