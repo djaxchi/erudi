@@ -104,6 +104,43 @@ def test_pre_alembic_db_is_stamped_not_replayed(fresh_cluster):
     assert "training_jobs" not in tables
 
 
+GENERATION_HINTS_REVISION = "f3b7a9c2d5e1"
+
+
+@pytest.mark.integration
+def test_generation_hints_column_is_nullable_and_backfills_null(fresh_cluster):
+    """#388: llms.generation_hints lands as a nullable JSON column; rows that
+    predate the revision read NULL (= "no hints", the fallback sampling)."""
+    url = fresh_cluster.sqlalchemy_url
+    cfg = _alembic_config(url)
+    command.upgrade(cfg, f"{GENERATION_HINTS_REVISION}-1")
+    engine = create_engine(url)
+    try:
+        assert "generation_hints" not in {c["name"] for c in inspect(engine).get_columns("llms")}
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO llms (name, local, link, type, quantized, is_base, category, "
+                "is_attached_to_kb) VALUES ('Old', 0, 'org/old', 'qwen', true, false, "
+                "'general', false)"
+            ))
+    finally:
+        engine.dispose()
+
+    run_migrations(fresh_cluster)
+
+    engine = create_engine(url)
+    try:
+        columns = {c["name"]: c for c in inspect(engine).get_columns("llms")}
+        assert columns["generation_hints"]["nullable"] is True
+        with engine.connect() as conn:
+            stored = conn.execute(
+                text("SELECT generation_hints FROM llms WHERE link='org/old'")).scalar()
+        assert stored is None
+    finally:
+        engine.dispose()
+    assert _alembic_version(url) == _head_revision(cfg)
+
+
 @pytest.mark.integration
 def test_language_column_backfills_existing_settings_row(fresh_cluster):
     # #385: a pre-existing user_settings row (created before the language

@@ -115,7 +115,7 @@ class CPU_Engine(BaseLlamaCppEngine):
         """Resolve the per-spawn CPU context: context window, thread count,
         and the fixed `gpu_layers=0` (CPU-only inference)."""
         return {
-            "ctx_size": int(os.environ.get("ERUDI_CTX", "4096")),
+            "ctx_size": cls.max_context_tokens(),
             "threads": max(1, os.cpu_count() or 1),
             "gpu_layers": 0,
         }

@@ -139,23 +139,26 @@ class ConversationCreate(ConversationBase):
             )
     """
     """Schema for creating new conversations."""
+    # None = "use the model's own defaults" (#388): the service resolves them
+    # from the Llm row (curated > HF generation_config > fallback). An explicit
+    # value always wins (the pre-conversation settings panel).
     temperature: Optional[float] = Field(
-        default=0.2,
+        default=None,
         ge=0.0,
         le=2.0,
-        description="Sampling temperature for text generation"
+        description="Sampling temperature; None resolves the model's default (#388)"
     )
     top_p: Optional[float] = Field(
-        default=0.5,
+        default=None,
         ge=0.0,
         le=1.0,
-        description="Nucleus sampling probability threshold"
+        description="Nucleus sampling threshold; None resolves the model's default (#388)"
     )
     max_tokens: Optional[int] = Field(
-        default=1024,
+        default=None,
         ge=1,
         le=32768,
-        description="Maximum number of tokens to generate"
+        description="Maximum number of tokens to generate; None resolves the model's default (#388)"
     )
     custom_prompt: Optional[str] = Field(
         default="",

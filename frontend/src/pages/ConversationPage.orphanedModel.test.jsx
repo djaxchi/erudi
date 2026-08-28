@@ -124,7 +124,14 @@ describe("ConversationPage orphaned conversation (#225)", () => {
     const patches = tracedFetchMock.mock.calls.filter(([, opts]) => opts?.method === "PATCH");
     expect(patches).toHaveLength(1);
     expect(String(patches[0][0])).toContain("/conversations/7");
-    expect(JSON.parse(patches[0][1].body)).toEqual({ llm_id: 1 });
+    // The switch also re-defaults the sampling to the new model's values
+    // (#388); this model has no hints, so the backend fallback rides along.
+    expect(JSON.parse(patches[0][1].body)).toEqual({
+      llm_id: 1,
+      temperature: 0.2,
+      top_p: 0.95,
+      max_tokens: 1024,
+    });
   });
 
   it("does not block a healthy conversation", async () => {

@@ -9,10 +9,15 @@ streaming is owned by this ``ChatOpenAI`` layer.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from src.core import config
 from src.core.logging import logger
+from src.database.generation_hints import (
+    FALLBACK_REPETITION_CONTEXT_SIZE,
+    FALLBACK_REPETITION_PENALTY,
+    SamplingDefaults,
+)
 
 if TYPE_CHECKING:
     from langchain_openai import ChatOpenAI
@@ -22,14 +27,11 @@ if TYPE_CHECKING:
 # defaults: the hand-rolled path passed repetition_penalty=1.2 +
 # repetition_context_size=5 to EVERY generation. Dropping them on the ChatOpenAI
 # path made even tiny models (e.g. Gemma-270M) loop on trivial prompts, so they
-# are restored here.
-# Tuned through the #129 eval campaign (see the run journal in the issue):
-# the legacy 5-token window was blind to sentence-level cycles (small models
-# looped whole list items to the token cap), while 1.2 over a wide window
-# over-penalized token reuse and mangled proper nouns from the question.
-# 1.1 over 64 tokens kills the loops and leaves precision intact.
-DEFAULT_REPETITION_PENALTY = 1.1
-DEFAULT_REPETITION_CONTEXT_SIZE = 64
+# are restored here. The values themselves live with the other sampling
+# fallbacks in src.database.generation_hints (#388); the #129 rationale (1.1
+# over 64 tokens) is documented there.
+DEFAULT_REPETITION_PENALTY = FALLBACK_REPETITION_PENALTY
+DEFAULT_REPETITION_CONTEXT_SIZE = FALLBACK_REPETITION_CONTEXT_SIZE
 
 
 def build_chat_model(
@@ -41,6 +43,7 @@ def build_chat_model(
     repetition_penalty: float = DEFAULT_REPETITION_PENALTY,
     repetition_context_size: int = DEFAULT_REPETITION_CONTEXT_SIZE,
     disable_thinking: bool = False,
+    sampling: Optional[SamplingDefaults] = None,
 ) -> ChatOpenAI:
     """Resolve the engine child for ``llm`` and wrap it as a ``ChatOpenAI``.
 
@@ -68,10 +71,17 @@ def build_chat_model(
     # (repeat_penalty / repeat_last_n) via ``_translate_payload_kwargs``. Sent via
     # ChatOpenAI.extra_body so they land in the local server's chat-completions
     # body. (getattr keeps non-server engines / test stubs working via identity.)
-    raw_kwargs = {
-        "repetition_penalty": repetition_penalty,
-        "repetition_context_size": repetition_context_size,
-    }
+    # #388: a resolved per-model profile supplies the repetition controls and,
+    # ONLY when it defines them, top_k / min_p / presence_penalty. Without a
+    # profile (or for a model without hints, whose profile is the fallback)
+    # the body is byte-identical to the #129-validated one above.
+    if sampling is not None:
+        raw_kwargs = sampling.wire_kwargs()
+    else:
+        raw_kwargs = {
+            "repetition_penalty": repetition_penalty,
+            "repetition_context_size": repetition_context_size,
+        }
     # Suppress reasoning at the chat-template level (#266): one-shot utility
     # calls (e.g. conversation titles) run on a ~12-token budget that a thinking
     # model would burn entirely inside <think>. mlx_vlm.server reads the

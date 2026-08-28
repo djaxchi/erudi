@@ -105,6 +105,13 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     # no hand-maintained allowlist. Set per engine family.
     FORMAT_TAG = None
 
+    @classmethod
+    def max_context_tokens(cls) -> Optional[int]:
+        """The engine-imposed context window in tokens, or ``None`` when the engine
+        sets none (MLX). llama.cpp engines spawn with a fixed ``-c`` and override
+        this; the per-model sampling resolver (#388) caps ``max_tokens`` on it."""
+        return None
+
     # Stored model links that download fine but FAIL TO RUN on this engine
     # (e.g. a quantized checkpoint the loader can't read). Overridden per engine.
     # is_runnable() uses it to ban such models from the catalog for this hardware.

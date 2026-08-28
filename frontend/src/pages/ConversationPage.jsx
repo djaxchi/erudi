@@ -15,6 +15,7 @@ import apiClient, { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 import { canAttachImages, maxImagesForModel } from "../utils/modelCapabilities";
+import { defaultsFor } from "../utils/samplingDefaults";
 import { getDisplayContent } from "../utils/messageContent";
 
 const log = createLogger("ConversationPage");
@@ -89,11 +90,9 @@ export default function ConversationPage() {
   // resolved, so we never flash the "missing model" state during initial load.
   const [conversationLoaded, setConversationLoaded] = useState(false);
   const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [settings, setSettings] = useState({
-    temperature: 0.2,
-    topP: 0.5,
-    maxTokens: 1024,
-  });
+  // Hydrated from the conversation row (which carries the model-derived
+  // values from creation, #388); the fallback only covers the load window.
+  const [settings, setSettings] = useState(() => defaultsFor(null));
   // Per-conversation web-search toggle (#310): hydrated from the conversation
   // GET, persisted through a one-field PATCH the moment it is flipped (like
   // the model picker) so the NEXT turn already honors it.
@@ -186,14 +185,22 @@ export default function ConversationPage() {
     }
     // Keep the derived-picker source of truth aligned with the new selection.
     setConversationLlmId(model.id);
-    // Call API to update conversation's llm_id
+    // A model switch re-defaults the sampling to the NEW model's values,
+    // touched or not (#388, maintainer decision): the previous values were
+    // the previous model's. Persisted in the same PATCH as llm_id so the
+    // next turn already runs on them.
+    const next = defaultsFor(model);
+    setSettings(next);
     await tracedFetch(`${API_BASE_URL}/conversations/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ llm_id: model.id }),
+      body: JSON.stringify({
+        llm_id: model.id,
+        temperature: next.temperature,
+        top_p: next.topP,
+        max_tokens: next.maxTokens,
+      }),
     });
-    // // Optionally, refresh conversations state here
-    // fetchMessagesAndConversations();
   };
 
   // #310: persist a web-search flip immediately (one-field PATCH, mirroring
@@ -814,8 +821,9 @@ export default function ConversationPage() {
             initialTemperature={settings.temperature}
             initialTopP={settings.topP}
             initialMaxTokens={settings.maxTokens}
+            maxTokensCap={defaultsFor(models.find((m) => m.id === conversationLlmId)).maxTokensCap}
             onApply={(newSettings) => {
-              setSettings(newSettings);
+              setSettings((prev) => ({ ...prev, ...newSettings }));
               saveConversationParameters(newSettings, customPrompt);
             }}
             onCustomizePrompt={() => setShowPromptModal(true)}

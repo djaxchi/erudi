@@ -1410,3 +1410,107 @@ async def test_oneshot_requests_thinking_suppression(monkeypatch):
     ):
         pass
     assert captured.get("disable_thinking") is True
+
+
+# ---------------------------------------------------------------------------
+# #388: per-model sampling on the ChatOpenAI path. The zero-diff guard comes
+# first: a row without hints must produce the EXACT request body the #129 eval
+# campaign validated (kwargs + extra_body byte-identical to today's).
+# ---------------------------------------------------------------------------
+from src.database.generation_hints import resolve_sampling_defaults  # noqa: E402
+
+
+class _HintedLlm(_Llm):
+    def __init__(self, **generation_config):
+        self.generation_hints = {
+            "base_repo": "Qwen/Qwen3-0.6B", "generation_config": generation_config,
+            "supports_thinking": True, "context_length": 40960, "captured_at": "d",
+        }
+
+
+def test_build_chat_model_zero_diff_for_a_row_without_hints(monkeypatch):
+    monkeypatch.setattr(config, "LLM_Engine", _IdentityEngine)
+    today = build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55)
+    resolved = build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55,
+                                sampling=resolve_sampling_defaults(_Llm()))
+    assert resolved.extra_body == today.extra_body == {
+        "repetition_penalty": 1.1, "repetition_context_size": 64}
+    assert (resolved.temperature, resolved.top_p, resolved.max_tokens) == (
+        today.temperature, today.top_p, today.max_tokens) == (0.3, 0.8, 55)
+    assert resolved.model_kwargs == today.model_kwargs
+
+
+def test_build_chat_model_sends_optional_keys_only_when_the_profile_defines_them(monkeypatch):
+    monkeypatch.setattr(config, "LLM_Engine", _IdentityEngine)
+    llm = _HintedLlm(temperature=0.6, top_p=0.95, top_k=20, min_p=0.0)
+    chat = build_chat_model(llm, temperature=0.6, top_p=0.95, max_tokens=55,
+                            sampling=resolve_sampling_defaults(llm))
+    assert chat.extra_body == {
+        "repetition_penalty": 1.1, "repetition_context_size": 64, "top_k": 20, "min_p": 0.0}
+
+    # presence_penalty / repetition_penalty from the profile; no top_k -> absent.
+    llm = _HintedLlm(temperature=0.7, presence_penalty=1.5, repetition_penalty=1.05)
+    chat = build_chat_model(llm, temperature=0.7, top_p=0.95, max_tokens=55,
+                            sampling=resolve_sampling_defaults(llm))
+    assert chat.extra_body == {
+        "repetition_penalty": 1.05, "repetition_context_size": 64, "presence_penalty": 1.5}
+
+
+def test_build_chat_model_llama_cpp_leaves_optional_names_untouched(monkeypatch):
+    # top_k / min_p / presence_penalty ARE llama-server's own names: the
+    # translation renames only the repetition controls.
+    from src.engines.base_llama_cpp_engine import BaseLlamaCppEngine
+
+    class _LlamaEngine:
+        @staticmethod
+        def get_model_and_tokenizer(llm_id, link):
+            return ({"base_url": "http://127.0.0.1:9090", "alias": f"erudi-{llm_id}"}, {})
+
+        @staticmethod
+        def _payload_model_value(handle):
+            return handle["alias"]
+
+        _translate_payload_kwargs = BaseLlamaCppEngine._translate_payload_kwargs
+
+    monkeypatch.setattr(config, "LLM_Engine", _LlamaEngine)
+    llm = _HintedLlm(temperature=0.6, top_k=20, min_p=0.0, presence_penalty=1.5)
+    chat = build_chat_model(llm, temperature=0.6, top_p=0.95, max_tokens=55,
+                            sampling=resolve_sampling_defaults(llm))
+    assert chat.extra_body == {
+        "repeat_penalty": 1.1, "repeat_last_n": 64, "top_k": 20, "min_p": 0.0,
+        "presence_penalty": 1.5}
+
+
+async def test_runner_passes_the_resolved_sampling_to_the_factory(monkeypatch):
+    captured = {}
+
+    def _capture(llm, **kw):
+        captured.update(kw)
+        return ToolableFakeChatModel(messages=iter([AIMessage(content="ok")]))
+
+    monkeypatch.setattr(runner_module, "build_chat_model", _capture)
+    llm = _HintedLlm(temperature=0.6, top_k=20)
+    runner = AgentRunner(checkpointer=None)
+    async for _ in runner.astream_text(llm=llm, user_message="q", system_prompt="s",
+                                       params=_PARAMS):
+        pass
+    assert captured["sampling"].top_k == 20
+    assert captured["sampling"].source == "hf_generation_config"
+    # User-facing three still come from GenParams (the conversation row / slider).
+    assert (captured["temperature"], captured["top_p"], captured["max_tokens"]) == (0.5, 0.9, 64)
+
+
+async def test_oneshot_passes_the_resolved_sampling_too(monkeypatch):
+    captured = {}
+
+    def _capture(llm, **kw):
+        captured.update(kw)
+        return _OneShotStreamModel(["T"])
+
+    monkeypatch.setattr(runner_module, "build_chat_model", _capture)
+    runner = AgentRunner(checkpointer=None)
+    async for _ in runner.astream_oneshot(
+        llm=_Llm(), prompt_text="p", temperature=0.5, top_p=0.9, max_tokens=12
+    ):
+        pass
+    assert captured["sampling"].source == "fallback"

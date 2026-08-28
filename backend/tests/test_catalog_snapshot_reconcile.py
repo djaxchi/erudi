@@ -232,6 +232,52 @@ class TestCategoryReconcileFromSnapshot:
         assert row.category == "code"             # classification survives the boot
         assert row.name == "Coder refreshed"      # other mutable fields did refresh
 
+    def test_fresh_generation_hints_propagate_in_place(self, test_db_session, monkeypatch):
+        """#388: a snapshot entry carrying hints refreshes the row's hints."""
+        db = test_db_session
+        db.add(_llm(name="Q", local=0, link="org/q-GGUF", generation_hints=None))
+        db.commit()
+        hints = {"base_repo": "org/q", "generation_config": {"temperature": 0.6},
+                 "supports_thinking": False, "context_length": 8192, "captured_at": "d"}
+
+        _use_snapshot(monkeypatch, [_entry("org/q-GGUF", generation_hints=hints)])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+
+        row = db.query(Llm).filter(Llm.link == "org/q-GGUF").one()
+        assert row.generation_hints == hints
+
+    def test_entry_without_generation_hints_keeps_existing_hints(self, test_db_session, monkeypatch):
+        """#388, same shape as #192: an old snapshot (no key, or null) must never
+        wipe the hints a row already carries -- otherwise the first boot on a
+        stale snapshot would reset every model to the fallback sampling."""
+        db = test_db_session
+        hints = {"base_repo": "org/q", "generation_config": {"temperature": 0.6},
+                 "supports_thinking": False, "context_length": 8192, "captured_at": "d"}
+        db.add(_llm(name="Q", local=0, link="org/q-GGUF", generation_hints=hints))
+        db.commit()
+
+        entry = _entry("org/q-GGUF")
+        entry.pop("generation_hints", None)
+        _use_snapshot(monkeypatch, [entry])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+        assert db.query(Llm).filter(Llm.link == "org/q-GGUF").one().generation_hints == hints
+
+        _use_snapshot(monkeypatch, [_entry("org/q-GGUF", generation_hints=None)])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+        assert db.query(Llm).filter(Llm.link == "org/q-GGUF").one().generation_hints == hints
+
+    def test_downloaded_row_hints_never_touched_by_snapshot(self, test_db_session, monkeypatch):
+        db = test_db_session
+        hints = {"base_repo": "org/q", "generation_config": {"temperature": 0.6},
+                 "supports_thinking": False, "context_length": 8192, "captured_at": "d"}
+        db.add(_llm(name="Local Q", local=1, link="/models/7", generation_hints=hints))
+        db.commit()
+
+        _use_snapshot(monkeypatch, [_entry("org/base-GGUF")])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+
+        assert db.query(Llm).filter(Llm.link == "/models/7").one().generation_hints == hints
+
     def test_entry_with_null_category_keeps_existing_category(self, test_db_session, monkeypatch):
         db = test_db_session
         db.add(_llm(name="Coder", local=0, link="org/coder-GGUF", category="code"))

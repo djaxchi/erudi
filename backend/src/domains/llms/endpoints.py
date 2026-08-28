@@ -94,6 +94,7 @@ Warning:
 import asyncio
 import os
 import shutil
+from pathlib import Path
 from typing import List, Optional
 from datetime import datetime
 
@@ -117,6 +118,11 @@ from src.utils.hf_model_metadata import (
 
 from src.core.logging import logger
 from src.core import config
+from src.database.generation_hints import (
+    capture_generation_hints,
+    read_local_generation_hints,
+    resolve_base_repo,
+)
 from src.core.exceptions import (
     ModelNotFoundException,
     DatabaseException,
@@ -270,6 +276,23 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
                         f"successful download; leaving capabilities unset: {e}",
                         exc_info=True,
                     )
+                # Sampling facts (#388), same best-effort stance. Catalog rows
+                # already carry the base repo's hints (copied at _start_download);
+                # a by-link download reads the artifact first (MLX dirs ship
+                # generation_config.json) and only then asks the network.
+                if getattr(llm_obj, "generation_hints", None) is None:
+                    try:
+                        hints = _capture_hints_for_download(model_link, final_save_dir)
+                        if hints:
+                            llm_obj.generation_hints = hints
+                            session.commit()
+                    except Exception as e:
+                        session.rollback()
+                        logger.warning(
+                            f"Generation hints capture failed for LLM {model_id} after a "
+                            f"successful download; keeping the fallback sampling: {e}",
+                            exc_info=True,
+                        )
             logger.info(f"Download job {job_id} completed successfully")
     except Exception as e:
         logger.exception(f"Download job {job_id} failed: {e}")
@@ -282,11 +305,32 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
         session.close()
 
 
+def _capture_hints_for_download(model_link: str, final_save_dir) -> Optional[dict]:
+    """Sampling facts for a just-downloaded model (#388): the local artifact
+    first (offline, MLX dirs ship the files), then the network -- the base repo
+    named by the quant's ``base_model:*`` card tag, else the repo itself."""
+    hints = read_local_generation_hints(Path(final_save_dir), base_repo=model_link)
+    if hints:
+        return hints
+    hf_api = config.get_hf_api()
+    base_repo = model_link
+    try:
+        info = hf_api.model_info(model_link)
+        base_repo = resolve_base_repo(model_link, getattr(info, "tags", None))
+    except Exception as e:
+        logger.info(f"Could not read the card of {model_link} for its base model: {e}")
+    hints = capture_generation_hints(base_repo, hf_api)
+    if hints is None and base_repo != model_link:
+        hints = capture_generation_hints(model_link, hf_api)
+    return hints
+
+
 def _start_download(*, remote_model_id: str, remote_link: str, name: str, type: str,
                     description, model_metadata, quantized: bool, param_size: Optional[float],
                     category: str, llm_repo: Llm_Repository,
                     job_repo: Download_Job_Repository, db: Session,
-                    background_tasks: BackgroundTasks) -> DownloadJobModel:
+                    background_tasks: BackgroundTasks,
+                    generation_hints: Optional[dict] = None) -> DownloadJobModel:
     """Create the local=2 placeholder + DownloadJob and enqueue the download.
 
     Shared by the catalog (by-id) and HF-search (by-link) download routes so the
@@ -298,6 +342,9 @@ def _start_download(*, remote_model_id: str, remote_link: str, name: str, type: 
         name=name, local=2, type=type, description=description,
         model_metadata=model_metadata, quantized=quantized, param_size=param_size,
         category=category,
+        # Sampling facts ride along from the catalog row (#388); a by-link
+        # download has none yet and gets them post-download, best-effort.
+        generation_hints=generation_hints,
     )
     temp_path = config.LLM_DIR / f"temp_{local_llm.id}"
     final_path = config.LLM_DIR / str(local_llm.id)
@@ -777,6 +824,7 @@ async def download_llm_route(
             model_metadata=remote_llm.model_metadata, quantized=remote_llm.quantized,
             param_size=remote_llm.param_size, category=getattr(remote_llm, "category", "general"),
             llm_repo=llm_repo, job_repo=job_repo, db=db, background_tasks=background_tasks,
+            generation_hints=getattr(remote_llm, "generation_hints", None),
         )
 
     except (ModelNotFoundException, InvalidInputException, FileSystemException):
