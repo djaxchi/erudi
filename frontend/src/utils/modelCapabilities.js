@@ -36,3 +36,40 @@ export function modelSupportsVision(model) {
   if (model.supports_vision === true) return true;
   return model.category === "vision";
 }
+
+// Below this many billions of parameters, tool calling, knowledge-base search
+// and multi-step reasoning are unreliable (#381, #129): the tools and prompts
+// reach the model, it just does not act on them. The QA guidance uses ~4B as
+// the floor for anything involving tools, retrieval or reasoning.
+export const SMALL_MODEL_PARAM_THRESHOLD_B = 4;
+
+// The card copy for models under that threshold. Shared so both card variants
+// say the same thing.
+export const SMALL_MODEL_NOTE = `Very small model — good for quick chat and low-end machines; tool use, knowledge-base search and multi-step reasoning are unreliable below ~${SMALL_MODEL_PARAM_THRESHOLD_B}B.`;
+
+// Parameter count in billions from either signal the frontend carries: the
+// backend's numeric `param_size` (billions, null when unmeasured) or the
+// metadata string `parameters` ("7B", "1.5B", "270M", "Unknown"). Anything that
+// is not a positive size parses to null — unknown must never be mistaken for
+// small.
+export function parseParamSizeB(value) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  if (typeof value !== "string") return null;
+  const match = /^\s*(\d+(?:\.\d+)?)\s*([bm])\s*$/i.exec(value);
+  if (!match) return null;
+  const amount = parseFloat(match[1]);
+  if (!(amount > 0)) return null;
+  return match[2].toLowerCase() === "m" ? amount / 1000 : amount;
+}
+
+// Whether a model is small enough that the card should warn about tools, KB
+// search and reasoning. The numeric `param_size` wins when present (it is the
+// measured value); the `parameters` string is the fallback for installed rows
+// that only carry metadata. Unknown size -> false (positive signal only).
+export function isVerySmallModel(model) {
+  if (!model) return false;
+  const size = parseParamSizeB(model.param_size) ?? parseParamSizeB(model.parameters);
+  return size !== null && size < SMALL_MODEL_PARAM_THRESHOLD_B;
+}

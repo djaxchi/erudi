@@ -103,3 +103,32 @@ describe("ExploreModelCard installed state (#348)", () => {
     expect(onDownload).toHaveBeenCalledWith(baseModel);
   });
 });
+
+describe("ExploreModelCard very small model note (#381)", () => {
+  const noteId = "small-model-note";
+
+  it.each([0.6, 1.7, 0.27])("shows the note for a %sB catalog model", (paramSize) => {
+    render(<ExploreModelCard model={{ ...baseModel, param_size: paramSize }} />);
+    const note = screen.getByTestId(noteId);
+    expect(note.textContent).toMatch(/Very small model/);
+    expect(note.textContent).toMatch(/tool use, knowledge-base search and multi-step reasoning/);
+    expect(note.textContent).toMatch(/below ~4B/);
+  });
+
+  it("falls back to the parameters string when param_size is unmeasured", () => {
+    render(
+      <ExploreModelCard model={{ ...baseModel, param_size: undefined, parameters: "0.6B" }} />
+    );
+    expect(screen.getByTestId(noteId)).toBeTruthy();
+  });
+
+  it.each([4, 7])("does not show the note for a %sB model", (paramSize) => {
+    render(<ExploreModelCard model={{ ...baseModel, param_size: paramSize }} />);
+    expect(screen.queryByTestId(noteId)).toBeNull();
+  });
+
+  it("does not show the note when the size is unknown", () => {
+    render(<ExploreModelCard model={{ ...baseModel, param_size: undefined }} />);
+    expect(screen.queryByTestId(noteId)).toBeNull();
+  });
+});
