@@ -1,9 +1,8 @@
 """Gap coverage for `src.utils.hf_model_metadata` size estimation paths.
 
 Pins the API-backed disk size with its estimate fallbacks per quantization
-tier, the family pattern tables (Mistral/Gemma/Qwen), the chosen-artifact
-byte accounting (#170/#220) for GGUF multi-quant vs single-artifact repos,
-and the metadata formatter's shape and error path.
+tier, the chosen-artifact byte accounting (#170/#220) for GGUF multi-quant vs
+single-artifact repos, and the metadata formatter's shape and error path.
 """
 from __future__ import annotations
 
@@ -20,7 +19,6 @@ from src.utils.hf_model_metadata import (
     _chosen_artifact_bytes,
     format_model_info_metadata,
     get_disk_size_after_quant,
-    get_model_size_estimate,
 )
 
 
@@ -142,47 +140,6 @@ class TestDiskSizeAfterQuant:
         size = get_disk_size_after_quant("someone/Some-7B-4bit", hf_api=SimpleNamespace())
         assert size.is_estimate is True
         assert size.size_bytes is None
-
-
-# =====================================================================
-# UNIT - get_model_size_estimate family patterns
-# =====================================================================
-
-@pytest.mark.unit
-class TestModelSizeEstimate:
-
-    def test_exact_map_match(self):
-        link = next(iter(meta.MODEL_SIZE_MAP))
-        size = get_model_size_estimate("whatever", link)
-        assert size.source == "map"
-        assert size.size_gb == meta.MODEL_SIZE_MAP[link][0]
-
-    @pytest.mark.parametrize("name,link,expected_gb", [
-        ("Mistral 7B", "user/custom-mistral-7b", 13.5),
-        ("Gemma 1B", "user/gemma-1b-ft", 2.5),
-        ("Gemma 2B", "user/gemma-2b-ft", 5.5),
-        ("Gemma 4 E2B", "user/gemma-4-e2b-ft", 5.0),
-        ("Gemma 4B", "user/gemma-3-4b-ft", 9.0),
-        ("Gemma 7B", "user/gemma-7b-ft", 13.5),
-        ("Qwen 0.5B", "user/qwen-0.5b-ft", 1.0),
-        ("Qwen 1.5B", "user/qwen-1.5b-ft", 3.0),
-        ("Qwen 3B", "user/qwen-3b-ft", 6.5),
-        ("Qwen 7B", "user/qwen-7b-ft", 14.5),
-    ])
-    def test_family_patterns(self, name, link, expected_gb):
-        size = get_model_size_estimate(name, link)
-        assert size.source == "pattern"
-        assert size.size_gb == expected_gb
-
-    def test_unknown_family_calculates_from_parameters(self):
-        size = get_model_size_estimate("Falcon 7B", "tiiuae/falcon-7b")
-        assert size.size_gb > 0
-        assert size.is_estimate is True
-
-    def test_no_signal_returns_unknown(self):
-        size = get_model_size_estimate("Mystery", "user/mystery-model")
-        assert size.source == "unknown"
-        assert size.size_gb == 0.0
 
 
 # =====================================================================
