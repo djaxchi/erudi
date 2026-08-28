@@ -103,6 +103,46 @@ class TestDiskSizeAfterQuant:
         assert size.source == "unknown"
         assert size.size_gb == 0.0
 
+    def test_api_success_carries_the_exact_artifact_bytes(self, monkeypatch):
+        """The real download size, in bytes, rides on the ModelSize so the catalog
+        can store it as-is (no GB round-trip) next to the display string."""
+        monkeypatch.setattr(config, "LLM_Engine", _GgufEngine)
+        api = MagicMock()
+        api.repo_info.return_value = _repo_info([
+            ("model-q4_k_m.gguf", 3_074_000_000),
+            ("model-q8_0.gguf", 8_000_000_000),
+            ("config.json", 1024),
+        ])
+        monkeypatch.setattr(meta, "get_hf_api", lambda: api)
+        size = get_disk_size_after_quant("someone/model-GGUF")
+        assert size.size_bytes == 3_074_000_000 + 1024   # the chosen quant + aux, not the repo
+        assert size.size_gb == pytest.approx(size.size_bytes / 1_000_000_000)
+
+    def test_estimates_never_claim_exact_bytes(self, monkeypatch):
+        self._fail_api(monkeypatch)
+        assert get_disk_size_after_quant("mlx-community/Some-Model-7B-4bit").size_bytes is None
+        assert get_disk_size_after_quant("someone/mystery-model").size_bytes is None
+        assert ModelSize(size_gb=1.0).size_bytes is None
+
+    def test_uses_the_injected_client_over_the_global_one(self, monkeypatch):
+        """The seeder passes its own (retrying, or stubbed) client so a catalog
+        build never opens a second session through the module-level factory."""
+        monkeypatch.setattr(config, "LLM_Engine", _NonGgufEngine)
+        monkeypatch.setattr(meta, "get_hf_api", lambda: pytest.fail("global client used"))
+        api = MagicMock()
+        api.repo_info.return_value = _repo_info([("model.safetensors", 2_000_000_000)])
+        size = get_disk_size_after_quant("mlx-community/Some-Model-4bit", hf_api=api)
+        assert size.size_bytes == 2_000_000_000
+        api.repo_info.assert_called_once_with("mlx-community/Some-Model-4bit", files_metadata=True)
+
+    def test_injected_client_without_repo_info_falls_back_to_the_estimate(self, monkeypatch):
+        # A bare stub (as the seeder tests inject) must degrade to an estimate,
+        # never reach the network through the global factory.
+        monkeypatch.setattr(meta, "get_hf_api", lambda: pytest.fail("global client used"))
+        size = get_disk_size_after_quant("someone/Some-7B-4bit", hf_api=SimpleNamespace())
+        assert size.is_estimate is True
+        assert size.size_bytes is None
+
 
 # =====================================================================
 # UNIT - get_model_size_estimate family patterns

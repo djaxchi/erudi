@@ -139,11 +139,16 @@ class ModelSize:
         max_gb: Maximum size in GB (upper bound of estimate).
         is_estimate: True if size is estimated, False if from API.
         source: Source of size information ("api", "estimate", "unknown").
-    
+        size_bytes: The exact byte count behind an API-measured size (the files
+            the downloader fetches), or None for any estimate. Stored as-is on
+            the catalog row (``llms.artifact_size_bytes``) so the UI shows the
+            real download size instead of a per-parameter guess; an estimate
+            must never be laundered into that column.
+
     Example:
         >>> size = ModelSize(size_gb=3.2, min_gb=3.0, max_gb=3.5, is_estimate=False, source="api")
         >>> print(size.to_string())  # "~3.2 GB"
-        >>> 
+        >>>
         >>> estimate = ModelSize(size_gb=13.5, min_gb=13.0, max_gb=14.0, is_estimate=True, source="estimate")
         >>> print(estimate.to_string())  # "~13.5 GB"
     """
@@ -152,6 +157,7 @@ class ModelSize:
     max_gb: Optional[float] = None
     is_estimate: bool = True
     source: str = "estimate"
+    size_bytes: Optional[int] = None
     
     def to_string(self) -> str:
         """Format size as human-readable string.
@@ -432,7 +438,7 @@ def extract_parameter_pattern(text: str) -> Optional[ParameterCount]:
 
 # ============ Public API Functions ============
 
-def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
+def get_disk_size_after_quant(link_hf_quant_repo: str, hf_api=None) -> ModelSize:
     """Get actual disk size of quantized model from HuggingFace Hub API.
 
     Fetches repository metadata via HF API and sums file sizes to get accurate
@@ -442,9 +448,13 @@ def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
     Args:
         link_hf_quant_repo: HuggingFace repo ID for quantized model.
             Format: "mlx-community/Model-Name-4bit" or similar.
+        hf_api: The HF client to ask (the catalog build passes its own retrying
+            client so a snapshot never opens a second session); None falls back
+            to the module-level ``get_hf_api()``.
 
     Returns:
-        ModelSize object with actual size from API or estimated size.
+        ModelSize object with actual size from API (``size_bytes`` set to the
+        exact chosen-artifact byte count) or estimated size (``size_bytes`` None).
 
     Raises:
         HFAPIError: If API call fails and estimation is impossible.
@@ -468,7 +478,8 @@ def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
     try:
         logger.debug(f"Fetching disk size for quantized repo: {link_hf_quant_repo}")
 
-        hf_api = get_hf_api()
+        if hf_api is None:
+            hf_api = get_hf_api()
         repo_info = hf_api.repo_info(link_hf_quant_repo, files_metadata=True)
         # Sum ONLY the artifact the downloader would actually fetch, not the whole
         # repo (#220/#170): a GGUF multi-quant repo can be 20-40 GB while we pull a
@@ -479,15 +490,18 @@ def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
         # Convert to GB with high precision. Decimal GB (#316) so the number
         # matches what Hugging Face itself shows for the very same file.
         size_gb = total_size_bytes / BYTES_PER_GB
-        
+
         logger.info(f"Retrieved actual size for {link_hf_quant_repo}: {size_gb:.2f} GB")
-        
+
         return ModelSize(
             size_gb=size_gb,
             min_gb=size_gb,
             max_gb=size_gb,
             is_estimate=False,
-            source="api"
+            source="api",
+            # A listing with no sizes at all sums to 0: that is "unknown", not a
+            # measured empty artifact.
+            size_bytes=int(total_size_bytes) if total_size_bytes > 0 else None,
         )
         
     except Exception as e:

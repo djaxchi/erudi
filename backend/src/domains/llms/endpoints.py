@@ -113,7 +113,7 @@ from src.domains.llms.hf_search import search_huggingface
 from src.domains.llms.repository import Llm_Repository, Download_Job_Repository
 from src.domains.knowledge_base.repository import COPIED_FIELDS
 from src.utils.hf_model_metadata import (
-    humanize_model_name, measure_dir_size_gb, rewrite_size_in_metadata,
+    BYTES_PER_GB, humanize_model_name, measure_dir_size_bytes, rewrite_size_in_metadata,
 )
 
 from src.core.logging import logger
@@ -242,11 +242,16 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
                 # the rewrite landed ~10s late, and the freshly installed card sat
                 # on the catalog's pre-download guess ("Size: ~4.0 GB" against a
                 # measured ~4.7 GB) until the page was reloaded by hand.
+                # One walk, in bytes: the exact figure goes to
+                # artifact_size_bytes (the installed row is exact even when the
+                # catalog only had an estimate) and its GB form to the metadata
+                # string the cards parse.
                 try:
-                    measured_gb = measure_dir_size_gb(final_save_dir)
-                    if measured_gb > 0:
+                    measured_bytes = measure_dir_size_bytes(final_save_dir)
+                    if measured_bytes > 0:
+                        llm_obj.artifact_size_bytes = measured_bytes
                         llm_obj.model_metadata = rewrite_size_in_metadata(
-                            llm_obj.model_metadata, measured_gb)
+                            llm_obj.model_metadata, measured_bytes / BYTES_PER_GB)
                 except Exception as e:
                     logger.warning(
                         f"Could not measure the on-disk size of LLM {model_id}; "
@@ -338,7 +343,8 @@ def _start_download(*, remote_model_id: str, remote_link: str, name: str, type: 
                     category: str, llm_repo: Llm_Repository,
                     job_repo: Download_Job_Repository, db: Session,
                     background_tasks: BackgroundTasks,
-                    generation_hints: Optional[dict] = None) -> DownloadJobModel:
+                    generation_hints: Optional[dict] = None,
+                    artifact_size_bytes: Optional[int] = None) -> DownloadJobModel:
     """Create the local=2 placeholder + DownloadJob and enqueue the download.
 
     Shared by the catalog (by-id) and HF-search (by-link) download routes so the
@@ -353,6 +359,9 @@ def _start_download(*, remote_model_id: str, remote_link: str, name: str, type: 
         # Sampling facts ride along from the catalog row (#388); a by-link
         # download has none yet and gets them post-download, best-effort.
         generation_hints=generation_hints,
+        # The catalog's real size keeps the card exact while the download runs;
+        # completion overwrites it with the measured footprint either way.
+        artifact_size_bytes=artifact_size_bytes,
     )
     temp_path = config.LLM_DIR / f"temp_{local_llm.id}"
     final_path = config.LLM_DIR / str(local_llm.id)
@@ -833,6 +842,7 @@ async def download_llm_route(
             param_size=remote_llm.param_size, category=getattr(remote_llm, "category", "general"),
             llm_repo=llm_repo, job_repo=job_repo, db=db, background_tasks=background_tasks,
             generation_hints=getattr(remote_llm, "generation_hints", None),
+            artifact_size_bytes=remote_llm.artifact_size_bytes,
         )
 
     except (ModelNotFoundException, InvalidInputException, FileSystemException):
