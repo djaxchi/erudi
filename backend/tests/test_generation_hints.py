@@ -158,13 +158,24 @@ class TestResolveGenerationConfig:
         assert (d.temperature, d.top_p, d.top_k) == (FALLBACK_TEMPERATURE, FALLBACK_TOP_P, None)
         assert d.source == "none"
 
-    def test_vendor_greedy_is_kept_as_shipped(self):
-        # top_k == 1 / temperature < 0.05 means "the vendor says greedy": keep
-        # exactly what ships (Qwen2.5-VL case), no second-guessing.
+    def test_vendor_greedy_is_sent_as_exactly_zero(self):
+        # top_k == 1 / temperature < 0.05 means "the vendor says greedy". The
+        # servers only take the argmax path on temp == 0 and otherwise divide the
+        # logits by it: Qwen2.5-VL's shipped 1e-06 overflowed into 2048 x "!"
+        # on the 2.0.0 QA pass. Normalise to an exact 0.0, keep the other keys.
+        d = resolve_sampling_defaults(_Llm(_hints(temperature=1e-06, top_p=0.95,
+                                                  repetition_penalty=1.05)))
+        assert d.temperature == 0.0
+        assert (d.top_p, d.repetition_penalty) == (0.95, 1.05)
+        assert d.source == "base_generation_config"
         d = resolve_sampling_defaults(_Llm(_hints(temperature=0.01, top_p=0.001, top_k=1)))
-        assert (d.temperature, d.top_p, d.top_k) == (0.01, 0.001, 1)
+        assert (d.temperature, d.top_p, d.top_k) == (0.0, 0.001, 1)
+        d = resolve_sampling_defaults(_Llm(_hints(temperature=0.7, top_k=1)))
+        assert d.temperature == 0.0                  # top_k == 1 alone means greedy
         d = resolve_sampling_defaults(_Llm(_hints(temperature=0.0)))
         assert d.temperature == 0.0
+        d = resolve_sampling_defaults(_Llm(_hints(temperature=0.05)))
+        assert d.temperature == 0.05                 # threshold is exclusive
 
     def test_clamps_and_drops_out_of_range_keys(self):
         d = resolve_sampling_defaults(
