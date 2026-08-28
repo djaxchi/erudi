@@ -1,0 +1,69 @@
+{
+  "page": {
+    "title": "Base de connaissances",
+    "intro": {
+      "p1": "Une base de connaissances vous permet d'enseigner à votre IA vos propres documents, fichiers et informations sans modifier le modèle d'IA lui-même.",
+      "p2": "Voyez-la comme une bibliothèque personnelle que votre IA consulte pour répondre à vos questions. Importez vos PDF, documents, notes ou n'importe quel fichier texte : votre IA s'en servira pour donner des réponses plus précises et plus pertinentes sur vos sujets.",
+      "p3": "C'est idéal lorsque vous souhaitez que votre IA connaisse vos documents professionnels, vos recherches ou vos documents personnels, sans changer durablement sa façon de raisonner. C'est plus rapide et plus simple qu'entraîner un nouveau modèle, et vous pouvez mettre à jour vos connaissances à tout moment en ajoutant ou en retirant des documents.",
+      "p4": "Utilisez les bases de connaissances pour : documents d'entreprise, articles de recherche, manuels, notes personnelles ou toute information que vous voulez voir votre IA consulter pendant vos discussions."
+    },
+    "rating": {
+      "label": "Niveau de performance en discussion :",
+      "fetching": "récupération…",
+      "error": "Erreur de récupération",
+      "notAvailable": "N/D",
+      "score": "{{score}}/100"
+    },
+    "form": {
+      "title": "Dites à votre assistant à quoi vous allez l'utiliser !",
+      "descriptionPlaceholder": "Rédigez une description",
+      "success": "Données attachées à votre assistant avec succès !",
+      "create": "Créer l'assistant",
+      "creating": "Création de l'assistant..."
+    },
+    "errors": {
+      "missingFields": "Veuillez remplir tous les champs obligatoires",
+      "duplicateName": "Un modèle nommé « {{name}} » existe déjà. Choisissez un autre nom d'assistant."
+    }
+  },
+  "confirm": {
+    "updateTitle": "Mettre à jour la base de connaissances de <b>{{name}}</b> avec {{fileCount}} fichier(s) ?",
+    "updateBody": "Les nouveaux documents seront ajoutés à la base de connaissances existante de cet assistant",
+    "createTitle": "Voulez-vous vraiment créer <b>{{name}}</b> ?",
+    "createBody": "Cela créera un assistant avec une base de connaissances de {{fileCount}} fichiers",
+    "update": "Mettre à jour la base de connaissances",
+    "create": "Créer l'assistant"
+  },
+  "creation": {
+    "errors": {
+      "startFailed": "Impossible de lancer la création de l'assistant ({{status}}) : {{detail}}",
+      "startFailedGeneric": "Impossible de lancer la création de l'assistant",
+      "unknownDetail": "Erreur inconnue",
+      "failedUnexpectedly": "La création de l'assistant a échoué de manière inattendue",
+      "statusCheckFailed": "Une erreur est survenue pendant la création de l'assistant. Veuillez réessayer ou contacter l'équipe Erudi."
+    }
+  },
+  "upload": {
+    "dragAndDrop": "Glissez-déposez",
+    "or": "ou",
+    "browseFiles": "Parcourir les fichiers",
+    "selectFolder": "ou sélectionnez un dossier",
+    "selectedFiles": "Fichiers sélectionnés ({{fileCount}})",
+    "addFolder": "Ajouter un dossier",
+    "addMore": "Ajouter d'autres fichiers",
+    "removeFile": "Retirer le fichier",
+    "fileType": {
+      "folder": "Dossier",
+      "other": "Autre"
+    },
+    "notice": {
+      "unsupported_one": "{{count}} fichier non pris en charge ignoré",
+      "unsupported_other": "{{count}} fichiers non pris en charge ignorés",
+      "capped": "limité à {{max}} fichiers ({{ignored}} de plus ignorés)",
+      "missingPath_one": "impossible de déterminer le chemin de {{count}} élément",
+      "missingPath_other": "impossible de déterminer le chemin de {{count}} éléments",
+      "duplicate_one": "{{count}} fichier était déjà dans la liste",
+      "duplicate_other": "{{count}} fichiers étaient déjà dans la liste"
+    }
+  }
+}

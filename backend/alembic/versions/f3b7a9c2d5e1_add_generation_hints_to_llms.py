@@ -8,7 +8,7 @@ fallback`` at read time. Existing rows get NULL = "no hints" = today's
 constants, so nothing changes for a catalog that predates the capture.
 
 Revision ID: f3b7a9c2d5e1
-Revises: d1a4f7c39b52
+Revises: e8b4d2f6a193
 Create Date: 2026-08-28
 
 """
@@ -19,7 +19,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'f3b7a9c2d5e1'
-down_revision: Union[str, Sequence[str], None] = 'd1a4f7c39b52'
+down_revision: Union[str, Sequence[str], None] = 'e8b4d2f6a193'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -2,8 +2,13 @@ import React, { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, HelpCircle, SlidersHorizontal } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import Tooltip from "./Tooltip";
 import ToggleSwitch from "./ToggleSwitch";
+import { formatNumber } from "../i18n/format";
+
+// Temperature / top-p read-outs: two decimals in the active locale.
+const TWO_DECIMALS = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 
 export default function HeaderBar({
   initialTemperature = 0.2,
@@ -37,6 +42,7 @@ export default function HeaderBar({
   initialWebSearch = false,
   onWebSearchChange,
 }) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [temperature, setTemperature] = useState(initialTemperature);
   const [topP, setTopP] = useState(initialTopP);
@@ -122,13 +128,13 @@ export default function HeaderBar({
   const TooltipIcon = ({ id, side = "right" }) => {
     const text =
       id === "temperature"
-        ? "Controls creativity. Lower = focused, higher = creative."
+        ? t("chat:header.tooltips.temperature")
         : id === "top-p"
-          ? "Controls word variety. Lower = predictable, higher = diverse."
+          ? t("chat:header.tooltips.topP")
           : id === "prompt"
-            ? "Customize system instructions that guide AI behavior."
+            ? t("chat:header.tooltips.prompt")
             : id === "web-search"
-              ? "Lets the model search the web for current facts. Searched queries are sent to external search engines."
+              ? t("chat:header.tooltips.webSearch")
               : "";
     const widthClass = isXs ? "w-40" : isSm ? "w-52" : "w-64";
     const iconSize = isXs ? "w-3 h-3" : isSm ? "w-3.5 h-3.5" : "w-4 h-4";
@@ -235,15 +241,15 @@ export default function HeaderBar({
           <div className="flex items-center gap-3 flex-wrap min-w-0">
             <h3
               className={`${titleText} font-semibold tracking-tight text-[#F2F7F4] truncate`}
-              title="Chat with"
+              title={t("chat:header.chatWith")}
             >
-              Chat with
+              {t("chat:header.chatWith")}
             </h3>
 
             <div
               ref={dropdownRef}
               role="button"
-              aria-label="Select model"
+              aria-label={t("chat:header.selectModel")}
               className={[
                 "inline-flex items-center rounded-lg relative",
                 pillPx,
@@ -266,7 +272,7 @@ export default function HeaderBar({
                 ].join(" ")}
                 title={currentModel}
               >
-                {currentModel || "Select model..."}
+                {currentModel || t("chat:header.selectModelPlaceholder")}
               </div>
               <ChevronDown
                 size={isXs ? 14 : 16}
@@ -304,7 +310,7 @@ export default function HeaderBar({
 
           <button
             type="button"
-            aria-label="Toggle settings"
+            aria-label={t("chat:header.toggleSettings")}
             onClick={() => setIsOpen((v) => !v)}
             className={[
               "inline-flex items-center justify-center",
@@ -335,7 +341,7 @@ export default function HeaderBar({
                       <span
                         className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
                       >
-                        Creativity
+                        {t("chat:header.creativity")}
                       </span>
                       <TooltipIcon id="temperature" side={isNarrow ? "bottom-right" : "right"} />
                       {/* Backend accepts 0-2; values above 1.0 get an amber tint
@@ -347,7 +353,7 @@ export default function HeaderBar({
                             : "text-emerald-200/90 bg-emerald-500/10 border-emerald-400/25"
                         }`}
                       >
-                        {temperature.toFixed(2)}
+                        {formatNumber(temperature, TWO_DECIMALS)}
                       </span>
                     </div>
 
@@ -374,13 +380,13 @@ export default function HeaderBar({
                       <span
                         className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
                       >
-                        Diversity
+                        {t("chat:header.diversity")}
                       </span>
                       <TooltipIcon id="top-p" side="right" />
                       <span
                         className={`ml-auto ${statText} font-semibold text-emerald-200/90 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-400/25`}
                       >
-                        {topP.toFixed(2)}
+                        {formatNumber(topP, TWO_DECIMALS)}
                       </span>
                     </div>
 
@@ -411,7 +417,7 @@ export default function HeaderBar({
                         <span
                           className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
                         >
-                          Max Tokens
+                          {t("chat:header.maxTokens")}
                         </span>
                       </div>
                       {/* <div className="flex items-center gap-2">
@@ -462,7 +468,7 @@ export default function HeaderBar({
                         <span
                           className={`${labelText} uppercase tracking-wide font-semibold text-gray-300/80`}
                         >
-                          Web Search
+                          {t("chat:header.webSearch")}
                         </span>
                         <TooltipIcon id="web-search" side={isNarrow ? "bottom-right" : "right"} />
                         <div className="ml-auto">
@@ -472,7 +478,7 @@ export default function HeaderBar({
                               setWebSearch(next);
                               onWebSearchChange?.(next);
                             }}
-                            label="Web search"
+                            label={t("chat:header.webSearchToggle")}
                           />
                         </div>
                       </div>
@@ -497,7 +503,7 @@ export default function HeaderBar({
                           isNarrow ? "flex-1" : "",
                         ].join(" ")}
                       >
-                        Customize Prompt
+                        {t("chat:header.customizePrompt")}
                       </button>
                       <div>
                         <TooltipIcon id="prompt" side="top-left" />
@@ -515,7 +521,7 @@ export default function HeaderBar({
                         isNarrow ? "w-full" : "ml-auto",
                       ].join(" ")}
                     >
-                      Apply
+                      {t("chat:header.apply")}
                     </button>
                   </div>
                 </div>

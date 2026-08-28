@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
 import { Brain, Wrench, ChevronRight, ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 // Live + persisted reasoning/trace strip (#90).
 //
@@ -21,7 +22,6 @@ import { Brain, Wrench, ChevronRight, ChevronDown } from "lucide-react";
 // name(pretty args); a {"raw": "..."} payload renders the raw string.
 
 const ARROW = "→"; // -> for tool results
-const DASH = "—"; // em dash for the "Reasoning - N steps" summary
 
 /**
  * Format a tool_call args object into a compact, brace-free one-liner.
@@ -97,6 +97,7 @@ export function buildRows(events) {
 }
 
 export default function TraceStrip({ events, live }) {
+  const { t } = useTranslation();
   const { truncated, rows, steps } = useMemo(() => buildRows(events), [events]);
   const [expanded, setExpanded] = useState(live);
   const prevLive = useRef(live);
@@ -132,7 +133,7 @@ export default function TraceStrip({ events, live }) {
   }
 
   const summary =
-    steps > 0 ? `Reasoning ${DASH} ${steps} step${steps === 1 ? "" : "s"}` : "Reasoning";
+    steps > 0 ? t("chat:trace.summaryWithSteps", { count: steps }) : t("chat:trace.summary");
 
   return (
     <div className="mb-2 mr-auto w-fit max-w-[75%] rounded-xl border border-[var(--line-strong)] bg-white/[0.03] text-[var(--ink-dim)]">
@@ -140,7 +141,7 @@ export default function TraceStrip({ events, live }) {
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        title={expanded ? "Hide reasoning" : "Show reasoning"}
+        title={expanded ? t("chat:trace.hide") : t("chat:trace.show")}
         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-medium transition-colors hover:text-[var(--ink)]"
       >
         <Brain className="w-3.5 h-3.5 shrink-0" />
@@ -155,7 +156,7 @@ export default function TraceStrip({ events, live }) {
       {expanded && (
         <div className="flex flex-col gap-1.5 px-3 pb-2 text-xs">
           {truncated && (
-            <div className="italic text-[var(--ink-faint)]">(earlier steps elided)</div>
+            <div className="italic text-[var(--ink-faint)]">{t("chat:trace.truncated")}</div>
           )}
           {rows.map((row, i) => {
             if (row.kind === "thinking") {

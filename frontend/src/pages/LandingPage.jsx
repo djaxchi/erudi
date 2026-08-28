@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { Trans, useTranslation } from "react-i18next";
 import Sidebar from "../components/Sidebar";
 import ModelCollapsibleSection from "../components/ModelCollapsibleSection";
 import ModelCard from "../components/ModelCard";
@@ -28,9 +29,11 @@ import { rankByFit, pickFlagships, applyCatalogFilters } from "../utils/hardware
 import { isTestedModel } from "../utils/testedModels";
 import { isKbAssistant, hasMissingWeights, findBaseModelName } from "../utils/modelWeights";
 import { fetchDeleteDependents, parseConflictDependents } from "../utils/deleteGuard";
+import { formatNumber } from "../i18n/format";
 
 export default function LandingPage() {
   const log = createLogger("LandingPage");
+  const { t } = useTranslation();
 
   const { open, completionCount } = useDownloadModal();
   const navigate = useNavigate();
@@ -78,20 +81,22 @@ export default function LandingPage() {
     }
   };
 
+  const unknown = t("common:status.unknown");
+
   const transformRemote = (model) => {
     const metadata = parseMetadata(model.model_metadata);
     return {
       id: model.id,
       name: model.name,
-      size: metadata.size || "Unknown",
+      size: metadata.size || unknown,
       // Fields the details modal reads, derived from the parsed metadata.
-      parameters: metadata.parameters || (model.param_size ? `${model.param_size}B` : "Unknown"),
-      downloads: metadata.downloads || "Unknown",
-      likes: metadata.likes || "Unknown",
-      author: metadata.author || "Unknown",
-      library: metadata.library || "Unknown",
-      pipeline: metadata.pipeline || "Unknown",
-      lastUpdate: metadata.last_modified || "Unknown",
+      parameters: metadata.parameters || (model.param_size ? `${model.param_size}B` : unknown),
+      downloads: metadata.downloads || unknown,
+      likes: metadata.likes || unknown,
+      author: metadata.author || unknown,
+      library: metadata.library || unknown,
+      pipeline: metadata.pipeline || unknown,
+      lastUpdate: metadata.last_modified || unknown,
       description: model.description,
       runnable: model.runnable !== false,
       is_base: model.is_base === true,
@@ -110,12 +115,12 @@ export default function LandingPage() {
     return {
       id: model.id,
       name: model.name,
-      size: metadata.size || "Unknown",
-      parameters: metadata.parameters || "Unknown",
+      size: metadata.size || unknown,
+      parameters: metadata.parameters || unknown,
       // Measured size in billions; the very-small-model note (#381) reads it
       // before falling back to the metadata string above.
       param_size: model.param_size,
-      lastUpdate: metadata.last_modified || "Unknown",
+      lastUpdate: metadata.last_modified || unknown,
       isOnline: false,
       description: model.description,
       // Orphan-model UX (#225/#208): `link` ties a KB assistant to the base
@@ -170,8 +175,7 @@ export default function LandingPage() {
       } catch (error) {
         setHardwareInfo({
           backend_type: "unknown",
-          error:
-            "Failed to evaluate hardware capabilities. Please contact the Erudi team for support.",
+          error: t("landing:messages.hardwareEvaluationFailed"),
         });
       } finally {
         setLoading(false);
@@ -195,6 +199,7 @@ export default function LandingPage() {
     fetchHardwareEvaluation();
     fetchMachineDetail();
     refreshCatalog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshCatalog]);
 
   const closeWelcome = () => {
@@ -219,14 +224,10 @@ export default function LandingPage() {
         const localData = await res.json();
         setLocalModels(localData.map(transformLocal));
       } else {
-        setErrorMessage(
-          "Failed to fetch local models. Please try again and contact the Erudi team for support."
-        );
+        setErrorMessage(t("landing:messages.fetchLocalModelsFailed"));
       }
     } catch (err) {
-      setErrorMessage(
-        "Failed to fetch local models. Please try again and contact the Erudi team for support."
-      );
+      setErrorMessage(t("landing:messages.fetchLocalModelsFailed"));
     } finally {
       await new Promise((resolve) => setTimeout(resolve, 600));
       setModelsLoading(false);
@@ -284,7 +285,7 @@ export default function LandingPage() {
   const machine = {
     chip: machineDetail?.mlx_chip_model
       ? `Apple ${machineDetail.mlx_chip_model}`
-      : machineDetail?.gpu_name || machineDetail?.cpu_model || "Your hardware",
+      : machineDetail?.gpu_name || machineDetail?.cpu_model || t("landing:machine.fallbackChip"),
     backend: (hardwareInfo?.backend_type || "").toUpperCase(),
     memoryGb: machineDetail?.total_memory_gb ? Math.round(machineDetail.total_memory_gb) : null,
     gpuCores: machineDetail?.mlx_gpu_cores || null,
@@ -352,7 +353,7 @@ export default function LandingPage() {
         method: "DELETE",
       });
       if (response.ok) {
-        setSuccessMessage(`Model ${modelToDelete.name} has been successfully deleted.`);
+        setSuccessMessage(t("landing:messages.modelDeleted", { name: modelToDelete.name }));
         await reloadLocalModels();
         if (localModelsRef.current) {
           localModelsRef.current.reloadLocalModels();
@@ -372,9 +373,7 @@ export default function LandingPage() {
       }
     } catch (error) {
       log.error("Failed to delete model:", error);
-      setErrorMessage(
-        "Failed to delete the model. Please try again and contact the Erudi team for support."
-      );
+      setErrorMessage(t("landing:messages.deleteModelFailed"));
     }
   };
 
@@ -392,16 +391,16 @@ export default function LandingPage() {
       if (!response.ok) {
         throw new Error(`Failed to rebind assistant: ${response.status}`);
       }
-      setSuccessMessage(`${assistant.name} now uses the weights of ${target.name}.`);
+      setSuccessMessage(
+        t("landing:messages.assistantRebound", { assistant: assistant.name, target: target.name })
+      );
       await reloadLocalModels();
       if (localModelsRef.current) {
         localModelsRef.current.reloadLocalModels();
       }
     } catch (error) {
       log.error("Failed to rebind assistant:", error);
-      setErrorMessage(
-        "Failed to re-bind the assistant. Please try again and contact the Erudi team for support."
-      );
+      setErrorMessage(t("landing:messages.rebindFailed"));
     }
   };
   const handleToggleBrainSidebar = () => setBrainSidebarCollapsed(!brainSidebarCollapsed);
@@ -433,7 +432,7 @@ export default function LandingPage() {
         </div>
         <div className="mb-6 flex-shrink-0">
           <ModelCollapsibleSection
-            title="Local Models"
+            kind="local"
             ref={localModelsRef}
             onLocalModelRefresh={handleMainPageRefresh}
           />
@@ -461,10 +460,10 @@ export default function LandingPage() {
           {/* Local models */}
           <section>
             <div className="flex items-center justify-between mb-4">
-              <span className="eyebrow">Installed</span>
+              <span className="eyebrow">{t("landing:installed.eyebrow")}</span>
               <button
                 onClick={() => reloadLocalModels()}
-                title="Refresh installed models"
+                title={t("landing:installed.refreshTitle")}
                 className="text-[var(--ink-dim)] hover:text-[var(--ink)] transition-colors"
               >
                 <RefreshCcw className="w-4 h-4" />
@@ -473,7 +472,7 @@ export default function LandingPage() {
             {modelsLoading ? (
               <div className="flex items-center gap-2 text-[var(--ink-faint)] mono text-xs py-6">
                 <span className="w-2 h-2 rounded-full bg-[var(--fit-good)] animate-pulse" />
-                loading installed models…
+                {t("landing:installed.loading")}
               </div>
             ) : localModels.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -496,11 +495,18 @@ export default function LandingPage() {
               </div>
             ) : (
               <p className="text-[var(--ink-dim)] text-sm">
-                No models installed yet. Pick one below. Your machine handles {""}
-                <span className="mono text-[var(--fit-good)]">
-                  {range ? `${range.min}–${range.max}B` : "small"}
-                </span>{" "}
-                comfortably.
+                <Trans
+                  i18nKey="landing:installed.empty"
+                  values={{
+                    range: range
+                      ? t("landing:installed.range", {
+                          min: formatNumber(range.min),
+                          max: formatNumber(range.max),
+                        })
+                      : t("landing:installed.rangeFallback"),
+                  }}
+                  components={{ fit: <span className="mono text-[var(--fit-good)]" /> }}
+                />
               </p>
             )}
           </section>
@@ -508,9 +514,11 @@ export default function LandingPage() {
           {/* Recommended for your machine — flagship, instruct-only picks */}
           {recommended.length > 0 && (
             <section id="explore-recommended" className="rise scroll-mt-6">
-              <span className="eyebrow !text-[var(--fit-good)]">Recommended for your machine</span>
+              <span className="eyebrow !text-[var(--fit-good)]">
+                {t("landing:recommended.eyebrow")}
+              </span>
               <p className="text-[13px] text-[var(--ink-dim)] mt-1.5 mb-4">
-                Popular, ready-to-chat models that run well on your {machine.chip}.
+                {t("landing:recommended.description", { chip: machine.chip })}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {recommended.map((model) => (
@@ -540,12 +548,12 @@ export default function LandingPage() {
           {/* Browse by capability */}
           <section>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-              <span className="eyebrow">Browse by capability</span>
+              <span className="eyebrow">{t("landing:browse.eyebrow")}</span>
               <CatalogFilters value={filters} onChange={setFilters} hasRange={!!range} />
             </div>
             {filtersActive && filteredBase.length === 0 ? (
               <p className="text-[var(--ink-dim)] text-sm py-8 text-center">
-                No models match these filters. Widen the size range or turn off “Fits my machine”.
+                {t("landing:browse.noMatch")}
               </p>
             ) : (
               <CategorySections
@@ -567,14 +575,14 @@ export default function LandingPage() {
                 onClick={() => setCommunityOpen((o) => !o)}
               >
                 <span className="eyebrow group-hover:text-[var(--ink)] transition-colors">
-                  Community fine-tunes
+                  {t("landing:community.title")}
                 </span>
                 <span className="mono text-[11px] text-[var(--ink-faint)]">
-                  {filteredCommunity.length}
+                  {formatNumber(filteredCommunity.length)}
                 </span>
                 <span className="h-px flex-1 bg-white/10" />
                 <span className="mono text-[11px] text-[var(--ink-dim)] group-hover:text-[var(--fit-good)] transition-colors">
-                  {communityOpen ? "Hide" : "Show all"}
+                  {communityOpen ? t("landing:community.hide") : t("landing:community.showAll")}
                 </span>
               </button>
               {communityOpen && (
@@ -617,14 +625,14 @@ export default function LandingPage() {
       />
       <MessageModal
         isOpen={!!successMessage}
-        title="Success"
+        title={t("landing:messages.successTitle")}
         message={successMessage}
         type="success"
         onClose={() => setSuccessMessage("")}
       />
       <MessageModal
         isOpen={!!errorMessage}
-        title="Error"
+        title={t("common:status.error")}
         message={errorMessage}
         type="error"
         onClose={() => setErrorMessage("")}

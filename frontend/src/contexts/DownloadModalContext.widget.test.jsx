@@ -109,7 +109,7 @@ describe("Download widget progress readout", () => {
 
     expect(screen.getByText(/Downloading:/).textContent).toContain("Base Model");
     expect(screen.getByText("1h 1m")).toBeTruthy(); // 3700s
-    expect(screen.getByText("42.4 %")).toBeTruthy();
+    expect(screen.getByText("42.4%")).toBeTruthy(); // formatPercent, locale-aware (#385)
   });
 
   it("keeps the bottom-left spinner click-through so it cannot swallow the Settings gear", async () => {

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import Sidebar from "../components/Sidebar";
 import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import QuestionInput from "../components/QuestionInput";
@@ -18,6 +19,22 @@ import { defaultsFor } from "../utils/samplingDefaults";
 import { getDisplayContent } from "../utils/messageContent";
 
 const log = createLogger("ConversationPage");
+
+// Wire sentinel the backend persists on error turns; getDisplayContent and the
+// bubble styling detect it, so it stays untranslated and only the text after it
+// is localized.
+const ERROR_SENTINEL = "[ERROR_MESSAGE_SYSTEM]";
+
+// Presentation-only tokens kept out of the JSX tree (they are class names and
+// CSS, not copy).
+const HIDE_SCROLLBAR_CSS = "::-webkit-scrollbar { display: none; }";
+const alignmentClassFor = (isUser) => (isUser ? "items-end" : "items-start");
+const bubbleClassFor = (isUser, isError) => {
+  if (isUser) {
+    return "bg-[#191919] ml-auto rounded-tr-none text-white";
+  }
+  return isError ? "text-red-400 mr-auto rounded-tl-none" : " text-white mr-auto rounded-tl-none";
+};
 
 // Reconcile a fetched message list with the current one (#303). Fetched DB rows
 // win, but trailing LOCAL messages the fetch does not cover yet are kept: the
@@ -43,6 +60,7 @@ const mergeFetchedMessages = (prev, fetched) => {
 };
 
 export default function ConversationPage() {
+  const { t } = useTranslation();
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -331,7 +349,7 @@ export default function ConversationPage() {
                     setConversations((prevConvs) =>
                       prevConvs.map((conv) =>
                         conv.id === Number(id)
-                          ? { ...conv, name: fullTitle.trim() || "New Conversation" }
+                          ? { ...conv, name: fullTitle.trim() || t("chat:conversation.untitled") }
                           : conv
                       )
                     );
@@ -407,9 +425,7 @@ export default function ConversationPage() {
                 // (getDisplayContent / bubbleClass detect the sentinel substring).
                 // The backend error text is already sentinel-prefixed.
                 sawError = true;
-                answerText =
-                  evt.text ||
-                  "[ERROR_MESSAGE_SYSTEM] I apologize, but I encountered an error while generating a response. Please try asking your question again.";
+                answerText = evt.text || `${ERROR_SENTINEL} ${t("chat:errors.generationFailed")}`;
                 break;
               case "done":
                 sawDone = true;
@@ -466,8 +482,7 @@ export default function ConversationPage() {
             }
           } catch (streamError) {
             log.error("Streaming error during response generation", streamError);
-            answerText +=
-              "\n\n[ERROR_MESSAGE_SYSTEM] Connection interrupted while generating response.";
+            answerText += `\n\n${ERROR_SENTINEL} ${t("chat:errors.connectionInterrupted")}`;
             sawError = true;
             flushMessage();
           } finally {
@@ -500,8 +515,7 @@ export default function ConversationPage() {
             log.error("Failed to store error message", storeError);
           }
 
-          assistantMessage.content =
-            "[ERROR_MESSAGE_SYSTEM] I apologize, but I encountered an error while generating a response. Please try asking your question again.";
+          assistantMessage.content = `${ERROR_SENTINEL} ${t("chat:errors.generationFailed")}`;
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantMessage.id
@@ -524,7 +538,7 @@ export default function ConversationPage() {
 
       setLoading(false);
     },
-    [id, fetchMessagesAndConversations]
+    [id, fetchMessagesAndConversations, t]
   );
 
   const handleAsk = useCallback(
@@ -783,13 +797,13 @@ export default function ConversationPage() {
       >
         {!collapsed && (
           <>
-            <h1 className="text-3xl font-bold mb-6 flex-shrink-0">History</h1>
+            <h1 className="text-3xl font-bold mb-6 flex-shrink-0">{t("chat:history.title")}</h1>
             {/*<ChatCollapsibleSection title="Hot Chats"
               disabled={loading}
             />} coming in next version*/}
             <div className="flex-1 mb-4 overflow-hidden">
               <ChatCollapsibleSection
-                title="Previous Chats"
+                title={t("chat:history.previousChats")}
                 items={conversations}
                 selectedId={Number(id)}
                 onSelect={handleConversationClick}
@@ -818,7 +832,7 @@ export default function ConversationPage() {
             currentModel={currentModel}
             onModelChange={handleModelChange}
             pickerAttention={isModelOrphaned}
-            pickerAttentionMessage="Please select a model"
+            pickerAttentionMessage={t("chat:header.pickerAttention")}
             showWebSearch
             initialWebSearch={webSearch}
             onWebSearchChange={handleWebSearchChange}
@@ -833,17 +847,13 @@ export default function ConversationPage() {
             msOverflowStyle: "none",
           }}
         >
-          <style>{"::-webkit-scrollbar { display: none; }"}</style>
+          <style>{HIDE_SCROLLBAR_CSS}</style>
           <div className="flex flex-col gap-6">
             {messages.map((msg) => {
               const isUser = msg.sender === "user";
               const isError = !isUser && msg.content.includes("[ERROR_MESSAGE_SYSTEM]");
-              const alignmentClass = isUser ? "items-end" : "items-start";
-              const bubbleClass = isUser
-                ? "bg-[#191919] ml-auto rounded-tr-none text-white"
-                : isError
-                  ? "text-red-400 mr-auto rounded-tl-none"
-                  : " text-white mr-auto rounded-tl-none";
+              const alignmentClass = alignmentClassFor(isUser);
+              const bubbleClass = bubbleClassFor(isUser, isError);
 
               // Reasoning/trace strip (#90): only for assistant turns that carried
               // non-answer activity, never for error turns (they have no trace,
@@ -883,7 +893,7 @@ export default function ConversationPage() {
                           <img
                             key={i}
                             src={src}
-                            alt={`attachment ${i + 1}`}
+                            alt={t("chat:message.attachmentAlt", { index: i + 1 })}
                             className="max-h-64 max-w-full rounded-xl border border-white/10"
                           />
                         ))}
@@ -900,12 +910,11 @@ export default function ConversationPage() {
                       {showTypingIndicator ? (
                         <div className="flex flex-col gap-2">
                           <div className="flex items-start pt-1">
-                            <TypingIndicator size={8} colorClass="bg-gray-400" className="-mt-1" />
+                            <TypingIndicator size={8} className="-mt-1" />
                           </div>
                           {firstReplyPending && (
                             <div className="text-xs text-gray-400 italic mt-1">
-                              First response may take a bit longer while loading the model into
-                              memory...
+                              {t("chat:message.firstReplyHint")}
                             </div>
                           )}
                         </div>
@@ -924,7 +933,7 @@ export default function ConversationPage() {
                                   key={i}
                                   className="inline-flex items-center gap-1 text-xs text-[var(--ink-faint)] border border-[var(--line)] rounded px-2 py-0.5 w-fit"
                                 >
-                                  🖼 image attachment
+                                  {t("chat:message.imagePlaceholder")}
                                 </span>
                               ));
                             })()}
@@ -950,7 +959,7 @@ export default function ConversationPage() {
                         });
                       }}
                       className="text-gray-400 hover:text-white transition-colors"
-                      title="Copy message"
+                      title={t("chat:message.copy")}
                     >
                       {copiedMessageId === msg.id ? (
                         <Check size={16} className="text-green-400" />
@@ -962,7 +971,7 @@ export default function ConversationPage() {
                     <button
                       onClick={() => toggleStar(msg.id)}
                       className="text-gray-400 hover:text-white transition-colors"
-                      title="Star message"
+                      title={t("chat:message.star")}
                     >
                       <Star
                         size={16}
@@ -999,7 +1008,7 @@ export default function ConversationPage() {
           setCustomPrompt(newPrompt);
           saveConversationParameters(settings, newPrompt);
         }}
-        title="Customize System Prompt"
+        title={t("chat:prompt.title")}
       />
     </div>
   );

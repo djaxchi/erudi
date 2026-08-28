@@ -2,6 +2,7 @@ import React from "react";
 import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, AlertTriangle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 ErrorModal.propTypes = {
   isOpen: PropTypes.bool.isRequired,
@@ -10,6 +11,7 @@ ErrorModal.propTypes = {
 };
 
 export default function ErrorModal({ errorMessage, onClose }) {
+  const { t } = useTranslation();
   return (
     <AnimatePresence>
       {errorMessage && (
@@ -52,7 +54,9 @@ export default function ErrorModal({ errorMessage, onClose }) {
                     <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center">
                       <AlertTriangle className="w-4 h-4 text-red-400" />
                     </div>
-                    <h2 className="text-xl font-semibold tracking-tight text-[#F2F7F4]">Error</h2>
+                    <h2 className="text-xl font-semibold tracking-tight text-[#F2F7F4]">
+                      {t("common:status.error")}
+                    </h2>
                   </div>
                   <button
                     onClick={onClose}
@@ -80,7 +84,7 @@ export default function ErrorModal({ errorMessage, onClose }) {
                       "transition active:scale-95",
                     ].join(" ")}
                   >
-                    Close
+                    {t("common:actions.close")}
                   </button>
                 </div>
               </div>

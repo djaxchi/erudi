@@ -65,6 +65,13 @@ contextBridge.exposeInMainWorld("logAPI", {
   send: (entry) => ipcRenderer.send("renderer-log", entry),
 });
 
+// Interface language bridge (#385): the renderer owns the choice (i18next +
+// the user_settings API) and tells main so the native menu and dialogs are
+// rebuilt in the same language. Fire-and-forget, sent at boot and on change.
+contextBridge.exposeInMainWorld("languageAPI", {
+  set: (code) => ipcRenderer.send("language:set", code),
+});
+
 // Auto-updater bridge
 contextBridge.exposeInMainWorld("updaterAPI", {
   // Register a callback for updater events from main process.

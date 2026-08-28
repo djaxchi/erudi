@@ -1,0 +1,128 @@
+{
+  "backend": {
+    "defaultTitle": "Backend failed to start",
+    "footerWithCode": "Error code: {{code}} · {{message}}",
+    "checkLogsAt": "Check the logs in {{path}} and contact us.",
+    "checkLogs": "Check the backend logs and contact us.",
+    "codes": {
+      "portInUse": {
+        "title": "Port already in use",
+        "detail": "Another process is using the port Erudi needs for its local server.",
+        "hint": "Quit any other running Erudi (or the app holding the port) and relaunch."
+      },
+      "noPortAvailable": {
+        "title": "No free port",
+        "detail": "Erudi could not find a free port to start its local server.",
+        "hint": "Close other apps using local ports, then relaunch Erudi."
+      },
+      "portTimeout": {
+        "title": "Backend did not start in time",
+        "detail": "The local server did not come up within the startup window.",
+        "hint": "Relaunch Erudi. If it keeps happening, check the backend log."
+      },
+      "crashBeforeReady": {
+        "title": "Backend crashed on startup",
+        "detail": "The local server stopped before it became ready.",
+        "hint": "Relaunch Erudi; if it persists, check the backend log."
+      },
+      "importError": {
+        "title": "Backend failed to load",
+        "detail": "A required backend component could not be loaded.",
+        "hint": "Reinstall or update Erudi, then check the backend log."
+      },
+      "dataPrepError": {
+        "title": "Could not prepare app data",
+        "detail": "Erudi could not set up its data directory.",
+        "hint": "Check available disk space and permissions, then relaunch."
+      },
+      "databaseError": {
+        "title": "Database error",
+        "detail": "Erudi's local database failed to start.",
+        "hint": "Relaunch Erudi; if it persists, check the backend log."
+      },
+      "cudaRuntimeError": {
+        "title": "GPU runtime error",
+        "detail": "The CUDA runtime failed to initialize.",
+        "hint": "Update your NVIDIA driver, or use the CPU build of Erudi."
+      },
+      "missingDependency": {
+        "title": "Missing system dependency",
+        "detail": "A system library Erudi needs is missing.",
+        "hint": "Reinstall Erudi, then check the backend log."
+      },
+      "backendNotFound": {
+        "title": "Backend not found",
+        "detail": "The bundled backend executable could not be located.",
+        "hint": "Reinstall Erudi."
+      },
+      "backendStartupFailed": {
+        "title": "Backend failed to start",
+        "detail": "The local server could not start after several attempts.",
+        "hint": "Relaunch Erudi; if it persists, check the backend log."
+      },
+      "backendExitError": {
+        "title": "Backend stopped unexpectedly",
+        "detail": "The local server process exited with an error.",
+        "hint": "Relaunch Erudi; if it persists, check the backend log."
+      },
+      "backendSpawnFailed": {
+        "title": "Backend could not be launched",
+        "detail": "Erudi could not start its local server process.",
+        "hint": "Reinstall Erudi (or allow it through antivirus/SmartScreen), then relaunch."
+      },
+      "unexpectedError": {
+        "title": "Unexpected startup error",
+        "detail": "Something went wrong while starting Erudi.",
+        "hint": "Relaunch Erudi, then check the backend log."
+      },
+      "pollingError": {
+        "title": "Lost track of the backend",
+        "detail": "Erudi stopped monitoring the backend during startup.",
+        "hint": "Relaunch Erudi."
+      },
+      "backendUnreachable": {
+        "title": "Can't reach the backend",
+        "detail": "Erudi's local server isn't responding.",
+        "hint": "Relaunch Erudi; if it persists, check the backend log."
+      },
+      "unknown": {
+        "title": "Backend failed to start",
+        "detail": "Erudi's local server didn't start.",
+        "hint": "Relaunch Erudi; if it persists, check the backend log."
+      }
+    }
+  },
+  "connection": {
+    "restart": "Restart",
+    "restartTitle": "Restart the backend",
+    "unreachable": {
+      "label": "Backend unreachable",
+      "title": "The local backend is not responding",
+      "tooltip": "The local backend stopped responding. Restart it to reconnect."
+    },
+    "recovering": {
+      "label": "Restoring the database...",
+      "title": "The local database is recovering",
+      "tooltip": "The local database is restoring. Your data is safe; this clears on its own."
+    },
+    "databaseError": {
+      "label": "Database error",
+      "title": "The local database hit an error",
+      "tooltip": "The local database hit an error. Restart the backend to recover."
+    },
+    "offline": {
+      "label": "Offline",
+      "title": "No internet connection",
+      "tooltip": "No internet: the catalog and downloads are unavailable, but chatting with installed models still works."
+    },
+    "connected": {
+      "label": "Connected",
+      "title": "Connected to the internet",
+      "tooltip": "You can chat with installed models offline. Installing new ones needs a connection."
+    }
+  },
+  "api": {
+    "timeout": "Request timeout",
+    "httpStatus": "API Error: {{status}}"
+  }
+}

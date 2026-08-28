@@ -1,7 +1,9 @@
 import React from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 
 export default function HardwareLoadingPopup({ show, loading, onClose }) {
+  const { t } = useTranslation();
   if (!show) {
     return null;
   }
@@ -11,7 +13,9 @@ export default function HardwareLoadingPopup({ show, loading, onClose }) {
         {/* Header */}
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center justify-between">
-            <h3 className="text-xl font-bold text-white flex items-center gap-3">⏳ Please Wait</h3>
+            <h3 className="text-xl font-bold text-white flex items-center gap-3">
+              {t("downloads:hardwareWait.title")}
+            </h3>
             <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -29,17 +33,15 @@ export default function HardwareLoadingPopup({ show, loading, onClose }) {
         <div className="p-6">
           <div className="text-center">
             <div className="w-12 h-12 border-3 border-emerald-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-white font-medium mb-2">Evaluating Hardware</p>
-            <p className="text-gray-400 text-sm mb-4">
-              We&apos;re still checking your system capabilities. This will only take a moment.
-            </p>
+            <p className="text-white font-medium mb-2">{t("downloads:hardwareWait.evaluating")}</p>
+            <p className="text-gray-400 text-sm mb-4">{t("downloads:hardwareWait.body")}</p>
             <div className="space-y-2 text-xs text-gray-500">
               <div className="flex items-center justify-between">
-                <span>Hardware Evaluation</span>
+                <span>{t("downloads:hardwareWait.stepLabel")}</span>
                 {loading ? (
-                  <span className="text-yellow-400">⏳ Loading...</span>
+                  <span className="text-yellow-400">{t("downloads:hardwareWait.stepLoading")}</span>
                 ) : (
-                  <span className="text-green-400">✅ Complete</span>
+                  <span className="text-green-400">{t("downloads:hardwareWait.stepComplete")}</span>
                 )}
               </div>
             </div>
@@ -53,7 +55,7 @@ export default function HardwareLoadingPopup({ show, loading, onClose }) {
               onClick={onClose}
               className="text-gray-400 hover:text-white transition-colors text-sm"
             >
-              Close
+              {t("common:actions.close")}
             </button>
           </div>
         </div>

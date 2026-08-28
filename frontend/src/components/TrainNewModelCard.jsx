@@ -1,5 +1,6 @@
 import React from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import GradientBox from "./GradientBox";
@@ -13,6 +14,7 @@ TrainNewModelCard.defaultProps = {
 };
 
 export default function TrainNewModelCard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const handleAttachKnowledgeBase = () => navigate("/erudi/attach_knowledge_base");
 
@@ -25,13 +27,14 @@ export default function TrainNewModelCard() {
       >
         <GradientBox
           className="w-full h-full"
+          // eslint-disable-next-line i18next/no-literal-string -- Tailwind class list, not copy
           contentClassName="flex items-center justify-center h-full"
         >
           <Plus className="w-20 h-20 text-white" />
         </GradientBox>
       </div>
 
-      <p className="mt-4 text-white text-lg">Attach Knowledge Base</p>
+      <p className="mt-4 text-white text-lg">{t("models:attachKnowledgeBase")}</p>
     </div>
   );
 }

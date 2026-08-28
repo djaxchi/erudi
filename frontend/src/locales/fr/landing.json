@@ -1,0 +1,99 @@
+{
+  "sidebar": {
+    "localModels": "Modèles locaux",
+    "remoteModels": "Modèles distants",
+    "localTooltip": "Modèles téléchargés et prêts à l'emploi sur votre ordinateur. Ils sont disponibles pour la discussion et la spécialisation !",
+    "remoteTooltip": "Modèles disponibles au téléchargement. Cliquez sur un modèle pour le télécharger sur votre stockage local.",
+    "searchPlaceholder": "Vous cherchez un modèle ?",
+    "loading": "Chargement des modèles...",
+    "deleteModel": "Supprimer le modèle",
+    "unavailableTitle": "Indisponible sur votre matériel",
+    "unavailableBadge": "indisponible",
+    "noneFound": "Aucun modèle trouvé...",
+    "noneLocal": "Aucun modèle ici...",
+    "noneRemote": "Aucun modèle disponible..."
+  },
+  "installed": {
+    "eyebrow": "Installés",
+    "refreshTitle": "Actualiser les modèles installés",
+    "loading": "chargement des modèles installés…",
+    "empty": "Aucun modèle installé pour l'instant. Choisissez-en un ci-dessous. Votre machine gère confortablement <fit>{{range}}</fit>.",
+    "range": "{{min}}–{{max}}B",
+    "rangeFallback": "les petits modèles"
+  },
+  "machine": {
+    "fallbackChip": "Votre matériel"
+  },
+  "recommended": {
+    "eyebrow": "Recommandés pour votre machine",
+    "description": "Des modèles populaires, prêts à discuter, qui tournent bien sur votre {{chip}}."
+  },
+  "browse": {
+    "eyebrow": "Parcourir par capacité",
+    "noMatch": "Aucun modèle ne correspond à ces filtres. Élargissez la plage de taille ou désactivez « Compatible avec ma machine »."
+  },
+  "community": {
+    "title": "Fine-tunes communautaires",
+    "hide": "Masquer",
+    "showAll": "Tout afficher"
+  },
+  "messages": {
+    "successTitle": "Succès",
+    "modelDeleted": "Le modèle {{name}} a bien été supprimé.",
+    "assistantRebound": "{{assistant}} utilise désormais les poids de {{target}}.",
+    "fetchLocalModelsFailed": "Impossible de récupérer les modèles locaux. Veuillez réessayer et contacter l'équipe Erudi pour obtenir de l'aide.",
+    "fetchModelsFailed": "Impossible de récupérer les modèles disponibles. Veuillez réessayer et contacter l'équipe Erudi pour obtenir de l'aide.",
+    "deleteModelFailed": "Impossible de supprimer le modèle. Veuillez réessayer et contacter l'équipe Erudi pour obtenir de l'aide.",
+    "rebindFailed": "Impossible de réassocier l'assistant. Veuillez réessayer et contacter l'équipe Erudi pour obtenir de l'aide.",
+    "hardwareEvaluationFailed": "Impossible d'évaluer les capacités de votre matériel. Veuillez contacter l'équipe Erudi pour obtenir de l'aide.",
+    "downloadFailed": "Échec du téléchargement."
+  },
+  "welcome": {
+    "title": "Bienvenue !",
+    "intro": "<logo/> est une plateforme <accent>personnelle</accent> d'entraînement d'IA.",
+    "tagline": "Préparez-vous à discuter avec vos <accent>propres</accent> modèles d'IA et à les <accent>spécialiser</accent> !",
+    "notice": {
+      "title": "Avis important",
+      "local": "Erudi fonctionne entièrement sur votre appareil — aucune donnée ne quitte votre machine. Les performances dépendent de votre matériel.",
+      "earlyRelease": "Il s'agit d'une première version et quelques imperfections peuvent subsister. Si vous rencontrez un problème, nous serions ravis d'en être informés.",
+      "feedback": "Vos retours façonnent ce que nous construisons ensuite — merci d'utiliser Erudi.",
+      "closing": "Bienvenue dans votre espace d'IA privé"
+    },
+    "hardware": {
+      "title": "Évaluation du matériel",
+      "evaluating": "Nous évaluons votre matériel...",
+      "failed": "⚠️ Échec de l'évaluation",
+      "chatPerformance": "Performance en discussion"
+    },
+    "label": {
+      "excellent": "Excellent",
+      "good": "Bon",
+      "fair": "Correct",
+      "poor": "Faible",
+      "weak": "Très faible"
+    },
+    "recommendation": {
+      "excellent": {
+        "title": "Matériel excellent ! 🚀",
+        "description": "Votre système peut faire tourner sans difficulté n'importe quel modèle de 1B à 12B paramètres. Nous vous recommandons d'essayer la puissance de Mistral 8B ou Gemma 12B pour une expérience optimale. Nous travaillons aussi à la prise en charge de modèles bien plus grands — restez à l'écoute !"
+      },
+      "good": {
+        "title": "Bonnes performances 👍",
+        "description": "Votre matériel fait tourner sans à-coups les modèles de 1B à 12B paramètres. Mistral 8B et Gemma 12B sont confortablement à votre portée, et les modèles plus petits sembleront instantanés."
+      },
+      "fair": {
+        "title": "Performances correctes",
+        "description": "Bonne nouvelle : les modèles comme Gemma 4B et plus petits fonctionneront bien sur votre machine. Les modèles plus grands, comme Mistral 7B, fonctionneront aussi, mais attendez-vous à quelques lenteurs."
+      },
+      "limited": {
+        "title": "Optimisé pour les petits modèles 💡",
+        "description": "Nous vous recommandons de commencer par nos petits modèles optimisés comme Gemma 1B, 2B ou 4B. Ces modèles sont spécialement ajustés pour offrir des résultats réels et impressionnants, même sur un matériel limité. Vous pouvez tout de même essayer des modèles plus grands, mais les performances peuvent varier."
+      }
+    },
+    "getStarted": "Commencer"
+  },
+  "comingSoon": {
+    "title": "Bientôt disponible",
+    "body": "La fonctionnalité <feature>{{name}}</feature> est en cours de développement et sera disponible dans une prochaine mise à jour."
+  }
+}

@@ -102,10 +102,10 @@ describe("ArenaPage per-panel failure isolation", () => {
     fireEvent.click(screen.getByText("SEND_PLAIN"));
 
     // The failing panel surfaces the error marker...
-    expect(await screen.findByText(/\[Erreur\]/)).toBeTruthy();
+    expect(await screen.findByText(/\[Error\]/)).toBeTruthy();
     // ...while the healthy panel still shows its streamed answer.
     expect(await screen.findByText("Paris")).toBeTruthy();
-    expect(screen.getAllByText(/\[Erreur\]/)).toHaveLength(1);
+    expect(screen.getAllByText(/\[Error\]/)).toHaveLength(1);
   });
 
   it("reports [Model not found] without any request for an unknown panel model", async () => {

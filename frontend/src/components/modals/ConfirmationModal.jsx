@@ -1,6 +1,7 @@
 import React from "react";
 import PropTypes from "prop-types";
 import { motion, AnimatePresence } from "framer-motion";
+import { Trans, useTranslation } from "react-i18next";
 
 /**
  * Props:
@@ -10,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
  * - isOpen: boolean
  */
 export default function ConfirmationModal({ text, isOpen, onConfirm, onCancel }) {
+  const { t } = useTranslation();
   return (
     <AnimatePresence>
       {isOpen && (
@@ -47,12 +49,13 @@ export default function ConfirmationModal({ text, isOpen, onConfirm, onCancel })
               {/* Content */}
               <div className="relative z-10 p-6">
                 <h2 className="text-xl font-semibold tracking-tight text-[#F2F7F4] mb-2">
-                  Are you sure you want to download{" "}
-                  <span className="font-bold text-emerald-400">{text}</span>?
+                  <Trans
+                    i18nKey="chat:download.confirmTitle"
+                    values={{ name: text }}
+                    components={{ model: <span className="font-bold text-emerald-400" /> }}
+                  />
                 </h2>
-                <p className="text-sm text-gray-300/80 mb-6">
-                  It will be installed locally on your system.
-                </p>
+                <p className="text-sm text-gray-300/80 mb-6">{t("chat:download.confirmBody")}</p>
 
                 <div className="flex items-center justify-end gap-3">
                   <button
@@ -64,7 +67,7 @@ export default function ConfirmationModal({ text, isOpen, onConfirm, onCancel })
                       "transition active:scale-95",
                     ].join(" ")}
                   >
-                    Cancel
+                    {t("common:actions.cancel")}
                   </button>
                   <button
                     onClick={onConfirm}
@@ -75,7 +78,7 @@ export default function ConfirmationModal({ text, isOpen, onConfirm, onCancel })
                       "transition active:scale-95",
                     ].join(" ")}
                   >
-                    Download
+                    {t("common:actions.download")}
                   </button>
                 </div>
               </div>

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import { RefreshCcw, Check, X } from "lucide-react";
 import { createLogger } from "../utils/logger";
 const log = createLogger("ModelLibrary");
@@ -38,6 +39,7 @@ export default function ModelLibrary({
   onModelNameChange,
   onRefresh,
 }) {
+  const { t } = useTranslation();
   const [isLocked, setIsLocked] = useState(false);
   const [localModelName, setLocalModelName] = useState("");
 
@@ -58,11 +60,11 @@ export default function ModelLibrary({
   return (
     <div className="flex-1 min-w-[300px] bg-[#2B2B2B] rounded-2xl p-6 text-white shadow-lg flex flex-col gap-4 border border-white/20 border-[0.5px]">
       <div className="flex items-center justify-between">
-        <h3 className="text-xl md:text-2xl font-bold">Model Library</h3>
+        <h3 className="text-xl md:text-2xl font-bold">{t("models:library.title")}</h3>
         <RefreshCcw
           className="w-4 h-4 cursor-pointer hover:rotate-90 transition"
           onClick={onRefresh}
-          title="Refresh models"
+          title={t("models:library.refresh")}
         />
       </div>
       <div
@@ -73,7 +75,7 @@ export default function ModelLibrary({
         }}
       >
         {models.length === 0 ? (
-          <div className="text-white/60 text-sm">No local LLMs found.</div>
+          <div className="text-white/60 text-sm">{t("models:library.empty")}</div>
         ) : (
           <div className="space-y-1.5">
             {models.map((model) => (
@@ -112,8 +114,10 @@ export default function ModelLibrary({
       {/* Model Name Input - moved below the list */}
       <div className="border-t border-gray-600/30 pt-4">
         <div className="mb-2">
-          <h4 className="text-sm font-semibold text-white/90">New Model Name</h4>
-          <p className="text-xs text-white/60">Choose a name for your model</p>
+          <h4 className="text-sm font-semibold text-white/90">
+            {t("models:library.newNameTitle")}
+          </h4>
+          <p className="text-xs text-white/60">{t("models:library.newNameHint")}</p>
         </div>
         <div className="flex gap-2">
           <input
@@ -122,7 +126,9 @@ export default function ModelLibrary({
                 ? "bg-gray-700/50 border-gray-600/50 text-gray-400 cursor-not-allowed"
                 : "bg-[#3A3A3A] border-gray-600/50 text-white focus:border-emerald-400/50 focus:bg-[#404040]"
             }`}
-            placeholder={selectedModel ? "Enter model name..." : "Select a model first"}
+            placeholder={
+              selectedModel ? t("models:library.namePlaceholder") : t("models:library.selectFirst")
+            }
             value={isLocked ? modelName : localModelName}
             onChange={(e) => setLocalModelName(e.target.value)}
             disabled={!selectedModel || isLocked}
@@ -136,7 +142,7 @@ export default function ModelLibrary({
                 ? "bg-red-500 hover:bg-red-600 text-white"
                 : "bg-emerald-500 hover:bg-emerald-600 text-white disabled:bg-gray-600 disabled:cursor-not-allowed"
             }`}
-            title={isLocked ? "Cancel and unlock" : "Validate and lock name"}
+            title={isLocked ? t("models:library.cancelUnlock") : t("models:library.validateLock")}
           >
             {isLocked ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
           </button>

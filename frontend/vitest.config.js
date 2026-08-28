@@ -17,6 +17,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.{js,jsx}"],
+    // Initializes i18next (English, inline resources) before every test file so
+    // components render the exact English copy the assertions expect (#385).
+    setupFiles: ["./src/test/setup.js"],
     coverage: {
       provider: "v8",
       include: ["src/**/*.{js,jsx}"],

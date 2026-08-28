@@ -142,6 +142,38 @@ def test_generation_hints_column_is_nullable_and_backfills_null(fresh_cluster):
 
 
 @pytest.mark.integration
+def test_language_column_backfills_existing_settings_row(fresh_cluster):
+    # #385: a pre-existing user_settings row (created before the language
+    # setting existed) must come out of the migration with language='en'
+    # and the column NOT NULL, so the API never serves a null language.
+    url = fresh_cluster.sqlalchemy_url
+    cfg = _alembic_config(url)
+    command.upgrade(cfg, "d1a4f7c39b52")
+    engine = create_engine(url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO user_settings (web_search_enabled) VALUES (true)")
+            )
+    finally:
+        engine.dispose()
+
+    run_migrations(fresh_cluster)
+
+    engine = create_engine(url)
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT web_search_enabled, language FROM user_settings")
+            ).one()
+            columns = {c["name"]: c for c in inspect(conn).get_columns("user_settings")}
+    finally:
+        engine.dispose()
+    assert row == (True, "en")
+    assert columns["language"]["nullable"] is False
+
+
+@pytest.mark.integration
 def test_backup_database_writes_a_dump(fresh_cluster):
     # pg_dump (custom format) of the LIVE cluster produces a non-empty snapshot.
     engine = create_engine(fresh_cluster.sqlalchemy_url)

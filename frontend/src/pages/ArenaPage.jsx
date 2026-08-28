@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import Sidebar from "../components/Sidebar";
 import GradientBox from "../components/GradientBox";
 import QuestionInput from "../components/QuestionInput";
@@ -33,6 +34,7 @@ function makePanel(id, modelName = "", models = []) {
 
 export default function ArenaPage() {
   const log = createLogger("ArenaPage");
+  const { t } = useTranslation();
 
   const [models, setModels] = useState([]);
   const [panels, setPanels] = useState([]);
@@ -154,7 +156,7 @@ export default function ArenaPage() {
     withPlaceholders.forEach((panel) => {
       const llm = models.find((m) => m.name === panel.selectedModel);
       if (!llm) {
-        buffersRef.current[panel.id].push("[Model not found]");
+        buffersRef.current[panel.id].push(t("arena:panel.modelNotFound"));
         streamingPanels.current.delete(panel.id);
         if (streamingPanels.current.size === 0) {
           setLoading(false);
@@ -185,7 +187,17 @@ export default function ArenaPage() {
           // Deliberately swallow AbortError: a user-initiated stop is not an
           // error — panels keep whatever partial text they streamed (#136 H).
           if (err?.name !== "AbortError") {
-            buffersRef.current[panel.id].push("[Erreur]");
+            // The error is flagged on the message itself rather than sniffed
+            // from its (now language-dependent) text.
+            setPanels((prev) =>
+              prev.map((p) => {
+                if (p.id !== panel.id || p.messages.length === 0) return p;
+                const msgs = [...p.messages];
+                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], error: true };
+                return { ...p, messages: msgs };
+              })
+            );
+            buffersRef.current[panel.id].push(t("arena:panel.error"));
           }
           streamingPanels.current.delete(panel.id);
           if (streamingPanels.current.size === 0) {
@@ -287,7 +299,7 @@ export default function ArenaPage() {
             }`}
             onClick={() => handleDeletePanel(panel.id)}
             disabled={panels.length <= 1}
-            title={panels.length <= 1 ? "Cannot delete the last panel" : "Delete this panel"}
+            title={panels.length <= 1 ? t("arena:panel.deleteLast") : t("arena:panel.delete")}
           >
             <Trash className="w-5 h-5 mt-2" />
           </button>
@@ -309,7 +321,7 @@ export default function ArenaPage() {
         </style>
         {panel.messages.map((msg, idx) => {
           const isUser = msg.role === "user";
-          const isError = typeof msg.content === "string" && msg.content.includes("[Erreur]");
+          const isError = msg.error === true;
           return (
             <div
               key={idx}
@@ -331,7 +343,7 @@ export default function ArenaPage() {
                         <img
                           key={i}
                           src={src}
-                          alt={`attachment ${i + 1}`}
+                          alt={t("arena:panel.attachmentAlt", { index: i + 1 })}
                           className="max-h-48 rounded-lg border border-emerald-200/20"
                         />
                       ))}
@@ -385,8 +397,8 @@ export default function ArenaPage() {
             <button
               className="rounded-full -mb-1"
               onClick={handleStop}
-              title="Stop generation"
-              aria-label="Stop generation"
+              title={t("arena:controls.stop")}
+              aria-label={t("arena:controls.stop")}
             >
               <div
                 className={[
@@ -412,7 +424,11 @@ export default function ArenaPage() {
             } ${addButtonAnimating ? "transform scale-110" : "transform scale-100"}`}
             onClick={handleAddPanel}
             disabled={panels.length >= MAX_PANELS}
-            title={panels.length >= MAX_PANELS ? "Maximum 4 panels" : "Add chat panel"}
+            title={
+              panels.length >= MAX_PANELS
+                ? t("arena:controls.maxPanels", { max: MAX_PANELS })
+                : t("arena:controls.addPanel")
+            }
           >
             {/* Glassy effect container */}
             <div
