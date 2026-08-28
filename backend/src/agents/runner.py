@@ -53,6 +53,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 from fastapi.concurrency import run_in_threadpool
 
 from src.agents.model_factory import build_chat_model
+from src.database.generation_hints import resolve_sampling_defaults
 from src.agents.think_splitter import ThinkSplitter
 from src.core import config
 from src.core.exceptions import EngineException
@@ -312,6 +313,9 @@ class AgentRunner:
                     temperature=params.temperature,
                     top_p=params.top_p,
                     max_tokens=params.max_tokens,
+                    # Per-model extra sampling keys (#388); the user-facing three
+                    # above still come from the conversation row / arena panel.
+                    sampling=resolve_sampling_defaults(llm),
                 )
                 middleware = self._build_middleware(model) if summarize else []
                 if kb_context_block:
@@ -591,6 +595,7 @@ class AgentRunner:
                     # splitter below is the safety net for models/engines where
                     # chat-template-level suppression does not apply.
                     disable_thinking=True,
+                    sampling=resolve_sampling_defaults(llm),
                 )
             except Exception:
                 logger.exception("One-shot model construction failed")

@@ -29,6 +29,7 @@ from src.agents.runner import (
     ERROR_SENTINEL,
     IMAGES_IGNORED_NOTICE,
 )
+from src.database.generation_hints import resolve_sampling_defaults
 from src.domains.conversations.repository import ConversationRepository, MessageRepository
 from src.domains.llms.repository import detect_supports_vision
 from src.domains.user_settings.repository import User_Settings_Repository
@@ -128,20 +129,28 @@ class ConversationService:
     def create_conversation(
         self,
         llm_id: int,
-        temperature: float = 0.2,
-        top_p: float = 0.5,
-        max_tokens: int = 1024,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        max_tokens: Optional[int] = None,
         custom_prompt: str = "",
         web_search_enabled: Optional[bool] = None,
     ) -> Conversation:
         """Create a new conversation with the given LLM and generation params.
 
-        ``web_search_enabled=None`` (the default) copies the GLOBAL
-        user-settings default at creation (#310); an explicit value wins (the
-        pre-conversation settings panel). The conversation owns the flag
-        afterwards — later global changes never retro-affect it.
+        ``temperature`` / ``top_p`` / ``max_tokens`` left ``None`` resolve to the
+        MODEL's defaults (#388: curated > HF generation_config > fallback, see
+        ``src.database.generation_hints``); an explicit value wins. Mirrors
+        ``web_search_enabled=None``, which copies the GLOBAL user-settings
+        default at creation (#310). The conversation owns its values afterwards
+        -- later model/global changes never retro-affect it.
         """
         logger.info(f"Creating new conversation with LLM {llm_id}")
+        if temperature is None or top_p is None or max_tokens is None:
+            defaults = resolve_sampling_defaults(
+                self.conversation_repo.get_llm_by_id(llm_id))
+            temperature = defaults.temperature if temperature is None else temperature
+            top_p = defaults.top_p if top_p is None else top_p
+            max_tokens = defaults.max_tokens if max_tokens is None else max_tokens
         if web_search_enabled is None:
             web_search_enabled = User_Settings_Repository(
                 self.db

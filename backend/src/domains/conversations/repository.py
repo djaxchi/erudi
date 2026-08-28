@@ -7,6 +7,11 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
+from src.database.generation_hints import (
+    FALLBACK_MAX_TOKENS,
+    FALLBACK_TEMPERATURE,
+    FALLBACK_TOP_P,
+)
 from src.entities.Conversation import Conversation
 from src.entities.Message import Message
 from src.entities.Llm import Llm
@@ -122,9 +127,9 @@ class ConversationRepository:
         self,
         llm_id: int,
         name: str = "New Conversation",
-        temperature: float = 0.2,
-        top_p: float = 0.5,
-        max_tokens: int = 1024,
+        temperature: float = FALLBACK_TEMPERATURE,
+        top_p: float = FALLBACK_TOP_P,
+        max_tokens: int = FALLBACK_MAX_TOKENS,
         custom_prompt: str = "",
         web_search_enabled: bool = False
     ) -> Conversation:

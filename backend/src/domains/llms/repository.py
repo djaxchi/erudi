@@ -161,6 +161,7 @@ class Llm_Repository:
         param_size: Optional[float] = None,
         link: Optional[str] = None,
         category: str = "general",
+        generation_hints: Optional[dict] = None,
     ) -> Llm:
         """Create a new LLM catalog entry.
 
@@ -188,6 +189,7 @@ class Llm_Repository:
             param_size=param_size,
             link=link,
             category=category,
+            generation_hints=generation_hints,
         )
         self.db.add(llm)
         self.db.flush()

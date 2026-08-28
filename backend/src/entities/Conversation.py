@@ -24,6 +24,11 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Text, Boolean
 from sqlalchemy.orm import relationship, validates
+from src.database.generation_hints import (
+    FALLBACK_MAX_TOKENS,
+    FALLBACK_TEMPERATURE,
+    FALLBACK_TOP_P,
+)
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
 from src.database.core import Base
@@ -67,10 +72,11 @@ class Conversation(Base):
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    # Conversation parameters
-    temperature = Column(Float, default=1.0)
-    top_p = Column(Float, default=0.95)
-    max_tokens = Column(Integer, default=1024)
+    # Conversation parameters. Column defaults = the ONE fallback (#388); the
+    # service normally resolves the model's own defaults before the row exists.
+    temperature = Column(Float, default=FALLBACK_TEMPERATURE)
+    top_p = Column(Float, default=FALLBACK_TOP_P)
+    max_tokens = Column(Integer, default=FALLBACK_MAX_TOKENS)
     custom_prompt = Column(Text, default="")
     name = Column(String(255), nullable=False, index=True, default="New Conversation")
     # Per-conversation web-search toggle (#310): copied from the GLOBAL

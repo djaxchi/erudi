@@ -28,8 +28,32 @@ Example:
         return db.create(llm)
 """
 from pydantic import BaseModel, Field, computed_field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
+
+
+class SamplingDefaultsResponse(BaseModel):
+    """Resolved per-model sampling defaults (#388), the shape
+    ``src.database.generation_hints.SamplingDefaults.to_dict`` produces.
+
+    ``source`` says which layer won (``curated`` / ``hf_generation_config`` /
+    ``fallback``) for debuggability. ``top_k`` / ``min_p`` / ``presence_penalty``
+    are None unless a layer defines them (and are then the only case the
+    backend puts them on the wire). ``max_tokens_cap`` is the UI ceiling for the
+    max-tokens field: min(model context window, engine context window).
+    """
+    temperature: float
+    top_p: float
+    max_tokens: int
+    repetition_penalty: float
+    repetition_context_size: int
+    max_tokens_cap: int
+    source: str
+    top_k: Optional[int] = None
+    min_p: Optional[float] = None
+    presence_penalty: Optional[float] = None
+    base_repo: Optional[str] = None
+
 
 class LLMBase(BaseModel):
     """Base schema for LLM metadata with minimal required fields.
@@ -85,6 +109,19 @@ class LLMResponse(LLMBase):
     # and the rebind affordance. Plain column pass-throughs from the entity.
     is_attached_to_kb: Optional[bool] = Field(default=None, description="True when this row is a KB assistant (specialized copy bound to a Knowledge Base)")
     kb_id: Optional[int] = Field(default=None, description="The assistant's KnowledgeBase id (None for regular models)")
+    # Captured sampling facts (#388): raw column pass-through, mostly for
+    # debugging; the UI reads the resolved ``sampling_defaults`` below.
+    generation_hints: Optional[Dict[str, Any]] = Field(default=None, description="Captured base-repo generation facts (generation_config subset, context_length, supports_thinking); None = no hints")
+
+    @computed_field
+    @property
+    def sampling_defaults(self) -> SamplingDefaultsResponse:
+        """Per-model sampling defaults resolved at read time (#388): the values a
+        new conversation / arena panel seeds its sliders from. Pure function over
+        this row (``curated > hf generation_config > fallback``), no DB column."""
+        from src.database.generation_hints import resolve_sampling_defaults
+
+        return SamplingDefaultsResponse(**resolve_sampling_defaults(self).to_dict())
 
     @computed_field
     @property
