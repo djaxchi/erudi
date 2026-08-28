@@ -59,6 +59,10 @@ FALLBACK_REPETITION_CONTEXT_SIZE = 64
 # "No cap": mirrors the Conversation.max_tokens validator upper bound.
 UNBOUNDED_CONTEXT_TOKENS = 32768
 
+# Below this, a vendor temperature means "greedy" and is normalised to an exact
+# 0.0 on the wire (see guarded_generation_config).
+GREEDY_TEMPERATURE_THRESHOLD = 0.05
+
 # Capture stages, also the ``source`` the resolver reports (plus ``none``).
 STAGE_BASE_GENERATION_CONFIG = "base_generation_config"
 STAGE_QUANT_GENERATION_CONFIG = "quant_generation_config"
@@ -134,8 +138,11 @@ def guarded_generation_config(block: Any) -> Optional[Dict[str, Any]]:
     Rules (design #388 section 3.4):
     - ``do_sample: false`` -> the whole block is ignored (the vendor disables
       sampling; our sliders would contradict it).
-    - ``top_k == 1`` or ``temperature < 0.05`` -> "vendor says greedy": keep
-      exactly what ships (e.g. Qwen2.5-VL). No second-guessing.
+    - ``top_k == 1`` or ``temperature < GREEDY_TEMPERATURE_THRESHOLD`` -> "vendor
+      says greedy": the temperature is sent as EXACTLY ``0.0``. Qwen2.5-VL ships
+      ``1e-06``; both inference servers only take the argmax path on ``temp == 0``
+      and otherwise divide the logits by it, so a positive epsilon overflows into
+      a stream of token 0 ("!!!!") — seen on the 2.0.0 QA pass.
     - temperature clamped to [0, 2]; top_p must be in (0, 1], top_k >= 0, min_p in
       [0, 1], presence_penalty in [-2, 2], repetition_penalty > 0 -- out-of-range
       or non-numeric keys are DROPPED (per-key fall-through), never coerced.
@@ -154,6 +161,8 @@ def guarded_generation_config(block: Any) -> Optional[Dict[str, Any]]:
     top_k = _as_int(block.get("top_k"))
     if top_k is not None and top_k >= 0:
         out["top_k"] = top_k
+    if (temperature is not None and temperature < GREEDY_TEMPERATURE_THRESHOLD) or top_k == 1:
+        out["temperature"] = 0.0
     min_p = _as_float(block.get("min_p"))
     if min_p is not None and 0.0 <= min_p <= 1.0:
         out["min_p"] = min_p
