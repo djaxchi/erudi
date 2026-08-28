@@ -117,6 +117,9 @@ export default function LandingPage() {
       name: model.name,
       size: metadata.size || unknown,
       parameters: metadata.parameters || unknown,
+      // Measured size in billions; the very-small-model note (#381) reads it
+      // before falling back to the metadata string above.
+      param_size: model.param_size,
       lastUpdate: metadata.last_modified || unknown,
       isOnline: false,
       description: model.description,

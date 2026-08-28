@@ -1,11 +1,15 @@
 import React from "react";
 import PropTypes from "prop-types";
 import { useTranslation } from "react-i18next";
-import { BadgeCheck, Download, Heart, Image as ImageIcon } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Download, Heart, Image as ImageIcon } from "lucide-react";
 import GradientBox from "./GradientBox";
 import FitGauge from "./FitGauge";
 import { CATEGORY_META } from "../utils/modelCatalog";
-import { modelSupportsVision } from "../utils/modelCapabilities";
+import {
+  modelSupportsVision,
+  isVerySmallModel,
+  SMALL_MODEL_PARAM_THRESHOLD_B,
+} from "../utils/modelCapabilities";
 import { isTestedModel } from "../utils/testedModels";
 
 /**
@@ -18,6 +22,7 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo, ins
   const { t } = useTranslation();
   const unavailable = model?.runnable === false;
   const isVision = modelSupportsVision(model);
+  const verySmall = isVerySmallModel(model);
   const tested = isTestedModel(model);
   const cat = CATEGORY_META[model.category];
   // Compact parameter count ("7B", "270M"): a technical label, not copy.
@@ -76,6 +81,19 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo, ins
         <div className="mt-1.5 mono text-[11px] text-[var(--fit-heavy)]">
           {t("models:explore.notSupported")}
         </div>
+      )}
+
+      {/* Very small models (#381): say on the card, before the download, that
+          tools, KB search and multi-step reasoning will not work reliably, so
+          a silent no-tool-call later does not read as a broken feature. */}
+      {verySmall && (
+        <p
+          data-testid="small-model-note"
+          className="mt-2 flex items-start gap-1.5 text-[11px] leading-snug text-[var(--ink-dim)]"
+        >
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px text-[var(--fit-tight)]" />
+          <span>{t("models:smallModelNote", { threshold: SMALL_MODEL_PARAM_THRESHOLD_B })}</span>
+        </p>
       )}
 
       <div className="mt-auto pt-4">

@@ -118,8 +118,15 @@ class LLMResponse(LLMBase):
         Only meaningful once downloaded, so remote rows stay None. None = unknown
         and the UI treats it as permissive — it disables the image attach button
         only on an explicit False, never blocking a real VLM by accident.
+
+        Short-circuits to None when the weights are known to be gone
+        (``weights_available`` False, #376): probing a path that cannot exist
+        would make the engine raise a 500-class exception whose constructor
+        logs an ERROR on every listing poll, for a request that returns 200.
         """
         if self.local != 1 or not self.link:
+            return None
+        if self.weights_available is False:
             return None
         from src.domains.llms.repository import detect_supports_vision
 
