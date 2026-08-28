@@ -15,17 +15,23 @@ from src.engines.model_resolver import normalize, base_key, resolve_quant
 
 
 class _Model:
-    def __init__(self, mid, downloads=0):
+    def __init__(self, mid, downloads=0, gated=False):
         self.id = mid
         self.downloads = downloads
+        self.gated = gated
 
 
 class _FakeApi:
-    """Returns a fixed candidate list regardless of query (we test selection)."""
+    """Returns a fixed candidate list regardless of query (we test selection).
+
+    Entries are ``(id, downloads)`` or ``(id, downloads, gated)``; ``gated`` takes
+    the values the Hub serializes (``False``, ``"auto"``, ``"manual"``)."""
     def __init__(self, ids):
-        self._models = [_Model(i, d) for i, d in ids]
+        self._models = [_Model(*entry) for entry in ids]
+        self.calls = []
 
     def list_models(self, **kwargs):
+        self.calls.append(kwargs)
         return list(self._models)
 
 
@@ -119,6 +125,35 @@ class TestResolveQuant:
 
     def test_network_failure_returns_none(self):
         assert resolve_quant("google/gemma-3-1b-it", "mlx", _BoomApi()) is None
+
+    # A gated repo needs an accepted license + a token to download, and the app is
+    # account-less: whatever the Hub lists as gated is un-downloadable in Erudi.
+    # The base's official org is normally the top-trust pick, which is exactly how
+    # google/gemma-2b-it (gated: manual) ended up in the GGUF catalog.
+    @pytest.mark.parametrize("gated", ["manual", "auto", True])
+    def test_skips_gated_candidate_and_picks_next_trusted(self, gated):
+        api = _FakeApi([
+            ("google/gemma-2b-it", 151895, gated),                  # official but gated
+            ("lmstudio-community/gemma-2b-it-GGUF", 4000, False),  # trusted, public
+            ("randomuser/gemma-2b-it-GGUF", 90000, False),         # public, untrusted
+        ])
+        assert resolve_quant("google/gemma-2b-it", "gguf", api) == "lmstudio-community/gemma-2b-it-GGUF"
+
+    def test_none_when_only_exact_candidate_is_gated(self):
+        api = _FakeApi([
+            ("google/gemma-2b-it", 151895, "manual"),
+            ("mlx-community/gemma-4-e2b-it-4bit", 83321, False),   # public but not exact
+        ])
+        assert resolve_quant("google/gemma-2b-it", "gguf", api) is None
+
+    def test_search_requests_gated_alongside_downloads(self):
+        # Without ``expand``, the list endpoint does not serialize ``gated`` at all
+        # (ModelInfo.gated stays None) and the gate would be blind. ``downloads``
+        # must ride in the same expand since it is the resolver's tie-breaker.
+        api = _FakeApi([("mlx-community/gemma-2-2b-it-4bit", 5889, False)])
+        resolve_quant("google/gemma-2-2b-it", "mlx", api)
+        (kwargs,) = api.calls
+        assert {"gated", "downloads"} <= set(kwargs["expand"])
 
 
 # Ground truth from the HF research sweep: (base_id, format_tag, quant_known_to_exist).

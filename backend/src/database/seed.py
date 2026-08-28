@@ -86,7 +86,7 @@ from src.utils.hf_model_metadata import (
 from src.domains.hardware.repository import Hardware_Repository
 from src.domains.llms.repository import dir_size_bytes, remove_tree_reporting
 from src.domains.hardware.services import Hardware_Service
-from src.engines.model_resolver import resolve_quant, base_key
+from src.engines.model_resolver import resolve_quant, base_key, is_gated
 from src.database.catalog_classify import (
     categorize,
     is_conversational,
@@ -629,6 +629,11 @@ class Model_Seeder:
                 # pipeline_tag/tags expand added to community_search_kwargs).
                 slug = model_info.id.split("/")[-1]
                 if is_nonchat_task(slug, getattr(model_info, "pipeline_tag", None)):
+                    continue
+                # The app downloads with no HF token: a gated repo lists fine but
+                # 401s on download, so it never enters the catalog. Checked BEFORE
+                # the dedup so a public twin of the same model still gets in.
+                if is_gated(model_info):
                     continue
                 # Dedup by normalized key so the same finetune from two quanters
                 # (bartowski/Foo-GGUF vs mradermacher/Foo-GGUF) appears once.
