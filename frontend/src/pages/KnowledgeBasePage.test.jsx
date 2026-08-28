@@ -78,6 +78,7 @@ vi.mock("../components/modals/EmbeddingModelGateModal", () => ({
 }));
 
 import KnowledgeBasePage from "./KnowledgeBasePage";
+import i18n from "../i18n";
 
 let hwResponder;
 let modelsResponder;
@@ -367,6 +368,24 @@ describe("KnowledgeBasePage hardware readout", () => {
     };
     render(<KnowledgeBasePage />);
     expect((await screen.findAllByText("Error fetching")).length).toBeGreaterThan(0);
+  });
+
+  // The backend label is an English tier name; the page must show the same
+  // translated tier the Models page shows, never the raw label (#387).
+  it("translates the backend tier label like the Models page does", async () => {
+    hwResponder = () => ({ global_inference_score: 52.62, global_inference_label: "Fair" });
+    render(<KnowledgeBasePage />);
+    expect(await screen.findByText("Fair")).toBeTruthy();
+    cleanup();
+
+    await i18n.changeLanguage("fr");
+    try {
+      render(<KnowledgeBasePage />);
+      expect(await screen.findByText("Correct")).toBeTruthy();
+      expect(screen.queryByText("Fair")).toBeNull();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 });
 

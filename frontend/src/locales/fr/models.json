@@ -151,6 +151,7 @@
     "lastUpdate": "Dernière mise à jour :",
     "pipeline": "Pipeline :",
     "showRawMetadata": "Afficher les métadonnées brutes",
-    "noPublisherRecommendation": "L'éditeur de ce modèle ne recommande aucun réglage de génération ; Erudi applique des réglages neutres."
+    "noPublisherRecommendation": "L'éditeur de ce modèle ne recommande aucun réglage de génération ; Erudi applique des réglages neutres.",
+    "installed": "Installé"
   }
 }

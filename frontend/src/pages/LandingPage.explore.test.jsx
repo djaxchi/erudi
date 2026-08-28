@@ -64,10 +64,11 @@ vi.mock("../components/ExploreModelCard", () => ({
 }));
 
 vi.mock("../components/modals/ModelInfoModal", () => ({
-  default: ({ isOpen, modelInfo, onClose }) =>
+  default: ({ isOpen, modelInfo, onClose, installed }) =>
     isOpen ? (
       <div>
         <span>{`info-modal:${modelInfo.name}`}</span>
+        <span>{`info-installed:${String(installed)}`}</span>
         <button onClick={onClose}>close-info</button>
       </div>
     ) : null,
@@ -244,6 +245,24 @@ describe("LandingPage explore catalog (#122)", () => {
 
     fireEvent.click(screen.getByText("close-info"));
     await waitFor(() => expect(screen.queryByText(/info-modal:/)).toBeNull());
+  });
+
+  it("opens the info modal in the installed state from an Installed card only", async () => {
+    routes.local = [baseLocal];
+    render(<LandingPage />);
+    await screen.findByText("base-model");
+
+    // Installed card: no Download offered by the details modal.
+    fireEvent.click(screen.getByTitle("Info"));
+    expect(await screen.findByText("info-modal:base-model")).toBeTruthy();
+    expect(screen.getByText("info-installed:true")).toBeTruthy();
+    fireEvent.click(screen.getByText("close-info"));
+    await waitFor(() => expect(screen.queryByText(/info-modal:/)).toBeNull());
+
+    // Catalog card of a model not on disk: still downloadable.
+    fireEvent.click(await screen.findByText("info:Qwen2.5 7B Instruct"));
+    expect(await screen.findByText("info-modal:Qwen2.5 7B Instruct")).toBeTruthy();
+    expect(screen.getByText("info-installed:false")).toBeTruthy();
   });
 
   it("jumps to a section through the explore index", async () => {
