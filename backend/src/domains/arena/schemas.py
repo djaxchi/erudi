@@ -53,7 +53,8 @@ class ArenaQueryPayload(BaseModel):
         description="Optional base64 data-URL images attached to the question (vision models)",
     )
     # None = "use the model's own defaults" (#388), resolved by the service from
-    # the Llm row (curated > HF generation_config > fallback); explicit wins.
+    # the Llm row (captured generation_config, else the neutral constants);
+    # explicit wins.
     temperature: Optional[float] = Field(
         default=None,
         ge=0.0,

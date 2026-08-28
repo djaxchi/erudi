@@ -138,8 +138,9 @@ class ConversationService:
         """Create a new conversation with the given LLM and generation params.
 
         ``temperature`` / ``top_p`` / ``max_tokens`` left ``None`` resolve to the
-        MODEL's defaults (#388: curated > HF generation_config > fallback, see
-        ``src.database.generation_hints``); an explicit value wins. Mirrors
+        MODEL's defaults (#388: the captured generation_config, else the neutral
+        constants, see ``src.database.generation_hints``); an explicit value
+        wins. Mirrors
         ``web_search_enabled=None``, which copies the GLOBAL user-settings
         default at creation (#310). The conversation owns its values afterwards
         -- later model/global changes never retro-affect it.

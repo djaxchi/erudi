@@ -140,8 +140,8 @@ class ConversationCreate(ConversationBase):
     """
     """Schema for creating new conversations."""
     # None = "use the model's own defaults" (#388): the service resolves them
-    # from the Llm row (curated > HF generation_config > fallback). An explicit
-    # value always wins (the pre-conversation settings panel).
+    # from the Llm row (captured generation_config, else the neutral constants).
+    # An explicit value always wins (the pre-conversation settings panel).
     temperature: Optional[float] = Field(
         default=None,
         ge=0.0,

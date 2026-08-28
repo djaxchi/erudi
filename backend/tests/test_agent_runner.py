@@ -1495,7 +1495,7 @@ async def test_runner_passes_the_resolved_sampling_to_the_factory(monkeypatch):
                                        params=_PARAMS):
         pass
     assert captured["sampling"].top_k == 20
-    assert captured["sampling"].source == "hf_generation_config"
+    assert captured["sampling"].source == "base_generation_config"
     # User-facing three still come from GenParams (the conversation row / slider).
     assert (captured["temperature"], captured["top_p"], captured["max_tokens"]) == (0.5, 0.9, 64)
 
@@ -1513,4 +1513,4 @@ async def test_oneshot_passes_the_resolved_sampling_too(monkeypatch):
         llm=_Llm(), prompt_text="p", temperature=0.5, top_p=0.9, max_tokens=12
     ):
         pass
-    assert captured["sampling"].source == "fallback"
+    assert captured["sampling"].source == "none"

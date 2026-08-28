@@ -307,11 +307,13 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
 
 def _capture_hints_for_download(model_link: str, final_save_dir) -> Optional[dict]:
     """Sampling facts for a just-downloaded model (#388): the local artifact
-    first (offline, MLX dirs ship the files), then the network -- the base repo
-    named by the quant's ``base_model:*`` card tag, else the repo itself."""
-    hints = read_local_generation_hints(Path(final_save_dir), base_repo=model_link)
-    if hints:
-        return hints
+    first (offline, MLX dirs ship the files), and when it carries no usable
+    sampling value the network cascade -- the base repo named by the quant's
+    ``base_model:*`` card tag (else the repo itself) with the repo as the
+    quant stage. Facts read from the artifact fill what the network lacks."""
+    local = read_local_generation_hints(Path(final_save_dir), base_repo=model_link)
+    if local and local.get("generation_config"):
+        return local
     hf_api = config.get_hf_api()
     base_repo = model_link
     try:
@@ -319,9 +321,15 @@ def _capture_hints_for_download(model_link: str, final_save_dir) -> Optional[dic
         base_repo = resolve_base_repo(model_link, getattr(info, "tags", None))
     except Exception as e:
         logger.info(f"Could not read the card of {model_link} for its base model: {e}")
-    hints = capture_generation_hints(base_repo, hf_api)
+    hints = capture_generation_hints(base_repo, hf_api, quant_repo=model_link)
     if hints is None and base_repo != model_link:
         hints = capture_generation_hints(model_link, hf_api)
+    if hints is None:
+        return local
+    if local:
+        for fact in ("context_length", "supports_thinking"):
+            if hints.get(fact) is None and local.get(fact) is not None:
+                hints[fact] = local[fact]
     return hints
 
 
