@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Download, Users, Heart, Calendar, Tag, ChevronDown, BadgeCheck } from "lucide-react";
 import { hasNoPublisherRecommendation } from "../../utils/samplingDefaults";
+import { displayModelSize } from "../../utils/modelSize";
 
 /**
  * Props:
@@ -22,6 +23,9 @@ ModelInfoModal.propTypes = {
     description: PropTypes.string,
     size: PropTypes.string,
     parameters: PropTypes.string,
+    param_size: PropTypes.number,
+    quantized: PropTypes.bool,
+    artifact_size_bytes: PropTypes.number,
   }),
   onClose: PropTypes.func.isRequired,
   installed: PropTypes.bool,
@@ -116,7 +120,9 @@ export default function ModelInfoModal({
                           <span className="text-emerald-400 font-medium">
                             {t("models:info.size")}
                           </span>
-                          <span className="text-gray-200 ml-2">{modelInfo.size}</span>
+                          <span className="text-gray-200 ml-2">
+                            {displayModelSize(modelInfo) ?? modelInfo.size}
+                          </span>
                         </div>
                         <div className="bg-white/5 rounded-xl p-3 border border-white/10">
                           <span className="text-emerald-400 font-medium">
