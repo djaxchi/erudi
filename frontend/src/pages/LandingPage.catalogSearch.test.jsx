@@ -221,4 +221,15 @@ describe("LandingPage catalog search (#380)", () => {
     expect(screen.queryByTestId("catalog-search-results")).toBeNull();
     expect(searchBox().value).toBe("");
   });
+
+  it("hides the community section while a query is active: the results grid already covers those rows", async () => {
+    await renderAndType("qwen");
+    await screen.findByTestId("catalog-search-results");
+
+    expect(screen.queryByText("Community fine-tunes")).toBeNull();
+
+    fireEvent.keyDown(searchBox(), { key: "Escape" });
+
+    expect(await screen.findByText("Community fine-tunes")).toBeTruthy();
+  });
 });

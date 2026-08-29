@@ -678,8 +678,11 @@ export default function LandingPage() {
             )}
           </section>
 
-          {/* Community fine-tunes — collapsed by default to keep the panel calm */}
-          {filteredCommunity.length > 0 && (
+          {/* Community fine-tunes — collapsed by default to keep the panel calm.
+              Hidden while a catalog query is active: the results grid above
+              already covers these rows, so the section would only duplicate
+              them under the results (or under the empty state). */}
+          {!catalogHits && filteredCommunity.length > 0 && (
             <section id="explore-community" className="scroll-mt-6">
               <button
                 className="flex items-center gap-3 w-full text-left mb-4 group"
