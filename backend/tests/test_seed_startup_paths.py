@@ -309,10 +309,13 @@ class TestBuildBaseModels:
 
     def test_create_base_llm_and_fallback_build_rows(self, monkeypatch):
         class _Size:
+            size_bytes = 5_100_000_000
+
             def to_string(self):
                 return "5.1 GB"
 
-        monkeypatch.setattr(seed_mod, "get_disk_size_after_quant", lambda link: _Size())
+        monkeypatch.setattr(seed_mod, "get_disk_size_after_quant",
+                            lambda link, hf_api=None: _Size())
         api = MagicMock()
         api.model_info.return_value = SimpleNamespace(
             id="google/gemma-2-9b-it",

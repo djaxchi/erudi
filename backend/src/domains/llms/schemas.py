@@ -117,6 +117,11 @@ class LLMResponse(LLMBase):
     # Captured sampling facts (#388): raw column pass-through, mostly for
     # debugging; the UI reads the resolved ``sampling_defaults`` below.
     generation_hints: Optional[Dict[str, Any]] = Field(default=None, description="Captured base-repo generation facts (generation_config subset, context_length, supports_thinking); None = no hints")
+    # Real artifact size: the bytes the downloader fetches (catalog rows, from
+    # the snapshot) or the measured on-disk footprint (installed rows). The UI
+    # reads it before its per-parameter estimate, which misses e.g. a VLM's
+    # vision tower by 25-35 %. None = unknown -> the estimate stands.
+    artifact_size_bytes: Optional[int] = Field(default=None, gt=0, description="Real download / on-disk size in bytes; None when unknown (the UI falls back to its estimate)")
 
     @computed_field
     @property

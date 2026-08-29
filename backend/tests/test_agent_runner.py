@@ -1456,6 +1456,48 @@ def test_build_chat_model_sends_optional_keys_only_when_the_profile_defines_them
         "repetition_penalty": 1.05, "repetition_context_size": 64, "presence_penalty": 1.5}
 
 
+def test_build_chat_model_logs_the_resolved_extra_body(monkeypatch, caplog):
+    """QA could not verify from the INFO log that a profile's top_k reached the
+    server: the "ChatOpenAI built" line must list every extra_body key as sent
+    (post-translation, so the wire names appear), ASCII, on the one line."""
+    import logging
+
+    monkeypatch.setattr(config, "LLM_Engine", _IdentityEngine)
+    llm = _HintedLlm(temperature=0.6, top_p=0.95, top_k=20, min_p=0.0)
+    with caplog.at_level(logging.INFO, logger="erudi"):
+        build_chat_model(llm, temperature=0.6, top_p=0.95, max_tokens=55,
+                         sampling=resolve_sampling_defaults(llm))
+    (line,) = [r.message for r in caplog.records if r.message.startswith("ChatOpenAI built:")]
+    assert "temperature=0.6" in line and "max_tokens=55" in line
+    assert "extra_body=" in line
+    for key in ("repetition_penalty=1.1", "repetition_context_size=64", "top_k=20", "min_p=0.0"):
+        assert key in line
+    assert "\n" not in line and line.isascii()
+
+
+def test_build_chat_model_logs_translated_wire_names(monkeypatch, caplog):
+    import logging
+
+    from src.engines.base_llama_cpp_engine import BaseLlamaCppEngine
+
+    class _LlamaEngine:
+        @staticmethod
+        def get_model_and_tokenizer(llm_id, link):
+            return ({"base_url": "http://127.0.0.1:9090", "alias": f"erudi-{llm_id}"}, {})
+
+        @staticmethod
+        def _payload_model_value(handle):
+            return handle["alias"]
+
+        _translate_payload_kwargs = BaseLlamaCppEngine._translate_payload_kwargs
+
+    monkeypatch.setattr(config, "LLM_Engine", _LlamaEngine)
+    with caplog.at_level(logging.INFO, logger="erudi"):
+        build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55)
+    (line,) = [r.message for r in caplog.records if r.message.startswith("ChatOpenAI built:")]
+    assert "repeat_penalty=1.1" in line and "repeat_last_n=64" in line
+
+
 def test_build_chat_model_llama_cpp_leaves_optional_names_untouched(monkeypatch):
     # top_k / min_p / presence_penalty ARE llama-server's own names: the
     # translation renames only the repetition controls.

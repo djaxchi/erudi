@@ -141,6 +141,50 @@ def test_generation_hints_column_is_nullable_and_backfills_null(fresh_cluster):
     assert _alembic_version(url) == _head_revision(cfg)
 
 
+ARTIFACT_SIZE_REVISION = "b6e1a4d8c2f7"
+
+
+@pytest.mark.integration
+def test_artifact_size_bytes_column_is_nullable_bigint_and_backfills_null(fresh_cluster):
+    """llms.artifact_size_bytes lands as a nullable BIGINT (model artifacts exceed
+    2^31 bytes); rows that predate the revision read NULL (= size unknown, the
+    frontend keeps its estimate)."""
+    url = fresh_cluster.sqlalchemy_url
+    cfg = _alembic_config(url)
+    command.upgrade(cfg, f"{ARTIFACT_SIZE_REVISION}-1")
+    engine = create_engine(url)
+    try:
+        assert "artifact_size_bytes" not in {c["name"] for c in inspect(engine).get_columns("llms")}
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO llms (name, local, link, type, quantized, is_base, category, "
+                "is_attached_to_kb) VALUES ('Old', 0, 'org/old', 'qwen', true, false, "
+                "'general', false)"
+            ))
+    finally:
+        engine.dispose()
+
+    run_migrations(fresh_cluster)
+
+    engine = create_engine(url)
+    try:
+        columns = {c["name"]: c for c in inspect(engine).get_columns("llms")}
+        assert columns["artifact_size_bytes"]["nullable"] is True
+        assert "BIGINT" in str(columns["artifact_size_bytes"]["type"]).upper()
+        with engine.begin() as conn:
+            stored = conn.execute(
+                text("SELECT artifact_size_bytes FROM llms WHERE link='org/old'")).scalar()
+            assert stored is None
+            conn.execute(text(
+                "UPDATE llms SET artifact_size_bytes = 3090000000 WHERE link='org/old'"))
+            assert conn.execute(
+                text("SELECT artifact_size_bytes FROM llms WHERE link='org/old'")
+            ).scalar() == 3_090_000_000
+    finally:
+        engine.dispose()
+    assert _alembic_version(url) == _head_revision(cfg)
+
+
 @pytest.mark.integration
 def test_language_column_backfills_existing_settings_row(fresh_cluster):
     # #385: a pre-existing user_settings row (created before the language

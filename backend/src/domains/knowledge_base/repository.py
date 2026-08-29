@@ -50,6 +50,7 @@ COPIED_FIELDS = (
     "supports_tools",
     "supports_tools_wire",
     "model_metadata",
+    "artifact_size_bytes",
 )
 
 
