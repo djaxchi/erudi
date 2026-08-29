@@ -30,6 +30,8 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When no base model fits my machine, then the "Recommended" section is hidden (not empty).
 - [ ] When a model is **not runnable on my hardware**, then its card shows "Not supported on your hardware" and Download is disabled.
 - [ ] When a model is **gated** (from a Hugging Face search hit), then the card shows a "gated" tag.
+- [ ] When I browse the **bundled catalog**, then no card links to a gated repository at all — Erudi downloads anonymously, so a gated link would 401 whoever clicked it *(#391; gated repos are dropped at snapshot time, not flagged)*.
+- [ ] When a model is **under ~4B parameters**, then its card — catalog, explore and installed alike — carries the note that tool use, knowledge-base search and multi-step reasoning are unreliable below ~4B *(#381)*; a 7B or unknown-size card carries no such note.
 - [ ] When a category carousel has more than 4 models, then a "See all" control expands it to a grid (and back).
 - [ ] When I apply a **size filter** or **"Fits my machine"** and nothing matches, then I see "No models match these filters. Widen the size range or turn off 'Fits my machine'."
 - [ ] When there are no base models at all, then the browse area shows "No base models available" (not a crash).
@@ -49,6 +51,14 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When I type a prompt and press Enter, then it sends; Shift+Enter inserts a newline.
 - [ ] When I send a prompt, then a new conversation is created and I am taken to it, where the reply **streams token by token**.
 - [ ] When I adjust Creativity / Diversity / Max Tokens or customize the prompt, then those settings carry into the conversation.
+
+**Per-model sampling defaults (#388)**
+- [ ] When I select a model whose publisher ships sampling values, then Creativity / Diversity start at **that model's** values rather than a global 0.2 / 0.95 (Qwen3 starts at 0.6 / 0.95, Qwen2.5 at 0.7 / 0.8).
+- [ ] When I switch model mid-setup, then the sliders **re-default** to the new model's values.
+- [ ] When I open the Max Tokens control, then its ceiling is the model's own cap (`min(model context, engine context)`), not a fixed 1024.
+- [ ] When the Creativity slider is dragged to the top, then it reaches **2**, not 1.
+- [ ] When the selected model's publisher recommends **nothing**, then a muted one-liner under the sliders says so ("No sampling recommendation from this model's publisher; neutral defaults applied") — in the conversation header panel, the pre-conversation panel and the model info modal, and **never** on a card face or in the Arena.
+- [ ] When the publisher **does** recommend values, then that one-liner is absent.
 
 **Edge cases & errors**
 - [ ] When I send **without any image** (plain text), then the model answers normally.
@@ -153,6 +163,15 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When I flip the Web Search toggle, then the change **persists across an app relaunch**.
 - [ ] When the global toggle is on and I start a **new** conversation, then that conversation's own Web search toggle starts **on** (inheritance at creation; the conversation owns it afterwards).
 
+**Application language (#385)**
+- [ ] When I open Settings, then an **Application language** card offers English, Français, Español and 中文, each named in its own language.
+- [ ] When I pick another language, then the **whole interface** switches immediately — every screen, the live download widget included — with no English left behind and no reload.
+- [ ] When a language is active, then numbers, percentages, sizes and dates follow it (French shows `10,8 %` and `31 Go`, not `10.8 %` and `31GB`).
+- [ ] When I relaunch the app, then it comes back in the language I chose (the backend value wins over the local mirror).
+- [ ] When it is my **first** launch, then the language is derived from my system locale.
+- [ ] When I change the language, then the **native application menu** (Help → Clear All Data…) is rebuilt in that language.
+- [ ] When I use **Clear All Data**, then the app comes back in English on the next boot (settings deleted; the backend default wins).
+
 ## Shared chrome (sidebar, connection, downloads)
 
 - [ ] When I click the sidebar icons, then I navigate to Models (Brain), Chat (Chat), Arena (Swords), and Knowledge Base (Book); the active screen is highlighted (Chat stays highlighted while in a conversation).
@@ -208,6 +227,18 @@ pass and report — the candidate is not shippable.*
 - [ ] When I download a **GGUF model** on Windows and send my **first chat turn**, then the answer streams within the usual model-load time — it never hangs indefinitely.
 - [ ] When I open **Knowledge Base** on a fresh Windows install and click Download on the embedding gate, then the embedding model downloads to completion — the UI never sits on "Downloading the embedding model…" forever.
 - [ ] When either of those runs, then the backend keeps answering other requests throughout (the app is not wedged as a whole).
+
+**Tool-call gate (llama.cpp backends) — run on every candidate**
+
+*A turn that carries tools is the whole agentic knowledge base and the whole of
+web search. On the 2.0.0 draft the bundled `llama-server` exited silently the
+moment a model emitted a tool call, taking both features out on Windows; a
+plain turn on the same model, in the same process, was unaffected. Test the
+tool path explicitly — a working chat proves nothing about it.*
+
+- [ ] When a **tool-capable** model answers a knowledge-base question, then the turn completes: the reasoning strip shows the search call and the answer arrives — the child process does not die mid-stream and the answer is not `[ERROR_MESSAGE_SYSTEM]`.
+- [ ] When **web search** is on and the model decides to search, then the same holds.
+- [ ] When either turn fails, then check whether the inference child is still alive: a client-side `ReadError` / `ECONNRESET` with no error in the child's output is a crash in the inference binary, not an app bug.
 
 **Model sizes & recommendations (#316, #319)**
 - [ ] When I look at a model's **Size** before downloading it and again once installed, then the two figures **match** — a model must not appear to shrink (or grow) the moment it finishes downloading.
