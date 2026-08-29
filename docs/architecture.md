@@ -426,22 +426,25 @@ yield token → StreamingResponse
 User receives tokens in real-time
 ```
 
-### Flux de Téléchargement + Quantization
+### Flux de Téléchargement
 
 ```
-User → POST /llms/download {remote_model_id, quantize}
+User → POST /llms/{id}/download  (catalogue)
+     ou POST /llms/download/huggingface {link}  (recherche HF / lien collé)
   ↓
 Create DownloadJob (status=pending)
   ↓
 Background task starts
   ↓
-Download from HuggingFace → Update progress
+List repo files → gate: the repo MUST ship an artefact in the engine's
+format (FORMAT_TAG: MLX repo tag on Apple Silicon, .gguf file on CPU/CUDA)
+  → otherwise InvalidInputException BEFORE any byte is downloaded (#408)
   ↓
-If quantize: MLX_Engine.quant_and_save_from_hf_format()
+Download the pre-built quant from HuggingFace → Update progress
   ↓
-Create Llm entry (local=1)
+Move into place (no local conversion / quantization — see #408)
   ↓
-DownloadJob status=completed
+Llm entry local=1, DownloadJob status=completed
 ```
 
 Voir [LLMs Guide](guides/llms.md) pour utilisation pratique.
