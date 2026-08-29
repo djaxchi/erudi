@@ -265,8 +265,9 @@ def _select_download_files(
 
     GGUF repos: the single best quantization (pick_best_gguf) + mmproj gguf
     files + auxiliary non-gguf files with a known size under 10 MB. When the
-    repo has no .gguf at all, best_gguf is None and files is empty — the
-    caller raises with the repo id in the message.
+    repo has no .gguf at all, best_gguf is None and files is empty (the download
+    path never gets here in that case: `_assert_repo_has_engine_artifact` refuses
+    the repo first; `_chosen_artifact_bytes` falls back to the whole-repo sum).
 
     Non-GGUF repos: every repo file with a known size (exclusions were already
     applied when building file_sizes).
@@ -590,6 +591,42 @@ def _assert_runnable(model_link: str) -> None:
         )
 
 
+def _assert_repo_has_engine_artifact(model_link: str, repo_info, all_repo_files: List[str]) -> None:
+    """Refuse, before any byte is fetched, a repo that ships nothing this engine runs.
+
+    Erudi never converts weights locally (#408): it only downloads pre-built
+    artefacts, so a repo must already carry the active engine's format. Catalog
+    and HF-search links do by construction (``filter=FORMAT_TAG``); a repo id the
+    user pastes by hand may not -- e.g. a vendor's plain safetensors checkpoint.
+    Downloading that would report success and leave a model on disk the engine
+    cannot load, so fail here with the reason instead.
+
+    - llama.cpp engines (``USES_GGUF``): at least one text-model ``.gguf`` must be
+      listed (``mmproj-*.gguf`` vision projectors do not count).
+    - Tag-based engines (MLX): the repo must be tagged ``FORMAT_TAG`` or declare
+      it as its ``library_name``, exactly what the catalog search filters on.
+
+    Raises:
+        InvalidInputException: The repo has no ``<FORMAT_TAG>`` artefact for this engine.
+    """
+    engine = config.LLM_Engine
+    tag = getattr(engine, "FORMAT_TAG", None)
+    if getattr(engine, "USES_GGUF", False):
+        present = pick_best_gguf(all_repo_files) is not None
+    else:
+        tags = set(getattr(repo_info, "tags", None) or ())
+        present = bool(tag) and (tag in tags or getattr(repo_info, "library_name", None) == tag)
+    if present:
+        return
+    engine_name = getattr(engine, "__name__", type(engine).__name__)
+    raise InvalidInputException(
+        f"{model_link} has no {tag} artefact for this machine's engine ({engine_name}): "
+        f"Erudi only downloads pre-built {tag} models and does not convert weights locally. "
+        f"Pick a repository that ships {tag} files (for example one found through the "
+        f"Hugging Face search in the app)."
+    )
+
+
 async def download_llm(
     model_link: str,
     model_id: int,
@@ -615,7 +652,9 @@ async def download_llm(
         Path to temp_save_dir (note: moved to final_save_dir on success).
 
     Raises:
-        Exception: If HuggingFace API fails, the download fails, or a GGUF repo has no .gguf.
+        InvalidInputException: The repo ships no artefact in this engine's format
+            (checked before any byte is transferred, #408).
+        Exception: If HuggingFace API fails or the download fails.
 
     Example:
         >>> final_path = await download_llm(
@@ -663,9 +702,9 @@ async def download_llm(
             if s.size and s.rfilename not in FILES_TO_EXCLUDE
         }
         all_repo_files = list(api.list_repo_files(actual_download_link))
+        # Refuse a repo with nothing this engine runs BEFORE any transfer (#408).
+        _assert_repo_has_engine_artifact(actual_download_link, info, all_repo_files)
         selection = _select_download_files(all_repo_files, file_sizes, _uses_gguf)
-        if _uses_gguf and selection.best_gguf is None:
-            raise Exception(f"No .gguf files found in repo {actual_download_link}")
         all_files = selection.files
         # Contain the WHOLE selection before a single byte is fetched (#405):
         # the names come from the Hub listing, so a hostile repo fails here

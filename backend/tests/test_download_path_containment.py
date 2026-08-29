@@ -137,8 +137,12 @@ class TestDownloadFilesConcurrentContainment:
 
 def _fake_api(files):
     api = MagicMock()
+    # Tagged `mlx` so the engine-format gate (#408) lets the listing through
+    # and the containment check is what refuses the repo.
     api.repo_info.return_value = SimpleNamespace(
-        siblings=[SimpleNamespace(rfilename=f, size=16) for f in files]
+        siblings=[SimpleNamespace(rfilename=f, size=16) for f in files],
+        tags=["mlx"],
+        library_name="mlx",
     )
     api.list_repo_files.return_value = list(files)
     return api
@@ -158,7 +162,7 @@ class TestDownloadLlmFailsFastOnHostileListing:
     async def test_nothing_is_fetched_and_the_job_fails(self, monkeypatch, tmp_path, hostile):
         monkeypatch.setattr(
             config, "LLM_Engine",
-            SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False),
+            SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False, FORMAT_TAG="mlx"),
         )
         files = ["config.json", "model-00001-of-00002.safetensors", hostile]
         monkeypatch.setattr(llm_services, "HfApi", lambda token=None: _fake_api(files))

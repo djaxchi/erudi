@@ -694,7 +694,9 @@ class _FakeFs:
 def _fake_api(files):
     api = MagicMock()
     api.repo_info.return_value = SimpleNamespace(
-        siblings=[SimpleNamespace(rfilename=f, size=16) for f in files]
+        siblings=[SimpleNamespace(rfilename=f, size=16) for f in files],
+        tags=["mlx"],
+        library_name="mlx",
     )
     api.list_repo_files.return_value = list(files)
     return api
@@ -707,7 +709,7 @@ class TestDownloadLlmPipeline:
         monkeypatch.setattr(
             config,
             "LLM_Engine",
-            SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False),
+            SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False, FORMAT_TAG="mlx"),
         )
         files = ["config.json", "model-00001.safetensors"]
         monkeypatch.setattr(llm_services, "HfApi", lambda token=None: _fake_api(files))
@@ -739,7 +741,7 @@ class TestDownloadLlmPipeline:
         monkeypatch.setattr(
             config,
             "LLM_Engine",
-            SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False),
+            SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False, FORMAT_TAG="mlx"),
         )
         api = MagicMock()
         api.repo_info.side_effect = GatedRepoError(
@@ -760,7 +762,7 @@ class TestDownloadLlmPipeline:
         monkeypatch.setattr(
             config,
             "LLM_Engine",
-            SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False),
+            SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False, FORMAT_TAG="mlx"),
         )
         api = MagicMock()
         api.repo_info.side_effect = OSError("Network is unreachable")
@@ -779,7 +781,7 @@ class TestDownloadLlmPipeline:
         monkeypatch.setattr(
             config,
             "LLM_Engine",
-            SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False),
+            SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False, FORMAT_TAG="mlx"),
         )
         api = MagicMock()
         api.repo_info.side_effect = ValueError("bad metadata")

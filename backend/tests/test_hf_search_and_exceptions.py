@@ -131,7 +131,6 @@ class TestExceptionContract:
         (exc.FileSystemException("fs"), 500, None),
         (exc.HuggingFaceAPIException("hf"), 503, None),
         (exc.ModelLoadingException("load"), 500, None),
-        (exc.QuantizationException("quant"), 500, None),
         (exc.GenerationException("gen"), 500, None),
         (exc.KnowledgeBaseNotFoundException(1), 404, None),
         (exc.KnowledgeBaseCorruptedException(1, "bad index"), 500, None),

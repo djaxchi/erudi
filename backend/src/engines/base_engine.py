@@ -10,7 +10,7 @@ Fonctionnalités:
 - Singleton pattern with shared model state across requests
 - Automatic memory cleanup after idle timeout
 - Streaming token generation API
-- HuggingFace model conversion and quantization
+- Engine-format gate (FORMAT_TAG): only pre-built artefacts are ever loaded
 
 Architecture:
     BaseEngine (ABC)
@@ -162,39 +162,6 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         return f"LLM Engine: {cls.__name__}"
 
     # ======================= COMMON API CONTRACT =======================
-    @classmethod
-    @abstractmethod
-    def quant_and_save_from_hf_format(
-        cls,
-        local_hf_path: Union[str, Path],
-        local_dest_path: Union[str, Path],
-        quantize: bool = True,
-        q_bits: str = "4",
-        *args
-    ) -> None:
-        """Convert and quantize HuggingFace model to engine-specific format.
-        
-        Downloads or uses a local HuggingFace model, applies quantization if
-        requested, and saves in the format required by this engine 
-        
-        Args:
-            local_hf_path: Path to HuggingFace model directory.
-            local_dest_path: Destination directory for converted model.
-            quantize: Whether to apply quantization (default: True).
-            q_bits: Quantization bits, e.g., "4", "8" (default: "4").
-            *args: Engine-specific additional arguments.
-            
-        Raises:
-            EngineException: If conversion or quantization fails.
-            FileNotFoundError: If source model path doesn't exist.
-            
-        Note:
-            Implementation is backend-specific. MLX uses mlx-vlm convert,
-            CUDA uses bitsandbytes, CPU may skip quantization.
-
-        """
-        pass
-
     @classmethod
     @abstractmethod
     def get_model_and_tokenizer(

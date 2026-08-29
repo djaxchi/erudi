@@ -113,13 +113,6 @@ echo "[build] Compiling (this takes a while)..."
 echo "[install] Installing to $INSTALL_DIR..."
 "$CMAKE" --install "$BUILD_DIR" --config Release
 
-# -------- Python conversion tools --------
-if [ -d "${SRC_DIR}/gguf-py" ]; then
-  rm -rf "${BIN_DIR}/gguf-py"
-  cp -r "${SRC_DIR}/gguf-py" "${BIN_DIR}/gguf-py"
-fi
-cp "${SRC_DIR}"/convert*.py "${BIN_DIR}/" 2>/dev/null || true
-
 # -------- verify --------
 [ -x "${BIN_DIR}/llama-server" ] || die "llama-server missing after install (check ${BIN_DIR})"
 echo "[done] llama.cpp CUDA build complete: ${BIN_DIR}/llama-server"

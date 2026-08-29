@@ -11,7 +11,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from src.core import config
-from src.core.exceptions import HuggingFaceAPIException
+from src.core.exceptions import HuggingFaceAPIException, InvalidInputException
 from src.domains.llms.services import _select_download_files, download_llm, gguf_split_siblings
 
 
@@ -22,6 +22,7 @@ class Fake_GGUF_Engine:
     """Minimal engine stand-in: GGUF-based, everything runnable."""
 
     USES_GGUF = True
+    FORMAT_TAG = "gguf"
 
     @classmethod
     def is_runnable(cls, model_link: str) -> bool:
@@ -237,25 +238,26 @@ class TestSelectDownloadFilesNonGguf:
 
 
 class TestDownloadLlmNoGgufError:
-    """download_llm still raises the documented exception when a GGUF repo has no .gguf."""
+    """A GGUF repo with no .gguf is refused before any transfer (#408)."""
 
-    async def test_download_llm_raises_exact_message(self, tmp_path):
-        """The exact 'No .gguf files found in repo <id>' message surfaces from download_llm."""
+    async def test_download_llm_raises_invalid_input_with_repo_id(self, tmp_path):
         repo_id = "fake-org/fake-gguf-repo"
         sibling = MagicMock()
         sibling.rfilename = "config.json"
         sibling.size = 2_000
         repo_info = MagicMock()
         repo_info.siblings = [sibling]
+        repo_info.tags = ["gguf"]
 
         mock_api = MagicMock()
         mock_api.repo_info.return_value = repo_info
         mock_api.list_repo_files.return_value = ["config.json"]
+        fs = MagicMock()
 
         with patch("src.domains.llms.services.HfApi", return_value=mock_api), \
-             patch("src.domains.llms.services.HfFileSystem", return_value=MagicMock()), \
+             patch("src.domains.llms.services.HfFileSystem", return_value=fs), \
              patch.object(config, "LLM_Engine", Fake_GGUF_Engine):
-            with pytest.raises(Exception, match=f"No .gguf files found in repo {repo_id}"):
+            with pytest.raises(InvalidInputException, match=f"{repo_id} has no gguf artefact"):
                 await download_llm(
                     model_link=repo_id,
                     model_id=1,
@@ -263,3 +265,4 @@ class TestDownloadLlmNoGgufError:
                     final_save_dir=str(tmp_path / "final"),
                     job_id=None,
                 )
+        fs.get_file.assert_not_called()

@@ -97,7 +97,7 @@ Routers mounted under `/erudi` (in `core/api.py:register_routers`): `llms`, `har
 
 **Engine singleton.** `BaseEngine` keeps `_model`, `_tokenizer`, `_model_id`, `_last_used` as class attributes shared across requests, guarded by `_lock`. A 300s idle cleanup task (`start_cleanup_task`) is registered in `lifespan`. Don't instantiate engines — call class methods on the result of `BaseEngine.get_engine()`. Selected engine lives in `src.core.config.LLM_Engine`.
 
-**Adding an engine.** Subclass `BaseEngine`, implement every `@abstractmethod` (`quant_and_save_from_hf_format`, `get_model_and_tokenizer`, `generate_stream`, `get_hardware_info`, `warm_up_accelerator`, `get_performance_evaluation`, `get_flat_hardware_data`), then wire it into `BaseEngine.get_engine()`. Keep OS/hardware branching out of services — it belongs in engines.
+**Adding an engine.** Subclass `BaseEngine`, implement every `@abstractmethod` (`get_model_and_tokenizer`, `generate_stream`, `get_hardware_info`, `warm_up_accelerator`, `get_performance_evaluation`, `get_flat_hardware_data`), set `FORMAT_TAG` to the HF library tag of the pre-built artefacts it loads (`mlx` / `gguf` — the catalog, the HF search and the by-link download gate are all filtered on it), then wire it into `BaseEngine.get_engine()`. There is no local HF→engine-format conversion: the app only downloads pre-built quants (#408). Keep OS/hardware branching out of services — it belongs in engines.
 
 **Exceptions.** Raise `AppBaseException` subclasses (`EngineException`, `ModelNotFoundException`, `InvalidInputException` in `src/core/exceptions.py`); the global handler in `core/api.py` returns structured JSON. Don't raise bare `Exception` in domain code.
 
