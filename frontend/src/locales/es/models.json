@@ -151,6 +151,7 @@
     "lastUpdate": "Última actualización:",
     "pipeline": "Pipeline:",
     "showRawMetadata": "Mostrar metadatos sin procesar",
-    "noPublisherRecommendation": "El editor de este modelo no recomienda ningún ajuste de generación; Erudi aplica valores neutros."
+    "noPublisherRecommendation": "El editor de este modelo no recomienda ningún ajuste de generación; Erudi aplica valores neutros.",
+    "installed": "Instalado"
   }
 }

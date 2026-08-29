@@ -572,7 +572,7 @@ async def download_llm(
     # Prepare local path
     os.makedirs(temp_save_dir, exist_ok=True)
     os.makedirs(final_save_dir, exist_ok=True)
-    logger.info(f"Starting download for {model_link} → {temp_save_dir}")
+    logger.info(f"Starting download for {model_link} -> {temp_save_dir}")
     logger.info(f"Downloading pre-built quant directly: {actual_download_link}")
 
     # Initialize HF API & filesystem

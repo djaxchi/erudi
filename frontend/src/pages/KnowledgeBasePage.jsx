@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { inferenceTierLabel } from "../utils/inferenceTier";
+import { formatNumber } from "../i18n/format";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ModelLibrary from "../components/ModelLibrary";
@@ -28,14 +30,18 @@ export default function KnowledgeBasePage() {
   // backend values; the displayed placeholders ("fetching…", "N/A", …) are
   // resolved at render time so they follow the app language (#385).
   const [rating, setRating] = useState({ status: "fetching", score: null, label: null });
+  // The backend label is an English tier name; show the same translated tier
+  // the Models page shows (#387), never the raw label.
   const ratingLabel =
     rating.status === "ready"
-      ? rating.label || t("knowledgeBase:page.rating.notAvailable")
+      ? inferenceTierLabel(rating.label) || t("knowledgeBase:page.rating.notAvailable")
       : t(`knowledgeBase:page.rating.${rating.status}`);
   const ratingScore =
     rating.status === "ready"
       ? rating.score
-        ? t("knowledgeBase:page.rating.score", { score: rating.score })
+        ? t("knowledgeBase:page.rating.score", {
+            score: formatNumber(rating.score, { maximumFractionDigits: 1 }),
+          })
         : t("knowledgeBase:page.rating.notAvailable")
       : t(`knowledgeBase:page.rating.${rating.status}`);
 
@@ -44,6 +50,10 @@ export default function KnowledgeBasePage() {
   const [description, setDescription] = useState("");
   const [paths, setPaths] = useState([]);
   const [models, setModels] = useState([]);
+  // Bumped once a submission completes, so ModelLibrary and DragDropArea drop
+  // the state they own (the locked name, the staged file list) along with the
+  // parent's.
+  const [formResetKey, setFormResetKey] = useState(0);
 
   // --- Embedding-model gate (#146): the KB needs the e5 model on disk. ---
   const [gateState, setGateState] = useState(GATE.CHECKING);
@@ -146,6 +156,11 @@ export default function KnowledgeBasePage() {
           setPaths([]);
           setModelName("");
           setDescription("");
+          // The file list and the name lock live inside the children, so
+          // clearing the parent state is not enough: bump the key to remount
+          // them, otherwise the form keeps showing files it no longer holds
+          // and a locked-but-empty name field the user cannot type into.
+          setFormResetKey((k) => k + 1);
         }, 3000);
       },
       onError: (error) => {
@@ -334,6 +349,7 @@ export default function KnowledgeBasePage() {
           </div>
 
           <ModelLibrary
+            key={`model-library-${formResetKey}`}
             models={models}
             selectedModel={selectedModel}
             modelName={modelName}
@@ -390,7 +406,7 @@ export default function KnowledgeBasePage() {
             </div>
 
             <div className="w-full lg:w-[56%] h-full overflow-hidden">
-              <DragDropArea onFilesAdded={addDroppedFiles} />
+              <DragDropArea key={`drag-drop-${formResetKey}`} onFilesAdded={addDroppedFiles} />
             </div>
           </div>
         </div>

@@ -49,12 +49,24 @@ export function applyCatalogFilters(models, { size = "any", fitOnly = false } = 
     if (!bucket.test(p)) {
       return false;
     }
-    if (fitOnly && fitForModel(p, range).tier === "heavy") {
+    if (fitOnly && fitForCatalogModel(m, range).tier === "heavy") {
       return false;
     }
     return true;
   });
 }
+
+/**
+ * GB of weights per billion parameters at 4-bit, overhead included. The same
+ * coefficient the backend uses to turn usable memory into the recommended
+ * parameter window (`_GB_PER_BILLION_PARAMS_Q4`), which is what lets a measured
+ * size be judged against that window.
+ */
+export const GB_PER_BILLION_PARAMS_Q4 = 0.6;
+
+// The backend measures and labels sizes in decimal GB (1e9 bytes) so a model
+// does not "shrink" between the catalog and its installed card.
+export const BYTES_PER_GB = 1_000_000_000;
 
 /**
  * Rough on-device footprint in GB. Catalog models are 4-bit quants (~0.6 GB per
@@ -64,7 +76,31 @@ export function estimateFootprintGb(paramSize, quantized = true) {
   if (!paramSize || paramSize <= 0) {
     return null;
   }
-  return paramSize * (quantized === false ? 2.0 : 0.6);
+  return paramSize * (quantized === false ? 2.0 : GB_PER_BILLION_PARAMS_Q4);
+}
+
+/** The measured download size in decimal GB, or null when it is not a positive number. */
+export function measuredSizeGb(model) {
+  const bytes = model?.artifact_size_bytes;
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) {
+    return null;
+  }
+  return bytes / BYTES_PER_GB;
+}
+
+/**
+ * The footprint a card shows: the measured `artifact_size_bytes` when the
+ * backend has it (#397), else the parameter-count estimate. `measured` tells the
+ * caller whether to present the number as exact or approximate. Null when
+ * neither is known.
+ */
+export function modelFootprintGb(model) {
+  const measured = measuredSizeGb(model);
+  if (measured !== null) {
+    return { gb: measured, measured: true };
+  }
+  const estimate = estimateFootprintGb(model?.param_size, model?.quantized);
+  return estimate ? { gb: estimate, measured: false } : null;
 }
 
 /**
@@ -106,6 +142,21 @@ export function fitForModel(paramSize, range) {
 }
 
 /**
+ * Classify a catalog model against the window, from the number its card shows:
+ * the measured download size when the backend has it (#397), converted back to
+ * the 4-bit parameter count that much weight represents — the window itself is
+ * derived from usable memory with the same coefficient — else the nominal
+ * parameter count. One number drives the size label, the fill and the verdict,
+ * so a 3B model whose weights really take 3.1 GB is judged as the 5B-class
+ * model it costs to run.
+ */
+export function fitForCatalogModel(model, range) {
+  const measured = measuredSizeGb(model);
+  const paramSize = measured === null ? model?.param_size : measured / GB_PER_BILLION_PARAMS_Q4;
+  return fitForModel(paramSize, range);
+}
+
+/**
  * Whether a model is an instruction-tuned / chat model — the variant users
  * actually want, since most don't know the IT-vs-base distinction (#182). Trusts
  * the backend `conversational` flag; falls back to the name heuristic only when
@@ -128,7 +179,7 @@ export const isChatReady = (model) => {
 const TIER_RANK = { ideal: 0, good: 1, tight: 2, heavy: 3, unknown: 4 };
 export function rankByFit(models, range) {
   return [...models]
-    .map((m) => ({ m, fit: fitForModel(m.param_size, range) }))
+    .map((m) => ({ m, fit: fitForCatalogModel(m, range) }))
     .sort((a, b) => {
       // Chat models lead: a newcomer's default should be something made for chat.
       const c = Number(isChatReady(b.m)) - Number(isChatReady(a.m));
@@ -178,7 +229,7 @@ export function pickFlagships(models, range, count = 3) {
   for (const family of FLAGSHIP_FAMILIES) {
     const inFamily = pool.filter((m) => (m.type || "").toLowerCase() === family);
     const best = rankByFit(inFamily, range)[0];
-    if (best && fitForModel(best.param_size, range).tier !== "heavy") {
+    if (best && fitForCatalogModel(best, range).tier !== "heavy") {
       picks.push(best);
       chosen.add(best.id ?? best.link);
     }
@@ -189,7 +240,7 @@ export function pickFlagships(models, range, count = 3) {
 
   if (picks.length < count) {
     const filler = rankByFit(pool, range).filter(
-      (m) => !chosen.has(m.id ?? m.link) && fitForModel(m.param_size, range).tier !== "heavy"
+      (m) => !chosen.has(m.id ?? m.link) && fitForCatalogModel(m, range).tier !== "heavy"
     );
     for (const m of filler) {
       if (picks.length >= count) {

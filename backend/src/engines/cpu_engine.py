@@ -298,7 +298,7 @@ class CPU_Engine(BaseLlamaCppEngine):
             dest_file = dst / selected.name
             
             shutil.copy(selected, dest_file)
-            logger.info(f"[CPU_Engine] Copied pre-quantized GGUF: {selected.name} → {dest_file}")
+            logger.info(f"[CPU_Engine] Copied pre-quantized GGUF: {selected.name} -> {dest_file}")
             cls._copy_auxiliary_files(src, dst)
             return  # Early return - no conversion needed!
         
@@ -328,7 +328,7 @@ class CPU_Engine(BaseLlamaCppEngine):
         fp16_gguf = dst / "model-f16.gguf"
         install_dir = converter.parent
         if getattr(sys, 'frozen', False):
-            logger.info(f"[CPU_Engine] Converting HF → GGUF (FP16) in-process: {converter}")
+            logger.info(f"[CPU_Engine] Converting HF -> GGUF (FP16) in-process: {converter}")
             rc = cls._run_converter_inprocess(converter, install_dir, src, fp16_gguf)
         else:
             cmd_convert = [
@@ -337,7 +337,7 @@ class CPU_Engine(BaseLlamaCppEngine):
                 "--outtype", "f16",
                 "--outfile", str(fp16_gguf)
             ]
-            logger.info(f"[CPU_Engine] Converting HF → GGUF (FP16): {' '.join(cmd_convert)}")
+            logger.info(f"[CPU_Engine] Converting HF -> GGUF (FP16): {' '.join(cmd_convert)}")
             rc = subprocess.call(cmd_convert)
         if rc != 0:
             raise EngineException(
@@ -370,7 +370,7 @@ class CPU_Engine(BaseLlamaCppEngine):
             out_q = dst / f"model-{q_method}.gguf"
             out_q_tmp = dst / f"model-{q_method}.gguf.tmp"
             cmd_quant = [str(quant_bin), str(fp16_gguf), str(out_q_tmp), q_method]
-            logger.info(f"[CPU_Engine] Quantizing GGUF (FP16 → {q_method.upper()}): {' '.join(cmd_quant)}")
+            logger.info(f"[CPU_Engine] Quantizing GGUF (FP16 -> {q_method.upper()}): {' '.join(cmd_quant)}")
             rc = subprocess.call(cmd_quant)
             if rc != 0:
                 out_q_tmp.unlink(missing_ok=True)

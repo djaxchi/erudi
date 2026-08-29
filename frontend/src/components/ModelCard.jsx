@@ -17,6 +17,7 @@ import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { isKbAssistant, hasMissingWeights } from "../utils/modelWeights";
 import { isTestedModel } from "../utils/testedModels";
 import { isVerySmallModel, SMALL_MODEL_PARAM_THRESHOLD_B } from "../utils/modelCapabilities";
+import { displayModelSize } from "../utils/modelSize";
 
 /**
  * ModelCard component - displays model information with actions
@@ -140,7 +141,7 @@ function ModelCard({
               </p>
             )
           ) : (
-            <p>{t("models:card.size", { size: model.size })}</p>
+            <p>{t("models:card.size", { size: displayModelSize(model) ?? model.size })}</p>
           )}
 
           {/* Additional metadata for remote models. "Unknown" is the backend's
@@ -282,6 +283,8 @@ ModelCard.propTypes = {
     library: PropTypes.string,
     parameters: PropTypes.string,
     param_size: PropTypes.number,
+    quantized: PropTypes.bool,
+    artifact_size_bytes: PropTypes.number,
     lastUpdate: PropTypes.string,
     runnable: PropTypes.bool,
     link: PropTypes.string,

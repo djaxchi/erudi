@@ -42,30 +42,64 @@ vi.mock("../components/Sidebar", () => ({ default: () => null }));
 // Probe stubs: expose the props the page wires into its children so the tests
 // can both observe state (selected model, model list size) and drive callbacks
 // (model pick, file drop, gate actions) without the heavy real components.
-vi.mock("../components/ModelLibrary", () => ({
-  default: ({ models, selectedModel, modelName, onModelSelect, onModelNameChange, onRefresh }) => (
-    <div>
-      <span data-testid="lib-selected">{String(selectedModel)}</span>
-      <span data-testid="lib-name">{modelName}</span>
-      <span data-testid="lib-count">{models.length}</span>
-      <button onClick={() => onModelSelect(5)}>PICK_MODEL</button>
-      <button onClick={() => onModelNameChange("picked-name")}>SET_NAME</button>
-      <button onClick={() => onRefresh()}>REFRESH_MODELS</button>
-    </div>
-  ),
-}));
+/* eslint-disable react/prop-types -- the stubs below are test doubles; their
+   props are pinned by the assertions, not by a PropTypes declaration. */
 
-vi.mock("../components/DragDropArea", () => ({
-  default: ({ onFilesAdded }) => (
-    <button
-      onClick={() =>
-        onFilesAdded([{ path: "/docs/a.pdf" }, "/docs/b.pdf", { path: "/docs/a.pdf" }])
-      }
-    >
-      DROP_FILES
-    </button>
-  ),
-}));
+// Both stubs keep state of their own, exactly like the real components do (the
+// locked name in ModelLibrary, the staged file list in DragDropArea). That is
+// what makes the reset assertions meaningful: clearing the parent's state does
+// not touch theirs, so only a remount drops it.
+vi.mock("../components/ModelLibrary", () => {
+  const ModelLibraryStub = ({
+    models,
+    selectedModel,
+    modelName,
+    onModelSelect,
+    onModelNameChange,
+    onRefresh,
+  }) => {
+    const [locked, setLocked] = React.useState(false);
+    return (
+      <div>
+        <span data-testid="lib-selected">{String(selectedModel)}</span>
+        <span data-testid="lib-name">{modelName}</span>
+        <span data-testid="lib-count">{models.length}</span>
+        <span data-testid="lib-locked">{String(locked)}</span>
+        <button onClick={() => onModelSelect(5)}>PICK_MODEL</button>
+        <button
+          onClick={() => {
+            setLocked(true);
+            onModelNameChange("picked-name");
+          }}
+        >
+          SET_NAME
+        </button>
+        <button onClick={() => onRefresh()}>REFRESH_MODELS</button>
+      </div>
+    );
+  };
+  return { default: ModelLibraryStub };
+});
+
+vi.mock("../components/DragDropArea", () => {
+  const DragDropAreaStub = ({ onFilesAdded }) => {
+    const [staged, setStaged] = React.useState(0);
+    return (
+      <div>
+        <span data-testid="dd-staged">{staged}</span>
+        <button
+          onClick={() => {
+            setStaged(2);
+            onFilesAdded([{ path: "/docs/a.pdf" }, "/docs/b.pdf", { path: "/docs/a.pdf" }]);
+          }}
+        >
+          DROP_FILES
+        </button>
+      </div>
+    );
+  };
+  return { default: DragDropAreaStub };
+});
 
 vi.mock("../components/modals/EmbeddingModelGateModal", () => ({
   default: ({ state, error, onDownload, onLeave, onClose }) => (
@@ -78,6 +112,7 @@ vi.mock("../components/modals/EmbeddingModelGateModal", () => ({
 }));
 
 import KnowledgeBasePage from "./KnowledgeBasePage";
+import i18n from "../i18n";
 
 let hwResponder;
 let modelsResponder;
@@ -320,6 +355,29 @@ describe("KnowledgeBasePage assistant creation", () => {
     expect(screen.getByPlaceholderText("Write a description").value).toBe("");
   });
 
+  it("clears the staged file list and the locked name the children own", async () => {
+    vi.useFakeTimers();
+    render(<KnowledgeBasePage />);
+    await act(async () => {});
+    fireEvent.click(screen.getByText("PICK_MODEL"));
+    fireEvent.click(screen.getByText("SET_NAME"));
+    fireEvent.click(screen.getByText("DROP_FILES"));
+    expect(screen.getByTestId("dd-staged").textContent).toBe("2");
+    expect(screen.getByTestId("lib-locked").textContent).toBe("true");
+
+    fireEvent.click(screen.getByText("Create Assistant"));
+    act(() => openKB.mock.calls[0][1].onComplete());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+
+    // Without the remount the page kept listing files it no longer holds, and
+    // the name field stayed locked but empty, so a second submission failed
+    // with "Please fill in all required fields" under a visible file list.
+    expect(screen.getByTestId("dd-staged").textContent).toBe("0");
+    expect(screen.getByTestId("lib-locked").textContent).toBe("false");
+  });
+
   it("routes a creation error into the error modal", async () => {
     render(<KnowledgeBasePage />);
     fireEvent.click(screen.getByText("PICK_MODEL"));
@@ -367,6 +425,41 @@ describe("KnowledgeBasePage hardware readout", () => {
     };
     render(<KnowledgeBasePage />);
     expect((await screen.findAllByText("Error fetching")).length).toBeGreaterThan(0);
+  });
+
+  // The backend label is an English tier name; the page must show the same
+  // translated tier the Models page shows, never the raw label (#387).
+  it("translates the backend tier label like the Models page does", async () => {
+    hwResponder = () => ({ global_inference_score: 52.62, global_inference_label: "Fair" });
+    render(<KnowledgeBasePage />);
+    expect(await screen.findByText("Fair")).toBeTruthy();
+    cleanup();
+
+    await i18n.changeLanguage("fr");
+    try {
+      render(<KnowledgeBasePage />);
+      expect(await screen.findByText("Correct")).toBeTruthy();
+      expect(screen.queryByText("Fair")).toBeNull();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
+
+  // The score was interpolated raw ("52.62/100" whatever the language); it
+  // goes through the locale number formatter like every other number shown.
+  it("formats the score in the active locale", async () => {
+    hwResponder = () => ({ global_inference_score: 52.62, global_inference_label: "Fair" });
+    render(<KnowledgeBasePage />);
+    expect(await screen.findByText("52.6/100")).toBeTruthy();
+    cleanup();
+
+    await i18n.changeLanguage("fr");
+    try {
+      render(<KnowledgeBasePage />);
+      expect(await screen.findByText("52,6/100")).toBeTruthy();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
   });
 });
 

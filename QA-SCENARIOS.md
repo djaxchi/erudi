@@ -107,7 +107,7 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When I change the **global** web-search default in Settings, then existing conversations keep their own toggle unchanged; only conversations created afterwards inherit the new default.
 
 **Multimodal / multi-turn**
-- [ ] When I send an image on a vision model, then it is used for that turn; on the **next** turn the stale image is dropped from the model's context (only the current turn's image is sent), while the display keeps all images.
+- [ ] When I send an image on a vision model, then it is used for that turn and **carried forward** on later turns so a follow-up ("what colour is his hair?") works without re-attaching; as soon as I send a **newer** image, every older one collapses to an `[image]` marker in the model's context (at most one turn's images ever reach the model), while the display keeps all images.
 - [ ] When I reload a conversation with **file-attached** images, then the thumbnails re-render (for images still present on disk).
 - [ ] When I reload a conversation whose image was **pasted from the clipboard**, then it shows an "image attachment" placeholder, not the image *(clipboard images aren't restorable yet — see #136)*.
 - [ ] When an attached image's original file was **moved/deleted**, then that image quietly shows nothing on reload (no broken-image artifact).
@@ -133,7 +133,7 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When two panels use the **same** model, then the loaded model is reused (no reload between them).
 - [ ] When a panel's model **errors**, then that panel shows "[Erreur]" in red while the others still resolve.
 - [ ] When a panel's model has a **KB attached**, then KB context is auto-injected for that panel (no toggle).
-- [ ] When I attach an **image** in Arena, then note it is currently ignored *(images dropped — see #136)*.
+- [ ] When I attach an **image** in Arena, then attaching is allowed as soon as **any** panel's model is vision-capable; vision panels use the image for that turn (Arena is stateless — the image lives for this turn only), and a non-vision panel answers text-only with a notice that the images were ignored.
 - [ ] When a generation is running, then settings/model pickers are disabled; there is **no stop button** — the run must finish.
 - [ ] When I submit an **empty** prompt, then it does not send.
 

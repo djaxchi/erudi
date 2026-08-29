@@ -71,6 +71,10 @@ def build_chat_model(
     # (repeat_penalty / repeat_last_n) via ``_translate_payload_kwargs``. Sent via
     # ChatOpenAI.extra_body so they land in the local server's chat-completions
     # body. (getattr keeps non-server engines / test stubs working via identity.)
+    # The MLX translation also stamps a fresh random ``seed`` per request: this
+    # factory runs once per turn, so every generation gets its own, which is what
+    # makes temperature / top_p / top_k actually vary the output on Apple Silicon
+    # (mlx_vlm.server replays a fixed default seed when the request has none).
     # #388: a resolved per-model profile supplies the repetition controls and,
     # ONLY when it defines them, top_k / min_p / presence_penalty. Without a
     # profile (or for a model without hints, whose profile is the fallback)
@@ -94,9 +98,15 @@ def build_chat_model(
     translate = getattr(engine, "_translate_payload_kwargs", lambda kw: kw)
     extra_body = translate(raw_kwargs)
 
+    # Log the extra_body AS SENT (post-translation, so llama.cpp's wire names
+    # show up), one key=value per entry on the same line: the optional profile
+    # keys (top_k / min_p / presence_penalty, #388) are otherwise invisible in
+    # the INFO log and a QA pass cannot confirm they reached the server.
+    extra_body_desc = ", ".join(f"{key}={value}" for key, value in extra_body.items())
     logger.info(
         f"ChatOpenAI built: model={model_field}, base_url={handle['base_url']}/v1, "
-        f"temperature={temperature}, top_p={top_p}, max_tokens={max_tokens}"
+        f"temperature={temperature}, top_p={top_p}, max_tokens={max_tokens}, "
+        f"extra_body=[{extra_body_desc}]"
     )
     return ChatOpenAI(
         base_url=f"{handle['base_url']}/v1",

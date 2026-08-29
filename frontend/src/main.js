@@ -323,7 +323,7 @@ const startRealBackend = () => {
           failWith(event.code || "BACKEND_STARTUP_FAILED");
         } else if (event.event === "ready") {
           if (event.port) actualPort = event.port;
-          log(`Backend reported ready on port ${actualPort}; confirming health…`);
+          log(`Backend reported ready on port ${actualPort}; confirming health...`);
           confirmBackendHealth({
             fetchFn: (url) => fetch(url),
             url: `http://127.0.0.1:${actualPort}/erudi/health/`,
@@ -351,7 +351,7 @@ const startRealBackend = () => {
       // CPU build prints benign lines like "CUDA not available" / NVML / SQLAlchemy
       // "database" logs during a perfectly healthy boot. Log a hint at most.
       const hint = classifyStderrLine(output);
-      if (hint) log(`stderr hint: ${hint.code} — ${hint.message}`);
+      if (hint) log(`stderr hint: ${hint.code} - ${hint.message}`);
     });
 
     backendProcess.on("exit", (code, signal) => {
@@ -399,7 +399,7 @@ async function startBackendSupervised(attempt = 0) {
     const code = (error && error.message) || "BACKEND_STARTUP_FAILED";
     log(`Backend start attempt ${attempt + 1} failed: ${code}`);
     if (shouldRetrySpawn(code, attempt, MAX_SPAWN_ATTEMPTS)) {
-      log(`Transient failure (${code}); respawning…`);
+      log(`Transient failure (${code}); respawning...`);
       killBackend(backendProcess);
       backendProcess = null;
       await new Promise((r) => setTimeout(r, 2000));
@@ -946,7 +946,7 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("update-available", (info) => {
-    log(`Updater: update available — v${info.version}`);
+    log(`Updater: update available - v${info.version}`);
     send("update-available", { version: info.version, releaseNotes: info.releaseNotes || "" });
   });
 
@@ -971,13 +971,13 @@ function setupAutoUpdater() {
 
   // Check on launch, then every 4 hours
   autoUpdater.checkForUpdates().catch((err) => {
-    log(`Updater: initial check failed — ${err.message}`);
+    log(`Updater: initial check failed - ${err.message}`);
   });
 
   setInterval(
     () => {
       autoUpdater.checkForUpdates().catch((err) => {
-        log(`Updater: periodic check failed — ${err.message}`);
+        log(`Updater: periodic check failed - ${err.message}`);
       });
     },
     4 * 60 * 60 * 1000

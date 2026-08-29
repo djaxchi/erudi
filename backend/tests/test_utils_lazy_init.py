@@ -91,7 +91,6 @@ def test_lazy_reexports_still_resolve():
         "KbExcerpt",
         "retrieve_kb_excerpts",
         "get_disk_size_after_quant",
-        "get_model_size_estimate",
         "get_parameter_count_from_name",
         "format_model_info_metadata",
     }

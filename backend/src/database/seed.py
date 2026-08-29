@@ -74,7 +74,6 @@ from src.core.exceptions import (
 
 from src.utils.hf_model_metadata import (
     get_disk_size_after_quant,
-    get_model_size_estimate,
     format_model_info_metadata,
     extract_parameter_pattern,
     humanize_model_name,
@@ -663,7 +662,9 @@ class Model_Seeder:
         the display name stays derived from the clean base id.
         """
         model_info = self.hf_api.model_info(model_config.link)
-        size_estimate = get_disk_size_after_quant(quant_link)
+        # One repo_info(files_metadata=True) on the QUANT repo (the one actually
+        # downloaded) feeds both the Size line and the exact byte count below.
+        size_estimate = get_disk_size_after_quant(quant_link, hf_api=self.hf_api)
         # Real param count from the base's safetensors.total (captured at discovery),
         # slug as sanity-checked fallback — no more blanket 7.0 (#122).
         param_size = param_size_billions(
@@ -678,6 +679,9 @@ class Model_Seeder:
             quantized=True,
             model_metadata=metadata,
             param_size=param_size,
+            # Real download size: the chosen artifact's bytes when HF answered,
+            # None when the Size line is an estimate (never laundered into bytes).
+            artifact_size_bytes=size_estimate.size_bytes,
             # Curated foundation model (discovered from a FOUNDATION_ORG) — drives the
             # Base/Community split and "Models For You" recommendations in the UI (#86).
             is_base=True,
@@ -700,7 +704,7 @@ class Model_Seeder:
 
     def _create_base_llm_fallback(self, model_config: Model_Config, quant_link: str) -> Llm:
         """Create a base LLM with fallback metadata when base HF metadata is missing."""
-        size_estimate = get_disk_size_after_quant(quant_link)
+        size_estimate = get_disk_size_after_quant(quant_link, hf_api=self.hf_api)
         param_size = param_size_billions(
             model_config.safetensors_total, model_config.link.split("/")[-1])
 
@@ -720,6 +724,8 @@ class Model_Seeder:
             quantized=True,
             model_metadata=fallback_metadata,
             param_size=param_size,
+            # Real download size -- see _create_base_llm.
+            artifact_size_bytes=size_estimate.size_bytes,
             # Curated foundation model — see _create_base_llm (#86).
             is_base=True,
             # Chat-ready by construction — see _create_base_llm (#182).
@@ -745,10 +751,14 @@ class Model_Seeder:
     def _create_derived_llm(self, model_info, search_config: Search_Config) -> Llm:
         """Create derived LLM entity from search result."""
         model_name = model_info.id.split("/")[-1]
-        
-        # Estimate size
-        size_estimate = get_model_size_estimate(model_name, model_info.id)
-        
+
+        # Real download size, the same way as a base row: one
+        # repo_info(files_metadata=True) on the community repo, summed over the
+        # files the downloader would fetch (GGUF: the chosen quant, not the whole
+        # multi-quant repo). It replaces the old full-precision family guess,
+        # which overshot a 4-bit quant several times over. Estimate on failure.
+        size_estimate = get_disk_size_after_quant(model_info.id, hf_api=self.hf_api)
+
         # Extract parameters. When the id carries no size token, leave param_size
         # unknown (None) rather than substituting a plausible default (#201): a
         # defaulted number is indistinguishable from a measured one downstream and
@@ -778,6 +788,8 @@ class Model_Seeder:
             quantized=True,
             model_metadata=metadata,
             param_size=param_size,
+            # Real download size -- see _create_base_llm.
+            artifact_size_bytes=size_estimate.size_bytes,
             # Derived/community quant (not a curated foundation model) (#86).
             is_base=False,
             # Chat-readiness so the UI can rank IT models first even among community
@@ -1345,11 +1357,12 @@ class Database_Seeder:
     # excluded on purpose: it is detected post-download and must not be clobbered.
     _RESYNC_FIELDS = ("name", "type", "param_size", "model_metadata", "quantized",
                       "is_base", "conversational", "category", "description",
-                      "generation_hints")
+                      "generation_hints", "artifact_size_bytes")
     # Fields where a None in the fresh set means "unknown", never "clear": the
     # existing value is preserved (#192 for category; #388 for the sampling
-    # facts, which an old snapshot simply does not carry).
-    _PRESERVE_ON_NONE = ("category", "generation_hints")
+    # facts, which an old snapshot simply does not carry; likewise the real
+    # artifact size, absent from snapshots that predate it or estimate-backed).
+    _PRESERVE_ON_NONE = ("category", "generation_hints", "artifact_size_bytes")
 
     def reconcile_remote_catalog(
         self, db: Session, fresh_base: List[Llm], fresh_derived: List[Llm]
@@ -1428,13 +1441,13 @@ class Database_Seeder:
         tag = getattr(config.LLM_Engine, "FORMAT_TAG", None)
         entries = load_catalog_snapshot(tag) if tag else []
         if not entries:
-            logger.info("No bundled catalog snapshot — keeping the existing catalog")
+            logger.info("No bundled catalog snapshot - keeping the existing catalog")
             return {"resynced": False}
         fresh = [dict_to_llm(e) for e in entries]
         fresh_base = [m for m in fresh if m.is_base]
         fresh_derived = [m for m in fresh if not m.is_base]
         if not fresh_base:
-            logger.warning("Snapshot carries no base models — keeping the existing catalog")
+            logger.warning("Snapshot carries no base models - keeping the existing catalog")
             return {"resynced": False}
         res = self.reconcile_remote_catalog(db, fresh_base, fresh_derived)
         if res.get("resynced"):

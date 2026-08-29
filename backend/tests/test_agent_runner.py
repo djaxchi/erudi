@@ -1456,6 +1456,48 @@ def test_build_chat_model_sends_optional_keys_only_when_the_profile_defines_them
         "repetition_penalty": 1.05, "repetition_context_size": 64, "presence_penalty": 1.5}
 
 
+def test_build_chat_model_logs_the_resolved_extra_body(monkeypatch, caplog):
+    """QA could not verify from the INFO log that a profile's top_k reached the
+    server: the "ChatOpenAI built" line must list every extra_body key as sent
+    (post-translation, so the wire names appear), ASCII, on the one line."""
+    import logging
+
+    monkeypatch.setattr(config, "LLM_Engine", _IdentityEngine)
+    llm = _HintedLlm(temperature=0.6, top_p=0.95, top_k=20, min_p=0.0)
+    with caplog.at_level(logging.INFO, logger="erudi"):
+        build_chat_model(llm, temperature=0.6, top_p=0.95, max_tokens=55,
+                         sampling=resolve_sampling_defaults(llm))
+    (line,) = [r.message for r in caplog.records if r.message.startswith("ChatOpenAI built:")]
+    assert "temperature=0.6" in line and "max_tokens=55" in line
+    assert "extra_body=" in line
+    for key in ("repetition_penalty=1.1", "repetition_context_size=64", "top_k=20", "min_p=0.0"):
+        assert key in line
+    assert "\n" not in line and line.isascii()
+
+
+def test_build_chat_model_logs_translated_wire_names(monkeypatch, caplog):
+    import logging
+
+    from src.engines.base_llama_cpp_engine import BaseLlamaCppEngine
+
+    class _LlamaEngine:
+        @staticmethod
+        def get_model_and_tokenizer(llm_id, link):
+            return ({"base_url": "http://127.0.0.1:9090", "alias": f"erudi-{llm_id}"}, {})
+
+        @staticmethod
+        def _payload_model_value(handle):
+            return handle["alias"]
+
+        _translate_payload_kwargs = BaseLlamaCppEngine._translate_payload_kwargs
+
+    monkeypatch.setattr(config, "LLM_Engine", _LlamaEngine)
+    with caplog.at_level(logging.INFO, logger="erudi"):
+        build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55)
+    (line,) = [r.message for r in caplog.records if r.message.startswith("ChatOpenAI built:")]
+    assert "repeat_penalty=1.1" in line and "repeat_last_n=64" in line
+
+
 def test_build_chat_model_llama_cpp_leaves_optional_names_untouched(monkeypatch):
     # top_k / min_p / presence_penalty ARE llama-server's own names: the
     # translation renames only the repetition controls.
@@ -1514,3 +1556,56 @@ async def test_oneshot_passes_the_resolved_sampling_too(monkeypatch):
     ):
         pass
     assert captured["sampling"].source == "none"
+
+
+# ---------------------------------------------------------------------------
+# Per-request seed on the MLX path: mlx_vlm.server replays DEFAULT_SEED when a
+# request carries no ``seed``, so "creativity" had no run-to-run effect on Apple
+# Silicon. The factory must let the engine translation stamp a fresh seed into
+# extra_body and the "ChatOpenAI built" line must show it.
+# ---------------------------------------------------------------------------
+from src.engines.mlx_engine import MLX_Engine  # noqa: E402
+
+
+class _MlxLikeEngine(_IdentityEngine):
+    _translate_payload_kwargs = MLX_Engine._translate_payload_kwargs
+
+
+def test_build_chat_model_mlx_extra_body_carries_a_fresh_seed(monkeypatch):
+    monkeypatch.setattr(config, "LLM_Engine", _MlxLikeEngine)
+    chats = [build_chat_model(_Llm(), temperature=0.6, top_p=0.95, max_tokens=55)
+             for _ in range(8)]
+    assert all(isinstance(chat.extra_body["seed"], int) for chat in chats)
+    assert len({chat.extra_body["seed"] for chat in chats}) > 1
+    # The repetition controls still ride next to it, untouched.
+    assert {k: v for k, v in chats[0].extra_body.items() if k != "seed"} == {
+        "repetition_penalty": 1.1, "repetition_context_size": 64}
+
+
+def test_build_chat_model_oneshot_on_mlx_also_gets_a_seed(monkeypatch):
+    # Titles run at temperature 1.0 with enable_thinking=False; a random seed
+    # there is fine and the body shape stays identical apart from the seed.
+    monkeypatch.setattr(config, "LLM_Engine", _MlxLikeEngine)
+    chat = build_chat_model(_Llm(), temperature=1.0, top_p=0.95, max_tokens=12,
+                            disable_thinking=True)
+    assert chat.extra_body["enable_thinking"] is False
+    assert isinstance(chat.extra_body["seed"], int)
+
+
+def test_build_chat_model_logs_the_seed_on_mlx(monkeypatch, caplog):
+    monkeypatch.setattr(config, "LLM_Engine", _MlxLikeEngine)
+    with caplog.at_level(logging.INFO, logger="erudi"):
+        chat = build_chat_model(_Llm(), temperature=0.6, top_p=0.95, max_tokens=55)
+    (line,) = [r.message for r in caplog.records if r.message.startswith("ChatOpenAI built:")]
+    assert f"seed={chat.extra_body['seed']}" in line
+
+
+def test_build_chat_model_llama_cpp_extra_body_has_no_seed(monkeypatch):
+    from src.engines.base_llama_cpp_engine import BaseLlamaCppEngine
+
+    class _LlamaEngine(_IdentityEngine):
+        _translate_payload_kwargs = BaseLlamaCppEngine._translate_payload_kwargs
+
+    monkeypatch.setattr(config, "LLM_Engine", _LlamaEngine)
+    chat = build_chat_model(_Llm(), temperature=0.6, top_p=0.95, max_tokens=55)
+    assert "seed" not in chat.extra_body
