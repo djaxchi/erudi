@@ -30,7 +30,7 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When no base model fits my machine, then the "Recommended" section is hidden (not empty).
 - [ ] When a model is **not runnable on my hardware**, then its card shows "Not supported on your hardware" and Download is disabled.
 - [ ] When a model is **gated** (from a Hugging Face search hit), then the card shows a "gated" tag.
-- [ ] When I browse the **bundled catalog**, then no card links to a gated repository at all — Erudi downloads anonymously, so a gated link would 401 whoever clicked it *(#391; gated repos are dropped at snapshot time, not flagged)*.
+- [ ] When I browse the **bundled catalog**, then no card links to a gated repository at all — Erudi downloads anonymously, so a gated link would 401 whoever clicked it *(#392; gated repos are dropped at snapshot time, not flagged)*.
 - [ ] When a model is **under ~4B parameters**, then its card — catalog, explore and installed alike — carries the note that tool use, knowledge-base search and multi-step reasoning are unreliable below ~4B *(#381)*; a 7B or unknown-size card carries no such note.
 - [ ] When a category carousel has more than 4 models, then a "See all" control expands it to a grid (and back).
 - [ ] When I apply a **size filter** or **"Fits my machine"** and nothing matches, then I see "No models match these filters. Widen the size range or turn off 'Fits my machine'."
@@ -54,6 +54,8 @@ screens, the shared chrome, and non-functional behavior.
 
 **Per-model sampling defaults (#388)**
 - [ ] When I select a model whose publisher ships sampling values, then Creativity / Diversity start at **that model's** values rather than a global 0.2 / 0.95 (Qwen3 starts at 0.6 / 0.95, Qwen2.5 at 0.7 / 0.8).
+- [ ] When the publisher ships a **greedy** temperature (Qwen2.5-VL ships `0.000001`), then the slider shows **0** and the model answers normally — no stream of `!` *(#395: greedy is sent as an exact 0)*.
+- [ ] When I send the **same prompt in several fresh conversations** on an Apple Silicon model at a non-zero temperature, then the answers differ *(#402: a fresh seed per request; a short factual answer may still converge)*.
 - [ ] When I switch model mid-setup, then the sliders **re-default** to the new model's values.
 - [ ] When I open the Max Tokens control, then its ceiling is the model's own cap (`min(model context, engine context)`), not a fixed 1024.
 - [ ] When the Creativity slider is dragged to the top, then it reaches **2**, not 1.
@@ -65,7 +67,7 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When I attach image(s) on a **vision-capable** model (button, paste, or drag-and-drop) and send, then thumbnails show (up to 4) and the images are used in the answer.
 - [ ] When the **selected model is NOT vision-capable**, then the image **attach button is not shown at all** (vision-only affordance) and pasting/dropping an image is ignored; if an image still reaches the backend it is stripped, so the answer is plain text (never broken).
 - [ ] When I try to attach a **5th** image, then it is rejected (cap of 4) and the attach button is disabled at 4.
-- [ ] When I drop a **non-image** file, then it is ignored.
+- [ ] When I drop a **non-image** file, then it is refused with "This format is not supported." and nothing is attached.
 - [ ] When the input is **empty or whitespace** only, then the send button is disabled.
 - [ ] When the model is loading on the first reply, then a "First response may take a bit longer while loading the model into memory…" hint shows.
 - [ ] When I have **zero local models**, then the composer is replaced by "No current local models found, please add local models to proceed."
@@ -140,7 +142,7 @@ screens, the shared chrome, and non-functional behavior.
 ## Knowledge Base / Create Assistant — `/erudi/attach_knowledge_base`
 
 **Happy path**
-- [ ] When I open the screen for the **first time** (embedding model not yet installed), then a dialog offers to download the embedding model (multilingual-e5-small) once; accepting downloads it and confirms "the Knowledge Base is ready to use"; declining leaves the screen usable read-only and the offer returns on the next visit.
+- [ ] When I open the screen for the **first time** (embedding model not yet installed), then a dialog offers to download the embedding model (multilingual-e5-small) once; accepting downloads it and confirms "the Knowledge Base is ready to use"; declining ("Not now") returns to the Models page *(#146/#157)* and the offer returns on the next visit.
 - [ ] When I open the screen, then I see the KB description, a chat-capabilities rating (my machine's inference label/score), the local-model library, a name field, and a drag-and-drop area.
 - [ ] When I select a base model, type a name and **click Check to lock it**, add supported files (`.pdf`/`.txt`/`.docx`/`.xlsx`/`.csv`/`.md`), and click "Create Assistant" + confirm, then a spinner polls progress.
 - [ ] When ingestion completes, then "Data attached to your Assistant successfully!" shows and the form resets.
