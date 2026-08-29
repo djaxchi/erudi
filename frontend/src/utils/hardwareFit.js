@@ -4,27 +4,38 @@
  * The startup benchmark gives a recommended parameter window [min, max] for the
  * user's machine. Here we judge each model against it so the UI can show, per
  * card, whether it fits comfortably, fits tight, or needs more memory — and draw
- * a gauge positioned against the user's budget. Pure + framework-free for tests.
+ * a gauge positioned against the user's budget. Pure + framework-free for tests
+ * (the only side effect is reading the active translation for the labels).
  */
+import i18n from "../i18n";
 
-/** Tiers, ordered best→worst, with user-facing copy and the token color they map to. */
+/**
+ * Tiers, ordered best→worst, with the translation key of their user-facing copy
+ * and the token color they map to. `fitForModel` resolves the key at call time
+ * so a language switch is reflected on the next render.
+ */
 export const FIT_META = {
-  ideal: { label: "Ideal fit", color: "var(--fit-good)", tone: "good" },
-  good: { label: "Runs easily", color: "var(--fit-good)", tone: "good" },
-  tight: { label: "Tight fit", color: "var(--fit-tight)", tone: "tight" },
-  heavy: { label: "Needs more memory", color: "var(--fit-heavy)", tone: "heavy" },
-  unknown: { label: "", color: "var(--ink-faint)", tone: "unknown" },
+  ideal: { labelKey: "models:fit.labels.ideal", color: "var(--fit-good)", tone: "good" },
+  good: { labelKey: "models:fit.labels.good", color: "var(--fit-good)", tone: "good" },
+  tight: { labelKey: "models:fit.labels.tight", color: "var(--fit-tight)", tone: "tight" },
+  heavy: { labelKey: "models:fit.labels.heavy", color: "var(--fit-heavy)", tone: "heavy" },
+  unknown: { labelKey: null, color: "var(--ink-faint)", tone: "unknown" },
 };
+
+const fitLabel = (tier) => (FIT_META[tier].labelKey ? i18n.t(FIT_META[tier].labelKey) : "");
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
-/** Size buckets for the catalog filter, by billions of parameters. */
+/**
+ * Size buckets for the catalog filter, by billions of parameters. `labelKey` is
+ * the translation key of the chip label (components resolve it with `t`).
+ */
 export const SIZE_BUCKETS = [
-  { key: "any", label: "Any size", test: () => true },
-  { key: "tiny", label: "Under 2B", test: (p) => p > 0 && p < 2 },
-  { key: "small", label: "2–8B", test: (p) => p >= 2 && p <= 8 },
-  { key: "medium", label: "8–32B", test: (p) => p > 8 && p <= 32 },
-  { key: "large", label: "32B+", test: (p) => p > 32 },
+  { key: "any", labelKey: "models:sizeBuckets.any", test: () => true },
+  { key: "tiny", labelKey: "models:sizeBuckets.tiny", test: (p) => p > 0 && p < 2 },
+  { key: "small", labelKey: "models:sizeBuckets.small", test: (p) => p >= 2 && p <= 8 },
+  { key: "medium", labelKey: "models:sizeBuckets.medium", test: (p) => p > 8 && p <= 32 },
+  { key: "large", labelKey: "models:sizeBuckets.large", test: (p) => p > 32 },
 ];
 
 /**
@@ -38,12 +49,24 @@ export function applyCatalogFilters(models, { size = "any", fitOnly = false } = 
     if (!bucket.test(p)) {
       return false;
     }
-    if (fitOnly && fitForModel(p, range).tier === "heavy") {
+    if (fitOnly && fitForCatalogModel(m, range).tier === "heavy") {
       return false;
     }
     return true;
   });
 }
+
+/**
+ * GB of weights per billion parameters at 4-bit, overhead included. The same
+ * coefficient the backend uses to turn usable memory into the recommended
+ * parameter window (`_GB_PER_BILLION_PARAMS_Q4`), which is what lets a measured
+ * size be judged against that window.
+ */
+export const GB_PER_BILLION_PARAMS_Q4 = 0.6;
+
+// The backend measures and labels sizes in decimal GB (1e9 bytes) so a model
+// does not "shrink" between the catalog and its installed card.
+export const BYTES_PER_GB = 1_000_000_000;
 
 /**
  * Rough on-device footprint in GB. Catalog models are 4-bit quants (~0.6 GB per
@@ -53,21 +76,51 @@ export function estimateFootprintGb(paramSize, quantized = true) {
   if (!paramSize || paramSize <= 0) {
     return null;
   }
-  return paramSize * (quantized === false ? 2.0 : 0.6);
+  return paramSize * (quantized === false ? 2.0 : GB_PER_BILLION_PARAMS_Q4);
+}
+
+/** The measured download size in decimal GB, or null when it is not a positive number. */
+export function measuredSizeGb(model) {
+  const bytes = model?.artifact_size_bytes;
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) {
+    return null;
+  }
+  return bytes / BYTES_PER_GB;
+}
+
+/**
+ * The footprint a card shows: the measured `artifact_size_bytes` when the
+ * backend has it (#397), else the parameter-count estimate. `measured` tells the
+ * caller whether to present the number as exact or approximate. Null when
+ * neither is known.
+ */
+export function modelFootprintGb(model) {
+  const measured = measuredSizeGb(model);
+  if (measured !== null) {
+    return { gb: measured, measured: true };
+  }
+  const estimate = estimateFootprintGb(model?.param_size, model?.quantized);
+  return estimate ? { gb: estimate, measured: false } : null;
 }
 
 /**
  * Classify a model against the recommended window.
  * @param {number} paramSize - billions of params
  * @param {{min:number, max:number}|null} range - recommended window from the benchmark
- * @returns {{tier:string, fraction:number, tickFraction:number} & FIT_META[tier]}
+ * @returns {{tier:string, fraction:number, tickFraction:number, label:string} & FIT_META[tier]}
  */
 export function fitForModel(paramSize, range) {
   const hasRange =
     range && typeof range.min === "number" && typeof range.max === "number" && range.max > 0;
 
   if (!paramSize || paramSize <= 0 || !hasRange) {
-    return { tier: "unknown", fraction: 0, tickFraction: 0.5, ...FIT_META.unknown };
+    return {
+      tier: "unknown",
+      fraction: 0,
+      tickFraction: 0.5,
+      ...FIT_META.unknown,
+      label: fitLabel("unknown"),
+    };
   }
 
   // The recommended max is a soft sweet-spot ceiling, not a hard limit: a model
@@ -85,7 +138,22 @@ export function fitForModel(paramSize, range) {
 
   // Gauge runs 0 → 2× the comfortable ceiling; the tick sits at the ceiling (0.5).
   const fraction = clamp(paramSize / (max * 2), 0.03, 1);
-  return { tier, fraction, tickFraction: 0.5, ...FIT_META[tier] };
+  return { tier, fraction, tickFraction: 0.5, ...FIT_META[tier], label: fitLabel(tier) };
+}
+
+/**
+ * Classify a catalog model against the window, from the number its card shows:
+ * the measured download size when the backend has it (#397), converted back to
+ * the 4-bit parameter count that much weight represents — the window itself is
+ * derived from usable memory with the same coefficient — else the nominal
+ * parameter count. One number drives the size label, the fill and the verdict,
+ * so a 3B model whose weights really take 3.1 GB is judged as the 5B-class
+ * model it costs to run.
+ */
+export function fitForCatalogModel(model, range) {
+  const measured = measuredSizeGb(model);
+  const paramSize = measured === null ? model?.param_size : measured / GB_PER_BILLION_PARAMS_Q4;
+  return fitForModel(paramSize, range);
 }
 
 /**
@@ -111,7 +179,7 @@ export const isChatReady = (model) => {
 const TIER_RANK = { ideal: 0, good: 1, tight: 2, heavy: 3, unknown: 4 };
 export function rankByFit(models, range) {
   return [...models]
-    .map((m) => ({ m, fit: fitForModel(m.param_size, range) }))
+    .map((m) => ({ m, fit: fitForCatalogModel(m, range) }))
     .sort((a, b) => {
       // Chat models lead: a newcomer's default should be something made for chat.
       const c = Number(isChatReady(b.m)) - Number(isChatReady(a.m));
@@ -161,7 +229,7 @@ export function pickFlagships(models, range, count = 3) {
   for (const family of FLAGSHIP_FAMILIES) {
     const inFamily = pool.filter((m) => (m.type || "").toLowerCase() === family);
     const best = rankByFit(inFamily, range)[0];
-    if (best && fitForModel(best.param_size, range).tier !== "heavy") {
+    if (best && fitForCatalogModel(best, range).tier !== "heavy") {
       picks.push(best);
       chosen.add(best.id ?? best.link);
     }
@@ -172,7 +240,7 @@ export function pickFlagships(models, range, count = 3) {
 
   if (picks.length < count) {
     const filler = rankByFit(pool, range).filter(
-      (m) => !chosen.has(m.id ?? m.link) && fitForModel(m.param_size, range).tier !== "heavy"
+      (m) => !chosen.has(m.id ?? m.link) && fitForCatalogModel(m, range).tier !== "heavy"
     );
     for (const m of filler) {
       if (picks.length >= count) {

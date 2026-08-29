@@ -105,6 +105,13 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     # no hand-maintained allowlist. Set per engine family.
     FORMAT_TAG = None
 
+    @classmethod
+    def max_context_tokens(cls) -> Optional[int]:
+        """The engine-imposed context window in tokens, or ``None`` when the engine
+        sets none (MLX). llama.cpp engines spawn with a fixed ``-c`` and override
+        this; the per-model sampling resolver (#388) caps ``max_tokens`` on it."""
+        return None
+
     # Stored model links that download fine but FAIL TO RUN on this engine
     # (e.g. a quantized checkpoint the loader can't read). Overridden per engine.
     # is_runnable() uses it to ban such models from the catalog for this hardware.
@@ -121,11 +128,13 @@ class BaseEngine(ABC, metaclass=EngineMeta):
 
         ``expand`` pulls pipeline_tag + tags (alongside the downloads/likes the
         quality floor needs) in the one call, so the non-chat task filter (#242)
-        can gate ASR/embedding/OCR/media-gen repos out of the derived catalog.
+        can gate ASR/embedding/OCR/media-gen repos out of the derived catalog,
+        plus ``gated`` so a repo the token-less app cannot download is dropped
+        (``model_resolver.is_gated``).
         """
         kwargs = {
             "filter": cls.FORMAT_TAG,
-            "expand": ["pipeline_tag", "tags", "downloads", "likes"],
+            "expand": ["pipeline_tag", "tags", "downloads", "likes", "gated"],
         }
         if term:
             kwargs["search"] = term

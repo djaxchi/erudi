@@ -5,28 +5,61 @@ import json
 import types
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.core import config
 from src.database import catalog_snapshot as snap
+from src.database import generation_hints as gh
 from src.database import seed as seed_mod
 from src.database.seed import Model_Seeder
 from src.entities.Llm import Llm
+
+_HINTS = {"base_repo": "Qwen/Qwen3-8B", "generation_config": {"temperature": 0.6, "top_k": 20},
+          "supports_thinking": True, "context_length": 40960, "captured_at": "2026-08-28"}
+
+
+@pytest.fixture(autouse=True)
+def _no_capture_cache():
+    gh.reset_capture_cache()
+    yield
+    gh.reset_capture_cache()
 
 
 def test_llm_dict_roundtrip():
     llm = Llm(local=0, name="Qwen3 8B", link="lmstudio/Qwen3-8B-MLX-4bit", type="qwen",
               quantized=True, model_metadata="meta", param_size=8.0, supports_tools=None,
-              is_base=True, conversational=True, category="general")
+              is_base=True, conversational=True, category="general", generation_hints=_HINTS,
+              artifact_size_bytes=4_620_000_000)
     d = snap.llm_to_dict(llm)
     assert d == {
         "name": "Qwen3 8B", "link": "lmstudio/Qwen3-8B-MLX-4bit", "type": "qwen",
         "quantized": True, "model_metadata": "meta", "param_size": 8.0, "supports_tools": None,
         "is_base": True, "conversational": True, "category": "general",
+        "generation_hints": _HINTS, "artifact_size_bytes": 4_620_000_000,
     }
     back = snap.dict_to_llm(d)
     assert (back.local, back.name, back.link, back.type, back.param_size) == (
         0, "Qwen3 8B", "lmstudio/Qwen3-8B-MLX-4bit", "qwen", 8.0)
     assert back.is_base is True
     assert back.category == "general"
+    assert back.generation_hints == _HINTS
+    assert back.artifact_size_bytes == 4_620_000_000
+
+
+def test_dict_to_llm_tolerates_absent_artifact_size_bytes():
+    # The bundled snapshots predate the column: absent key or null = size unknown.
+    assert snap.dict_to_llm({"name": "X", "link": "y/z", "type": "qwen"}).artifact_size_bytes is None
+    assert snap.dict_to_llm(
+        {"name": "X", "link": "y/z", "type": "qwen", "artifact_size_bytes": None}
+    ).artifact_size_bytes is None
+
+
+def test_dict_to_llm_tolerates_absent_generation_hints():
+    # Pre-#388 snapshots carry no hints: None = "no hints" = the fallback sampling.
+    assert snap.dict_to_llm({"name": "X", "link": "y/z", "type": "qwen"}).generation_hints is None
+    assert snap.dict_to_llm(
+        {"name": "X", "link": "y/z", "type": "qwen", "generation_hints": None}
+    ).generation_hints is None
 
 
 def test_dict_to_llm_defaults_is_base_false_when_missing():
@@ -62,11 +95,12 @@ def test_build_path_emits_classified_snapshot_entries(monkeypatch):
     monkeypatch.setattr(seed_mod, "categorize", spy)
 
     class _Size:
+        size_bytes = None
+
         def to_string(self):
             return "1 GB"
 
     monkeypatch.setattr(seed_mod, "format_model_info_metadata", lambda *a, **k: "meta")
-    monkeypatch.setattr(seed_mod, "get_model_size_estimate", lambda *a, **k: _Size())
     monkeypatch.setattr(seed_mod, "get_disk_size_after_quant", lambda *a, **k: _Size())
 
     api = MagicMock()
@@ -91,6 +125,153 @@ def test_build_path_emits_classified_snapshot_entries(monkeypatch):
     assert derived_entry["category"] == "reasoning"
 
     assert calls["n"] >= 2                        # the classifier was actually consulted
+
+
+def _seeder_with_capture_spy(monkeypatch):
+    """Model_Seeder over a stub HF api, with the hints capture spied (#388)."""
+    captured = []
+
+    def spy(base_repo, hf_api, quant_repo=None):
+        captured.append((base_repo, quant_repo))
+        return dict(_HINTS, base_repo=base_repo)
+
+    monkeypatch.setattr(seed_mod, "capture_generation_hints", spy)
+
+    class _Size:
+        size_bytes = None
+
+        def to_string(self):
+            return "1 GB"
+
+    monkeypatch.setattr(seed_mod, "format_model_info_metadata", lambda *a, **k: "meta")
+    monkeypatch.setattr(seed_mod, "get_disk_size_after_quant", lambda *a, **k: _Size())
+    api = MagicMock()
+    api.model_info.return_value = object()
+    return Model_Seeder(db=None, hf_api=api), captured
+
+
+def test_base_creators_capture_hints_from_the_base_repo_with_the_quant_as_second_stage(monkeypatch):
+    """#388: the snapshot generation path captures the BASE repo's generation
+    facts (Model_Config.link) with the resolved quant link as the cascade's
+    second stage, and carries them onto the row that llm_to_dict dumps."""
+    seeder, captured = _seeder_with_capture_spy(monkeypatch)
+    cfg = seed_mod.Model_Config(name="Qwen3-8B", link="Qwen/Qwen3-8B", model_type="qwen")
+
+    entry = snap.llm_to_dict(seeder._create_base_llm(cfg, "lmstudio/Qwen3-8B-MLX-4bit"))
+    assert entry["generation_hints"]["base_repo"] == "Qwen/Qwen3-8B"
+    assert entry["generation_hints"]["generation_config"] == {"temperature": 0.6, "top_k": 20}
+
+    fallback = snap.llm_to_dict(
+        seeder._create_base_llm_fallback(cfg, "lmstudio/Qwen3-8B-MLX-4bit"))
+    assert fallback["generation_hints"]["base_repo"] == "Qwen/Qwen3-8B"
+    assert captured == [("Qwen/Qwen3-8B", "lmstudio/Qwen3-8B-MLX-4bit")] * 2
+
+
+def test_derived_creator_captures_from_the_base_model_tag_else_itself(monkeypatch):
+    seeder, captured = _seeder_with_capture_spy(monkeypatch)
+    search_config = types.SimpleNamespace(model_type="qwen", default_param_size=7.0)
+
+    tagged = types.SimpleNamespace(
+        id="mlx-community/Qwen3-8B-4bit", pipeline_tag="text-generation",
+        tags=["mlx", "base_model:quantized:Qwen/Qwen3-8B"])
+    entry = snap.llm_to_dict(seeder._create_derived_llm(tagged, search_config))
+    assert entry["generation_hints"]["base_repo"] == "Qwen/Qwen3-8B"
+
+    untagged = types.SimpleNamespace(id="community/foo-GGUF", pipeline_tag="text-generation",
+                                     tags=[])
+    entry = snap.llm_to_dict(seeder._create_derived_llm(untagged, search_config))
+    assert entry["generation_hints"]["base_repo"] == "community/foo-GGUF"
+    assert captured == [("Qwen/Qwen3-8B", "mlx-community/Qwen3-8B-4bit"),
+                        ("community/foo-GGUF", "community/foo-GGUF")]
+
+
+def test_capture_failure_leaves_hints_none(monkeypatch):
+    seeder, _ = _seeder_with_capture_spy(monkeypatch)
+    monkeypatch.setattr(seed_mod, "capture_generation_hints", lambda *a, **k: None)
+    cfg = seed_mod.Model_Config(name="X", link="org/X", model_type="x")
+    assert snap.llm_to_dict(seeder._create_base_llm(cfg, "q/X-GGUF"))["generation_hints"] is None
+
+
+# ---------------------------------------------------------------------------
+# Real artifact size at snapshot time. The frontend's per-parameter estimate
+# misses a VLM's vision tower by 25-35 % (Qwen2.5-VL-3B: "~2.3 GB" shown, 3.09 GB
+# downloaded), so the catalog carries the bytes the downloader would fetch.
+# ---------------------------------------------------------------------------
+
+class _ApiSize:
+    """What get_disk_size_after_quant returns on an API hit."""
+    size_bytes = 3_090_000_000
+
+    def to_string(self):
+        return "~3.1 GB"
+
+
+class _EstimatedSize:
+    size_bytes = None
+
+    def to_string(self):
+        return "~2.3 GB"
+
+
+def _seeder_with_size_spy(monkeypatch, size):
+    monkeypatch.setattr(seed_mod, "capture_generation_hints", lambda *a, **k: None)
+    monkeypatch.setattr(seed_mod, "format_model_info_metadata", lambda *a, **k: "meta")
+    sized = []
+
+    def spy(link, hf_api=None):
+        sized.append((link, hf_api))
+        return size
+
+    monkeypatch.setattr(seed_mod, "get_disk_size_after_quant", spy)
+    api = MagicMock()
+    api.model_info.return_value = object()
+    return Model_Seeder(db=None, hf_api=api), sized, api
+
+
+def test_base_creators_record_the_real_artifact_size_of_the_resolved_quant(monkeypatch):
+    """The base row's size comes from the quant repo the resolver picked (the repo
+    actually downloaded), through the seeder's own HF client: for MLX the whole
+    single-artifact repo, for GGUF the chosen quant file (+ mmproj + aux) -- the
+    same selection the downloader applies. Zero extra requests: this is the
+    repo_info(files_metadata=True) call the Size line already paid for."""
+    seeder, sized, api = _seeder_with_size_spy(monkeypatch, _ApiSize())
+    cfg = seed_mod.Model_Config(name="Qwen2.5-VL-3B", link="Qwen/Qwen2.5-VL-3B-Instruct",
+                                model_type="qwen")
+
+    entry = snap.llm_to_dict(
+        seeder._create_base_llm(cfg, "mlx-community/Qwen2.5-VL-3B-Instruct-4bit"))
+    assert entry["artifact_size_bytes"] == 3_090_000_000
+
+    fallback = snap.llm_to_dict(
+        seeder._create_base_llm_fallback(cfg, "mlx-community/Qwen2.5-VL-3B-Instruct-4bit"))
+    assert fallback["artifact_size_bytes"] == 3_090_000_000
+    assert sized == [("mlx-community/Qwen2.5-VL-3B-Instruct-4bit", api)] * 2
+
+
+def test_derived_creator_records_the_real_artifact_size_of_the_community_repo(monkeypatch):
+    """Community rows used to carry a full-precision family guess; they now pay
+    the same one repo_info call as a base row and record the exact bytes."""
+    seeder, sized, api = _seeder_with_size_spy(monkeypatch, _ApiSize())
+    search_config = types.SimpleNamespace(model_type="qwen", default_param_size=7.0)
+    hit = types.SimpleNamespace(id="bartowski/Qwen3-8B-GGUF", pipeline_tag="text-generation",
+                                tags=["gguf"])
+
+    entry = snap.llm_to_dict(seeder._create_derived_llm(hit, search_config))
+    assert entry["artifact_size_bytes"] == 3_090_000_000
+    assert sized == [("bartowski/Qwen3-8B-GGUF", api)]
+
+
+def test_estimated_size_leaves_artifact_size_unknown(monkeypatch):
+    """When HF cannot be asked, the Size line falls back to an estimate but the
+    bytes column stays None: an estimate must never be stored as a measurement
+    (the frontend keeps its own estimate as fallback)."""
+    seeder, _, _ = _seeder_with_size_spy(monkeypatch, _EstimatedSize())
+    cfg = seed_mod.Model_Config(name="X", link="org/X", model_type="x")
+    assert snap.llm_to_dict(seeder._create_base_llm(cfg, "q/X-GGUF"))["artifact_size_bytes"] is None
+    hit = types.SimpleNamespace(id="community/foo-GGUF", pipeline_tag="text-generation", tags=[])
+    search_config = types.SimpleNamespace(model_type="x", default_param_size=7.0)
+    assert snap.llm_to_dict(
+        seeder._create_derived_llm(hit, search_config))["artifact_size_bytes"] is None
 
 
 def test_load_missing_snapshot_returns_empty(tmp_path, monkeypatch):

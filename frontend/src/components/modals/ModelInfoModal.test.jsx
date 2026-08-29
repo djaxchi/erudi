@@ -104,6 +104,24 @@ describe("ModelInfoModal", () => {
     expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
+  // The details modal is also opened from Installed cards and from catalog
+  // cards of models already on disk; it must not offer a second download.
+  it("offers Download on a model that is not installed", () => {
+    setup(richModel, { installed: false });
+    expect(screen.getByText("Download")).toBeTruthy();
+    expect(screen.queryByText("Installed")).toBeNull();
+  });
+
+  it("shows the installed state instead of Download on an installed model", () => {
+    const { props } = setup(richModel, { installed: true });
+    expect(screen.queryByText("Download")).toBeNull();
+    expect(screen.getByText("Installed")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Close"));
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(props.onDownload).not.toHaveBeenCalled();
+  });
+
   it("Cancel and the header X close without downloading", () => {
     const { props, container } = setup();
     fireEvent.click(screen.getByText("Cancel"));
@@ -113,5 +131,17 @@ describe("ModelInfoModal", () => {
     fireEvent.click(headerX);
     expect(props.onClose).toHaveBeenCalledTimes(2);
     expect(props.onDownload).not.toHaveBeenCalled();
+  });
+
+  it("Escape closes the modal, and only while it is open", () => {
+    const { props } = setup();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(props.onDownload).not.toHaveBeenCalled();
+    cleanup();
+
+    const closed = setup(richModel, { isOpen: false });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(closed.props.onClose).not.toHaveBeenCalled();
   });
 });

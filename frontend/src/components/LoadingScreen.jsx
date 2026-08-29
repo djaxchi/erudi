@@ -1,18 +1,21 @@
 import React, { useEffect, useState } from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 
-// Human labels for the backend's startup-progress phases (backend/run.py +
-// the FastAPI lifespan emit these). Unknown/absent → a generic "Starting".
-const PHASE_LABELS = {
-  starting: "Starting Erudi…",
-  preparing_database: "Preparing the database…",
-  recovering_database: "Recovering the database…",
-  running_migrations: "Updating the database…",
-  loading_catalog: "Loading the model catalog…",
-  ready: "Almost ready…",
-};
+// The backend's startup-progress phases (backend/run.py + the FastAPI
+// lifespan emit these). Each maps to a `common:boot.phase.*` label; unknown
+// or absent phases show the generic "Starting" one.
+const KNOWN_PHASES = [
+  "starting",
+  "preparing_database",
+  "recovering_database",
+  "running_migrations",
+  "loading_catalog",
+  "ready",
+];
 
 export default function LoadingScreen({ phase, firstRun }) {
+  const { t } = useTranslation();
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -21,7 +24,8 @@ export default function LoadingScreen({ phase, firstRun }) {
     return () => clearInterval(id);
   }, []);
 
-  const label = PHASE_LABELS[phase] || "Starting Erudi…";
+  const phaseKey = KNOWN_PHASES.includes(phase) ? phase : "starting";
+  const label = t(`common:boot.phase.${phaseKey}`);
 
   return (
     <div
@@ -30,20 +34,23 @@ export default function LoadingScreen({ phase, firstRun }) {
     >
       <img
         src={require("../assets/images/logos/logoerudifinal.png")}
-        alt="erudi Logo"
+        alt={t("common:boot.logoAlt")}
         className="mb-2 object-contain"
         style={{ maxWidth: "14rem", maxHeight: "14rem" }}
       />
       <p className="text-xl mt-1 mb-8" style={{ color: "#e0e0e0" }}>
-        AI with you, for you
+        {t("common:tagline")}
       </p>
       <div className="w-12 h-12 border-4 border-gray-200/20 border-t-gray-200/80 rounded-full animate-spin"></div>
       <p className="text-sm mt-6" style={{ color: "#cfd8d4" }}>
-        {label} {elapsed > 0 && <span style={{ color: "#7c8f88" }}>({elapsed}s)</span>}
+        {label}{" "}
+        {elapsed > 0 && (
+          <span style={{ color: "#7c8f88" }}>{t("common:boot.elapsed", { seconds: elapsed })}</span>
+        )}
       </p>
       {firstRun && (
         <p className="text-xs mt-2 max-w-sm" style={{ color: "#9fb0aa" }}>
-          First launch — this can take a minute while Erudi sets things up.
+          {t("common:boot.firstRun")}
         </p>
       )}
     </div>

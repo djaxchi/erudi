@@ -17,7 +17,7 @@
       "jsx": true
     }
   },
-  "plugins": ["react", "react-hooks"],
+  "plugins": ["react", "react-hooks", "i18next"],
   "settings": {
     "react": {
       "version": "detect"
@@ -43,5 +43,92 @@
     "no-var": "error",
     "prefer-const": "error",
     "eqeqeq": ["error", "always"]
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/**/*.jsx"],
+      "excludedFiles": ["src/**/*.test.jsx"],
+      "rules": {
+        "i18next/no-literal-string": [
+          "error",
+          {
+            "mode": "jsx-only",
+            "message": "User-facing copy must go through t('ns:key') (see docs/i18n.md)",
+            "jsx-attributes": {
+              "exclude": [
+                "className",
+                "style",
+                "type",
+                "key",
+                "id",
+                "name",
+                "role",
+                "href",
+                "src",
+                "to",
+                "rel",
+                "target",
+                "width",
+                "height",
+                "viewBox",
+                "fill",
+                "stroke",
+                "d",
+                "xmlns",
+                "accept",
+                "autoComplete",
+                "inputMode",
+                "htmlFor",
+                "data-testid",
+                "data-[a-z-]+",
+                "aria-(hidden|live|orientation|haspopup|expanded|pressed|checked|selected|busy|current|controls|describedby|labelledby|owns)",
+                "initial",
+                "animate",
+                "exit",
+                "transition",
+                "layoutId",
+                "variant",
+                "size",
+                "tone",
+                "status",
+                "kind",
+                "mode",
+                "align",
+                "side",
+                "position",
+                "direction",
+                "orientation",
+                "value",
+                "defaultValue",
+                "testId",
+                "family",
+                "org",
+                "modelId",
+                "route",
+                "path",
+                "icon",
+                "color"
+              ]
+            },
+            "words": {
+              "exclude": [
+                "[0-9!-/:-@[-`{-~]+",
+                "[A-Z_-]+",
+                "\\s*[•·–—|/×:%()\\[\\]…]+\\s*",
+                "(Erudi|erudi)",
+                "Hugging Face",
+                "GGUF",
+                "MLX",
+                "llama\\.cpp",
+                "GB",
+                "MB",
+                "B",
+                "px"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
 }

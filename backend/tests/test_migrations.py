@@ -104,6 +104,119 @@ def test_pre_alembic_db_is_stamped_not_replayed(fresh_cluster):
     assert "training_jobs" not in tables
 
 
+GENERATION_HINTS_REVISION = "f3b7a9c2d5e1"
+
+
+@pytest.mark.integration
+def test_generation_hints_column_is_nullable_and_backfills_null(fresh_cluster):
+    """#388: llms.generation_hints lands as a nullable JSON column; rows that
+    predate the revision read NULL (= "no hints", the fallback sampling)."""
+    url = fresh_cluster.sqlalchemy_url
+    cfg = _alembic_config(url)
+    command.upgrade(cfg, f"{GENERATION_HINTS_REVISION}-1")
+    engine = create_engine(url)
+    try:
+        assert "generation_hints" not in {c["name"] for c in inspect(engine).get_columns("llms")}
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO llms (name, local, link, type, quantized, is_base, category, "
+                "is_attached_to_kb) VALUES ('Old', 0, 'org/old', 'qwen', true, false, "
+                "'general', false)"
+            ))
+    finally:
+        engine.dispose()
+
+    run_migrations(fresh_cluster)
+
+    engine = create_engine(url)
+    try:
+        columns = {c["name"]: c for c in inspect(engine).get_columns("llms")}
+        assert columns["generation_hints"]["nullable"] is True
+        with engine.connect() as conn:
+            stored = conn.execute(
+                text("SELECT generation_hints FROM llms WHERE link='org/old'")).scalar()
+        assert stored is None
+    finally:
+        engine.dispose()
+    assert _alembic_version(url) == _head_revision(cfg)
+
+
+ARTIFACT_SIZE_REVISION = "b6e1a4d8c2f7"
+
+
+@pytest.mark.integration
+def test_artifact_size_bytes_column_is_nullable_bigint_and_backfills_null(fresh_cluster):
+    """llms.artifact_size_bytes lands as a nullable BIGINT (model artifacts exceed
+    2^31 bytes); rows that predate the revision read NULL (= size unknown, the
+    frontend keeps its estimate)."""
+    url = fresh_cluster.sqlalchemy_url
+    cfg = _alembic_config(url)
+    command.upgrade(cfg, f"{ARTIFACT_SIZE_REVISION}-1")
+    engine = create_engine(url)
+    try:
+        assert "artifact_size_bytes" not in {c["name"] for c in inspect(engine).get_columns("llms")}
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO llms (name, local, link, type, quantized, is_base, category, "
+                "is_attached_to_kb) VALUES ('Old', 0, 'org/old', 'qwen', true, false, "
+                "'general', false)"
+            ))
+    finally:
+        engine.dispose()
+
+    run_migrations(fresh_cluster)
+
+    engine = create_engine(url)
+    try:
+        columns = {c["name"]: c for c in inspect(engine).get_columns("llms")}
+        assert columns["artifact_size_bytes"]["nullable"] is True
+        assert "BIGINT" in str(columns["artifact_size_bytes"]["type"]).upper()
+        with engine.begin() as conn:
+            stored = conn.execute(
+                text("SELECT artifact_size_bytes FROM llms WHERE link='org/old'")).scalar()
+            assert stored is None
+            conn.execute(text(
+                "UPDATE llms SET artifact_size_bytes = 3090000000 WHERE link='org/old'"))
+            assert conn.execute(
+                text("SELECT artifact_size_bytes FROM llms WHERE link='org/old'")
+            ).scalar() == 3_090_000_000
+    finally:
+        engine.dispose()
+    assert _alembic_version(url) == _head_revision(cfg)
+
+
+@pytest.mark.integration
+def test_language_column_backfills_existing_settings_row(fresh_cluster):
+    # #385: a pre-existing user_settings row (created before the language
+    # setting existed) must come out of the migration with language='en'
+    # and the column NOT NULL, so the API never serves a null language.
+    url = fresh_cluster.sqlalchemy_url
+    cfg = _alembic_config(url)
+    command.upgrade(cfg, "d1a4f7c39b52")
+    engine = create_engine(url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO user_settings (web_search_enabled) VALUES (true)")
+            )
+    finally:
+        engine.dispose()
+
+    run_migrations(fresh_cluster)
+
+    engine = create_engine(url)
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT web_search_enabled, language FROM user_settings")
+            ).one()
+            columns = {c["name"]: c for c in inspect(conn).get_columns("user_settings")}
+    finally:
+        engine.dispose()
+    assert row == (True, "en")
+    assert columns["language"]["nullable"] is False
+
+
 @pytest.mark.integration
 def test_backup_database_writes_a_dump(fresh_cluster):
     # pg_dump (custom format) of the LIVE cluster produces a non-empty snapshot.

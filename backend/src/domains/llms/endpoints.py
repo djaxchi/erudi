@@ -94,6 +94,7 @@ Warning:
 import asyncio
 import os
 import shutil
+from pathlib import Path
 from typing import List, Optional
 from datetime import datetime
 
@@ -112,11 +113,16 @@ from src.domains.llms.hf_search import search_huggingface
 from src.domains.llms.repository import Llm_Repository, Download_Job_Repository
 from src.domains.knowledge_base.repository import COPIED_FIELDS
 from src.utils.hf_model_metadata import (
-    humanize_model_name, measure_dir_size_gb, rewrite_size_in_metadata,
+    BYTES_PER_GB, humanize_model_name, measure_dir_size_bytes, rewrite_size_in_metadata,
 )
 
 from src.core.logging import logger
 from src.core import config
+from src.database.generation_hints import (
+    capture_generation_hints,
+    read_local_generation_hints,
+    resolve_base_repo,
+)
 from src.core.exceptions import (
     ModelNotFoundException,
     DatabaseException,
@@ -205,7 +211,14 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
             temp_save_dir=temp_save_dir, final_save_dir=final_save_dir, job_id=job_id,
         ))
         job_obj = session.query(DownloadJobModel).get(job_id)
-        if job_obj and job_obj.status != "cancelled":
+        if job_obj is None:
+            logger.warning(f"Download job {job_id} row vanished before finalization")
+        elif job_obj.status == "cancelled":
+            # The cancel endpoint already finalized the row and cleaned the temp
+            # dir; the transfer aborted on its flag (#377). Say so instead of
+            # claiming success for a job the user stopped.
+            logger.info(f"Download job {job_id} was cancelled; transfer stopped, nothing finalized")
+        else:
             # Integrity gate (#88): a model must never flip to local=1 without its
             # essential files. On failure this cleans the artifacts and raises, so
             # the except below finalizes the job as failed with an explicit message.
@@ -229,11 +242,16 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
                 # the rewrite landed ~10s late, and the freshly installed card sat
                 # on the catalog's pre-download guess ("Size: ~4.0 GB" against a
                 # measured ~4.7 GB) until the page was reloaded by hand.
+                # One walk, in bytes: the exact figure goes to
+                # artifact_size_bytes (the installed row is exact even when the
+                # catalog only had an estimate) and its GB form to the metadata
+                # string the cards parse.
                 try:
-                    measured_gb = measure_dir_size_gb(final_save_dir)
-                    if measured_gb > 0:
+                    measured_bytes = measure_dir_size_bytes(final_save_dir)
+                    if measured_bytes > 0:
+                        llm_obj.artifact_size_bytes = measured_bytes
                         llm_obj.model_metadata = rewrite_size_in_metadata(
-                            llm_obj.model_metadata, measured_gb)
+                            llm_obj.model_metadata, measured_bytes / BYTES_PER_GB)
                 except Exception as e:
                     logger.warning(
                         f"Could not measure the on-disk size of LLM {model_id}; "
@@ -263,7 +281,24 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
                         f"successful download; leaving capabilities unset: {e}",
                         exc_info=True,
                     )
-        logger.info(f"Download job {job_id} completed successfully")
+                # Sampling facts (#388), same best-effort stance. Catalog rows
+                # already carry the base repo's hints (copied at _start_download);
+                # a by-link download reads the artifact first (MLX dirs ship
+                # generation_config.json) and only then asks the network.
+                if getattr(llm_obj, "generation_hints", None) is None:
+                    try:
+                        hints = _capture_hints_for_download(model_link, final_save_dir)
+                        if hints:
+                            llm_obj.generation_hints = hints
+                            session.commit()
+                    except Exception as e:
+                        session.rollback()
+                        logger.warning(
+                            f"Generation hints capture failed for LLM {model_id} after a "
+                            f"successful download; keeping the fallback sampling: {e}",
+                            exc_info=True,
+                        )
+            logger.info(f"Download job {job_id} completed successfully")
     except Exception as e:
         logger.exception(f"Download job {job_id} failed: {e}")
         job_obj = session.query(DownloadJobModel).get(job_id)
@@ -275,11 +310,41 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
         session.close()
 
 
+def _capture_hints_for_download(model_link: str, final_save_dir) -> Optional[dict]:
+    """Sampling facts for a just-downloaded model (#388): the local artifact
+    first (offline, MLX dirs ship the files), and when it carries no usable
+    sampling value the network cascade -- the base repo named by the quant's
+    ``base_model:*`` card tag (else the repo itself) with the repo as the
+    quant stage. Facts read from the artifact fill what the network lacks."""
+    local = read_local_generation_hints(Path(final_save_dir), base_repo=model_link)
+    if local and local.get("generation_config"):
+        return local
+    hf_api = config.get_hf_api()
+    base_repo = model_link
+    try:
+        info = hf_api.model_info(model_link)
+        base_repo = resolve_base_repo(model_link, getattr(info, "tags", None))
+    except Exception as e:
+        logger.info(f"Could not read the card of {model_link} for its base model: {e}")
+    hints = capture_generation_hints(base_repo, hf_api, quant_repo=model_link)
+    if hints is None and base_repo != model_link:
+        hints = capture_generation_hints(model_link, hf_api)
+    if hints is None:
+        return local
+    if local:
+        for fact in ("context_length", "supports_thinking"):
+            if hints.get(fact) is None and local.get(fact) is not None:
+                hints[fact] = local[fact]
+    return hints
+
+
 def _start_download(*, remote_model_id: str, remote_link: str, name: str, type: str,
                     description, model_metadata, quantized: bool, param_size: Optional[float],
                     category: str, llm_repo: Llm_Repository,
                     job_repo: Download_Job_Repository, db: Session,
-                    background_tasks: BackgroundTasks) -> DownloadJobModel:
+                    background_tasks: BackgroundTasks,
+                    generation_hints: Optional[dict] = None,
+                    artifact_size_bytes: Optional[int] = None) -> DownloadJobModel:
     """Create the local=2 placeholder + DownloadJob and enqueue the download.
 
     Shared by the catalog (by-id) and HF-search (by-link) download routes so the
@@ -291,6 +356,12 @@ def _start_download(*, remote_model_id: str, remote_link: str, name: str, type: 
         name=name, local=2, type=type, description=description,
         model_metadata=model_metadata, quantized=quantized, param_size=param_size,
         category=category,
+        # Sampling facts ride along from the catalog row (#388); a by-link
+        # download has none yet and gets them post-download, best-effort.
+        generation_hints=generation_hints,
+        # The catalog's real size keeps the card exact while the download runs;
+        # completion overwrites it with the measured footprint either way.
+        artifact_size_bytes=artifact_size_bytes,
     )
     temp_path = config.LLM_DIR / f"temp_{local_llm.id}"
     final_path = config.LLM_DIR / str(local_llm.id)
@@ -770,6 +841,8 @@ async def download_llm_route(
             model_metadata=remote_llm.model_metadata, quantized=remote_llm.quantized,
             param_size=remote_llm.param_size, category=getattr(remote_llm, "category", "general"),
             llm_repo=llm_repo, job_repo=job_repo, db=db, background_tasks=background_tasks,
+            generation_hints=getattr(remote_llm, "generation_hints", None),
+            artifact_size_bytes=remote_llm.artifact_size_bytes,
         )
 
     except (ModelNotFoundException, InvalidInputException, FileSystemException):

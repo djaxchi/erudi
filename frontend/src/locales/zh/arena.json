@@ -1,0 +1,14 @@
+{
+  "panel": {
+    "delete": "删除此面板",
+    "deleteLast": "无法删除最后一个面板",
+    "modelNotFound": "[未找到模型]",
+    "error": "[错误]",
+    "attachmentAlt": "附件 {{index}}"
+  },
+  "controls": {
+    "stop": "停止生成",
+    "addPanel": "添加聊天面板",
+    "maxPanels": "最多 {{max}} 个面板"
+  }
+}

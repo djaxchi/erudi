@@ -1,5 +1,6 @@
 import React from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import { SIZE_BUCKETS } from "../utils/hardwareFit";
 
 /**
@@ -8,6 +9,7 @@ import { SIZE_BUCKETS } from "../utils/hardwareFit";
  * memory. Plain mono chips — no icons — consistent with the search suggestions.
  */
 export default function CatalogFilters({ value, onChange, hasRange }) {
+  const { t } = useTranslation();
   const chip = (active) =>
     `mono text-[11px] rounded-full px-2.5 py-1 border transition-colors ${
       active
@@ -17,14 +19,16 @@ export default function CatalogFilters({ value, onChange, hasRange }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="mono text-[11px] text-[var(--ink-faint)] mr-1">size</span>
+      <span className="mono text-[11px] text-[var(--ink-faint)] mr-1">
+        {t("models:filters.sizeLabel")}
+      </span>
       {SIZE_BUCKETS.map((b) => (
         <button
           key={b.key}
           onClick={() => onChange({ ...value, size: b.key })}
           className={chip(value.size === b.key)}
         >
-          {b.label}
+          {t(b.labelKey)}
         </button>
       ))}
       {hasRange && (
@@ -34,7 +38,7 @@ export default function CatalogFilters({ value, onChange, hasRange }) {
             onClick={() => onChange({ ...value, fitOnly: !value.fitOnly })}
             className={chip(value.fitOnly)}
           >
-            Fits my machine
+            {t("models:filters.fitsMyMachine")}
           </button>
         </>
       )}

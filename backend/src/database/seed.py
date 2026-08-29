@@ -62,6 +62,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from src.core.logging import logger
+from src.database.generation_hints import capture_generation_hints, resolve_base_repo
 from src.core import config
 from src.database import core
 from src.database.core import Base, SessionLocal
@@ -73,7 +74,6 @@ from src.core.exceptions import (
 
 from src.utils.hf_model_metadata import (
     get_disk_size_after_quant,
-    get_model_size_estimate,
     format_model_info_metadata,
     extract_parameter_pattern,
     humanize_model_name,
@@ -85,7 +85,7 @@ from src.utils.hf_model_metadata import (
 from src.domains.hardware.repository import Hardware_Repository
 from src.domains.llms.repository import dir_size_bytes, remove_tree_reporting
 from src.domains.hardware.services import Hardware_Service
-from src.engines.model_resolver import resolve_quant, base_key
+from src.engines.model_resolver import resolve_quant, base_key, is_gated
 from src.database.catalog_classify import (
     categorize,
     is_conversational,
@@ -629,6 +629,11 @@ class Model_Seeder:
                 slug = model_info.id.split("/")[-1]
                 if is_nonchat_task(slug, getattr(model_info, "pipeline_tag", None)):
                     continue
+                # The app downloads with no HF token: a gated repo lists fine but
+                # 401s on download, so it never enters the catalog. Checked BEFORE
+                # the dedup so a public twin of the same model still gets in.
+                if is_gated(model_info):
+                    continue
                 # Dedup by normalized key so the same finetune from two quanters
                 # (bartowski/Foo-GGUF vs mradermacher/Foo-GGUF) appears once.
                 mkey = base_key(model_info.id)
@@ -657,7 +662,9 @@ class Model_Seeder:
         the display name stays derived from the clean base id.
         """
         model_info = self.hf_api.model_info(model_config.link)
-        size_estimate = get_disk_size_after_quant(quant_link)
+        # One repo_info(files_metadata=True) on the QUANT repo (the one actually
+        # downloaded) feeds both the Size line and the exact byte count below.
+        size_estimate = get_disk_size_after_quant(quant_link, hf_api=self.hf_api)
         # Real param count from the base's safetensors.total (captured at discovery),
         # slug as sanity-checked fallback — no more blanket 7.0 (#122).
         param_size = param_size_billions(
@@ -672,6 +679,9 @@ class Model_Seeder:
             quantized=True,
             model_metadata=metadata,
             param_size=param_size,
+            # Real download size: the chosen artifact's bytes when HF answered,
+            # None when the Size line is an estimate (never laundered into bytes).
+            artifact_size_bytes=size_estimate.size_bytes,
             # Curated foundation model (discovered from a FOUNDATION_ORG) — drives the
             # Base/Community split and "Models For You" recommendations in the UI (#86).
             is_base=True,
@@ -684,11 +694,17 @@ class Model_Seeder:
             # scale (#113). supports_tools stays null and is computed post-download
             # (where the tokenizer is already on disk).
             supports_tools=None,
+            # Sampling facts (#388): model_config.link is the BASE id (the
+            # resolver only rewrote the quant link). Cascade base
+            # generation_config > quant generation_config > base model card,
+            # tiny file fetches memoized per repo, best-effort (None on failure).
+            generation_hints=capture_generation_hints(model_config.link, self.hf_api,
+                                                      quant_repo=quant_link),
         )
 
     def _create_base_llm_fallback(self, model_config: Model_Config, quant_link: str) -> Llm:
         """Create a base LLM with fallback metadata when base HF metadata is missing."""
-        size_estimate = get_disk_size_after_quant(quant_link)
+        size_estimate = get_disk_size_after_quant(quant_link, hf_api=self.hf_api)
         param_size = param_size_billions(
             model_config.safetensors_total, model_config.link.split("/")[-1])
 
@@ -708,6 +724,8 @@ class Model_Seeder:
             quantized=True,
             model_metadata=fallback_metadata,
             param_size=param_size,
+            # Real download size -- see _create_base_llm.
+            artifact_size_bytes=size_estimate.size_bytes,
             # Curated foundation model — see _create_base_llm (#86).
             is_base=True,
             # Chat-ready by construction — see _create_base_llm (#182).
@@ -715,6 +733,9 @@ class Model_Seeder:
             category=model_config.category,
             # Deferred to post-download (see _create_base_llm / #113).
             supports_tools=None,
+            # Sampling facts cascade -- see _create_base_llm (#388).
+            generation_hints=capture_generation_hints(model_config.link, self.hf_api,
+                                                      quant_repo=quant_link),
         )
     
     def _passes_quality_filters(self, model_info) -> bool:
@@ -730,10 +751,14 @@ class Model_Seeder:
     def _create_derived_llm(self, model_info, search_config: Search_Config) -> Llm:
         """Create derived LLM entity from search result."""
         model_name = model_info.id.split("/")[-1]
-        
-        # Estimate size
-        size_estimate = get_model_size_estimate(model_name, model_info.id)
-        
+
+        # Real download size, the same way as a base row: one
+        # repo_info(files_metadata=True) on the community repo, summed over the
+        # files the downloader would fetch (GGUF: the chosen quant, not the whole
+        # multi-quant repo). It replaces the old full-precision family guess,
+        # which overshot a 4-bit quant several times over. Estimate on failure.
+        size_estimate = get_disk_size_after_quant(model_info.id, hf_api=self.hf_api)
+
         # Extract parameters. When the id carries no size token, leave param_size
         # unknown (None) rather than substituting a plausible default (#201): a
         # defaulted number is indistinguishable from a measured one downstream and
@@ -763,6 +788,8 @@ class Model_Seeder:
             quantized=True,
             model_metadata=metadata,
             param_size=param_size,
+            # Real download size -- see _create_base_llm.
+            artifact_size_bytes=size_estimate.size_bytes,
             # Derived/community quant (not a curated foundation model) (#86).
             is_base=False,
             # Chat-readiness so the UI can rank IT models first even among community
@@ -771,6 +798,12 @@ class Model_Seeder:
             conversational=is_conversational(tags, model_name),
             category=categorize(model_name, tags,
                                 getattr(model_info, "pipeline_tag", None)),
+            # Sampling facts (#388): a community quant inherits its base's
+            # generation_config (first base_model:* card tag), else its own; the
+            # quant repo itself is the cascade's second stage.
+            generation_hints=capture_generation_hints(
+                resolve_base_repo(model_info.id, tags), self.hf_api,
+                quant_repo=model_info.id),
         )
 
 
@@ -1323,7 +1356,13 @@ class Database_Seeder:
     # Mutable catalog fields refreshed in place on a resync. supports_tools is
     # excluded on purpose: it is detected post-download and must not be clobbered.
     _RESYNC_FIELDS = ("name", "type", "param_size", "model_metadata", "quantized",
-                      "is_base", "conversational", "category", "description")
+                      "is_base", "conversational", "category", "description",
+                      "generation_hints", "artifact_size_bytes")
+    # Fields where a None in the fresh set means "unknown", never "clear": the
+    # existing value is preserved (#192 for category; #388 for the sampling
+    # facts, which an old snapshot simply does not carry; likewise the real
+    # artifact size, absent from snapshots that predate it or estimate-backed).
+    _PRESERVE_ON_NONE = ("category", "generation_hints", "artifact_size_bytes")
 
     def reconcile_remote_catalog(
         self, db: Session, fresh_base: List[Llm], fresh_derived: List[Llm]
@@ -1362,7 +1401,7 @@ class Database_Seeder:
                     # KEEP the existing category (#192, regression of #184: stale
                     # snapshots collapsed the whole catalog to "general" at every
                     # boot). Fresh rows carrying a REAL category still propagate.
-                    if field == "category" and value is None:
+                    if field in self._PRESERVE_ON_NONE and value is None:
                         continue
                     setattr(current, field, value)
                 updated += 1

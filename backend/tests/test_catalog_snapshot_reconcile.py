@@ -125,6 +125,27 @@ class TestReconcileCatalogFromSnapshot:
         links = {r.link for r in db.query(Llm).filter(Llm.local == 0).all()}
         assert links == {"org/base-GGUF"}
 
+    def test_gated_row_disappears_once_snapshot_drops_it(self, test_db_session, monkeypatch):
+        # The resolver used to pick google/gemma-2b-it (gated: manual) as the GGUF
+        # quant of its own base, so shipped snapshots carried it. Once a refreshed
+        # snapshot no longer lists it, the boot reconcile must drop the catalog row
+        # -- and only that one: a user's installed copy of the same model (local=1)
+        # is theirs and stays.
+        db = test_db_session
+        db.add_all([
+            _llm(name="Gemma 2B Instruct", local=0, link="google/gemma-2b-it", is_base=True),
+            _llm(name="Gemma 2B Instruct", local=1, link="/data/models/gemma-2b-it"),
+            _llm(name="Qwen", local=0, link="org/base-GGUF"),
+        ])
+        db.commit()
+
+        _use_snapshot(monkeypatch, [_entry("org/base-GGUF")])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+
+        rows = {r.link: r.local for r in db.query(Llm).all()}
+        assert "google/gemma-2b-it" not in rows
+        assert rows == {"/data/models/gemma-2b-it": 1, "org/base-GGUF": 0}
+
     def test_downloaded_and_in_progress_rows_never_touched(self, test_db_session, monkeypatch):
         db = test_db_session
         db.add_all([
@@ -231,6 +252,82 @@ class TestCategoryReconcileFromSnapshot:
         row = db.query(Llm).filter(Llm.link == "org/coder-GGUF").one()
         assert row.category == "code"             # classification survives the boot
         assert row.name == "Coder refreshed"      # other mutable fields did refresh
+
+    def test_fresh_generation_hints_propagate_in_place(self, test_db_session, monkeypatch):
+        """#388: a snapshot entry carrying hints refreshes the row's hints."""
+        db = test_db_session
+        db.add(_llm(name="Q", local=0, link="org/q-GGUF", generation_hints=None))
+        db.commit()
+        hints = {"base_repo": "org/q", "generation_config": {"temperature": 0.6},
+                 "supports_thinking": False, "context_length": 8192, "captured_at": "d"}
+
+        _use_snapshot(monkeypatch, [_entry("org/q-GGUF", generation_hints=hints)])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+
+        row = db.query(Llm).filter(Llm.link == "org/q-GGUF").one()
+        assert row.generation_hints == hints
+
+    def test_entry_without_generation_hints_keeps_existing_hints(self, test_db_session, monkeypatch):
+        """#388, same shape as #192: an old snapshot (no key, or null) must never
+        wipe the hints a row already carries -- otherwise the first boot on a
+        stale snapshot would reset every model to the fallback sampling."""
+        db = test_db_session
+        hints = {"base_repo": "org/q", "generation_config": {"temperature": 0.6},
+                 "supports_thinking": False, "context_length": 8192, "captured_at": "d"}
+        db.add(_llm(name="Q", local=0, link="org/q-GGUF", generation_hints=hints))
+        db.commit()
+
+        entry = _entry("org/q-GGUF")
+        entry.pop("generation_hints", None)
+        _use_snapshot(monkeypatch, [entry])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+        assert db.query(Llm).filter(Llm.link == "org/q-GGUF").one().generation_hints == hints
+
+        _use_snapshot(monkeypatch, [_entry("org/q-GGUF", generation_hints=None)])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+        assert db.query(Llm).filter(Llm.link == "org/q-GGUF").one().generation_hints == hints
+
+    def test_fresh_artifact_size_propagates_in_place(self, test_db_session, monkeypatch):
+        db = test_db_session
+        db.add(_llm(name="Q", local=0, link="org/q-GGUF", artifact_size_bytes=None))
+        db.commit()
+
+        _use_snapshot(monkeypatch, [_entry("org/q-GGUF", artifact_size_bytes=3_090_000_000)])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+
+        row = db.query(Llm).filter(Llm.link == "org/q-GGUF").one()
+        assert row.artifact_size_bytes == 3_090_000_000
+
+    def test_entry_without_artifact_size_keeps_existing_size(self, test_db_session, monkeypatch):
+        """Same #192 rule: a snapshot that predates the column (no key, or null)
+        means "unknown", never "clear" -- a known size survives the boot."""
+        db = test_db_session
+        db.add(_llm(name="Q", local=0, link="org/q-GGUF", artifact_size_bytes=3_090_000_000))
+        db.commit()
+
+        entry = _entry("org/q-GGUF")
+        entry.pop("artifact_size_bytes", None)
+        _use_snapshot(monkeypatch, [entry])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+        row = db.query(Llm).filter(Llm.link == "org/q-GGUF").one()
+        assert row.artifact_size_bytes == 3_090_000_000
+
+        _use_snapshot(monkeypatch, [_entry("org/q-GGUF", artifact_size_bytes=None)])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+        row = db.query(Llm).filter(Llm.link == "org/q-GGUF").one()
+        assert row.artifact_size_bytes == 3_090_000_000
+
+    def test_downloaded_row_hints_never_touched_by_snapshot(self, test_db_session, monkeypatch):
+        db = test_db_session
+        hints = {"base_repo": "org/q", "generation_config": {"temperature": 0.6},
+                 "supports_thinking": False, "context_length": 8192, "captured_at": "d"}
+        db.add(_llm(name="Local Q", local=1, link="/models/7", generation_hints=hints))
+        db.commit()
+
+        _use_snapshot(monkeypatch, [_entry("org/base-GGUF")])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+
+        assert db.query(Llm).filter(Llm.link == "/models/7").one().generation_hints == hints
 
     def test_entry_with_null_category_keeps_existing_category(self, test_db_session, monkeypatch):
         db = test_db_session

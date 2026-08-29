@@ -1,0 +1,100 @@
+{
+  "history": {
+    "title": "History",
+    "previousChats": "Previous Chats",
+    "empty": "Nothing here…",
+    "newChat": "New chat",
+    "refreshConversations": "Refresh conversations",
+    "renameConversation": "Rename conversation",
+    "deleteConversation": "Delete conversation",
+    "deleteConfirmTitle": "Are you sure to delete this conversation ?",
+    "deleteConfirmBody": "This action is irreversible.",
+    "renameFailed": "Could not rename conversation, try again: {{error}}",
+    "deleteFailed": "Deleting conversation failed: {{error}}"
+  },
+  "header": {
+    "chatWith": "Chat with",
+    "selectModel": "Select model",
+    "selectModelPlaceholder": "Select model...",
+    "toggleSettings": "Toggle settings",
+    "creativity": "Creativity",
+    "diversity": "Diversity",
+    "maxTokens": "Max Tokens",
+    "webSearch": "Web Search",
+    "webSearchToggle": "Web search",
+    "customizePrompt": "Customize Prompt",
+    "apply": "Apply",
+    "pickerAttention": "Please select a model",
+    "tooltips": {
+      "temperature": "Controls creativity. Lower = focused, higher = creative.",
+      "topP": "Controls word variety. Lower = predictable, higher = diverse.",
+      "prompt": "Customize system instructions that guide AI behavior.",
+      "webSearch": "Lets the model search the web for current facts. Searched queries are sent to external search engines."
+    },
+    "noPublisherRecommendation": "No sampling recommendation from this model's publisher; neutral defaults applied.",
+    "weightsMissingHint": "Weights missing — re-bind this assistant on the Models page"
+  },
+  "composer": {
+    "placeholder": "Ask a question…",
+    "placeholderNew": "Ask me anything...",
+    "attachImage": "Attach image",
+    "attachImageHint": "Attach image (or paste / drag and drop)",
+    "addImage": "Add image",
+    "addAnotherImage": "Add another image",
+    "removeImage": "Remove image",
+    "attachmentAlt": "attachment {{index}}",
+    "errors": {
+      "unsupportedFormat": "That format isn't supported. Use PNG, JPG, WebP, GIF or BMP.",
+      "tooLarge": "That image is too large (max 20 MB).",
+      "tooMany_one": "You can attach up to {{count}} image with this model.",
+      "tooMany_other": "You can attach up to {{count}} images with this model.",
+      "unreadable": "That image could not be read. Try another file."
+    }
+  },
+  "message": {
+    "firstReplyHint": "First response may take a bit longer while loading the model into memory...",
+    "imagePlaceholder": "🖼 image attachment",
+    "attachmentAlt": "attachment {{index}}",
+    "copy": "Copy message",
+    "star": "Star message"
+  },
+  "conversation": {
+    "untitled": "New Conversation"
+  },
+  "trace": {
+    "summary": "Reasoning",
+    "summaryWithSteps_one": "Reasoning — {{count}} step",
+    "summaryWithSteps_other": "Reasoning — {{count}} steps",
+    "show": "Show reasoning",
+    "hide": "Hide reasoning",
+    "truncated": "(earlier steps elided)"
+  },
+  "prompt": {
+    "title": "Customize System Prompt",
+    "description": "Define custom instructions that guide how the AI responds. This will be applied to all messages in this conversation.",
+    "placeholder": "Enter your custom system prompt here...",
+    "saveChanges": "Save Changes"
+  },
+  "download": {
+    "confirmTitle": "Are you sure you want to download <model>{{name}}</model>?",
+    "confirmBody": "It will be installed locally on your system."
+  },
+  "empty": {
+    "noModels": "No current local models found, please add local models to proceed."
+  },
+  "languageNote": {
+    "title": "Note on Language",
+    "body": "Base models have been massively trained on English data. You will get significantly better results by chatting in English.",
+    "frenchAside": "Pour les français, ça vous fera de l'entraînement :)"
+  },
+  "errors": {
+    "network": "Network error",
+    "loadModels": "Failed to load models: {{error}}",
+    "loadConversations": "Failed to load conversations: {{error}}",
+    "refreshConversations": "Failed to refresh conversations: {{error}}",
+    "startConversation": "Failed to start conversation: {{error}}",
+    "createConversation": "Failed to create conversation",
+    "generationFailed": "I apologize, but I encountered an error while generating a response. Please try asking your question again.",
+    "connectionInterrupted": "Connection interrupted while generating response."
+  }
+}

@@ -14,6 +14,7 @@ import UpdateBanner from "./components/UpdateBanner";
 import InteractionLogger from "./components/InteractionLogger";
 import { apiClient } from "./services/api/client";
 import { setBackendPort } from "./config/api";
+import { syncLanguageWithBackend } from "./i18n/sync";
 import {
   describeBackendError,
   isStartupError,
@@ -99,6 +100,13 @@ export default function App() {
       if (timer) clearTimeout(timer);
     };
   }, [retryNonce]);
+
+  // Once the backend answers, reconcile the boot language (local mirror or
+  // OS locale) with the persisted user setting (#385).
+  useEffect(() => {
+    if (!isBackendReady) return;
+    syncLanguageWithBackend(apiClient);
+  }, [isBackendReady]);
 
   const handleRetry = useCallback(() => {
     setBackendError(null);

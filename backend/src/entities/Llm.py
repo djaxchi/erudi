@@ -22,7 +22,7 @@ Example:
         quantized=False
     )
 """
-from sqlalchemy import Column, Integer, String, ForeignKey, Float, Boolean
+from sqlalchemy import Column, Integer, BigInteger, String, ForeignKey, Float, Boolean, JSON
 from src.database.core import Base
 from sqlalchemy.orm import relationship, validates
 
@@ -79,6 +79,15 @@ class Llm(Base):
     # matches no mlx-vlm parser, #295). Detected post-download / backfilled at
     # startup. NULL = unverified; only an explicit True routes agentic KB.
     supports_tools_wire = Column(Boolean, nullable=True)
+    # Captured sampling FACTS from the base repo (#388, closes #136-A): a
+    # whitelisted subset of generation_config.json, the context window from
+    # config.json and whether the chat template knows enable_thinking. Captured
+    # at snapshot time (base repo = Model_Config.link / first base_model:* tag),
+    # copied to the local row at download, refreshed post-download best-effort.
+    # NEVER the resolved defaults: src.database.generation_hints resolves
+    # ``curated > hf > fallback`` at read time, so a curated change applies to
+    # downloaded rows without a backfill. NULL = no hints = today's constants.
+    generation_hints = Column(JSON, nullable=True)
     # Catalog classification (#86): True = curated foundation/base model (discovered
     # from a FOUNDATION_ORG, built via _create_base_llm), False = derived/community
     # quant. Drives the Base vs Community split and the "Models For You" hardware-fit
@@ -100,6 +109,15 @@ class Llm(Base):
     # plausible constant (#201). Downstream (hardware-fit gauge, prompting strategy)
     # treats NULL as "size unknown" rather than trusting a laundered default.
     param_size = Column(Float, default=None, nullable=True)
+    # Real size of the artifact, in bytes. Catalog rows: the files the
+    # downloader would fetch from the quant repo (MLX: the whole single-artifact
+    # repo; GGUF: the chosen quant + mmproj + small aux), captured at snapshot
+    # time from the same repo_info call that feeds the Size line. Local rows:
+    # the measured on-disk footprint written at download completion. NULL =
+    # unknown (an estimate-backed row, or a snapshot that predates the column);
+    # the frontend then falls back to its per-parameter estimate. BigInteger:
+    # a 70B quant is ~40 GB, past a 4-byte integer.
+    artifact_size_bytes = Column(BigInteger, default=None, nullable=True)
     is_attached_to_kb = Column(Boolean, default=False, nullable=False)
     kb_id = Column(Integer, ForeignKey("knowledge_base.id", ondelete="SET NULL"), nullable=True)
 
@@ -146,6 +164,20 @@ class Llm(Base):
             raise ValueError(f"Invalid local state: {value}. Must be 0 (remote), 1 (ready), or 2 (downloading)")
         return value
     
+    @validates('artifact_size_bytes')
+    def validate_artifact_size_bytes(self, key, value):
+        """A known artifact size is a positive byte count; None means unknown.
+
+        Zero or negative is never a measurement (an empty directory walk, a
+        listing without sizes) and must not masquerade as one -- callers store
+        None in that case so the UI keeps its estimate.
+        """
+        if value is None:
+            return None
+        if value <= 0:
+            raise ValueError(f"artifact_size_bytes must be positive, got {value}")
+        return int(value)
+
     @validates('param_size')
     def validate_param_size(self, key, value):
         """Ensure a known param_size is positive; allow None for unknown (#201).

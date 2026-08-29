@@ -1,5 +1,12 @@
 /* eslint-disable no-console */
 const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require("electron");
+const { createMainTranslator } = require("./i18n/mainTranslator");
+
+// Interface language for the native menu and dialogs (#385). The renderer
+// resolves the language (local mirror, OS locale, then the persisted user
+// setting) and pushes it over IPC; main only mirrors it and rebuilds the menu.
+const i18n = createMainTranslator("en");
+const t = (key, vars) => i18n.t(key, vars);
 const path = require("node:path");
 const { spawn, execSync } = require("child_process");
 const fs = require("fs");
@@ -437,13 +444,13 @@ const createApplicationMenu = () => {
 
     // File menu
     {
-      label: "File",
+      label: t("menu.file"),
       submenu: [isMac ? { role: "close" } : { role: "quit" }],
     },
 
     // Edit menu
     {
-      label: "Edit",
+      label: t("menu.edit"),
       submenu: [
         { role: "undo" },
         { role: "redo" },
@@ -458,7 +465,7 @@ const createApplicationMenu = () => {
               { role: "selectAll" },
               { type: "separator" },
               {
-                label: "Speech",
+                label: t("menu.speech"),
                 submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }],
               },
             ]
@@ -468,7 +475,7 @@ const createApplicationMenu = () => {
 
     // View menu
     {
-      label: "View",
+      label: t("menu.view"),
       submenu: [
         { role: "reload" },
         { role: "forceReload" },
@@ -484,7 +491,7 @@ const createApplicationMenu = () => {
 
     // Window menu
     {
-      label: "Window",
+      label: t("menu.window"),
       submenu: [
         { role: "minimize" },
         { role: "zoom" },
@@ -499,7 +506,7 @@ const createApplicationMenu = () => {
       role: "help",
       submenu: [
         {
-          label: "Open Data Folder",
+          label: t("menu.help.openDataFolder"),
           click: async () => {
             try {
               const dataDir = getDataDirectory();
@@ -514,13 +521,16 @@ const createApplicationMenu = () => {
               log(`Opened data folder: ${dataDir}`);
             } catch (error) {
               log(`Failed to open data folder: ${error.message}`);
-              dialog.showErrorBox("Error", `Failed to open data folder: ${error.message}`);
+              dialog.showErrorBox(
+                t("dialogs.errorTitle"),
+                t("dialogs.openDataFolderFailed", { error: error.message })
+              );
             }
           },
         },
         { type: "separator" },
         {
-          label: "Clear All Data...",
+          label: t("menu.help.clearAllData"),
           click: async () => {
             try {
               if (!mainWindow) {
@@ -533,13 +543,12 @@ const createApplicationMenu = () => {
               // Show confirmation dialog
               const result = await dialog.showMessageBox(mainWindow, {
                 type: "warning",
-                buttons: ["Cancel", "Delete All Data"],
+                buttons: [t("dialogs.cancel"), t("dialogs.clearAll.confirm")],
                 defaultId: 0,
                 cancelId: 0,
-                title: "Clear All Data",
-                message: "Are you sure you want to delete all data?",
-                detail:
-                  "This will permanently delete:\n• All downloaded AI models\n• Conversation history\n• Custom settings\n• Knowledge bases\n\nThis action cannot be undone.\n\nThe application will quit after deletion.",
+                title: t("dialogs.clearAll.title"),
+                message: t("dialogs.clearAll.message"),
+                detail: t("dialogs.clearAll.detail"),
               });
 
               if (result.response === 1) {
@@ -572,10 +581,10 @@ const createApplicationMenu = () => {
                 // Show success message
                 await dialog.showMessageBox(mainWindow, {
                   type: "info",
-                  buttons: ["OK"],
-                  title: "Data Cleared",
-                  message: "All data has been deleted successfully.",
-                  detail: "The application will now quit.",
+                  buttons: [t("dialogs.ok")],
+                  title: t("dialogs.dataCleared.title"),
+                  message: t("dialogs.dataCleared.message"),
+                  detail: t("dialogs.dataCleared.detail"),
                 });
 
                 // Quit the app
@@ -585,13 +594,16 @@ const createApplicationMenu = () => {
               }
             } catch (error) {
               log(`Failed to clear data: ${error.message}`);
-              dialog.showErrorBox("Error", `Failed to clear data: ${error.message}`);
+              dialog.showErrorBox(
+                t("dialogs.errorTitle"),
+                t("dialogs.clearAll.failedWithError", { error: error.message })
+              );
             }
           },
         },
         { type: "separator" },
         {
-          label: "Learn More",
+          label: t("menu.help.learnMore"),
           click: async () => {
             await shell.openExternal("https://github.com/djaxchi/erudi");
           },
@@ -745,6 +757,14 @@ ipcMain.handle("backend:restart", async () => {
   return { ok: true };
 });
 
+// Renderer -> main: the interface language changed (or was resolved at boot).
+ipcMain.on("language:set", (_event, code) => {
+  if (i18n.setLanguage(code)) {
+    log(`Interface language set to ${i18n.language}; rebuilding the application menu`);
+    createApplicationMenu();
+  }
+});
+
 ipcMain.handle("dialog:openDirectory", async () => {
   const result = await dialog.showOpenDialog({
     properties: ["openDirectory"],
@@ -834,13 +854,12 @@ ipcMain.handle("data:clearAll", async () => {
     // Show confirmation dialog
     const result = await dialog.showMessageBox(mainWindow, {
       type: "warning",
-      buttons: ["Cancel", "Delete All Data"],
+      buttons: [t("dialogs.cancel"), t("dialogs.clearAll.confirm")],
       defaultId: 0,
       cancelId: 0,
-      title: "Clear All Data",
-      message: "Are you sure you want to delete all data?",
-      detail:
-        "This will permanently delete:\n• All downloaded AI models\n• Conversation history\n• Custom settings\n• Knowledge bases\n\nThis action cannot be undone.\n\nThe application will quit after deletion.",
+      title: t("dialogs.clearAll.title"),
+      message: t("dialogs.clearAll.message"),
+      detail: t("dialogs.clearAll.detail"),
     });
 
     if (result.response === 1) {
@@ -874,10 +893,10 @@ ipcMain.handle("data:clearAll", async () => {
       // Show success message
       await dialog.showMessageBox(mainWindow, {
         type: "info",
-        buttons: ["OK"],
-        title: "Data Cleared",
-        message: "All data has been deleted successfully.",
-        detail: "The application will now quit.",
+        buttons: [t("dialogs.ok")],
+        title: t("dialogs.dataCleared.title"),
+        message: t("dialogs.dataCleared.message"),
+        detail: t("dialogs.dataCleared.detail"),
       });
 
       // Quit the app
@@ -893,9 +912,9 @@ ipcMain.handle("data:clearAll", async () => {
 
     await dialog.showMessageBox(mainWindow, {
       type: "error",
-      buttons: ["OK"],
-      title: "Error",
-      message: "Failed to clear data",
+      buttons: [t("dialogs.ok")],
+      title: t("dialogs.errorTitle"),
+      message: t("dialogs.clearAll.failed"),
       detail: error.message,
     });
 

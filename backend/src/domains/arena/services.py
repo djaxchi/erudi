@@ -27,6 +27,7 @@ from src.utils.prompt_utils import get_prompting_strategy
 from src.utils.kb_utils import KbExcerpt, retrieve_kb_excerpts
 from src.agents.kb_mode import plan_turn
 from src.agents.runner import AgentRunner, GenParams, IMAGES_IGNORED_NOTICE
+from src.database.generation_hints import resolve_sampling_defaults
 from src.domains.arena.repository import ArenaRepository
 from src.domains.llms.repository import detect_supports_vision
 from src.domains.user_settings.repository import User_Settings_Repository
@@ -149,10 +150,12 @@ class ArenaService:
             web_search_enabled=web_search_enabled,
         )
 
+        # Omitted values resolve to the MODEL's defaults (#388); explicit wins.
+        defaults = resolve_sampling_defaults(llm)
         params = GenParams(
-            temperature=payload.temperature,
-            top_p=payload.top_p,
-            max_tokens=payload.max_new_tokens,
+            temperature=defaults.temperature if payload.temperature is None else payload.temperature,
+            top_p=defaults.top_p if payload.top_p is None else payload.top_p,
+            max_tokens=defaults.max_tokens if payload.max_new_tokens is None else payload.max_new_tokens,
         )
 
         # Safety net (#133/#212): unless the model is positively vision-capable,

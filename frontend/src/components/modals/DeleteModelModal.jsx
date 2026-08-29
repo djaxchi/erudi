@@ -1,5 +1,6 @@
 import React from "react";
 import PropTypes from "prop-types";
+import { Trans, useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trash2 } from "lucide-react";
 
@@ -27,9 +28,8 @@ DeleteModelModal.propTypes = {
   }),
 };
 
-const plural = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
-
 export default function DeleteModelModal({ isOpen, model, onConfirm, onCancel, dependents }) {
+  const { t } = useTranslation();
   const assistants = dependents?.assistants || [];
   const hasDependents = assistants.length > 0;
   const conversationCount = dependents?.total_conversation_count ?? 0;
@@ -79,7 +79,7 @@ export default function DeleteModelModal({ isOpen, model, onConfirm, onCancel, d
                       <Trash2 className="w-4 h-4 text-red-400" />
                     </div>
                     <h2 className="text-xl font-semibold tracking-tight text-[#F2F7F4]">
-                      Delete Model
+                      {t("downloads:delete.title")}
                     </h2>
                   </div>
                   <button
@@ -96,29 +96,40 @@ export default function DeleteModelModal({ isOpen, model, onConfirm, onCancel, d
                     {hasDependents ? (
                       <>
                         <p className="text-[#F2F7F4] text-sm">
-                          <span className="font-semibold text-red-400">{model?.name}</span> powers{" "}
-                          <span className="font-semibold">
-                            {plural(assistants.length, "assistant")}
-                          </span>{" "}
-                          ({assistants.map((a) => a.name).join(", ")}) and{" "}
-                          <span className="font-semibold">
-                            {plural(conversationCount, "conversation")}
-                          </span>
-                          .{sizeKnown ? ` Deleting it frees ${model.size}.` : ""}
+                          <Trans
+                            i18nKey="downloads:delete.dependentsSummary"
+                            values={{
+                              name: model?.name,
+                              assistants: t("downloads:delete.assistantCount", {
+                                count: assistants.length,
+                              }),
+                              names: assistants.map((a) => a.name).join(", "),
+                              conversations: t("downloads:delete.conversationCount", {
+                                count: conversationCount,
+                              }),
+                            }}
+                            components={{
+                              name: <span className="font-semibold text-red-400" />,
+                              strong: <span className="font-semibold" />,
+                            }}
+                          />
+                          {sizeKnown ? ` ${t("downloads:delete.frees", { size: model.size })}` : ""}
                         </p>
                         <p className="text-gray-300/80 text-xs mt-2">
-                          Assistants will remain and must be re-bound to another model;
-                          conversations are kept.
+                          {t("downloads:delete.dependentsNote")}
                         </p>
                       </>
                     ) : (
                       <>
                         <p className="text-[#F2F7F4] text-sm">
-                          Are you sure you want to delete the model{" "}
-                          <span className="font-semibold text-red-400">{model?.name}</span>?
+                          <Trans
+                            i18nKey="downloads:delete.confirmQuestion"
+                            values={{ name: model?.name }}
+                            components={{ name: <span className="font-semibold text-red-400" /> }}
+                          />
                         </p>
                         <p className="text-gray-300/80 text-xs mt-2">
-                          This action cannot be undone.
+                          {t("downloads:delete.irreversible")}
                         </p>
                       </>
                     )}
@@ -136,7 +147,7 @@ export default function DeleteModelModal({ isOpen, model, onConfirm, onCancel, d
                       "transition active:scale-95",
                     ].join(" ")}
                   >
-                    Cancel
+                    {t("common:actions.cancel")}
                   </button>
                   <button
                     onClick={onConfirm}
@@ -149,7 +160,9 @@ export default function DeleteModelModal({ isOpen, model, onConfirm, onCancel, d
                     ].join(" ")}
                   >
                     <Trash2 className="w-4 h-4" />
-                    {hasDependents ? "Delete anyway" : "Delete"}
+                    {hasDependents
+                      ? t("downloads:delete.deleteAnyway")
+                      : t("common:actions.delete")}
                   </button>
                 </div>
               </div>

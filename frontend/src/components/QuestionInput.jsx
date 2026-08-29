@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import PropTypes from "prop-types";
 import { ArrowRight, ImagePlus, Plus, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 const DEFAULT_MAX_IMAGES = 4;
 // Raster formats the vision pipeline can actually decode. SVG and other vector
@@ -11,13 +12,15 @@ const SUPPORTED_ACCEPT = SUPPORTED_IMAGE_TYPES.join(",");
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB per image
 
 export default function QuestionInput({
-  placeholder = "Ask a question…",
+  placeholder,
   onSend,
   disabled = false,
   className = "",
   canAttachImages = true,
   maxImages = DEFAULT_MAX_IMAGES,
 }) {
+  const { t } = useTranslation();
+  const effectivePlaceholder = placeholder ?? t("chat:composer.placeholder");
   const [value, setValue] = useState("");
   const [images, setImages] = useState([]);
   const [imagePaths, setImagePaths] = useState([]);
@@ -54,9 +57,9 @@ export default function QuestionInput({
     let message = "";
     for (const file of Array.from(files || [])) {
       if (!SUPPORTED_IMAGE_TYPES.includes(file.type)) {
-        message = "That format isn't supported. Use PNG, JPG, WebP, GIF or BMP.";
+        message = t("chat:composer.errors.unsupportedFormat");
       } else if (file.size > MAX_IMAGE_BYTES) {
-        message = "That image is too large (max 20 MB).";
+        message = t("chat:composer.errors.tooLarge");
       } else {
         supported.push(file);
       }
@@ -65,18 +68,18 @@ export default function QuestionInput({
     const remaining = Math.max(0, maxImages - images.length);
     const toAdd = supported.slice(0, remaining);
     if (supported.length > remaining) {
-      message = `You can attach up to ${maxImages} image${maxImages === 1 ? "" : "s"} with this model.`;
+      message = t("chat:composer.errors.tooMany", { count: maxImages });
     }
     setAttachError(message);
 
     toAdd.forEach((file) => {
       const knownPath = window.electron?.getFilePath?.(file) || "";
       const reader = new FileReader();
-      reader.onerror = () => setAttachError("That image could not be read. Try another file.");
+      reader.onerror = () => setAttachError(t("chat:composer.errors.unreadable"));
       reader.onload = async () => {
         const result = reader.result;
         if (typeof result !== "string" || !result.startsWith("data:image/")) {
-          setAttachError("That image could not be read. Try another file.");
+          setAttachError(t("chat:composer.errors.unreadable"));
           return;
         }
         // No source path (clipboard paste) -> persist to disk to obtain one.
@@ -171,13 +174,13 @@ export default function QuestionInput({
                 <div key={idx} className="relative">
                   <img
                     src={src}
-                    alt={`attachment ${idx + 1}`}
+                    alt={t("chat:composer.attachmentAlt", { index: idx + 1 })}
                     className="h-20 w-20 object-cover rounded-xl border border-white/10"
                   />
                   <button
                     type="button"
                     onClick={() => removeImage(idx)}
-                    aria-label="Remove image"
+                    aria-label={t("chat:composer.removeImage")}
                     className="absolute -top-2 -right-2 rounded-full bg-black/70 p-0.5 text-white/90 hover:text-white"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -190,8 +193,8 @@ export default function QuestionInput({
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={disabled}
-                  aria-label="Add image"
-                  title="Add another image"
+                  aria-label={t("chat:composer.addImage")}
+                  title={t("chat:composer.addAnotherImage")}
                   className="h-20 w-20 flex items-center justify-center rounded-xl border border-dashed border-white/25 text-white/60 hover:text-white hover:border-white/50 disabled:opacity-40 transition"
                 >
                   <Plus className="h-6 w-6" />
@@ -259,8 +262,8 @@ export default function QuestionInput({
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled || images.length >= maxImages}
             className="pl-3 md:pl-4 text-white/70 hover:text-white disabled:opacity-40 transition"
-            aria-label="Attach image"
-            title="Attach image (or paste / drag and drop)"
+            aria-label={t("chat:composer.attachImage")}
+            title={t("chat:composer.attachImageHint")}
           >
             <ImagePlus className="w-5 h-5" />
           </button>
@@ -269,7 +272,7 @@ export default function QuestionInput({
         <textarea
           ref={textareaRef}
           rows={1}
-          placeholder={placeholder}
+          placeholder={effectivePlaceholder}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -294,7 +297,7 @@ export default function QuestionInput({
               "p-2",
               "text-white/70 hover:text-white disabled:opacity-50 transition",
             ].join(" ")}
-            aria-label="Send"
+            aria-label={t("common:actions.send")}
           >
             <ArrowRight className="w-6 h-6" />
           </button>

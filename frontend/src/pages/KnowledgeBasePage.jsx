@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { HelpCircle } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { inferenceTierLabel } from "../utils/inferenceTier";
+import { formatNumber } from "../i18n/format";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ModelLibrary from "../components/ModelLibrary";
@@ -16,39 +19,41 @@ import { createLogger } from "../utils/logger";
 const log = createLogger("KnowledgeBasePage");
 
 export default function KnowledgeBasePage() {
+  const { t } = useTranslation();
   const { open: openKnowledgeBase, isCreating, isStarting } = useKnowledgeBase();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [errorMessage, setErrorMessage] = useState("");
   const [isValidated, setIsValidated] = useState(false);
 
-  const [hw, setHw] = useState({
-    storage_path: "soon...",
-    disk_available: "fetching…",
-    cpu_model: "fetching…",
-    gpu_model: "fetching…",
-    chip_model: "fetching…", // Apple Silicon chip
-    gpu_cores: "fetching…",
-    estimated_gpu_tflops: "fetching…",
-    memory_bandwidth_gbs: "fetching…",
-    neural_engine_tops: "fetching…",
-    architecture: "fetching…",
-    is_apple_silicon: false,
-    mps_available: false,
-    unified_memory: false,
-    gpu_vram_total: "N/A", // Not applicable for unified memory
-    gpu_vram_free: "N/A", // Not applicable for unified memory
-    ram_available: "fetching…",
-    total_ram_gb: "fetching…",
-    global_inference_score: "fetching…",
-    global_inference_label: "fetching…",
-  });
+  // Inference rating readout. The state holds a status code plus the raw
+  // backend values; the displayed placeholders ("fetching…", "N/A", …) are
+  // resolved at render time so they follow the app language (#385).
+  const [rating, setRating] = useState({ status: "fetching", score: null, label: null });
+  // The backend label is an English tier name; show the same translated tier
+  // the Models page shows (#387), never the raw label.
+  const ratingLabel =
+    rating.status === "ready"
+      ? inferenceTierLabel(rating.label) || t("knowledgeBase:page.rating.notAvailable")
+      : t(`knowledgeBase:page.rating.${rating.status}`);
+  const ratingScore =
+    rating.status === "ready"
+      ? rating.score
+        ? t("knowledgeBase:page.rating.score", {
+            score: formatNumber(rating.score, { maximumFractionDigits: 1 }),
+          })
+        : t("knowledgeBase:page.rating.notAvailable")
+      : t(`knowledgeBase:page.rating.${rating.status}`);
 
   const [selectedModel, setSelectedModel] = useState(null);
   const [modelName, setModelName] = useState("");
   const [description, setDescription] = useState("");
   const [paths, setPaths] = useState([]);
   const [models, setModels] = useState([]);
+  // Bumped once a submission completes, so ModelLibrary and DragDropArea drop
+  // the state they own (the locked name, the staged file list) along with the
+  // parent's.
+  const [formResetKey, setFormResetKey] = useState(0);
 
   // --- Embedding-model gate (#146): the KB needs the e5 model on disk. ---
   const [gateState, setGateState] = useState(GATE.CHECKING);
@@ -72,19 +77,20 @@ export default function KnowledgeBasePage() {
   };
 
   /* helper to determine bullet or icon for rating field */
-  const getRatingBulletOrIcon = (rating) => {
-    // If it's still "fetching..." show question mark icon
-    if (rating && rating.includes("fetching")) {
+  const getRatingBulletOrIcon = ({ status, label }) => {
+    // Still fetching: show question mark icon
+    if (status === "fetching") {
       return {
         type: "icon",
         value: <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />,
       };
     }
 
-    // Color code based on rating
-    if (rating === "Amazing" || rating === "Excellent" || rating === "Very High") {
+    // Color code based on the backend's rating label (not user-facing copy:
+    // the label itself is rendered as received).
+    if (label === "Amazing" || label === "Excellent" || label === "Very High") {
       return { type: "bullet", value: "bg-emerald-400" };
-    } else if (rating === "Good" || rating === "Medium" || rating === "Bad" || rating === "High") {
+    } else if (label === "Good" || label === "Medium" || label === "Bad" || label === "High") {
       return { type: "bullet", value: "bg-orange-400" };
     } else {
       return { type: "bullet", value: "bg-red-500" };
@@ -104,7 +110,7 @@ export default function KnowledgeBasePage() {
         modelNameEmpty: !modelName.trim(),
         noPaths: paths.length === 0,
       });
-      setErrorMessage("Please fill in all required fields");
+      setErrorMessage(t("knowledgeBase:page.errors.missingFields"));
       return;
     }
 
@@ -124,9 +130,7 @@ export default function KnowledgeBasePage() {
       );
       if (duplicate) {
         log.warn("Duplicate assistant name rejected", { name: trimmedName });
-        setErrorMessage(
-          `A model named "${duplicate.name}" already exists. Choose a different assistant name.`
-        );
+        setErrorMessage(t("knowledgeBase:page.errors.duplicateName", { name: duplicate.name }));
         return;
       }
     }
@@ -152,6 +156,11 @@ export default function KnowledgeBasePage() {
           setPaths([]);
           setModelName("");
           setDescription("");
+          // The file list and the name lock live inside the children, so
+          // clearing the parent state is not enough: bump the key to remount
+          // them, otherwise the form keeps showing files it no longer holds
+          // and a locked-but-empty name field the user cannot type into.
+          setFormResetKey((k) => k + 1);
         }, 3000);
       },
       onError: (error) => {
@@ -178,21 +187,15 @@ export default function KnowledgeBasePage() {
     apiClient
       .get("/hardware/app_startup")
       .then((data) => {
-        setHw((prevHw) => ({
-          ...prevHw,
-          global_inference_score: data.global_inference_score
-            ? `${data.global_inference_score}/100`
-            : "N/A",
-          global_inference_label: data.global_inference_label ? data.global_inference_label : "N/A",
-        }));
+        setRating({
+          status: "ready",
+          score: data.global_inference_score || null,
+          label: data.global_inference_label || null,
+        });
       })
       .catch((err) => {
         log.error("Failed to fetch hardware info", err);
-        setHw((prevHw) => ({
-          ...prevHw,
-          global_inference_score: "Error fetching",
-          global_inference_label: "Error fetching",
-        }));
+        setRating({ status: "error", score: null, label: null });
       });
     fetchModels();
   }, []);
@@ -306,48 +309,39 @@ export default function KnowledgeBasePage() {
             <div className="relative z-10 px-4 py-3 sm:px-6 sm:py-4 md:px-8 md:py-5 flex flex-col h-full overflow-hidden">
               {/* Title */}
               <h2 className="text-white text-xl sm:text-2xl md:text-3xl font-bold mb-3 md:mb-4 flex-shrink-0">
-                Knowledge Base
+                {t("knowledgeBase:page.title")}
               </h2>
 
               {/* Knowledge Base description - scrollable */}
               <div className="flex-1 overflow-y-auto custom-scroll pr-2">
                 <p className="text-gray-300 text-sm sm:text-base md:text-lg leading-relaxed">
-                  A Knowledge Base lets you teach your AI about your specific documents, files, and
-                  information without changing the AI model itself.
+                  {t("knowledgeBase:page.intro.p1")}
                   <br />
                   <br />
-                  Think of it like giving your AI a personal library to reference when answering
-                  questions. Upload your PDFs, documents, notes, or any text files, and your AI will
-                  use them to give more accurate and relevant answers about your specific topics.
+                  {t("knowledgeBase:page.intro.p2")}
                   <br />
                   <br />
-                  This is perfect when you want your AI to know about your business, research, or
-                  personal documents, but don&apos;t need to permanently change how the AI thinks.
-                  It&apos;s faster and easier than training a new model, and you can update your
-                  knowledge anytime by adding or removing documents.
+                  {t("knowledgeBase:page.intro.p3")}
                   <br />
                   <br />
-                  Use Knowledge Bases for: company documents, research papers, manuals, personal
-                  notes, or any information you want your AI to reference when chatting with you.
+                  {t("knowledgeBase:page.intro.p4")}
                 </p>
               </div>
 
               {/* Rating - fixed at bottom */}
               <div className="flex-shrink-0 mt-3 md:mt-4">
                 <InfoRow
-                  label="Chat Capabilities Rating :"
+                  label={t("knowledgeBase:page.rating.label")}
                   isHeader={true}
-                  {...(getRatingBulletOrIcon(hw.global_inference_label).type === "bullet"
-                    ? { bullet: getRatingBulletOrIcon(hw.global_inference_label).value }
-                    : { icon: getRatingBulletOrIcon(hw.global_inference_label).value })}
+                  {...(getRatingBulletOrIcon(rating).type === "bullet"
+                    ? { bullet: getRatingBulletOrIcon(rating).value }
+                    : { icon: getRatingBulletOrIcon(rating).value })}
                 >
                   <div className="flex items-center gap-2">
-                    <span>{hw.global_inference_label || "Poor"}</span>
-                    {hw.global_inference_score && (
-                      <span className="text-xs text-gray-400 bg-gray-800/50 px-2 py-0.5 rounded-full border border-gray-600/30">
-                        {hw.global_inference_score}
-                      </span>
-                    )}
+                    <span>{ratingLabel}</span>
+                    <span className="text-xs text-gray-400 bg-gray-800/50 px-2 py-0.5 rounded-full border border-gray-600/30">
+                      {ratingScore}
+                    </span>
                   </div>
                 </InfoRow>
               </div>
@@ -355,6 +349,7 @@ export default function KnowledgeBasePage() {
           </div>
 
           <ModelLibrary
+            key={`model-library-${formResetKey}`}
             models={models}
             selectedModel={selectedModel}
             modelName={modelName}
@@ -371,13 +366,13 @@ export default function KnowledgeBasePage() {
               <div className="flex flex-col w-full h-full overflow-hidden">
                 {/* Title */}
                 <h3 className="text-white text-lg sm:text-xl md:text-2xl font-semibold mb-3 md:mb-4 text-center flex-shrink-0">
-                  Tell your assistant what you would use it for!
+                  {t("knowledgeBase:page.form.title")}
                 </h3>
 
                 {/* Description input */}
                 <textarea
                   className="w-full flex-1 bg-[#1A1A1A] text-white rounded-lg p-3 md:p-4 resize-none border border-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-400/60 focus:border-emerald-400/60 transition-all placeholder-gray-400 text-sm sm:text-base"
-                  placeholder="Write a description"
+                  placeholder={t("knowledgeBase:page.form.descriptionPlaceholder")}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                 />
@@ -387,7 +382,7 @@ export default function KnowledgeBasePage() {
                 {isValidated ? (
                   <div className="w-full text-center">
                     <div className="text-emerald-400 text-sm">
-                      Data attached to your Assistant successfully!
+                      {t("knowledgeBase:page.form.success")}
                     </div>
                     <div className="inline-flex items-center gap-2 py-3"></div>
                   </div>
@@ -399,7 +394,9 @@ export default function KnowledgeBasePage() {
                     }}
                     disabled={isCreating || isStarting}
                   >
-                    {isCreating ? "Creating Assistant..." : "Create Assistant"}
+                    {isCreating
+                      ? t("knowledgeBase:page.form.creating")
+                      : t("knowledgeBase:page.form.create")}
                   </button>
                 )}
 
@@ -409,7 +406,7 @@ export default function KnowledgeBasePage() {
             </div>
 
             <div className="w-full lg:w-[56%] h-full overflow-hidden">
-              <DragDropArea onFilesAdded={addDroppedFiles} />
+              <DragDropArea key={`drag-drop-${formResetKey}`} onFilesAdded={addDroppedFiles} />
             </div>
           </div>
         </div>

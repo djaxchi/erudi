@@ -38,9 +38,15 @@ class TestConversationEndpointGaps:
     def test_create_with_unknown_llm_rolls_back(self, client):
         # FK violation surfaces as a wrapped DatabaseException (500), and the
         # endpoint's rollback branch must leave the session usable afterwards.
-        resp = client.post("/erudi/conversations/", json={"llm_id": 987654})
+        # Explicit sampling values keep the request off the model lookup (#388:
+        # omitted values resolve from the Llm row first, which is a clean 404 --
+        # see test_sampling_contracts) so the FK path itself stays exercised.
+        resp = client.post("/erudi/conversations/", json={
+            "llm_id": 987654, "temperature": 0.2, "top_p": 0.95, "max_tokens": 64,
+        })
         assert resp.status_code == 500
         assert client.get("/erudi/conversations/").status_code == 200
+        assert client.post("/erudi/conversations/", json={"llm_id": 987654}).status_code == 404
 
     def test_delete_unknown_conversation_rolls_back(self, client):
         assert client.delete("/erudi/conversations/987654").status_code == 404

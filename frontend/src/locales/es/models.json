@@ -1,0 +1,157 @@
+{
+  "smallModelNote": "Modelo muy pequeño: adecuado para chats rápidos y equipos modestos; el uso de herramientas, la búsqueda en la base de conocimiento y el razonamiento en varios pasos no son fiables por debajo de ~{{threshold}}B.",
+  "categories": {
+    "general": "General",
+    "reasoning": "Razonamiento",
+    "code": "Código",
+    "vision": "Visión y multimodal",
+    "math": "Matemáticas",
+    "medical": "Medicina",
+    "function": "Llamada de funciones",
+    "safety": "Seguridad y moderación"
+  },
+  "fit": {
+    "labels": {
+      "ideal": "Ajuste ideal",
+      "good": "Funciona sin esfuerzo",
+      "tight": "Ajuste justo",
+      "heavy": "Necesita más memoria",
+      "unknown": "Ajuste desconocido"
+    },
+    "footprint": "~{{size}}"
+  },
+  "sizeBuckets": {
+    "any": "Cualquier tamaño",
+    "tiny": "Menos de 2B",
+    "small": "2–8B",
+    "medium": "8–32B",
+    "large": "32B+"
+  },
+  "filters": {
+    "sizeLabel": "tamaño",
+    "fitsMyMachine": "Compatible con mi equipo"
+  },
+  "card": {
+    "addTitle": "Añadir un modelo",
+    "addSubtitle": "Explorar los modelos disponibles",
+    "testedBadge": "Probado por el equipo de Erudi: verificado para chat y base de conocimiento",
+    "unavailable": "No disponible en tu hardware",
+    "weightsMissingBadge": "Faltan los pesos",
+    "deleteModel": "Eliminar modelo",
+    "weightsMissing": "Faltan los pesos del modelo",
+    "usesWeightsOf": "Usa los pesos de {{name}}",
+    "itsBaseModel": "su modelo base",
+    "size": "Tamaño: {{size}}",
+    "downloads": "Descargas: {{value}}",
+    "likes": "Me gusta: {{value}}",
+    "author": "Autor: {{author}}",
+    "library": "Biblioteca: {{library}}",
+    "parameters": "Parámetros: {{parameters}}",
+    "lastUpdate": "Última actualización: {{date}}",
+    "info": "Información",
+    "chatBlocked": "Faltan los pesos del modelo - vuelve a vincularlo para chatear",
+    "rebindTitle": "Vincular a otro modelo instalado",
+    "rebind": "Vincular",
+    "noRebindTarget": "No hay ningún modelo base instalado disponible"
+  },
+  "explore": {
+    "title": "Explorar",
+    "buildingCatalog": "Generando el catálogo...",
+    "buildingCatalogInline": "generando el catálogo…",
+    "recommended": "Recomendados para ti",
+    "searchHuggingFace": "Buscar en Hugging Face",
+    "community": "Comunidad",
+    "seeAll": "Ver todos",
+    "notSupported": "No compatible con tu hardware",
+    "sizeUnknown": "Tamaño desconocido",
+    "visionBadge": "Admite imágenes como entrada (visión)",
+    "gated": "acceso restringido",
+    "details": "Detalles",
+    "installed": "Instalado",
+    "alreadyInstalled": "Ya instalado: consulta la sección Instalados más arriba",
+    "noBaseModelsFor": "No se encontraron modelos base para «{{query}}»",
+    "noBaseModels": "No hay modelos base disponibles"
+  },
+  "library": {
+    "title": "Biblioteca de modelos",
+    "refresh": "Actualizar modelos",
+    "empty": "No se encontraron LLM locales.",
+    "newNameTitle": "Nombre del nuevo modelo",
+    "newNameHint": "Elige un nombre para tu modelo",
+    "namePlaceholder": "Escribe el nombre del modelo...",
+    "selectFirst": "Selecciona primero un modelo",
+    "cancelUnlock": "Cancelar y desbloquear",
+    "validateLock": "Validar y bloquear el nombre"
+  },
+  "attachKnowledgeBase": "Adjuntar una base de conocimiento",
+  "machine": {
+    "readingHardware": "leyendo el hardware…",
+    "yourMachine": "Tu equipo",
+    "runtime": "Motor {{backend}}",
+    "catchphrase": {
+      "excellent": "Una auténtica bestia. Sin límites.",
+      "good": "Configuración sólida, la mayoría de los modelos volarán.",
+      "fair": "Cumple con su trabajo, cuidado con los grandes.",
+      "poor": "Los modelos pequeños son tus mejores aliados aquí.",
+      "weak": "Peso pluma. Quédate con los modelos diminutos."
+    },
+    "tier": {
+      "excellent": "Excelente",
+      "good": "Bueno",
+      "fair": "Aceptable",
+      "poor": "Bajo",
+      "weak": "Muy bajo"
+    },
+    "unifiedMemory": "Memoria unificada",
+    "ram": "RAM",
+    "vram": "VRAM",
+    "gpuCores": "Núcleos GPU",
+    "bandwidth": "Ancho de banda",
+    "bandwidthUnit": "GB/s",
+    "inference": "Inferencia",
+    "notAvailable": "n/d",
+    "sweetSpot": "Zona ideal",
+    "rangeValue": "{{min}}–{{max}}",
+    "paramUnit": "B",
+    "comfortable": "Los modelos de hasta ~{{max}}B funcionan con holgura aquí.",
+    "gaugeHint": "Ejecuta un modelo para evaluar tu compatibilidad."
+  },
+  "search": {
+    "title": "Buscar en Hugging Face",
+    "description": "Ve más allá de la lista seleccionada. Buscamos entre todos los modelos compatibles con tu motor y los ordenamos según lo bien que se ajustan a tu equipo.",
+    "placeholder": "Prueba «qwen coder», «un modelo pequeño», «visión»…",
+    "searching": "Buscando…",
+    "tryLabel": "prueba",
+    "searchingFor": "buscando en hugging face «{{query}}»…",
+    "resultsFor_one": "{{count}} resultado para «{{term}}»",
+    "resultsFor_other": "{{count}} resultados para «{{term}}»",
+    "show": "Mostrar",
+    "collapse": "Contraer",
+    "noMatch": "Ningún modelo ejecutable coincide con «{{term}}». Prueba un término más amplio o un nombre de familia como «qwen» o «llama».",
+    "offline": "No hay conexión a internet por el momento.",
+    "unreachable": "La búsqueda no pudo conectar con Hugging Face. Comprueba tu conexión e inténtalo de nuevo.",
+    "sort": {
+      "fit": "Mejor ajuste",
+      "downloads": "Más descargados",
+      "likes": "Más valorados",
+      "smallest": "Más pequeños",
+      "largest": "Más grandes"
+    }
+  },
+  "info": {
+    "noDescription": "No hay descripción disponible",
+    "basicInfo": "Información básica",
+    "size": "Tamaño:",
+    "parameters": "Parámetros:",
+    "author": "Autor:",
+    "library": "Biblioteca:",
+    "stats": "Estadísticas",
+    "downloads": "Descargas:",
+    "likes": "Me gusta:",
+    "lastUpdate": "Última actualización:",
+    "pipeline": "Pipeline:",
+    "showRawMetadata": "Mostrar metadatos sin procesar",
+    "noPublisherRecommendation": "El editor de este modelo no recomienda ningún ajuste de generación; Erudi aplica valores neutros.",
+    "installed": "Instalado"
+  }
+}

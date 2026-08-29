@@ -109,6 +109,42 @@ class TestAssistantLifecycle:
         specialized = test_db_session.query(Llm).get(llm_id)
         assert specialized.supports_tools is True
 
+    def test_kb_assistant_inherits_the_publisher_generation_hints(
+        self, test_db_session, mock_llm
+    ):
+        # An assistant shares its base's weights, so the publisher's sampling
+        # hints (#388) are its own: without them a Qwen3 assistant chatted at
+        # the neutral 0.2 / 0.95 without top_k and the UI claimed "no publisher
+        # recommendation" for weights that do ship one.
+        from src.database.generation_hints import resolve_sampling_defaults
+
+        mock_llm.generation_hints = {
+            "base_repo": "Qwen/Qwen3-4B",
+            "generation_config": {"temperature": 0.6, "top_p": 0.95, "top_k": 20},
+            "supports_thinking": True,
+            "context_length": 40960,
+            "captured_at": "2026-08-28",
+            "source_stage": "base_generation_config",
+            "evidence": None,
+        }
+        test_db_session.flush()
+
+        service = KB_Service()
+        llm_id, _ = service.create_kb_assistant(
+            db=test_db_session,
+            base_llm_id=mock_llm.id,
+            model_name="Hinted assistant",
+            description="",
+            file_paths=["/tmp/whatever.pdf"],
+        )
+
+        specialized = test_db_session.query(Llm).get(llm_id)
+        assert specialized.generation_hints == mock_llm.generation_hints
+        resolved = resolve_sampling_defaults(specialized)
+        assert resolved.to_dict() == resolve_sampling_defaults(mock_llm).to_dict()
+        assert (resolved.temperature, resolved.top_k) == (0.6, 20)
+        assert resolved.source == "base_generation_config"
+
     def test_kb_assistant_inherits_supports_tools_wire(self, test_db_session, mock_llm):
         # #298: the verified wire capability must follow the weights. An
         # assistant shares its base's artifact, so its wire verdict is the

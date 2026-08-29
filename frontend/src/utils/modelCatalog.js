@@ -6,6 +6,7 @@
  * hand-maintained `baseModelNames` list and a name-regex param parser that broke
  * the moment the catalog became auto-discovered.
  */
+import i18n from "../i18n";
 
 /**
  * Split the remote catalog into curated base (foundation) vs derived/community
@@ -62,18 +63,20 @@ export function installedRepoKeys(localModels) {
 
 /**
  * Capability categories (#122), mirrored from the backend catalog_classify keys.
- * `order` drives section order; `collapsed` marks sections hidden by default
- * (Safety = moderation classifiers, not chat models).
+ * `labelKey` is the translation key of the section label (resolved at call time
+ * so a language switch is reflected on the next render); `order` drives section
+ * order; `collapsed` marks sections hidden by default (Safety = moderation
+ * classifiers, not chat models).
  */
 export const CATEGORY_META = {
-  general: { label: "General", order: 0 },
-  reasoning: { label: "Reasoning", order: 1 },
-  code: { label: "Code", order: 2 },
-  vision: { label: "Vision & Multimodal", order: 3 },
-  math: { label: "Math", order: 4 },
-  medical: { label: "Medical", order: 5 },
-  function: { label: "Function Calling", order: 6 },
-  safety: { label: "Safety & Moderation", order: 7, collapsed: true },
+  general: { labelKey: "models:categories.general", order: 0 },
+  reasoning: { labelKey: "models:categories.reasoning", order: 1 },
+  code: { labelKey: "models:categories.code", order: 2 },
+  vision: { labelKey: "models:categories.vision", order: 3 },
+  math: { labelKey: "models:categories.math", order: 4 },
+  medical: { labelKey: "models:categories.medical", order: 5 },
+  function: { labelKey: "models:categories.function", order: 6 },
+  safety: { labelKey: "models:categories.safety", order: 7, collapsed: true },
 };
 
 const _catMeta = (cat) => CATEGORY_META[cat] || CATEGORY_META.general;
@@ -94,7 +97,7 @@ export function groupByCategory(models) {
     .sort((a, b) => _catMeta(a).order - _catMeta(b).order)
     .map((cat) => ({
       category: cat,
-      label: _catMeta(cat).label,
+      label: i18n.t(_catMeta(cat).labelKey),
       collapsed: Boolean(_catMeta(cat).collapsed),
       models: groups[cat],
     }));

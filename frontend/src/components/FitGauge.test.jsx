@@ -32,7 +32,9 @@ describe("FitGauge", () => {
 
   it("doubles the footprint estimate for non-quantized models", () => {
     render(<FitGauge paramSize={4} quantized={false} range={range} />);
-    expect(screen.getByText("~8.0 GB")).toBeTruthy();
+    // Sizes go through the locale-aware formatter (#385), which drops a
+    // trailing ".0" the way Intl does — "8 GB", not "8.0 GB".
+    expect(screen.getByText("~8 GB")).toBeTruthy();
   });
 
   it("renders the neutral state when no benchmark window is known", () => {
@@ -51,6 +53,30 @@ describe("FitGauge", () => {
     const { container } = render(<FitGauge paramSize={4} range={range} />);
     const tick = container.querySelector(".bg-white\\/40");
     expect(tick.style.left).toBe("50%");
+  });
+
+  // The card face showed the estimate ("~2.3 GB" for a 3B model) while the
+  // info modal and the installed card showed the measured 3.1 GB (#397): the
+  // gauge now renders the real size when it is known and derives its verdict
+  // and fill from that same number.
+  it("shows the measured size, without the estimate marker, and judges fit from it", () => {
+    const window = { min: 2, max: 4 };
+    const { container } = render(
+      <FitGauge paramSize={3} quantized sizeBytes={3_100_000_000} range={window} />
+    );
+    expect(screen.getByText("3.1 GB")).toBeTruthy();
+    expect(screen.queryByText("~1.8 GB")).toBeNull();
+    // 3.1 GB of 4-bit weights is a 5.2B-class model: tight for a 2-4B window,
+    // where the 3B parameter count alone would have read "Ideal fit".
+    expect(screen.getByText("Tight fit")).toBeTruthy();
+    const fill = container.querySelector(".transition-\\[width\\]");
+    expect(fill.style.width).toBe("65%"); // 3.1 / 0.6 / (4 * 2)
+  });
+
+  it("keeps the estimate and the parameter verdict when no size is measured", () => {
+    render(<FitGauge paramSize={3} quantized sizeBytes={null} range={{ min: 2, max: 4 }} />);
+    expect(screen.getByText("~1.8 GB")).toBeTruthy();
+    expect(screen.getByText("Ideal fit")).toBeTruthy();
   });
 });
 

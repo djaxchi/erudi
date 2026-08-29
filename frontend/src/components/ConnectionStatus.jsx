@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import { HelpCircle, RefreshCw } from "lucide-react";
 import Tooltip from "./Tooltip";
 import { getApiBaseUrl } from "../config/api";
@@ -38,57 +39,50 @@ const HEALTH_TIMEOUT_MS = 8000;
 // packets) can never wedge the pill -- it aborts and the internet state goes unknown.
 const CONNECTION_TIMEOUT_MS = 10000;
 
-/** Map the raw signals to a single visual descriptor, honoring the priority order. */
+/**
+ * Map the raw signals to a single visual descriptor, honoring the priority
+ * order. `state` names the `errors:connection.<state>` subtree (label, title,
+ * tooltip) the component translates at render time.
+ */
 function resolveDisplay({ backendReachable, dbState, online }) {
   if (!backendReachable) {
     return {
+      state: "unreachable",
       dot: "bg-red-500",
-      label: "Backend unreachable",
       labelClass: "text-red-300",
       showRestart: true,
-      title: "The local backend is not responding",
-      tooltip: "The local backend stopped responding. Restart it to reconnect.",
     };
   }
   if (dbState === "recovering") {
     return {
+      state: "recovering",
       dot: "bg-amber-400",
       ping: "bg-amber-400/60",
       pulse: true,
-      label: "Restoring the database...",
       labelClass: "text-amber-300",
-      title: "The local database is recovering",
-      tooltip: "The local database is restoring. Your data is safe; this clears on its own.",
     };
   }
   if (dbState === "failed") {
     return {
+      state: "databaseError",
       dot: "bg-red-500",
-      label: "Database error",
       labelClass: "text-red-300",
       showRestart: true,
-      title: "The local database hit an error",
-      tooltip: "The local database hit an error. Restart the backend to recover.",
     };
   }
   if (online === false) {
     return {
+      state: "offline",
       dot: "bg-gray-500",
-      label: "Offline",
       labelClass: "text-gray-400",
-      title: "No internet connection",
-      tooltip:
-        "No internet: the catalog and downloads are unavailable, but chatting with installed models still works.",
     };
   }
   return {
+    state: "connected",
     dot: "bg-emerald-400",
     ping: "bg-emerald-400/60",
     pulse: true,
-    label: "Connected",
     labelClass: "text-gray-300",
-    title: "Connected to the internet",
-    tooltip: "You can chat with installed models offline. Installing new ones needs a connection.",
   };
 }
 
@@ -98,6 +92,7 @@ export default function ConnectionStatus({
   healthTimeoutMs = HEALTH_TIMEOUT_MS,
   connectionTimeoutMs = CONNECTION_TIMEOUT_MS,
 }) {
+  const { t } = useTranslation();
   // Optimistic defaults so mounting never flashes an alarming state before the
   // first poll resolves; `online: null` means "internet state not yet known".
   const [status, setStatus] = useState({
@@ -205,7 +200,10 @@ export default function ConnectionStatus({
   const d = resolveDisplay(status);
 
   return (
-    <div className="flex items-center gap-2.5 px-4 py-3 border-t border-white/10" title={d.title}>
+    <div
+      className="flex items-center gap-2.5 px-4 py-3 border-t border-white/10"
+      title={t(`errors:connection.${d.state}.title`)}
+    >
       <span className="relative flex w-2.5 h-2.5">
         {d.pulse && (
           <span
@@ -214,19 +212,19 @@ export default function ConnectionStatus({
         )}
         <span className={`relative inline-flex w-2.5 h-2.5 rounded-full ${d.dot}`} />
       </span>
-      <span className={`text-sm ${d.labelClass}`}>{d.label}</span>
+      <span className={`text-sm ${d.labelClass}`}>{t(`errors:connection.${d.state}.label`)}</span>
       {d.showRestart && (
         <button
           type="button"
           onClick={handleRestart}
-          title="Restart the backend"
+          title={t("errors:connection.restartTitle")}
           className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
         >
           <RefreshCw className="w-3 h-3" />
-          Restart
+          {t("errors:connection.restart")}
         </button>
       )}
-      <Tooltip side="top-right" width="w-64" content={d.tooltip}>
+      <Tooltip side="top-right" width="w-64" content={t(`errors:connection.${d.state}.tooltip`)}>
         <HelpCircle className="w-3.5 h-3.5 text-gray-400 hover:text-emerald-400 transition-colors cursor-help" />
       </Tooltip>
     </div>

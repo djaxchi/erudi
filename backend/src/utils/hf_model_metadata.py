@@ -26,7 +26,6 @@ Data Structures:
 
 Functions:
     - get_disk_size_after_quant: Fetch actual size from HF API
-    - get_model_size_estimate: Estimate size for known models
     - get_parameter_count_from_name: Extract parameter count from naming
     - format_model_info_metadata: Format ModelInfo to structured string
     - parse_quantization_type: Detect quantization method from repo name
@@ -38,15 +37,6 @@ Examples:
     >>> 
     >>> size = get_disk_size_after_quant("mlx-community/Mistral-7B-v0.3-4bit")
     >>> print(size.to_string())  # "~3.2 GB"
-    >>> 
-    >>> # Estimate size for base model
-    >>> from src.utils.hf_model_metadata import get_model_size_estimate
-    >>> 
-    >>> size = get_model_size_estimate(
-    ...     "Mistral Instruct", 
-    ...     "mistralai/Mistral-7B-Instruct-v0.3"
-    ... )
-    >>> print(size.to_string())  # "~13.5 GB"
     >>> 
     >>> # Extract parameter count
     >>> from src.utils.hf_model_metadata import extract_parameter_pattern
@@ -75,7 +65,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Dict, Tuple, Union
+from typing import Optional, Dict, Union
 from huggingface_hub import ModelInfo
 
 from src.core.logging import logger
@@ -139,11 +129,16 @@ class ModelSize:
         max_gb: Maximum size in GB (upper bound of estimate).
         is_estimate: True if size is estimated, False if from API.
         source: Source of size information ("api", "estimate", "unknown").
-    
+        size_bytes: The exact byte count behind an API-measured size (the files
+            the downloader fetches), or None for any estimate. Stored as-is on
+            the catalog row (``llms.artifact_size_bytes``) so the UI shows the
+            real download size instead of a per-parameter guess; an estimate
+            must never be laundered into that column.
+
     Example:
         >>> size = ModelSize(size_gb=3.2, min_gb=3.0, max_gb=3.5, is_estimate=False, source="api")
         >>> print(size.to_string())  # "~3.2 GB"
-        >>> 
+        >>>
         >>> estimate = ModelSize(size_gb=13.5, min_gb=13.0, max_gb=14.0, is_estimate=True, source="estimate")
         >>> print(estimate.to_string())  # "~13.5 GB"
     """
@@ -152,6 +147,7 @@ class ModelSize:
     max_gb: Optional[float] = None
     is_estimate: bool = True
     source: str = "estimate"
+    size_bytes: Optional[int] = None
     
     def to_string(self) -> str:
         """Format size as human-readable string.
@@ -224,28 +220,6 @@ class ParameterCount:
 
 
 # ============ Configuration ============
-
-# Model family size mappings (full precision fp16/bf16)
-MODEL_SIZE_MAP: Dict[str, Tuple[float, float, float]] = {
-    # Mistral models (full precision)
-    "mistralai/Mistral-7B-Instruct-v0.3": (13.5, 13.0, 14.0),
-    "mistralai/Mistral-7B-v0.3": (13.5, 13.0, 14.0),
-    
-    # Gemma models (full precision)
-    "google/gemma-3-1b-it": (2.5, 2.0, 3.0),
-    "google/gemma-2-2b-it": (5.5, 5.0, 6.0),
-    "google/gemma-3-4b-it": (9.0, 8.5, 9.5),
-    "google/gemma-4-E2B-it": (5.0, 4.5, 5.5),
-    "google/gemma-4-E4B-it": (9.0, 8.5, 9.5),
-    "google/gemma-4-26b-a4b-it": (16.0, 15.0, 17.0),
-    "google/gemma-4-31b-it": (19.0, 18.0, 20.0),
-    
-    # Qwen models (full precision)
-    "Qwen/Qwen2.5-7B-Instruct": (14.5, 14.0, 15.0),
-    "Qwen/Qwen2.5-3B-Instruct": (6.5, 6.0, 7.0),
-    "Qwen/Qwen2.5-1.5B-Instruct": (3.0, 2.5, 3.5),
-    "Qwen/Qwen2.5-0.5B-Instruct": (1.0, 0.8, 1.2),
-}
 
 # Parameter size to disk size multipliers (bytes per parameter)
 # Assumes fp16 (2 bytes/param) + overhead for embeddings, configs, etc.
@@ -432,7 +406,7 @@ def extract_parameter_pattern(text: str) -> Optional[ParameterCount]:
 
 # ============ Public API Functions ============
 
-def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
+def get_disk_size_after_quant(link_hf_quant_repo: str, hf_api=None) -> ModelSize:
     """Get actual disk size of quantized model from HuggingFace Hub API.
 
     Fetches repository metadata via HF API and sums file sizes to get accurate
@@ -442,9 +416,13 @@ def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
     Args:
         link_hf_quant_repo: HuggingFace repo ID for quantized model.
             Format: "mlx-community/Model-Name-4bit" or similar.
+        hf_api: The HF client to ask (the catalog build passes its own retrying
+            client so a snapshot never opens a second session); None falls back
+            to the module-level ``get_hf_api()``.
 
     Returns:
-        ModelSize object with actual size from API or estimated size.
+        ModelSize object with actual size from API (``size_bytes`` set to the
+        exact chosen-artifact byte count) or estimated size (``size_bytes`` None).
 
     Raises:
         HFAPIError: If API call fails and estimation is impossible.
@@ -468,7 +446,8 @@ def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
     try:
         logger.debug(f"Fetching disk size for quantized repo: {link_hf_quant_repo}")
 
-        hf_api = get_hf_api()
+        if hf_api is None:
+            hf_api = get_hf_api()
         repo_info = hf_api.repo_info(link_hf_quant_repo, files_metadata=True)
         # Sum ONLY the artifact the downloader would actually fetch, not the whole
         # repo (#220/#170): a GGUF multi-quant repo can be 20-40 GB while we pull a
@@ -479,15 +458,18 @@ def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
         # Convert to GB with high precision. Decimal GB (#316) so the number
         # matches what Hugging Face itself shows for the very same file.
         size_gb = total_size_bytes / BYTES_PER_GB
-        
+
         logger.info(f"Retrieved actual size for {link_hf_quant_repo}: {size_gb:.2f} GB")
-        
+
         return ModelSize(
             size_gb=size_gb,
             min_gb=size_gb,
             max_gb=size_gb,
             is_estimate=False,
-            source="api"
+            source="api",
+            # A listing with no sizes at all sums to 0: that is "unknown", not a
+            # measured empty artifact.
+            size_bytes=int(total_size_bytes) if total_size_bytes > 0 else None,
         )
         
     except Exception as e:
@@ -529,122 +511,6 @@ def get_disk_size_after_quant(link_hf_quant_repo: str) -> ModelSize:
             # Unknown quantization, very rough estimate
             logger.warning(f"Could not determine size for {link_hf_quant_repo}, returning unknown")
             return ModelSize(size_gb=0.0, min_gb=0.0, max_gb=0.0, is_estimate=True, source="unknown")
-
-
-def get_model_size_estimate(model_name: str, link: str) -> ModelSize:
-    """Estimate model size for known base models and derivatives.
-
-    Provides size estimates for popular model families (Mistral, Gemma, Qwen) in
-    full precision (fp16/bf16). Uses exact matches for known repos, then
-    falls back to pattern matching for derivatives and fine-tunes.
-
-    Estimation Logic:
-    1. Check exact repo ID in MODEL_SIZE_MAP
-    2. Match family pattern (Mistral, Gemma, Qwen) + parameter count
-    3. Calculate from extracted parameter count if available
-    4. Return unknown ModelSize if no match
-
-    Args:
-        model_name: Human-readable model name (e.g., "Mistral Instruct").
-            Used for pattern matching when link is custom/fine-tuned.
-        link: HuggingFace repo ID (e.g., "mistralai/Mistral-7B-Instruct-v0.3").
-            Primary source for matching.
-
-    Returns:
-        ModelSize object with estimate or unknown.
-
-    Examples:
-        >>> # Exact match
-        >>> size = get_model_size_estimate(
-        ...     "Mistral 7B Instruct",
-        ...     "mistralai/Mistral-7B-Instruct-v0.3"
-        ... )
-        >>> print(size.to_string())  # "~13.5 GB"
-        >>> 
-        >>> # Pattern match for derivative
-        >>> size = get_model_size_estimate(
-        ...     "Custom Mistral 7B Finetune",
-        ...     "user/custom-mistral-7b-finetune"
-        ... )
-        >>> print(size.to_string())  # "~13.0-14.0 GB" (matched "mistral" + "7b")
-
-    Notes:
-        - Full precision only: Does not account for quantization
-        - Hardcoded map: Mistral, Gemma, Qwen families
-        - Pattern matching: Case-insensitive, checks name + link
-        - Returns ModelSize with uncertainty bounds for estimates
-    """
-    logger.debug(f"Estimating size for model: {model_name}, link: {link}")
-    
-    # First check for exact match in size map
-    if link in MODEL_SIZE_MAP:
-        size_gb, min_gb, max_gb = MODEL_SIZE_MAP[link]
-        logger.info(f"Found exact match for {link}: {size_gb} GB")
-        return ModelSize(
-            size_gb=size_gb,
-            min_gb=min_gb,
-            max_gb=max_gb,
-            is_estimate=True,
-            source="map"
-        )
-    
-    # Pattern matching for derivatives
-    model_name_lower = model_name.lower()
-    link_lower = link.lower()
-    combined_text = f"{model_name_lower} {link_lower}"
-    
-    # Extract parameter count
-    param_count = extract_parameter_pattern(combined_text)
-    
-    if param_count:
-        # Mistral family
-        if "mistral" in combined_text:
-            if param_count.total_billions >= 6.5 and param_count.total_billions <= 8.0:
-                logger.info(f"Matched Mistral 7B pattern for {link}")
-                return ModelSize(size_gb=13.5, min_gb=13.0, max_gb=14.0, is_estimate=True, source="pattern")
-        
-        # Gemma family
-        if "gemma" in combined_text:
-            total_b = param_count.total_billions
-            is_gemma4 = "gemma-4" in combined_text or "gemma4" in combined_text
-            if 0.8 <= total_b <= 1.2:
-                logger.info(f"Matched Gemma 1B pattern for {link}")
-                return ModelSize(size_gb=2.5, min_gb=2.0, max_gb=3.0, is_estimate=True, source="pattern")
-            elif 1.8 <= total_b <= 2.2:
-                size = 5.0 if is_gemma4 else 5.5  # Gemma 4 E2B is MoE, slightly smaller quantized
-                logger.info(f"Matched Gemma {'4 E2B' if is_gemma4 else '2B'} pattern for {link}")
-                return ModelSize(size_gb=size, min_gb=4.5, max_gb=6.0, is_estimate=True, source="pattern")
-            elif 3.5 <= total_b <= 4.5:
-                size = 9.0  # same ballpark for Gemma 3 4B and Gemma 4 E4B
-                logger.info(f"Matched Gemma {'4 E4B' if is_gemma4 else '4B'} pattern for {link}")
-                return ModelSize(size_gb=size, min_gb=8.5, max_gb=9.5, is_estimate=True, source="pattern")
-            elif 6.5 <= total_b <= 8.0:
-                logger.info(f"Matched Gemma 7B pattern for {link}")
-                return ModelSize(size_gb=13.5, min_gb=13.0, max_gb=14.0, is_estimate=True, source="pattern")
-        
-        # Qwen family
-        if "qwen" in combined_text:
-            total_b = param_count.total_billions
-            if 0.4 <= total_b <= 0.6:
-                logger.info(f"Matched Qwen 0.5B pattern for {link}")
-                return ModelSize(size_gb=1.0, min_gb=0.8, max_gb=1.2, is_estimate=True, source="pattern")
-            elif 1.3 <= total_b <= 1.7:
-                logger.info(f"Matched Qwen 1.5B pattern for {link}")
-                return ModelSize(size_gb=3.0, min_gb=2.5, max_gb=3.5, is_estimate=True, source="pattern")
-            elif 2.8 <= total_b <= 3.2:
-                logger.info(f"Matched Qwen 3B pattern for {link}")
-                return ModelSize(size_gb=6.5, min_gb=6.0, max_gb=7.0, is_estimate=True, source="pattern")
-            elif 6.5 <= total_b <= 8.0:
-                logger.info(f"Matched Qwen 7B pattern for {link}")
-                return ModelSize(size_gb=14.5, min_gb=14.0, max_gb=15.0, is_estimate=True, source="pattern")
-        
-        # Generic calculation for unknown families
-        logger.info(f"No family match, calculating from parameters for {link}")
-        return calculate_size_from_parameters(param_count, QuantizationType.FP16)
-    
-    # No match found
-    logger.warning(f"Could not estimate size for {link}")
-    return ModelSize(size_gb=0.0, min_gb=0.0, max_gb=0.0, is_estimate=True, source="unknown")
 
 
 def get_parameter_count_from_name(model_name: str, link: str) -> str:
@@ -721,7 +587,7 @@ def format_model_info_metadata(
         model_info: huggingface_hub.ModelInfo object from HF API. Contains
             all metadata fields from HuggingFace Hub.
         size_estimate: Optional ModelSize object. If None, shows "Unknown".
-            Get from get_model_size_estimate or get_disk_size_after_quant.
+            Get from get_disk_size_after_quant.
         quantized: Boolean indicating if model is quantized (default: False).
             Shows "True" or "False" in output.
 
@@ -736,7 +602,7 @@ def format_model_info_metadata(
         >>> # Fetch model info and format
         >>> api = HfApi()
         >>> model_info = api.model_info("mistralai/Mistral-7B-Instruct-v0.3")
-        >>> size = get_model_size_estimate("Mistral 7B", model_info.id)
+        >>> size = get_disk_size_after_quant(model_info.id)
         >>> 
         >>> metadata_str = format_model_info_metadata(
         ...     model_info,
@@ -938,7 +804,6 @@ __all__ = [
     "ParameterScale",
     # Main API functions
     "get_disk_size_after_quant",
-    "get_model_size_estimate",
     "format_model_info_metadata",
     # On-disk size (measured reality)
     "measure_dir_size_bytes",

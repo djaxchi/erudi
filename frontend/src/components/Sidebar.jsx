@@ -11,6 +11,7 @@ import {
   Settings,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { SETTINGS_PATH } from "../utils/routes";
 
@@ -26,6 +27,7 @@ export default function Sidebar({
   onToggleBrainSidebar,
   brainCollapsed = false,
 }) {
+  const { t } = useTranslation();
   const [isHovering, setIsHovering] = useState(false);
   const [isBrainHovering, setIsBrainHovering] = useState(false);
   const { isDownloading } = useDownloadModal();
@@ -46,7 +48,7 @@ export default function Sidebar({
     >
       {showBrainCollapsible ? (
         <button
-          aria-label="Toggle models sidebar"
+          aria-label={t("common:nav.toggleModelsSidebar")}
           onClick={onToggleBrainSidebar}
           onMouseEnter={() => setIsBrainHovering(true)}
           onMouseLeave={() => setIsBrainHovering(false)}
@@ -71,7 +73,7 @@ export default function Sidebar({
       ) : (
         <Link
           to="/erudi/models"
-          aria-label="Models"
+          aria-label={t("common:nav.models")}
           className={`w-full flex justify-center items-center py-5 border-l-4 ${
             isModelsActive ? "border-green-500" : "border-transparent"
           }`}
@@ -86,7 +88,7 @@ export default function Sidebar({
 
       {showCollapsible ? (
         <button
-          aria-label="Toggle chat sidebar"
+          aria-label={t("common:nav.toggleChatSidebar")}
           onClick={onToggleSidebar}
           onMouseEnter={() => setIsHovering(true)}
           onMouseLeave={() => setIsHovering(false)}
@@ -113,7 +115,7 @@ export default function Sidebar({
       ) : (
         <Link
           to="/erudi/chat"
-          aria-label="Chat"
+          aria-label={t("common:nav.chat")}
           className={`w-full flex justify-center items-center py-5 border-l-4 ${
             isChatActive ? "border-green-500" : "border-transparent"
           }`}
@@ -127,7 +129,7 @@ export default function Sidebar({
       )}
       <Link
         to="/erudi/arena"
-        aria-label="Arena"
+        aria-label={t("common:nav.arena")}
         className={`w-full flex justify-center items-center py-5 border-l-4 ${
           isArenaActive ? "border-green-500" : "border-transparent"
         }`}
@@ -140,7 +142,7 @@ export default function Sidebar({
       </Link>
       <Link
         to="/erudi/attach_knowledge_base"
-        aria-label="Knowledge Base"
+        aria-label={t("common:nav.knowledgeBase")}
         className={`w-full flex justify-center items-center py-5 border-l-4 ${
           isKnowledgeBaseActive ? "border-green-500" : "border-transparent"
         }`}
@@ -156,7 +158,7 @@ export default function Sidebar({
       <div className="flex-1" />
       <Link
         to={SETTINGS_PATH}
-        aria-label="Settings"
+        aria-label={t("common:nav.settings")}
         className={`w-full flex justify-center items-center py-5 border-l-4 ${
           isSettingsActive ? "border-green-500" : "border-transparent"
         }`}
@@ -169,7 +171,7 @@ export default function Sidebar({
       </Link>
       {!isDownloading && (
         <button
-          aria-label="Report a bug"
+          aria-label={t("common:nav.reportBug")}
           onClick={() => window.open("https://erudi.app/contact", "_blank")}
           className="w-full flex justify-center items-center py-5 border-l-4 border-transparent mb-4"
         >

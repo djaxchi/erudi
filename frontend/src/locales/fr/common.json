@@ -1,0 +1,79 @@
+{
+  "appName": "Erudi",
+  "tagline": "L'IA avec vous, pour vous",
+  "actions": {
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "confirm": "Confirmer",
+    "delete": "Supprimer",
+    "save": "Enregistrer",
+    "retry": "Réessayer",
+    "back": "Retour",
+    "continue": "Continuer",
+    "done": "Terminé",
+    "copy": "Copier",
+    "copied": "Copié",
+    "rename": "Renommer",
+    "download": "Télécharger",
+    "remove": "Retirer",
+    "open": "Ouvrir",
+    "refresh": "Actualiser",
+    "search": "Rechercher",
+    "clear": "Effacer",
+    "quit": "Quitter",
+    "ok": "OK",
+    "yes": "Oui",
+    "no": "Non",
+    "gotIt": "Compris",
+    "learnMore": "En savoir plus",
+    "showMore": "Afficher plus",
+    "showLess": "Afficher moins",
+    "select": "Sélectionner",
+    "send": "Envoyer",
+    "stop": "Arrêter",
+    "edit": "Modifier"
+  },
+  "status": {
+    "loading": "Chargement…",
+    "saving": "Enregistrement…",
+    "error": "Erreur",
+    "ready": "Prêt",
+    "unknown": "Inconnu"
+  },
+  "units": {
+    "b": "o",
+    "kb": "Ko",
+    "mb": "Mo",
+    "gb": "Go",
+    "tb": "To"
+  },
+  "nav": {
+    "models": "Modèles",
+    "chat": "Discussion",
+    "arena": "Arène",
+    "knowledgeBase": "Base de connaissances",
+    "settings": "Paramètres",
+    "reportBug": "Signaler un bug",
+    "toggleModelsSidebar": "Afficher ou masquer le panneau des modèles",
+    "toggleChatSidebar": "Afficher ou masquer le panneau des discussions"
+  },
+  "boot": {
+    "logoAlt": "Logo erudi",
+    "phase": {
+      "starting": "Démarrage d'Erudi…",
+      "preparing_database": "Préparation de la base de données…",
+      "recovering_database": "Récupération de la base de données…",
+      "running_migrations": "Mise à jour de la base de données…",
+      "loading_catalog": "Chargement du catalogue de modèles…",
+      "ready": "Presque prêt…"
+    },
+    "elapsed": "({{seconds}} s)",
+    "firstRun": "Premier lancement — cela peut prendre une minute pendant qu'Erudi s'installe."
+  },
+  "update": {
+    "available": "Mise à jour <v>v{{version}}</v> disponible - téléchargement…",
+    "downloading": "Téléchargement de <v>v{{version}}</v>… <pct>{{percent}}</pct>",
+    "ready": "<v>v{{version}}</v> prête — <install>redémarrer pour installer</install>",
+    "dismiss": "Ignorer la notification de mise à jour"
+  }
+}

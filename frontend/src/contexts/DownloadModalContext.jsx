@@ -1,6 +1,7 @@
 // src/contexts/DownloadModalContext.jsx
 import React, { createContext, useContext, useState, useCallback, useRef } from "react";
 import ReactDOM from "react-dom";
+import { useTranslation } from "react-i18next";
 import ConfirmationModal from "../components/modals/ConfirmationModal";
 import ErrorModal from "../components/modals/ErrorModal";
 import SpinnerDots from "../components/Spinner";
@@ -11,8 +12,9 @@ import { createLogger } from "../utils/logger";
 import {
   DOWNLOAD_CANCELLED,
   DOWNLOAD_STALLED,
-  DOWNLOAD_STALLED_MESSAGE,
+  downloadStalledMessage,
 } from "../utils/downloadStatus";
+import { formatPercent } from "../i18n/format";
 const log = createLogger("DownloadModalContext");
 
 // Poll cadence, and the stall guard on top of it (#315).
@@ -33,10 +35,14 @@ const FINALIZE_STALL_TICKS = 90; // 90 x 2s = 3 minutes stuck at 100%
 
 const DownloadModalContext = createContext();
 
+// Placeholder for a readout that has no value yet (time left / progress before
+// the job runs). A typographic token, not copy: identical in every language.
+const UNKNOWN_VALUE = "--";
+
 // Helper function to format time with appropriate units
-const formatTimeLeft = (seconds) => {
+const formatTimeLeft = (t, seconds) => {
   if (!seconds || seconds <= 0) {
-    return "--";
+    return UNKNOWN_VALUE;
   }
 
   const days = Math.floor(seconds / 86400);
@@ -45,17 +51,18 @@ const formatTimeLeft = (seconds) => {
   const secs = Math.floor(seconds % 60);
 
   if (days > 0) {
-    return `${days}d ${hours}h`;
+    return t("downloads:widget.duration.daysHours", { days, hours });
   } else if (hours > 0) {
-    return `${hours}h ${minutes}m`;
+    return t("downloads:widget.duration.hoursMinutes", { hours, minutes });
   } else if (minutes > 0) {
-    return `${minutes}m ${secs}s`;
+    return t("downloads:widget.duration.minutesSeconds", { minutes, seconds: secs });
   } else {
-    return `${secs}s`;
+    return t("downloads:widget.duration.seconds", { seconds: secs });
   }
 };
 
 export function DownloadModalProvider({ children }) {
+  const { t } = useTranslation();
   const [model, setModel] = useState(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -78,6 +85,9 @@ export function DownloadModalProvider({ children }) {
   // Stall guard state (#315): the last (status, progress) pair seen and how many
   // consecutive polls have reported it unchanged while at 100%.
   const stallRef = useRef({ signature: null, ticks: 0 });
+  // The job the poll is allowed to act on. Cleared on cancel so a poll reply
+  // already in flight cannot resurrect a job the backend has just dropped.
+  const activeJobRef = useRef(null);
 
   const toggleCollapse = useCallback(() => {
     setIsCollapsed((c) => !c);
@@ -92,82 +102,87 @@ export function DownloadModalProvider({ children }) {
 
   const cancelConfirm = useCallback(() => setIsConfirmOpen(false), []);
 
-  const checkDownloadStatus = useCallback(async (id) => {
-    try {
-      const res = await tracedFetch(`${API_BASE_URL}/llms/downloads/${id}/status`);
-      if (!res.ok) {
-        if (res.status === 404) {
-          // Le job n'existe plus (probablement annulé et nettoyé)
-          clearInterval(intervalRef.current);
-          setIsDownloading(false);
-          setProgress(0);
-          setStatus(DOWNLOAD_CANCELLED);
+  const checkDownloadStatus = useCallback(
+    async (id) => {
+      try {
+        const res = await tracedFetch(`${API_BASE_URL}/llms/downloads/${id}/status`);
+        if (activeJobRef.current !== id) {
           return;
         }
-        throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
-      }
-      const data = await res.json();
-      setProgress(data.progress);
-      setStatus(data.status);
-      setTimeLeft(data.time_left);
+        if (!res.ok) {
+          if (res.status === 404) {
+            // Le job n'existe plus (probablement annulé et nettoyé)
+            clearInterval(intervalRef.current);
+            setIsDownloading(false);
+            setProgress(0);
+            setStatus(DOWNLOAD_CANCELLED);
+            return;
+          }
+          throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
+        }
+        const data = await res.json();
+        setProgress(data.progress);
+        setStatus(data.status);
+        setTimeLeft(data.time_left);
 
-      const isTerminal =
-        data.status === "completed" ||
-        data.status === "failed" ||
-        data.status === DOWNLOAD_CANCELLED;
+        const isTerminal =
+          data.status === "completed" ||
+          data.status === "failed" ||
+          data.status === DOWNLOAD_CANCELLED;
 
-      // Stall guard (#315). Only armed once the transfer is done: past 100% the
-      // job is finalizing locally, so an unchanging reply means it is wedged,
-      // not slow.
-      if (!isTerminal && (data.progress ?? 0) >= 100) {
-        const signature = `${data.status}:${Math.floor(data.progress ?? 0)}`;
-        if (stallRef.current.signature === signature) {
-          stallRef.current.ticks += 1;
+        // Stall guard (#315). Only armed once the transfer is done: past 100% the
+        // job is finalizing locally, so an unchanging reply means it is wedged,
+        // not slow.
+        if (!isTerminal && (data.progress ?? 0) >= 100) {
+          const signature = `${data.status}:${Math.floor(data.progress ?? 0)}`;
+          if (stallRef.current.signature === signature) {
+            stallRef.current.ticks += 1;
+          } else {
+            stallRef.current = { signature, ticks: 1 };
+          }
+          if (stallRef.current.ticks >= FINALIZE_STALL_TICKS) {
+            clearInterval(intervalRef.current);
+            stallRef.current = { signature: null, ticks: 0 };
+            log.error(
+              `Download job ${id} stuck at 100% in status "${data.status}" for ` +
+                `${FINALIZE_STALL_TICKS} polls; giving up on the status poll`
+            );
+            setIsDownloading(false);
+            setStatus(DOWNLOAD_STALLED);
+            setErrorMessage(downloadStalledMessage());
+            callbacksRef.current.onError?.(DOWNLOAD_STALLED);
+            return;
+          }
         } else {
-          stallRef.current = { signature, ticks: 1 };
-        }
-        if (stallRef.current.ticks >= FINALIZE_STALL_TICKS) {
-          clearInterval(intervalRef.current);
           stallRef.current = { signature: null, ticks: 0 };
-          log.error(
-            `Download job ${id} stuck at 100% in status "${data.status}" for ` +
-              `${FINALIZE_STALL_TICKS} polls; giving up on the status poll`
-          );
-          setIsDownloading(false);
-          setStatus(DOWNLOAD_STALLED);
-          setErrorMessage(DOWNLOAD_STALLED_MESSAGE);
-          callbacksRef.current.onError?.(DOWNLOAD_STALLED);
-          return;
         }
-      } else {
-        stallRef.current = { signature: null, ticks: 0 };
-      }
 
-      if (isTerminal) {
+        if (isTerminal) {
+          clearInterval(intervalRef.current);
+          setIsDownloading(false);
+          if (data.status === "completed") {
+            setCompletionCount((c) => c + 1);
+            setLastCompletedAt(Date.now());
+            callbacksRef.current.onComplete?.();
+          } else if (data.status === DOWNLOAD_CANCELLED) {
+            callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
+          } else {
+            const errorMsg = data.error_message || t("downloads:errors.failedUnexpectedly");
+            setErrorMessage(errorMsg);
+            callbacksRef.current.onError?.(errorMsg);
+          }
+        }
+      } catch (err) {
+        log.error("Status check error:", err);
         clearInterval(intervalRef.current);
         setIsDownloading(false);
-        if (data.status === "completed") {
-          setCompletionCount((c) => c + 1);
-          setLastCompletedAt(Date.now());
-          callbacksRef.current.onComplete?.();
-        } else if (data.status === DOWNLOAD_CANCELLED) {
-          callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
-        } else {
-          const errorMsg = data.error_message || "Download failed unexpectedly";
-          setErrorMessage(errorMsg);
-          callbacksRef.current.onError?.(errorMsg);
-        }
+        const errorMsg = t("downloads:errors.pollFailed");
+        setErrorMessage(errorMsg);
+        callbacksRef.current.onError?.(errorMsg);
       }
-    } catch (err) {
-      log.error("Status check error:", err);
-      clearInterval(intervalRef.current);
-      setIsDownloading(false);
-      const errorMsg =
-        "An error occured during download. Please check your connection and try again. If the problem persists, please contact the Erudi team.";
-      setErrorMessage(errorMsg);
-      callbacksRef.current.onError?.(errorMsg);
-    }
-  }, []);
+    },
+    [t]
+  );
 
   const handleConfirm = useCallback(async () => {
     setIsConfirmOpen(false);
@@ -201,12 +216,15 @@ export function DownloadModalProvider({ children }) {
             });
       if (!res.ok) {
         const errorText = await res.text();
-        throw new Error(`Failed to start download (${res.status}): ${errorText}`);
+        throw new Error(
+          t("downloads:errors.startFailed", { status: res.status, detail: errorText })
+        );
       }
       const job = await res.json();
 
       // Sauvegarder le jobId pour l'annulation
       setJobId(job.id);
+      activeJobRef.current = job.id;
 
       stallRef.current = { signature: null, ticks: 0 };
       intervalRef.current = setInterval(() => {
@@ -214,12 +232,12 @@ export function DownloadModalProvider({ children }) {
       }, POLL_INTERVAL_MS);
     } catch (err) {
       log.error("Download start error:", err);
-      const errorMsg = err.message || err.toString() || "An unexpected error occurred";
+      const errorMsg = err.message || err.toString() || t("downloads:errors.unexpected");
       setErrorMessage(errorMsg);
       setIsDownloading(false);
       callbacksRef.current.onError?.(errorMsg);
     }
-  }, [model, checkDownloadStatus]);
+  }, [model, checkDownloadStatus, t]);
 
   const cancelDownload = useCallback(async () => {
     if (!jobId) {
@@ -242,22 +260,30 @@ export function DownloadModalProvider({ children }) {
         throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
       }
 
-      setStatus("cancelling");
       log.log(`Download cancelled for job ${jobId}`);
 
-      // Le statut final sera mis à jour par le polling
+      // The backend drops the job on acknowledgement: one more status poll
+      // would only be answered with a not-found warning in its log. Settle
+      // locally right away, exactly like the fallbacks below.
+      activeJobRef.current = null;
+      clearInterval(intervalRef.current);
+      setIsDownloading(false);
+      setProgress(0);
+      setStatus(DOWNLOAD_CANCELLED);
+      callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
     } catch (error) {
       log.error("Failed to cancel download:", error);
-      setErrorMessage("Failed to cancel download: " + error.message);
+      setErrorMessage(t("downloads:errors.cancelFailed", { detail: error.message }));
 
       // Dans tous les cas, on nettoie localement
+      activeJobRef.current = null;
       clearInterval(intervalRef.current);
       setIsDownloading(false);
       setProgress(0);
       setStatus(DOWNLOAD_CANCELLED);
       callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
     }
-  }, [jobId]);
+  }, [jobId, t]);
 
   const closeErrorModal = () => {
     setErrorMessage("");
@@ -307,12 +333,14 @@ export function DownloadModalProvider({ children }) {
                       <>
                         <div className="flex items-center justify-between w-full">
                           <p className="text-white font-semibold truncate flex-1">
-                            {errorMessage ? "Error:" : "Downloading:"} {model?.name}
+                            {errorMessage
+                              ? t("downloads:widget.errorTitle", { name: model?.name })
+                              : t("downloads:widget.downloadingTitle", { name: model?.name })}
                           </p>
                           <button
                             onClick={cancelDownload}
                             className="ml-2 p-1.5 bg-red-500/20 hover:bg-red-500/30 rounded transition-colors"
-                            aria-label="Cancel"
+                            aria-label={t("common:actions.cancel")}
                           >
                             <X className="w-4 h-4 text-red-400" />
                           </button>
@@ -323,15 +351,17 @@ export function DownloadModalProvider({ children }) {
                         ) : (
                           <div className="flex gap-4 text-sm text-gray-300 mt-2">
                             <span>
-                              Time Left:{" "}
+                              {t("downloads:widget.timeLeft")}{" "}
                               <span className="font-semibold">
-                                {status === "running" ? formatTimeLeft(timeLeft) : "--"}
+                                {status === "running" ? formatTimeLeft(t, timeLeft) : UNKNOWN_VALUE}
                               </span>
                             </span>
                             <span>
-                              Progress:{" "}
+                              {t("downloads:widget.progress")}{" "}
                               <span className="font-semibold">
-                                {status === "running" ? `${progress?.toFixed(1) || 0} %` : "--"}
+                                {status === "running"
+                                  ? formatPercent(progress ?? 0)
+                                  : UNKNOWN_VALUE}
                               </span>
                             </span>
                           </div>
@@ -352,7 +382,9 @@ export function DownloadModalProvider({ children }) {
                   <button
                     className="absolute bottom-8 right-0"
                     onClick={toggleCollapse}
-                    aria-label={isCollapsed ? "Expand" : "Collapse"}
+                    aria-label={
+                      isCollapsed ? t("downloads:widget.expand") : t("downloads:widget.collapse")
+                    }
                   >
                     {isCollapsed ? (
                       <ChevronRight className="w-6 h-6 text-gray-300 hover:text-white" />

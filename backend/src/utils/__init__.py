@@ -55,7 +55,6 @@ _LAZY_EXPORTS = {
     "retrieve_kb_excerpts": "src.utils.kb_utils",
     # HF metadata
     "get_disk_size_after_quant": "src.utils.hf_model_metadata",
-    "get_model_size_estimate": "src.utils.hf_model_metadata",
     "get_parameter_count_from_name": "src.utils.hf_model_metadata",
     "format_model_info_metadata": "src.utils.hf_model_metadata",
 }

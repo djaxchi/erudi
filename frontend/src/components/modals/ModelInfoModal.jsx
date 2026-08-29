@@ -1,7 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import PropTypes from "prop-types";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Download, Users, Heart, Calendar, Tag, ChevronDown } from "lucide-react";
+import { X, Download, Users, Heart, Calendar, Tag, ChevronDown, BadgeCheck } from "lucide-react";
+import { hasNoPublisherRecommendation } from "../../utils/samplingDefaults";
+import { displayModelSize } from "../../utils/modelSize";
 
 /**
  * Props:
@@ -9,6 +12,8 @@ import { X, Download, Users, Heart, Calendar, Tag, ChevronDown } from "lucide-re
  * - isOpen: boolean
  * - onClose: () => void
  * - onDownload: (modelInfo) => void
+ * - installed: boolean — the model is already on disk (opened from an Installed
+ *   card, or from a catalog card the local list joins to). No Download then.
  */
 
 ModelInfoModal.propTypes = {
@@ -18,16 +23,43 @@ ModelInfoModal.propTypes = {
     description: PropTypes.string,
     size: PropTypes.string,
     parameters: PropTypes.string,
+    param_size: PropTypes.number,
+    quantized: PropTypes.bool,
+    artifact_size_bytes: PropTypes.number,
   }),
   onClose: PropTypes.func.isRequired,
+  installed: PropTypes.bool,
 };
 
 ModelInfoModal.defaultProps = {
   model: null,
+  installed: false,
 };
 
-export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload }) {
+// "Unknown" is the backend's sentinel for an absent field (also written by the
+// Hugging Face search mapping): such a field is hidden, never shown as copy.
+const isKnown = (value) => value && value !== "Unknown";
+
+export default function ModelInfoModal({
+  modelInfo,
+  isOpen,
+  onClose,
+  onDownload,
+  installed = false,
+}) {
+  const { t } = useTranslation();
   const [showRawMetadata, setShowRawMetadata] = useState(false);
+
+  // Escape closes the modal, the way every dialog is expected to; the
+  // listener only exists while the modal is open.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, onClose]);
 
   return (
     <AnimatePresence>
@@ -74,7 +106,7 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                       {modelInfo.name}
                     </h2>
                     <p className="text-sm text-gray-300/80">
-                      {modelInfo.description || "No description available"}
+                      {modelInfo.description || t("models:info.noDescription")}
                     </p>
                   </div>
                   <button
@@ -92,28 +124,46 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                     <div className="space-y-4">
                       <h3 className="text-lg font-semibold text-[#F2F7F4] flex items-center gap-2">
                         <Tag className="w-4 h-4 text-emerald-400" />
-                        Basic Info
+                        {t("models:info.basicInfo")}
                       </h3>
                       <div className="space-y-3 text-sm">
                         <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                          <span className="text-emerald-400 font-medium">Size:</span>
-                          <span className="text-gray-200 ml-2">{modelInfo.size}</span>
+                          <span className="text-emerald-400 font-medium">
+                            {t("models:info.size")}
+                          </span>
+                          <span className="text-gray-200 ml-2">
+                            {displayModelSize(modelInfo) ?? modelInfo.size}
+                          </span>
                         </div>
                         <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                          <span className="text-emerald-400 font-medium">Parameters:</span>
+                          <span className="text-emerald-400 font-medium">
+                            {t("models:info.parameters")}
+                          </span>
                           <span className="text-gray-200 ml-2">{modelInfo.parameters}</span>
                         </div>
-                        {modelInfo.author && modelInfo.author !== "Unknown" && (
+                        {isKnown(modelInfo.author) && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                            <span className="text-emerald-400 font-medium">Author:</span>
+                            <span className="text-emerald-400 font-medium">
+                              {t("models:info.author")}
+                            </span>
                             <span className="text-gray-200 ml-2">{modelInfo.author}</span>
                           </div>
                         )}
-                        {modelInfo.library && modelInfo.library !== "Unknown" && (
+                        {isKnown(modelInfo.library) && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                            <span className="text-emerald-400 font-medium">Library:</span>
+                            <span className="text-emerald-400 font-medium">
+                              {t("models:info.library")}
+                            </span>
                             <span className="text-gray-200 ml-2">{modelInfo.library}</span>
                           </div>
+                        )}
+                        {hasNoPublisherRecommendation(modelInfo) && (
+                          <p
+                            data-testid="no-publisher-recommendation"
+                            className="text-xs leading-snug text-gray-400/80 px-1"
+                          >
+                            {t("models:info.noPublisherRecommendation")}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -121,33 +171,41 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                     <div className="space-y-4">
                       <h3 className="text-lg font-semibold text-[#F2F7F4] flex items-center gap-2">
                         <Users className="w-4 h-4 text-emerald-400" />
-                        Stats
+                        {t("models:info.stats")}
                       </h3>
                       <div className="space-y-3 text-sm">
-                        {modelInfo.downloads && modelInfo.downloads !== "Unknown" && (
+                        {isKnown(modelInfo.downloads) && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex items-center gap-2">
                             <Download className="w-4 h-4 text-emerald-400" />
-                            <span className="text-emerald-400 font-medium">Downloads:</span>
+                            <span className="text-emerald-400 font-medium">
+                              {t("models:info.downloads")}
+                            </span>
                             <span className="text-gray-200">{modelInfo.downloads}</span>
                           </div>
                         )}
-                        {modelInfo.likes && modelInfo.likes !== "Unknown" && (
+                        {isKnown(modelInfo.likes) && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex items-center gap-2">
                             <Heart className="w-4 h-4 text-emerald-400" />
-                            <span className="text-emerald-400 font-medium">Likes:</span>
+                            <span className="text-emerald-400 font-medium">
+                              {t("models:info.likes")}
+                            </span>
                             <span className="text-gray-200">{modelInfo.likes}</span>
                           </div>
                         )}
-                        {modelInfo.lastUpdate && modelInfo.lastUpdate !== "Unknown" && (
+                        {isKnown(modelInfo.lastUpdate) && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-emerald-400" />
-                            <span className="text-emerald-400 font-medium">Last Update:</span>
+                            <span className="text-emerald-400 font-medium">
+                              {t("models:info.lastUpdate")}
+                            </span>
                             <span className="text-gray-200">{modelInfo.lastUpdate}</span>
                           </div>
                         )}
-                        {modelInfo.pipeline && modelInfo.pipeline !== "Unknown" && (
+                        {isKnown(modelInfo.pipeline) && (
                           <div className="bg-white/5 rounded-xl p-3 border border-white/10">
-                            <span className="text-emerald-400 font-medium">Pipeline:</span>
+                            <span className="text-emerald-400 font-medium">
+                              {t("models:info.pipeline")}
+                            </span>
                             <span className="text-gray-200 ml-2">{modelInfo.pipeline}</span>
                           </div>
                         )}
@@ -168,7 +226,7 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                         >
                           <ChevronDown className="w-4 h-4" />
                         </motion.div>
-                        Show Raw Metadata
+                        {t("models:info.showRawMetadata")}
                       </button>
 
                       <AnimatePresence>
@@ -202,35 +260,58 @@ export default function ModelInfoModal({ modelInfo, isOpen, onClose, onDownload 
                   )}
                 </div>
 
-                {/* Footer */}
+                {/* Footer. An installed model must not offer its own download
+                    again: the state is shown instead and the only action is Close. */}
                 <div className="flex items-center justify-end gap-3 p-6 border-t border-white/10">
-                  <button
-                    onClick={onClose}
-                    className={[
-                      "rounded-full px-5 py-2 text-sm font-semibold",
-                      "bg-white/10 hover:bg-white/15 text-gray-100",
-                      "border border-white/20 backdrop-blur-sm shadow-sm",
-                      "transition active:scale-95",
-                    ].join(" ")}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      onDownload(modelInfo);
-                      onClose();
-                    }}
-                    className={[
-                      "rounded-full px-5 py-2 text-sm font-semibold",
-                      "bg-emerald-500 hover:bg-emerald-600 text-[#0f2f25]",
-                      "border border-white/20 shadow",
-                      "transition active:scale-95",
-                      "flex items-center gap-2",
-                    ].join(" ")}
-                  >
-                    <Download className="w-4 h-4" />
-                    Download
-                  </button>
+                  {installed ? (
+                    <>
+                      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-300/90">
+                        <BadgeCheck className="w-4 h-4" />
+                        {t("models:info.installed")}
+                      </span>
+                      <button
+                        onClick={onClose}
+                        className={[
+                          "rounded-full px-5 py-2 text-sm font-semibold",
+                          "bg-white/10 hover:bg-white/15 text-gray-100",
+                          "border border-white/20 backdrop-blur-sm shadow-sm",
+                          "transition active:scale-95",
+                        ].join(" ")}
+                      >
+                        {t("common:actions.close")}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={onClose}
+                        className={[
+                          "rounded-full px-5 py-2 text-sm font-semibold",
+                          "bg-white/10 hover:bg-white/15 text-gray-100",
+                          "border border-white/20 backdrop-blur-sm shadow-sm",
+                          "transition active:scale-95",
+                        ].join(" ")}
+                      >
+                        {t("common:actions.cancel")}
+                      </button>
+                      <button
+                        onClick={() => {
+                          onDownload(modelInfo);
+                          onClose();
+                        }}
+                        className={[
+                          "rounded-full px-5 py-2 text-sm font-semibold",
+                          "bg-emerald-500 hover:bg-emerald-600 text-[#0f2f25]",
+                          "border border-white/20 shadow",
+                          "transition active:scale-95",
+                          "flex items-center gap-2",
+                        ].join(" ")}
+                      >
+                        <Download className="w-4 h-4" />
+                        {t("common:actions.download")}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

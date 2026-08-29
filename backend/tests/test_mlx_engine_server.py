@@ -1121,6 +1121,43 @@ class TestPayloadModelValue:
         assert MLX_Engine._payload_model_value(handle) == "/models/erudi-x"
 
 
+@pytest.mark.unit
+class TestTranslatePayloadKwargsSeed:
+    """mlx_vlm.server seeds its sampler from ``DEFAULT_SEED`` whenever a request
+    carries no ``seed`` (``generation.py``: ``self.seed = DEFAULT_SEED if seed is
+    None``), so every generation replayed byte-for-byte whatever the
+    temperature: four fresh conversations at 0.6 / 0.95 / top_k 20 gave the same
+    answer and reasoning trace. The MLX translation must stamp a fresh random
+    seed on every request; llama-server samples randomly by default and gets
+    none (see test_cpu_engine_server)."""
+
+    def test_adds_an_integer_seed(self):
+        out = MLX_Engine._translate_payload_kwargs({
+            "repetition_penalty": 1.1, "repetition_context_size": 64,
+        })
+        assert isinstance(out["seed"], int)
+        # mlx_vlm masks the seed to 32 bits: keep it non-negative and in range.
+        assert 0 <= out["seed"] < 2**32
+
+    def test_seed_differs_between_two_requests(self):
+        seeds = {MLX_Engine._translate_payload_kwargs({})["seed"] for _ in range(8)}
+        assert len(seeds) > 1
+
+    def test_keeps_the_hf_names_and_the_thinking_flag_untouched(self):
+        kwargs = {
+            "repetition_penalty": 1.1, "repetition_context_size": 64,
+            "top_k": 20, "min_p": 0.0, "enable_thinking": False,
+        }
+        out = MLX_Engine._translate_payload_kwargs(kwargs)
+        assert {k: v for k, v in out.items() if k != "seed"} == kwargs
+        # The caller's dict is not mutated.
+        assert "seed" not in kwargs
+
+    def test_does_not_override_an_explicit_seed(self):
+        out = MLX_Engine._translate_payload_kwargs({"seed": 7})
+        assert out["seed"] == 7
+
+
 # =====================================================================
 # INTEGRATION — real mlx_lm.server subprocess + real model
 # =====================================================================

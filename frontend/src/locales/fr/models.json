@@ -1,0 +1,157 @@
+{
+  "smallModelNote": "Très petit modèle — adapté aux discussions rapides et aux machines modestes ; l'usage d'outils, la recherche dans la base de connaissances et le raisonnement en plusieurs étapes ne sont pas fiables en dessous de ~{{threshold}}B.",
+  "categories": {
+    "general": "Généraliste",
+    "reasoning": "Raisonnement",
+    "code": "Code",
+    "vision": "Vision et multimodal",
+    "math": "Mathématiques",
+    "medical": "Médical",
+    "function": "Appel de fonctions",
+    "safety": "Sécurité et modération"
+  },
+  "fit": {
+    "labels": {
+      "ideal": "Compatibilité idéale",
+      "good": "Tourne sans effort",
+      "tight": "Compatibilité juste",
+      "heavy": "Mémoire insuffisante",
+      "unknown": "Compatibilité inconnue"
+    },
+    "footprint": "~{{size}}"
+  },
+  "sizeBuckets": {
+    "any": "Toutes tailles",
+    "tiny": "Moins de 2B",
+    "small": "2–8B",
+    "medium": "8–32B",
+    "large": "32B+"
+  },
+  "filters": {
+    "sizeLabel": "taille",
+    "fitsMyMachine": "Compatible avec ma machine"
+  },
+  "card": {
+    "addTitle": "Ajouter un modèle",
+    "addSubtitle": "Parcourir les modèles disponibles",
+    "testedBadge": "Testé par l'équipe Erudi — vérifié pour la discussion et la base de connaissances",
+    "unavailable": "Indisponible sur votre matériel",
+    "weightsMissingBadge": "Poids manquants",
+    "deleteModel": "Supprimer le modèle",
+    "weightsMissing": "Poids du modèle manquants",
+    "usesWeightsOf": "Utilise les poids de {{name}}",
+    "itsBaseModel": "son modèle de base",
+    "size": "Taille : {{size}}",
+    "downloads": "Téléchargements : {{value}}",
+    "likes": "J'aime : {{value}}",
+    "author": "Auteur : {{author}}",
+    "library": "Bibliothèque : {{library}}",
+    "parameters": "Paramètres : {{parameters}}",
+    "lastUpdate": "Dernière mise à jour : {{date}}",
+    "info": "Infos",
+    "chatBlocked": "Poids du modèle manquants - réassociez-le pour discuter",
+    "rebindTitle": "Réassocier à un autre modèle installé",
+    "rebind": "Réassocier",
+    "noRebindTarget": "Aucun modèle de base installé disponible"
+  },
+  "explore": {
+    "title": "Explorer",
+    "buildingCatalog": "Construction du catalogue...",
+    "buildingCatalogInline": "construction du catalogue…",
+    "recommended": "Recommandés pour vous",
+    "searchHuggingFace": "Rechercher sur Hugging Face",
+    "community": "Communauté",
+    "seeAll": "Tout voir",
+    "notSupported": "Non pris en charge par votre matériel",
+    "sizeUnknown": "Taille inconnue",
+    "visionBadge": "Accepte les images en entrée (vision)",
+    "gated": "accès restreint",
+    "details": "Détails",
+    "installed": "Installé",
+    "alreadyInstalled": "Déjà installé — voir la section Installés ci-dessus",
+    "noBaseModelsFor": "Aucun modèle de base trouvé pour « {{query}} »",
+    "noBaseModels": "Aucun modèle de base disponible"
+  },
+  "library": {
+    "title": "Bibliothèque de modèles",
+    "refresh": "Actualiser les modèles",
+    "empty": "Aucun LLM local trouvé.",
+    "newNameTitle": "Nom du nouveau modèle",
+    "newNameHint": "Choisissez un nom pour votre modèle",
+    "namePlaceholder": "Saisissez le nom du modèle...",
+    "selectFirst": "Sélectionnez d'abord un modèle",
+    "cancelUnlock": "Annuler et déverrouiller",
+    "validateLock": "Valider et verrouiller le nom"
+  },
+  "attachKnowledgeBase": "Attacher une base de connaissances",
+  "machine": {
+    "readingHardware": "lecture du matériel…",
+    "yourMachine": "Votre machine",
+    "runtime": "Moteur {{backend}}",
+    "catchphrase": {
+      "excellent": "Une vraie bête de course. Lâchez-vous.",
+      "good": "Configuration solide, la plupart des modèles voleront.",
+      "fair": "Fait le travail, attention aux gros modèles.",
+      "poor": "Les petits modèles sont vos meilleurs alliés ici.",
+      "weak": "Poids plume. Restez sur les tout petits modèles."
+    },
+    "tier": {
+      "excellent": "Excellent",
+      "good": "Bon",
+      "fair": "Correct",
+      "poor": "Faible",
+      "weak": "Très faible"
+    },
+    "unifiedMemory": "Mémoire unifiée",
+    "ram": "RAM",
+    "vram": "VRAM",
+    "gpuCores": "Cœurs GPU",
+    "bandwidth": "Bande passante",
+    "bandwidthUnit": "Go/s",
+    "inference": "Inférence",
+    "notAvailable": "n/d",
+    "sweetSpot": "Zone idéale",
+    "rangeValue": "{{min}}–{{max}}",
+    "paramUnit": "B",
+    "comfortable": "Les modèles jusqu'à ~{{max}}B tournent confortablement ici.",
+    "gaugeHint": "Lancez un modèle pour évaluer votre compatibilité."
+  },
+  "search": {
+    "title": "Rechercher sur Hugging Face",
+    "description": "Allez au-delà de la liste sélectionnée. Nous cherchons parmi tous les modèles compatibles avec votre moteur et les classons selon leur adéquation à votre machine.",
+    "placeholder": "Essayez « qwen coder », « un petit modèle », « vision »…",
+    "searching": "Recherche…",
+    "tryLabel": "essayez",
+    "searchingFor": "recherche sur hugging face pour « {{query}} »…",
+    "resultsFor_one": "{{count}} résultat pour « {{term}} »",
+    "resultsFor_other": "{{count}} résultats pour « {{term}} »",
+    "show": "Afficher",
+    "collapse": "Replier",
+    "noMatch": "Aucun modèle exécutable ne correspond à « {{term}} ». Essayez un terme plus large ou un nom de famille comme « qwen » ou « llama ».",
+    "offline": "Pas de connexion internet pour le moment.",
+    "unreachable": "La recherche n'a pas pu joindre Hugging Face. Vérifiez votre connexion et réessayez.",
+    "sort": {
+      "fit": "Meilleure compatibilité",
+      "downloads": "Plus téléchargés",
+      "likes": "Plus appréciés",
+      "smallest": "Plus petits",
+      "largest": "Plus grands"
+    }
+  },
+  "info": {
+    "noDescription": "Aucune description disponible",
+    "basicInfo": "Informations générales",
+    "size": "Taille :",
+    "parameters": "Paramètres :",
+    "author": "Auteur :",
+    "library": "Bibliothèque :",
+    "stats": "Statistiques",
+    "downloads": "Téléchargements :",
+    "likes": "J'aime :",
+    "lastUpdate": "Dernière mise à jour :",
+    "pipeline": "Pipeline :",
+    "showRawMetadata": "Afficher les métadonnées brutes",
+    "noPublisherRecommendation": "L'éditeur de ce modèle ne recommande aucun réglage de génération ; Erudi applique des réglages neutres.",
+    "installed": "Installé"
+  }
+}

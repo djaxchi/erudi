@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import Sidebar from "../components/Sidebar";
 import ChatCollapsibleSection from "../components/ChatCollapsibleSection";
 import GradientBox from "../components/GradientBox";
@@ -17,10 +18,17 @@ import { useDownloadModal } from "../contexts/DownloadModalContext";
 import { createLogger } from "../utils/logger";
 import { conversationPath } from "../utils/routes";
 import { canAttachImages } from "../utils/modelCapabilities";
+import { hasMissingWeights } from "../utils/modelWeights";
+import { defaultsFor, hasNoPublisherRecommendation } from "../utils/samplingDefaults";
+import { formatNumber } from "../i18n/format";
 
 const log = createLogger("ChatPage");
 
+// Temperature / top-p read-outs: two decimals in the active locale.
+const TWO_DECIMALS = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+
 export default function ChatPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { completionCount } = useDownloadModal();
@@ -32,15 +40,14 @@ export default function ChatPage() {
   const [collapsed, setCollapsed] = useState(false);
   const [isLanguageWarningExpanded, setIsLanguageWarningExpanded] = useState(false);
 
-  // Parameters state
-  // Default temperature aligned with the backend default (0.2): small local
-  // models stay coherent/instruction-following at low temperature (high values
-  // like 1.0 made Gemma-270M ramble). User-adjustable via the settings slider.
-  const [settings, setSettings] = useState({
-    temperature: 0.2,
-    topP: 0.95,
-    maxTokens: 1024,
-  });
+  // Parameters state (#388): seeded from the selected model's resolved
+  // defaults (`sampling_defaults` on the /llms/local row; the backend
+  // fallback 0.2 / 0.95 / 1024 before a model is known or for a model
+  // without hints). Every model switch re-defaults them to the new model's
+  // values, touched or not (maintainer decision 1); a touched value persists
+  // while the model stays the same and is what the creation POST sends.
+  const [settings, setSettings] = useState(() => defaultsFor(null));
+  const patchSettings = (patch) => setSettings((prev) => ({ ...prev, ...patch }));
   const [customPrompt, setCustomPrompt] = useState("");
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -91,16 +98,26 @@ export default function ChatPage() {
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
           setModels(data);
-          // Keep the user's current selection on refreshes; default to the
-          // first local model only when nothing is selected yet.
-          setSelectedModel((prev) => prev || data[0].name);
+          // Keep the user's current selection on refreshes while it is still
+          // selectable; otherwise default to the first model whose weights
+          // are on disk. An orphaned KB assistant (weights_available === false,
+          // #376) is listed but never auto-selected: a turn on it can only
+          // fail. With nothing selectable the selection stays empty and the
+          // composer disabled.
+          setSelectedModel((prev) => {
+            const current = data.find((m) => m.name === prev);
+            if (current && !hasMissingWeights(current)) return prev;
+            return data.find((m) => !hasMissingWeights(m))?.name ?? "";
+          });
         }
       })
       .catch((err) => {
         log.error("Erreur lors du fetch des modèles:", err);
-        setErrorMessage(`Failed to load models: ${err.message || "Network error"}`);
+        setErrorMessage(
+          t("chat:errors.loadModels", { error: err.message || t("chat:errors.network") })
+        );
       });
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchModels();
@@ -127,12 +144,14 @@ export default function ChatPage() {
         setConversations(sorted);
       } catch (err) {
         log.error("Failed to fetch conversations:", err);
-        setErrorMessage(`Failed to load conversations: ${err.message || "Network error"}`);
+        setErrorMessage(
+          t("chat:errors.loadConversations", { error: err.message || t("chat:errors.network") })
+        );
       }
     };
 
     fetchConversations();
-  }, []);
+  }, [t]);
 
   // Preselect the model referenced by the ?model= URL parameter (#223).
   // Producers pass either the numeric id or the exact name; the id from the
@@ -147,13 +166,24 @@ export default function ChatPage() {
       models.find((model) => String(model.id) === modelParam) ??
       models.find((model) => model.name === modelParam);
 
-    if (foundModel) {
+    if (foundModel && hasMissingWeights(foundModel)) {
+      // A deep link to an orphaned assistant (#376) keeps the default pick.
+      log.warn("Model from URL parameter has no weights on disk:", modelParam);
+    } else if (foundModel) {
       log.log("Setting model from URL parameter:", foundModel);
       setSelectedModel(foundModel.name);
     } else {
       log.warn("Model not found for URL parameter:", modelParam);
     }
   }, [searchParams, models]); // Re-run when the models list arrives (#211 lesson)
+
+  // Re-seed the panel from the selected model on every switch (#388): the
+  // previous values were the previous model's.
+  useEffect(() => {
+    const model = models.find((m) => m.name === selectedModel);
+    if (!model) return;
+    setSettings(defaultsFor(model));
+  }, [selectedModel, models]);
 
   const handleConversationClick = (id) => {
     navigate(conversationPath(id));
@@ -162,8 +192,8 @@ export default function ChatPage() {
   const handleAsk = useCallback(
     async (question, images = [], imagePaths = []) => {
       const llm = models.find((m) => m.name === selectedModel);
-      if (!llm) {
-        log.error("Selected model not found");
+      if (!llm || hasMissingWeights(llm)) {
+        log.error("Selected model not found or has no weights on disk");
         return;
       }
       try {
@@ -183,7 +213,7 @@ export default function ChatPage() {
           }),
         });
         if (!res.ok) {
-          throw new Error("Failed to create conversation");
+          throw new Error(t("chat:errors.createConversation"));
         }
         const conversation = await res.json();
 
@@ -199,10 +229,12 @@ export default function ChatPage() {
         });
       } catch (err) {
         log.error("Failed to start conversation:", err);
-        setErrorMessage(`Failed to start conversation: ${err.message || "Network error"}`);
+        setErrorMessage(
+          t("chat:errors.startConversation", { error: err.message || t("chat:errors.network") })
+        );
       }
     },
-    [models, selectedModel, navigate, settings, customPrompt, webSearch]
+    [models, selectedModel, navigate, settings, customPrompt, webSearch, t]
   );
 
   const handleRename = (id, newName) => {
@@ -222,7 +254,9 @@ export default function ChatPage() {
       setConversations(sorted);
     } catch (err) {
       log.error("Failed to refresh conversations:", err);
-      setErrorMessage(`Failed to refresh conversations: ${err.message || "Network error"}`);
+      setErrorMessage(
+        t("chat:errors.refreshConversations", { error: err.message || t("chat:errors.network") })
+      );
     }
   };
 
@@ -230,13 +264,13 @@ export default function ChatPage() {
   const TooltipIcon = ({ id, side = "right" }) => {
     const text =
       id === "temperature"
-        ? "Controls creativity. Lower = focused, higher = creative."
+        ? t("chat:header.tooltips.temperature")
         : id === "top-p"
-          ? "Controls word variety. Lower = predictable, higher = diverse."
+          ? t("chat:header.tooltips.topP")
           : id === "prompt"
-            ? "Customize system instructions that guide AI behavior."
+            ? t("chat:header.tooltips.prompt")
             : id === "web-search"
-              ? "Lets the model search the web for current facts. Searched queries are sent to external search engines."
+              ? t("chat:header.tooltips.webSearch")
               : "";
     return (
       <Tooltip content={text} side={side} width="w-64">
@@ -245,8 +279,8 @@ export default function ChatPage() {
     );
   };
 
-  const sliderBg = (value) => {
-    const pct = Math.round(value * 100);
+  const sliderBg = (value, max = 1) => {
+    const pct = Math.round((value / max) * 100);
     return {
       background: `linear-gradient(to right, #25C08A 0%, #1EAB78 ${pct}%, rgba(255,255,255,0.06) ${pct}%, rgba(255,255,255,0.06) 100%)`,
     };
@@ -265,13 +299,13 @@ export default function ChatPage() {
         {/* Content only when expanded */}
         {!collapsed && (
           <>
-            <h1 className="text-3xl font-bold">History</h1>
+            <h1 className="text-3xl font-bold">{t("chat:history.title")}</h1>
 
             {/*<ChatCollapsibleSection title="Hot Chats"
               disabled={loading}
             />} coming in next version*/}
             <ChatCollapsibleSection
-              title="Previous Chats"
+              title={t("chat:history.previousChats")}
               items={conversations}
               onItemClick={handleConversationClick}
               onRename={handleRename}
@@ -287,9 +321,7 @@ export default function ChatPage() {
         {/* Si aucun modèle local */}
         {models.length === 0 ? (
           <GradientBox className="w-[700px] max-w-full">
-            <div className="text-white text-center py-10">
-              No current local models found, please add local models to proceed.
-            </div>
+            <div className="text-white text-center py-10">{t("chat:empty.noModels")}</div>
             {/* Language Warning */}
             <div className="flex justify-center px-2 pb-1">
               <div className="w-[700px] max-w-full">
@@ -312,14 +344,11 @@ export default function ChatPage() {
                   {/* Content */}
                   <div className="relative z-10 p-6">
                     <h2 className="text-lg font-semibold tracking-tight text-orange-100 mb-3">
-                      Note on Language
+                      {t("chat:languageNote.title")}
                     </h2>
-                    <p className="text-sm text-orange-200/80 mb-3">
-                      Base models have been massively trained on English data. You will get
-                      significantly better results by chatting in English.
-                    </p>
+                    <p className="text-sm text-orange-200/80 mb-3">{t("chat:languageNote.body")}</p>
                     <p className="text-sm text-orange-200/70 italic">
-                      Pour les français, ça vous fera de l&apos;entraînement :)
+                      {t("chat:languageNote.frenchAside")}
                     </p>
                   </div>
                 </div>
@@ -381,7 +410,7 @@ export default function ChatPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 flex-wrap min-w-0">
                     <h3 className="text-[1.15rem] font-semibold tracking-tight text-[#F2F7F4] truncate">
-                      Chat with
+                      {t("chat:header.chatWith")}
                     </h3>
 
                     <div
@@ -400,7 +429,7 @@ export default function ChatPage() {
                         className="font-medium truncate pr-5 max-w-[150px]"
                         title={selectedModel}
                       >
-                        {selectedModel || "Select model..."}
+                        {selectedModel || t("chat:header.selectModelPlaceholder")}
                       </div>
                       <ChevronDown
                         size={16}
@@ -412,19 +441,37 @@ export default function ChatPage() {
                       {/* Custom Dropdown */}
                       {isDropdownOpen && (
                         <div className="absolute top-full left-0 right-0 mt-1 bg-[#2a2a2a] border border-white/20 rounded-lg shadow-lg z-[9999] max-h-60 overflow-y-auto">
-                          {models.map((m) => (
-                            <div
-                              key={m.id ?? m.name}
-                              className="px-3 py-2 hover:bg-white/10 cursor-pointer text-gray-100 border-b border-white/10 last:border-b-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedModel(m.name);
-                                setIsDropdownOpen(false);
-                              }}
-                            >
-                              {m.name}
-                            </div>
-                          ))}
+                          {models.map((m) => {
+                            // Orphaned assistant (#376): listed but not
+                            // selectable, with the remedy spelled out.
+                            const weightsMissing = hasMissingWeights(m);
+                            return (
+                              <div
+                                key={m.id ?? m.name}
+                                data-testid={`model-option-${m.id ?? m.name}`}
+                                aria-disabled={weightsMissing}
+                                className={[
+                                  "px-3 py-2 border-b border-white/10 last:border-b-0",
+                                  weightsMissing
+                                    ? "text-gray-500 cursor-not-allowed"
+                                    : "hover:bg-white/10 cursor-pointer text-gray-100",
+                                ].join(" ")}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (weightsMissing) return;
+                                  setSelectedModel(m.name);
+                                  setIsDropdownOpen(false);
+                                }}
+                              >
+                                {m.name}
+                                {weightsMissing && (
+                                  <div className="text-[11px] leading-snug text-gray-500">
+                                    {t("chat:header.weightsMissingHint")}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -432,7 +479,7 @@ export default function ChatPage() {
 
                   <button
                     type="button"
-                    aria-label="Toggle settings"
+                    aria-label={t("chat:header.toggleSettings")}
                     onClick={() => setIsSettingsOpen((v) => !v)}
                     className={[
                       "inline-flex items-center justify-center",
@@ -461,11 +508,11 @@ export default function ChatPage() {
                           <div className="relative">
                             <div className="flex items-center gap-1.5 mb-1">
                               <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
-                                Creativity
+                                {t("chat:header.creativity")}
                               </span>
                               <TooltipIcon id="temperature" side="right" />
                               <span className="ml-auto text-[11px] font-semibold text-emerald-200/90 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-400/25">
-                                {settings.temperature.toFixed(2)}
+                                {formatNumber(settings.temperature, TWO_DECIMALS)}
                               </span>
                             </div>
 
@@ -473,17 +520,14 @@ export default function ChatPage() {
                               <input
                                 type="range"
                                 min="0"
-                                max="1"
+                                max="2"
                                 step="0.01"
                                 value={settings.temperature}
                                 onChange={(e) =>
-                                  setSettings((prev) => ({
-                                    ...prev,
-                                    temperature: parseFloat(e.target.value),
-                                  }))
+                                  patchSettings({ temperature: parseFloat(e.target.value) })
                                 }
                                 className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
-                                style={sliderBg(settings.temperature)}
+                                style={sliderBg(settings.temperature, 2)}
                               />
                             </div>
                           </div>
@@ -491,11 +535,11 @@ export default function ChatPage() {
                           <div className="relative">
                             <div className="flex items-center gap-1.5 mb-1">
                               <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
-                                Diversity
+                                {t("chat:header.diversity")}
                               </span>
                               <TooltipIcon id="top-p" side="right" />
                               <span className="ml-auto text-[11px] font-semibold text-emerald-200/90 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-400/25">
-                                {settings.topP.toFixed(2)}
+                                {formatNumber(settings.topP, TWO_DECIMALS)}
                               </span>
                             </div>
 
@@ -507,16 +551,23 @@ export default function ChatPage() {
                                 step="0.01"
                                 value={settings.topP}
                                 onChange={(e) =>
-                                  setSettings((prev) => ({
-                                    ...prev,
-                                    topP: parseFloat(e.target.value),
-                                  }))
+                                  patchSettings({ topP: parseFloat(e.target.value) })
                                 }
                                 className="hb-range w-full rounded-full bg-white/5 cursor-pointer"
                                 style={sliderBg(settings.topP)}
                               />
                             </div>
                           </div>
+                          {hasNoPublisherRecommendation(
+                            models.find((m) => m.name === selectedModel)
+                          ) && (
+                            <p
+                              data-testid="no-publisher-recommendation"
+                              className="-mt-3 text-[11px] leading-snug text-gray-400/80"
+                            >
+                              {t("chat:header.noPublisherRecommendation")}
+                            </p>
+                          )}
                         </div>
 
                         <div className="flex flex-col justify-center gap-6">
@@ -524,7 +575,7 @@ export default function ChatPage() {
                             <div className="grid grid-cols-2 items-start justify-items-start gap-x-6 gap-y-2 mb-2">
                               <div>
                                 <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
-                                  Max Tokens
+                                  {t("chat:header.maxTokens")}
                                 </span>
                               </div>
                               {/* Controls row */}
@@ -532,13 +583,12 @@ export default function ChatPage() {
                                 <input
                                   type="number"
                                   min="1"
-                                  max="2000"
+                                  max={settings.maxTokensCap}
                                   value={settings.maxTokens}
                                   onChange={(e) =>
-                                    setSettings((prev) => ({
-                                      ...prev,
+                                    patchSettings({
                                       maxTokens: parseInt(e.target.value || "0", 10),
-                                    }))
+                                    })
                                   }
                                   className="bg-transparent border-0 outline-none w-28 text-sm font-semibold text-gray-100 text-center appearance-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 />
@@ -546,14 +596,14 @@ export default function ChatPage() {
                             </div>
                             <div className="mt-4 flex items-center gap-3">
                               <span className="text-[0.72rem] uppercase tracking-wide font-semibold text-gray-300/80">
-                                Web Search
+                                {t("chat:header.webSearch")}
                               </span>
                               <TooltipIcon id="web-search" side="right" />
                               <div className="ml-auto">
                                 <ToggleSwitch
                                   checked={webSearch === true}
                                   onChange={(next) => setWebSearch(next)}
-                                  label="Web search"
+                                  label={t("chat:header.webSearchToggle")}
                                 />
                               </div>
                             </div>
@@ -572,7 +622,7 @@ export default function ChatPage() {
                                   "transition active:scale-95",
                                 ].join(" ")}
                               >
-                                Customize Prompt
+                                {t("chat:header.customizePrompt")}
                               </button>
                               <div>
                                 <TooltipIcon id="prompt" side="top-left" />
@@ -589,7 +639,8 @@ export default function ChatPage() {
                 <div className="mt-6">
                   <QuestionInput
                     onSend={handleAsk}
-                    placeholder="Ask me anything..."
+                    disabled={!selectedModel}
+                    placeholder={t("chat:composer.placeholderNew")}
                     canAttachImages={canAttachImages(models.find((m) => m.name === selectedModel))}
                   />
                 </div>
@@ -618,7 +669,7 @@ export default function ChatPage() {
                       <div className="relative z-10 p-4 px-6">
                         <div className="flex items-center justify-between">
                           <h2 className="text-base font-semibold tracking-tight text-orange-100">
-                            Note on Language
+                            {t("chat:languageNote.title")}
                           </h2>
                           <motion.div
                             animate={{ rotate: isLanguageWarningExpanded ? 180 : 0 }}
@@ -638,11 +689,10 @@ export default function ChatPage() {
                               className="overflow-hidden"
                             >
                               <p className="text-sm text-orange-200/80 mb-3 mt-3">
-                                Base models have been massively trained on English data. You will
-                                get significantly better results by chatting in English.
+                                {t("chat:languageNote.body")}
                               </p>
                               <p className="text-sm text-orange-200/70 italic">
-                                Pour les français, ça vous fera de l&apos;entraînement :)
+                                {t("chat:languageNote.frenchAside")}
                               </p>
                             </motion.div>
                           )}
@@ -666,7 +716,7 @@ export default function ChatPage() {
         onClose={() => setShowPromptModal(false)}
         customPrompt={customPrompt}
         onSave={(newPrompt) => setCustomPrompt(newPrompt)}
-        title="Customize System Prompt"
+        title={t("chat:prompt.title")}
       />
     </div>
   );

@@ -34,7 +34,10 @@ from src.core.logging import logger
 # a loop, INSTEAD of a hand-written kwarg list: the previous per-field copy
 # rotted every time a descriptive column was added (category and model_metadata
 # were both forgotten -> generic/empty cards and wrong supports_vision nulls,
-# #209). When you add a new *descriptive* column to Llm, add it HERE.
+# #209; generation_hints was forgotten next, so assistants lost the publisher's
+# sampling recommendation and chatted at the neutral defaults). When you add a
+# new *descriptive* column to Llm, add it HERE. The same list drives the
+# rebind path (POST /llms/{id}/rebind), which re-copies it from the new base.
 #
 # Deliberately excluded because they are identity/state, not description, and
 # must stay assistant-specific: id (fresh pk), name/description (the assistant's
@@ -50,6 +53,11 @@ COPIED_FIELDS = (
     "supports_tools",
     "supports_tools_wire",
     "model_metadata",
+    "artifact_size_bytes",
+    # The publisher's captured sampling facts (#388): resolved at read time into
+    # sampling_defaults, so an assistant must carry its base's to chat (and
+    # advertise) the same recommendation.
+    "generation_hints",
 )
 
 

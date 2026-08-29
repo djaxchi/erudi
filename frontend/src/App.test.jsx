@@ -17,9 +17,12 @@ vi.mock("./contexts/DownloadModalContext", () => ({
 vi.mock("./contexts/KnowledgeBaseContext", () => ({
   KnowledgeBaseProvider: ({ children }) => <>{children}</>,
 }));
+const { syncLanguageMock } = vi.hoisted(() => ({ syncLanguageMock: vi.fn() }));
+vi.mock("./i18n/sync", () => ({ syncLanguageWithBackend: syncLanguageMock }));
 
 import App from "./App.jsx";
 import { getApiBaseUrl } from "./config/api.js";
+import { apiClient } from "./services/api/client";
 
 let emit;
 beforeEach(() => {
@@ -39,9 +42,19 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   delete window.backendAPI;
+  syncLanguageMock.mockReset();
 });
 
 describe("App readiness", () => {
+  it("reconciles the interface language with the backend once ready (#385)", async () => {
+    render(<App />);
+    expect(syncLanguageMock).not.toHaveBeenCalled();
+    await act(async () => {
+      emit({ event: "ready", port: 8766 });
+    });
+    await waitFor(() => expect(syncLanguageMock).toHaveBeenCalledWith(apiClient));
+  });
+
   it("shows the loader until a ready event, then the models page", async () => {
     render(<App />);
     expect(screen.getByText(/AI with you, for you/i)).toBeTruthy(); // loading screen

@@ -53,7 +53,7 @@ afterEach(() => {
 describe("ModelCollapsibleSection fetch & render", () => {
   it("fetches /llms/local for Local Models and renders the rows after loading", async () => {
     tracedFetchMock.mockImplementation(async () => listResponse(localModels));
-    render(<ModelCollapsibleSection title="Local Models" />);
+    render(<ModelCollapsibleSection kind="local" />);
 
     expect(screen.getByText("Loading models...")).toBeDefined();
     await waitFor(() => expect(screen.getByText("gemma-270m")).toBeDefined(), settle);
@@ -63,7 +63,7 @@ describe("ModelCollapsibleSection fetch & render", () => {
 
   it("fetches /llms/remote for Remote Models and marks non-runnable rows unavailable", async () => {
     tracedFetchMock.mockImplementation(async () => listResponse(remoteModels));
-    render(<ModelCollapsibleSection title="Remote Models" />);
+    render(<ModelCollapsibleSection kind="remote" />);
 
     await waitFor(() => expect(screen.getByText("llama-3-8b")).toBeDefined(), settle);
     expect(String(tracedFetchMock.mock.calls[0][0])).toContain("/llms/remote");
@@ -73,13 +73,13 @@ describe("ModelCollapsibleSection fetch & render", () => {
 
   it("shows the empty-state copy per section when the list is empty", async () => {
     tracedFetchMock.mockImplementation(async () => listResponse([]));
-    render(<ModelCollapsibleSection title="Local Models" />);
+    render(<ModelCollapsibleSection kind="local" />);
     await waitFor(() => expect(screen.getByText("No models here...")).toBeDefined(), settle);
     cleanup();
 
     tracedFetchMock.mockClear();
     tracedFetchMock.mockImplementation(async () => listResponse([]));
-    render(<ModelCollapsibleSection title="Remote Models" />);
+    render(<ModelCollapsibleSection kind="remote" />);
     await waitFor(() => expect(screen.getByText("No models available...")).toBeDefined(), settle);
   });
 
@@ -87,7 +87,7 @@ describe("ModelCollapsibleSection fetch & render", () => {
     tracedFetchMock.mockImplementation(async () => {
       throw new Error("network down");
     });
-    render(<ModelCollapsibleSection title="Local Models" />);
+    render(<ModelCollapsibleSection kind="local" />);
 
     await waitFor(
       () => expect(screen.getByText(/Failed to fetch available models/)).toBeDefined(),
@@ -100,7 +100,7 @@ describe("ModelCollapsibleSection fetch & render", () => {
 
   it("re-fetches local models when the refresh icon is clicked", async () => {
     tracedFetchMock.mockImplementation(async () => listResponse(localModels));
-    const { container } = render(<ModelCollapsibleSection title="Local Models" />);
+    const { container } = render(<ModelCollapsibleSection kind="local" />);
     await waitFor(() => expect(screen.getByText("gemma-270m")).toBeDefined(), settle);
 
     tracedFetchMock.mockClear();
@@ -111,7 +111,7 @@ describe("ModelCollapsibleSection fetch & render", () => {
 
   it("shows an error when the refresh returns a non-ok response", async () => {
     tracedFetchMock.mockImplementationOnce(async () => listResponse(localModels));
-    const { container } = render(<ModelCollapsibleSection title="Local Models" />);
+    const { container } = render(<ModelCollapsibleSection kind="local" />);
     await waitFor(() => expect(screen.getByText("gemma-270m")).toBeDefined(), settle);
 
     tracedFetchMock.mockImplementation(async () => ({ ok: false, status: 500 }));
@@ -124,7 +124,7 @@ describe("ModelCollapsibleSection fetch & render", () => {
 
   it("collapses and expands the section when the header is clicked", async () => {
     tracedFetchMock.mockImplementation(async () => listResponse(localModels));
-    const { container } = render(<ModelCollapsibleSection title="Local Models" />);
+    const { container } = render(<ModelCollapsibleSection kind="local" />);
     await waitFor(() => expect(screen.getByText("gemma-270m")).toBeDefined(), settle);
 
     const contentGrid = () => container.querySelector("div.grid");
@@ -139,7 +139,7 @@ describe("ModelCollapsibleSection fetch & render", () => {
 describe("ModelCollapsibleSection search", () => {
   it("filters remote models by the search term and shows a not-found state", async () => {
     tracedFetchMock.mockImplementation(async () => listResponse(remoteModels));
-    render(<ModelCollapsibleSection title="Remote Models" hasSearch />);
+    render(<ModelCollapsibleSection kind="remote" hasSearch />);
     await waitFor(() => expect(screen.getByText("llama-3-8b")).toBeDefined(), settle);
 
     const input = screen.getByPlaceholderText("Looking for a model?");
@@ -155,7 +155,7 @@ describe("ModelCollapsibleSection search", () => {
 describe("ModelCollapsibleSection download flow", () => {
   it("opens the download modal for a runnable remote model, not for a disabled one", async () => {
     tracedFetchMock.mockImplementation(async () => listResponse(remoteModels));
-    render(<ModelCollapsibleSection title="Remote Models" />);
+    render(<ModelCollapsibleSection kind="remote" />);
     await waitFor(() => expect(screen.getByText("llama-3-8b")).toBeDefined(), settle);
 
     fireEvent.click(screen.getByText("mixtral-8x7b"));
@@ -169,9 +169,7 @@ describe("ModelCollapsibleSection download flow", () => {
   it("refreshes local models on download completion and surfaces download errors", async () => {
     tracedFetchMock.mockImplementation(async () => listResponse(remoteModels));
     const onLocalModelRefresh = vi.fn();
-    render(
-      <ModelCollapsibleSection title="Remote Models" onLocalModelRefresh={onLocalModelRefresh} />
-    );
+    render(<ModelCollapsibleSection kind="remote" onLocalModelRefresh={onLocalModelRefresh} />);
     await waitFor(() => expect(screen.getByText("llama-3-8b")).toBeDefined(), settle);
 
     fireEvent.click(screen.getByText("llama-3-8b"));
@@ -196,9 +194,7 @@ describe("ModelCollapsibleSection delete (#228)", () => {
       return listResponse(localModels);
     });
     const onLocalModelRefresh = vi.fn();
-    render(
-      <ModelCollapsibleSection title="Local Models" onLocalModelRefresh={onLocalModelRefresh} />
-    );
+    render(<ModelCollapsibleSection kind="local" onLocalModelRefresh={onLocalModelRefresh} />);
     await waitFor(() => expect(screen.getByText("gemma-270m")).toBeDefined(), settle);
 
     fireEvent.click(screen.getAllByTitle("Delete model")[0]);
@@ -217,7 +213,7 @@ describe("ModelCollapsibleSection delete (#228)", () => {
 
   it("cancelling the confirm dialog fires no DELETE", async () => {
     tracedFetchMock.mockImplementation(async () => listResponse(localModels));
-    render(<ModelCollapsibleSection title="Local Models" />);
+    render(<ModelCollapsibleSection kind="local" />);
     await waitFor(() => expect(screen.getByText("gemma-270m")).toBeDefined(), settle);
 
     fireEvent.click(screen.getAllByTitle("Delete model")[0]);
@@ -235,7 +231,7 @@ describe("ModelCollapsibleSection delete (#228)", () => {
       }
       return listResponse(localModels);
     });
-    render(<ModelCollapsibleSection title="Local Models" />);
+    render(<ModelCollapsibleSection kind="local" />);
     await waitFor(() => expect(screen.getByText("gemma-270m")).toBeDefined(), settle);
 
     fireEvent.click(screen.getAllByTitle("Delete model")[0]);

@@ -26,7 +26,7 @@ from src.entities.Llm import Llm
 # Fields persisted per entry. ``local`` is always 0 (a remote suggestion).
 _SNAPSHOT_FIELDS = (
     "name", "link", "type", "quantized", "model_metadata", "param_size", "supports_tools",
-    "is_base", "conversational", "category",
+    "is_base", "conversational", "category", "generation_hints", "artifact_size_bytes",
 )
 
 
@@ -61,6 +61,15 @@ def dict_to_llm(entry: Dict[str, Any]) -> Llm:
         # category to "general" (#192, regression of #184). Fresh inserts still
         # land on the Llm column default / the reconcile's insert-time coalesce.
         category=entry.get("category"),
+        # Pre-#388 snapshots carry no sampling facts (key absent or null). Keep
+        # None -- the reconcile preserves an existing row's hints on None, the
+        # same #192 rule as category -- so a stale snapshot never resets every
+        # model to the fallback sampling.
+        generation_hints=entry.get("generation_hints"),
+        # Snapshots that predate the column carry no size (key absent or null).
+        # None = unknown: the reconcile keeps an existing row's known size, and
+        # the frontend keeps its estimate for a row that never had one.
+        artifact_size_bytes=entry.get("artifact_size_bytes"),
     )
 
 

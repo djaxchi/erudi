@@ -90,6 +90,7 @@ import logging
 import multiprocessing as mp
 import os
 import platform
+import secrets
 import shutil
 import subprocess
 import time  # used by hardware warm-up loop
@@ -217,9 +218,28 @@ class MLX_Engine(BaseChatServerEngine):
     _port_range_start = 27300
     _server_name = "mlx_vlm.server"
     _tokenizer_provider = "mlx-vlm-server"
-    # mlx_vlm.server accepts HF/transformers kwarg names natively (repetition_penalty,
-    # repetition_context_size, top_k, ...), so MLX keeps the identity
-    # `_translate_payload_kwargs`; model_factory sends them via ChatOpenAI extra_body.
+
+    # mlx_vlm masks the request seed to 32 bits (`generation.py:_position_seed`);
+    # staying below 2**31 also keeps it a valid signed int32 for any consumer.
+    _SEED_UPPER_BOUND = 2**31
+
+    @classmethod
+    def _translate_payload_kwargs(cls, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """mlx_vlm.server accepts HF/transformers kwarg names natively
+        (repetition_penalty, repetition_context_size, top_k, enable_thinking,
+        ...), so the names pass through unchanged. What MLX adds is a fresh
+        random ``seed`` per request: mlx_vlm.server (0.6.x,
+        ``server/generation.py``) seeds its sampler from ``DEFAULT_SEED``
+        whenever the request carries none, so without it every generation
+        replayed byte-for-byte and the creativity controls (temperature /
+        top_p / top_k) had no run-to-run effect on Apple Silicon. Greedy
+        decoding is untouched: at temperature 0 the sampler is an argmax
+        whatever the seed. llama-server samples randomly by default and gets
+        no seed (see ``BaseLlamaCppEngine``)."""
+        out = dict(kwargs)
+        if "seed" not in out:
+            out["seed"] = secrets.randbelow(cls._SEED_UPPER_BOUND)
+        return out
 
     @staticmethod
     def _payload_model_value(handle: Dict[str, Any]) -> str:
