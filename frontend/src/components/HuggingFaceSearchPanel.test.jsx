@@ -152,6 +152,31 @@ describe("HuggingFaceSearchPanel error vs zero-results", () => {
   });
 });
 
+describe("HuggingFaceSearchPanel handoff from the catalog search (#380)", () => {
+  it("runs the handed-over term as a search and fills the box with it", async () => {
+    apiClient.get.mockResolvedValueOnce([]);
+    renderPanel({ handoff: { term: "unobtainium", seq: 1 } });
+    await waitFor(() =>
+      expect(apiClient.get).toHaveBeenCalledWith("/llms/search/huggingface?q=unobtainium")
+    );
+    expect(screen.getByPlaceholderText(/Try "qwen coder"/)).toHaveValue("unobtainium");
+  });
+
+  it("searches again when the same term is handed over a second time", async () => {
+    apiClient.get.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    const { rerender } = renderPanel({ handoff: { term: "qwen", seq: 1 } });
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledTimes(1));
+
+    rerender(<HuggingFaceSearchPanel range={RANGE} handoff={{ term: "qwen", seq: 2 }} />);
+    await waitFor(() => expect(apiClient.get).toHaveBeenCalledTimes(2));
+  });
+
+  it("does nothing without a handoff", () => {
+    renderPanel();
+    expect(apiClient.get).not.toHaveBeenCalled();
+  });
+});
+
 describe("HuggingFaceSearchPanel results and sorting", () => {
   const FIXTURES = [
     // Input order is deliberately the reverse of the expected fit ranking.
