@@ -223,7 +223,7 @@ class TestRunDownloadTaskOutcomeLog:
 
         monkeypatch.setattr(llm_endpoints, "download_llm", download)
         monkeypatch.setattr(config, "LLM_Engine", SimpleNamespace())  # no validator
-        monkeypatch.setattr(llm_endpoints, "measure_dir_size_gb", lambda p: 0.0)
+        monkeypatch.setattr(llm_endpoints, "measure_dir_size_bytes", lambda p: 0)
         for name in ("detect_supports_tools", "detect_wire_tools", "detect_supports_vision"):
             monkeypatch.setattr(llm_repo_mod, name, lambda p: None)
         return job, session

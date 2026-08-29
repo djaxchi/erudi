@@ -151,6 +151,7 @@
     "lastUpdate": "Last Update:",
     "pipeline": "Pipeline:",
     "showRawMetadata": "Show Raw Metadata",
-    "noPublisherRecommendation": "This model's publisher gives no sampling recommendation; Erudi applies neutral defaults."
+    "noPublisherRecommendation": "This model's publisher gives no sampling recommendation; Erudi applies neutral defaults.",
+    "installed": "Installed"
   }
 }

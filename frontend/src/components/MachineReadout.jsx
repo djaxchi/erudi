@@ -1,6 +1,7 @@
 import React from "react";
 import PropTypes from "prop-types";
 import { useTranslation } from "react-i18next";
+import { inferenceTierKey } from "../utils/inferenceTier";
 import { formatNumber } from "../i18n/format";
 
 /**
@@ -34,12 +35,9 @@ Stat.propTypes = {
 // translated tier name and a friendly one-liner under the chip name (#199
 // follow-up) — fills what was dead space under a short GPU name, and keeps the
 // "Weak"/"Poor" tiers from reading like a verdict. Never technical: that's what
-// the stats row is for. An unknown label is shown as the backend sent it.
-const KNOWN_TIERS = ["excellent", "good", "fair", "poor", "weak"];
-const tierKey = (label) => {
-  const key = String(label || "").toLowerCase();
-  return KNOWN_TIERS.includes(key) ? key : null;
-};
+// the stats row is for. An unknown label is shown as the backend sent it. The
+// mapping lives in utils/inferenceTier so the Knowledge Base page shows the
+// same translated tier (#387).
 
 export default function MachineReadout({ machine, loading }) {
   const { t } = useTranslation();
@@ -58,7 +56,7 @@ export default function MachineReadout({ machine, loading }) {
   const score = Math.round(m.inferenceScore || 0);
   const range = m.range || {};
   const hasRange = typeof range.min === "number" && typeof range.max === "number";
-  const tier = tierKey(m.inferenceLabel);
+  const tier = inferenceTierKey(m.inferenceLabel);
   const tierLabel = tier ? t(`models:machine.tier.${tier}`) : m.inferenceLabel;
   const notAvailable = t("models:machine.notAvailable");
 

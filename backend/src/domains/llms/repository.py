@@ -162,6 +162,7 @@ class Llm_Repository:
         link: Optional[str] = None,
         category: str = "general",
         generation_hints: Optional[dict] = None,
+        artifact_size_bytes: Optional[int] = None,
     ) -> Llm:
         """Create a new LLM catalog entry.
 
@@ -174,6 +175,7 @@ class Llm_Repository:
             quantized: Quantization state (False=not quantized, True=pre-quantized).
             param_size: Model size in billions of parameters, or None if unmeasured (#201).
             link: HuggingFace repo ID or local path.
+            artifact_size_bytes: Real download size in bytes, or None if unknown.
 
         Returns:
             Llm: Created LLM entity (not yet committed, use flush()).
@@ -190,6 +192,7 @@ class Llm_Repository:
             link=link,
             category=category,
             generation_hints=generation_hints,
+            artifact_size_bytes=artifact_size_bytes,
         )
         self.db.add(llm)
         self.db.flush()

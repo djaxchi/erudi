@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { inferenceTierLabel } from "../utils/inferenceTier";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ModelLibrary from "../components/ModelLibrary";
@@ -28,9 +29,11 @@ export default function KnowledgeBasePage() {
   // backend values; the displayed placeholders ("fetching…", "N/A", …) are
   // resolved at render time so they follow the app language (#385).
   const [rating, setRating] = useState({ status: "fetching", score: null, label: null });
+  // The backend label is an English tier name; show the same translated tier
+  // the Models page shows (#387), never the raw label.
   const ratingLabel =
     rating.status === "ready"
-      ? rating.label || t("knowledgeBase:page.rating.notAvailable")
+      ? inferenceTierLabel(rating.label) || t("knowledgeBase:page.rating.notAvailable")
       : t(`knowledgeBase:page.rating.${rating.status}`);
   const ratingScore =
     rating.status === "ready"

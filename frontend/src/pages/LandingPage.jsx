@@ -103,6 +103,9 @@ export default function LandingPage() {
       category: model.category || "general",
       type: model.type,
       param_size: model.param_size,
+      // Measured download size when the backend has one (#387); the size
+      // line is formatted at render time from these fields.
+      artifact_size_bytes: model.artifact_size_bytes,
       link: model.link,
       quantized: model.quantized,
       // Resolved sampling defaults (#388): the details modal reads `source`
@@ -123,6 +126,10 @@ export default function LandingPage() {
       // Measured size in billions; the very-small-model note (#381) reads it
       // before falling back to the metadata string above.
       param_size: model.param_size,
+      quantized: model.quantized,
+      // Measured download size when the backend has one (#387); the size
+      // line is formatted at render time from these fields.
+      artifact_size_bytes: model.artifact_size_bytes,
       lastUpdate: metadata.last_modified || unknown,
       isOnline: false,
       description: model.description,
@@ -620,6 +627,7 @@ export default function LandingPage() {
         isOpen={!!selectedModelInfo}
         onClose={() => setSelectedModelInfo(null)}
         onDownload={handleDownload}
+        installed={!!selectedModelInfo && isInstalled(selectedModelInfo)}
       />
       <DeleteModelModal
         isOpen={deleteConfirmation.show}
