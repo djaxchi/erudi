@@ -6,9 +6,8 @@ loopback HTTP — exactly aligned with the CPU/CUDA pattern that wraps the
 `llama-server` binary. mlx-vlm is a superset of mlx-lm (it depends on it): it
 serves plain text models, carries a working tool-calling parser (no
 mlx_lm.server EOS-flush drop, so agentic tools fire), and accepts image input.
-Quantization helpers (`quant_and_save_from_hf_format`) and Apple Silicon
-hardware detection remain in-process: they don't need the server and would
-only inflate cold-start time if they did.
+Apple Silicon hardware detection remains in-process: it doesn't need the
+server and would only inflate cold-start time if it did.
 
 Architecture:
     MLX_Engine (singleton)
@@ -57,13 +56,11 @@ Why the `_MLX_EXECUTOR` thread bottleneck is gone:
     The Stream(gpu, 0) crash that motivated the persistent thread executor
     (commits cefdc7a, 40fb55e) is structurally impossible from the parent.
 
-Quantization Mapping:
-    Maps HuggingFace model IDs to MLX-quantized 4-bit variants:
-    - mistralai/Mistral-7B-Instruct-v0.3 → mlx-community/.../4bit
-    - google/gemma-2-2b-it → mlx-community/.../4bit
-    Used by the downloader to fetch the right mlx-community/* repo;
-    `quant_and_save_from_hf_format` handles HF-SafeTensors → MLX 4-bit
-    conversion via `mlx_vlm.convert()` (in-process — no subprocess).
+Model format:
+    The engine only ever loads pre-built MLX repos (HF library tag ``mlx``,
+    see ``FORMAT_TAG``): the catalog and the HF search are filtered on that tag
+    and a by-link download is refused up front when the repo lacks it. There is
+    no local HF -> MLX conversion (#408).
 
 Example:
     ::
@@ -85,16 +82,13 @@ Warning:
 
 from __future__ import annotations
 
-import importlib  # used by quant_and_save_from_hf_format
 import logging
 import multiprocessing as mp
 import os
 import platform
 import secrets
-import shutil
 import subprocess
 import time  # used by hardware warm-up loop
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -104,8 +98,6 @@ from src.core.logging import logger
 from src.core.exceptions import (
     FileSystemException,
     HardwareException,
-    InsufficientMemoryException,
-    QuantizationException,
 )
 
 
@@ -122,76 +114,6 @@ class MLX_Engine(BaseChatServerEngine):
     # mlx-vlm 0.6.13 during the #273 hardware pass — loads via the native
     # gemma4 module and generates cleanly, so its entry was removed.
     KNOWN_BROKEN = frozenset()
-
-    @classmethod
-    def quant_and_save_from_hf_format(
-        cls,
-        local_hf_path: Union[str, Path],
-        local_dest_path: Union[str, Path],
-        quantize: bool = True,
-        q_bits: int = 4,
-    ) -> None:
-        """Convert HuggingFace model to MLX 4-bit quantized format.
-
-        Args:
-            local_hf_path: Path to HuggingFace model directory (SafeTensors format).
-            local_dest_path: Destination path for quantized MLX model.
-            quantize: Whether to apply quantization. Defaults to True.
-            q_bits: Quantization bits ("4" for 4-bit). Defaults to "4".
-
-        Returns:
-            None. Quantized model saved to local_dest_path.
-
-        Raises:
-            Exception: If mlx_vlm.convert() fails (corrupted weights, OOM, etc.).
-
-        Note:
-            Uses mlx_vlm.convert() (same kwargs as mlx_lm.convert) which removes
-            the existing destination directory. mlx-vlm's converter preserves
-            vision/audio projections, so it quantizes both text and VL models;
-            4-bit quantization reduces model size by ~75% with minimal quality loss.
-        """
-        mlx_vlm = importlib.import_module("mlx_vlm")
-        local_hf_path = str(local_hf_path)
-        local_dest_path = str(local_dest_path)
-
-        try:
-            logging.info("Starting conversion from HF to MLX")
-            start = datetime.now()
-            if os.path.exists(local_dest_path):
-                shutil.rmtree(local_dest_path, ignore_errors=True)
-            mlx_vlm.convert(
-                local_hf_path,
-                mlx_path=local_dest_path,
-                quantize=quantize,
-                q_bits=q_bits
-            )
-            logging.info(f"Model converted to mlx in {datetime.now() - start}")
-        except FileNotFoundError as e:
-            raise FileSystemException(
-                f"HF model not found at {local_hf_path}",
-                trace=str(e)
-            )
-        except OSError as e:
-            if "disk" in str(e).lower() or "space" in str(e).lower():
-                raise FileSystemException(
-                    f"Disk space issue during quantization: {e}",
-                    trace=str(e)
-                )
-            raise FileSystemException(
-                f"Filesystem error during quantization: {e}",
-                trace=str(e)
-            )
-        except MemoryError as e:
-            raise InsufficientMemoryException(
-                "model quantization",
-                trace=str(e)
-            )
-        except Exception as e:
-            raise QuantizationException(
-                f"MLX quantization failed: {e}",
-                trace=str(e)
-            )
 
     # ======================= SUBPROCESS HTTP SERVER (mlx_vlm.server) =======================
     #

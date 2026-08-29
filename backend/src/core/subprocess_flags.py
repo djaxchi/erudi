@@ -2,7 +2,7 @@
 
 The packaged Windows backend is a console-subsystem executable whose own window
 is hidden by the Electron launcher. Its children are console programs too
-(``llama-server.exe``, ``pg_dump.exe``, ``llama-quantize.exe``): on Windows a
+(``llama-server.exe``, ``pg_dump.exe``): on Windows a
 console child either inherits the parent's console or, when the parent has no
 inheritable console (e.g. it was spawned detached), allocates its OWN visible
 console window — the terminal flashes seen in QA on every model load and boot.

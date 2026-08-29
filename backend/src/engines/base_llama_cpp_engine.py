@@ -469,8 +469,3 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         runtime DLLs resolve.
         """
         return os.environ.copy()
-
-    # Note: `_copy_auxiliary_files` and `quant_and_save_from_hf_format` stay
-    # in concrete subclasses for now. The conversion / quantization pipeline
-    # is much heavier than the runtime path and will be factored in a
-    # follow-up PR if duplication justifies it.

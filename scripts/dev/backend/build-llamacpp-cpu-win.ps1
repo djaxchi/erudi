@@ -19,8 +19,6 @@
 #
 # Output:
 #   backend\artifacts\llama-cpp\cpu\bin\llama-server.exe
-#   backend\artifacts\llama-cpp\cpu\bin\llama-quantize.exe
-#   backend\artifacts\llama-cpp\cpu\bin\convert_hf_to_gguf.py
 
 $ErrorActionPreference = "Stop"
 
@@ -134,27 +132,6 @@ Write-Step "Installing to $InstallDir..."
 & $VenvCmake --install $BuildDir --config Release
 if ($LASTEXITCODE -ne 0) { Write-Fail "Install step failed." }
 
-# -------- copy Python conversion tools (parity with the CUDA build) --------
-Write-Step "Copying Python conversion tools..."
-
-$GgufPySrc  = Join-Path $SrcDir "gguf-py"
-$GgufPyDest = Join-Path $BinDir "gguf-py"
-if (Test-Path $GgufPySrc) {
-    if (Test-Path $GgufPyDest) { Remove-Item $GgufPyDest -Recurse -Force }
-    Copy-Item -Path $GgufPySrc -Destination $GgufPyDest -Recurse
-    Write-OK "gguf-py module copied to $GgufPyDest"
-} else {
-    Write-Warn "gguf-py not found at $GgufPySrc - HF to GGUF conversion will not work."
-}
-
-$ConvertScripts = Get-ChildItem -Path $SrcDir -Filter "convert*.py" -ErrorAction SilentlyContinue
-if ($ConvertScripts) {
-    foreach ($script in $ConvertScripts) {
-        Copy-Item -Path $script.FullName -Destination $BinDir -Force
-        Write-OK "Copied $($script.Name)"
-    }
-}
-
 # -------- bundle the MSVC C++ runtime next to llama-server.exe (#144) --------
 # The CPU build links the CRT dynamically (/MD), so llama-server.exe imports
 # vcruntime140/vcruntime140_1/msvcp140. On a clean Windows machine without the
@@ -187,12 +164,10 @@ foreach ($dll in $OptionalCrt) {
 Write-Host ""
 Write-Step "Verifying output..."
 
-$ServerExe   = Join-Path $BinDir "llama-server.exe"
-$QuantizeExe = Join-Path $BinDir "llama-quantize.exe"
+$ServerExe = Join-Path $BinDir "llama-server.exe"
 
 if (Test-Path $ServerExe) {
     Write-OK "llama.cpp CPU build complete: $ServerExe"
-    if (-not (Test-Path $QuantizeExe)) { Write-Warn "Missing (non-fatal): $QuantizeExe" }
 } else {
     Write-Warn "llama-server.exe not at $ServerExe. Installed binaries:"
     Get-ChildItem -Path $BinDir -Recurse -Filter "*.exe" | ForEach-Object { Write-Host ('  ' + $_.FullName) }

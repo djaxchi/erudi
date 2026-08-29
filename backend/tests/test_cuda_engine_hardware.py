@@ -1,10 +1,9 @@
-"""Tests for `CUDA_Engine` hardware detection, scoring and GGUF conversion.
+"""Tests for `CUDA_Engine` hardware detection and scoring.
 
 Complements `test_cuda_engine_server.py` (spawn hooks / config attrs) by
 pinning the NVML-driven hardware paths with a fake `pynvml` module injected
-into `sys.modules`, the VRAM-driven GPU-layer heuristic, the performance
-scoring pipeline, and both branches (pre-quantized GGUF copy vs. SafeTensors
-conversion) of `quant_and_save_from_hf_format` with mocked llama.cpp tools.
+into `sys.modules`, the VRAM-driven GPU-layer heuristic and the performance
+scoring pipeline.
 
 No real GPU, subprocess or model is required anywhere in this file.
 """
@@ -14,13 +13,11 @@ import os
 import sys
 import types
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
-from src.core.exceptions import EngineException, HardwareException
-from src.engines import cuda_engine as cuda_mod
+from src.core.exceptions import HardwareException
 from src.engines.cuda_engine import CUDA_Engine
 
 
@@ -519,217 +516,3 @@ class TestPerformanceEvaluation:
         assert "compute_units" not in flat
         assert "accelerator_available" not in flat
         assert flat["global_inference_score"] == 42.0
-
-
-# =====================================================================
-# UNIT - quant_and_save_from_hf_format
-# =====================================================================
-
-def _write_converter_script(install_dir: Path, behaviour: str = "ok") -> Path:
-    """Drop a minimal convert_hf_to_gguf.py whose main() mimics llama.cpp's."""
-    install_dir.mkdir(parents=True, exist_ok=True)
-    body = {
-        "ok": (
-            "import sys\n"
-            "def main():\n"
-            "    out = sys.argv[sys.argv.index('--outfile') + 1]\n"
-            "    open(out, 'wb').write(b'GGUF' + b'\\x00' * 64)\n"
-        ),
-        "exit3": "import sys\ndef main():\n    raise SystemExit(3)\n",
-        "exit_none": "def main():\n    raise SystemExit\n",
-        "crash": "def main():\n    raise ValueError('bad tensors')\n",
-    }[behaviour]
-    converter = install_dir / "convert_hf_to_gguf.py"
-    converter.write_text(body)
-    return converter
-
-
-@pytest.mark.unit
-class TestQuantAndSave:
-
-    def test_missing_source_raises_filenotfound(self, tmp_path):
-        with pytest.raises(FileNotFoundError):
-            CUDA_Engine.quant_and_save_from_hf_format(
-                tmp_path / "nope", tmp_path / "dst"
-            )
-
-    def test_pre_quantized_gguf_fast_path_copies_best_and_aux(self, tmp_path):
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "model-q4_k_m.gguf").write_bytes(b"\x00" * 128)
-        (src / "model-q8_0.gguf").write_bytes(b"\x00" * 128)
-        (src / "config.json").write_text("{}")
-        (src / "weights.safetensors").write_bytes(b"\x00")
-        dst = tmp_path / "dst"
-
-        CUDA_Engine.quant_and_save_from_hf_format(src, dst)
-
-        assert (dst / "model-q4_k_m.gguf").exists()   # priority pick
-        assert not (dst / "model-q8_0.gguf").exists()
-        assert (dst / "config.json").exists()          # aux copied
-        assert not (dst / "weights.safetensors").exists()
-
-    def test_no_model_files_raises(self, tmp_path):
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "README.md").write_text("empty repo")
-        with pytest.raises(EngineException, match="No .gguf or .safetensors"):
-            CUDA_Engine.quant_and_save_from_hf_format(src, tmp_path / "dst")
-
-    def test_missing_converter_raises(self, tmp_path):
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "model.safetensors").write_bytes(b"\x00" * 16)
-        empty_install = tmp_path / "install"
-        empty_install.mkdir()
-        with patch.object(
-            CUDA_Engine, "_default_install_dir", return_value=empty_install
-        ):
-            with pytest.raises(EngineException, match="Converter script not found"):
-                CUDA_Engine.quant_and_save_from_hf_format(src, tmp_path / "dst")
-
-    def _setup_safetensors_job(self, tmp_path, monkeypatch, *, quant_rc=0):
-        src = tmp_path / "src"
-        src.mkdir()
-        (src / "model.safetensors").write_bytes(b"\x00" * 16)
-        (src / "tokenizer.json").write_text("{}")
-        dst = tmp_path / "dst"
-        install = tmp_path / "install"
-        _write_converter_script(install)
-        # Match the platform-specific name quant_and_save_from_hf_format actually
-        # looks for (cuda_engine.py: "llama-quantize.exe" if os.name == "nt" else
-        # "llama-quantize") -- a POSIX-only literal here made every one of these
-        # tests fail with "Quantizer not found" on Windows CI (#357).
-        _quantizer_name = "llama-quantize.exe" if os.name == "nt" else "llama-quantize"
-        (install / _quantizer_name).write_bytes(b"\x7fELF")
-
-        def fake_call(cmd):
-            Path(cmd[-1]).write_bytes(b"GGUF" + b"\x00" * 64)
-            return 0
-
-        def fake_run(cmd, **kwargs):
-            if quant_rc == 0:
-                Path(cmd[2]).write_bytes(b"GGUF-Q")
-            return SimpleNamespace(returncode=quant_rc, stderr="quant error", stdout="")
-
-        monkeypatch.setattr(cuda_mod.subprocess, "call", fake_call)
-        monkeypatch.setattr(cuda_mod.subprocess, "run", fake_run)
-        return src, dst, install
-
-    def test_safetensors_convert_and_quantize_success(self, tmp_path, monkeypatch):
-        src, dst, install = self._setup_safetensors_job(tmp_path, monkeypatch)
-        with patch.object(CUDA_Engine, "_default_install_dir", return_value=install):
-            CUDA_Engine.quant_and_save_from_hf_format(src, dst, quantize=True, q_bits="4")
-        assert (dst / "model-q4_k_m.gguf").exists()
-        assert not (dst / "model-f16.gguf").exists()       # intermediate removed
-        assert not (dst / "model-q4_k_m.gguf.tmp").exists()  # atomic rename done
-        assert (dst / "tokenizer.json").exists()            # aux copied
-
-    def test_q8_bits_selects_q8_0(self, tmp_path, monkeypatch):
-        src, dst, install = self._setup_safetensors_job(tmp_path, monkeypatch)
-        with patch.object(CUDA_Engine, "_default_install_dir", return_value=install):
-            CUDA_Engine.quant_and_save_from_hf_format(src, dst, quantize=True, q_bits="8")
-        assert (dst / "model-q8_0.gguf").exists()
-
-    def test_quantize_false_keeps_fp16(self, tmp_path, monkeypatch):
-        src, dst, install = self._setup_safetensors_job(tmp_path, monkeypatch)
-        with patch.object(CUDA_Engine, "_default_install_dir", return_value=install):
-            CUDA_Engine.quant_and_save_from_hf_format(src, dst, quantize=False)
-        assert (dst / "model-f16.gguf").exists()
-
-    def test_conversion_failure_raises(self, tmp_path, monkeypatch):
-        src, dst, install = self._setup_safetensors_job(tmp_path, monkeypatch)
-        monkeypatch.setattr(cuda_mod.subprocess, "call", lambda cmd: 1)
-        with patch.object(CUDA_Engine, "_default_install_dir", return_value=install):
-            with pytest.raises(EngineException, match="conversion failed"):
-                CUDA_Engine.quant_and_save_from_hf_format(src, dst)
-
-    def test_missing_quantizer_raises(self, tmp_path, monkeypatch):
-        src, dst, install = self._setup_safetensors_job(tmp_path, monkeypatch)
-        quantizer_name = "llama-quantize.exe" if os.name == "nt" else "llama-quantize"
-        (install / quantizer_name).unlink()
-        with patch.object(CUDA_Engine, "_default_install_dir", return_value=install):
-            with pytest.raises(EngineException, match="Quantizer not found"):
-                CUDA_Engine.quant_and_save_from_hf_format(src, dst)
-
-    def test_quantize_failure_raises_and_cleans_tmp(self, tmp_path, monkeypatch):
-        src, dst, install = self._setup_safetensors_job(
-            tmp_path, monkeypatch, quant_rc=1
-        )
-        with patch.object(CUDA_Engine, "_default_install_dir", return_value=install):
-            with pytest.raises(EngineException, match="Quantization failed"):
-                CUDA_Engine.quant_and_save_from_hf_format(src, dst)
-        assert not (dst / "model-q4_k_m.gguf.tmp").exists()
-
-    def test_quantize_missing_dll_exit_code_gets_dedicated_message(
-        self, tmp_path, monkeypatch
-    ):
-        src, dst, install = self._setup_safetensors_job(
-            tmp_path, monkeypatch, quant_rc=-1073741515
-        )
-        with patch.object(CUDA_Engine, "_default_install_dir", return_value=install):
-            with pytest.raises(EngineException, match="Missing DLLs"):
-                CUDA_Engine.quant_and_save_from_hf_format(src, dst)
-
-    def test_frozen_build_uses_inprocess_converter(self, tmp_path, monkeypatch):
-        src, dst, install = self._setup_safetensors_job(tmp_path, monkeypatch)
-
-        def fake_inprocess(converter, install_dir, src_path, fp16):
-            Path(fp16).write_bytes(b"GGUF" + b"\x00" * 64)
-            return 0
-
-        monkeypatch.setattr(sys, "frozen", True, raising=False)
-        with patch.object(CUDA_Engine, "_default_install_dir", return_value=install):
-            with patch.object(
-                CUDA_Engine, "_run_converter_inprocess", side_effect=fake_inprocess
-            ) as inproc:
-                CUDA_Engine.quant_and_save_from_hf_format(src, dst, quantize=False)
-        inproc.assert_called_once()
-        assert (dst / "model-f16.gguf").exists()
-
-
-# =====================================================================
-# UNIT - _run_converter_inprocess (real dynamic import)
-# =====================================================================
-
-@pytest.mark.unit
-class TestRunConverterInprocess:
-
-    def test_success_writes_outfile_and_restores_argv(self, tmp_path):
-        install = tmp_path / "install"
-        converter = _write_converter_script(install, "ok")
-        out = tmp_path / "model-f16.gguf"
-        argv_before = sys.argv[:]
-
-        rc = CUDA_Engine._run_converter_inprocess(
-            converter, install, tmp_path / "src", out
-        )
-
-        assert rc == 0
-        assert out.exists()
-        assert sys.argv == argv_before
-        assert "convert_hf_to_gguf" not in sys.modules
-
-    def test_nonzero_systemexit_propagates_code(self, tmp_path):
-        install = tmp_path / "install"
-        converter = _write_converter_script(install, "exit3")
-        rc = CUDA_Engine._run_converter_inprocess(
-            converter, install, tmp_path / "src", tmp_path / "out.gguf"
-        )
-        assert rc == 3
-
-    def test_bare_systemexit_counts_as_success(self, tmp_path):
-        install = tmp_path / "install"
-        converter = _write_converter_script(install, "exit_none")
-        rc = CUDA_Engine._run_converter_inprocess(
-            converter, install, tmp_path / "src", tmp_path / "out.gguf"
-        )
-        assert rc == 0
-
-    def test_exception_returns_one(self, tmp_path):
-        install = tmp_path / "install"
-        converter = _write_converter_script(install, "crash")
-        rc = CUDA_Engine._run_converter_inprocess(
-            converter, install, tmp_path / "src", tmp_path / "out.gguf"
-        )
-        assert rc == 1
