@@ -54,8 +54,9 @@ import time
 import threading
 import shutil
 import asyncio
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from threading import Lock
-from typing import NamedTuple, Optional, List, Tuple
+from typing import NamedTuple, Optional, List, Tuple, Union
 
 from huggingface_hub import HfApi, HfFileSystem
 from huggingface_hub.utils import GatedRepoError, HfHubHTTPError
@@ -462,6 +463,71 @@ def make_callback(job: DownloadTracker) -> Callback:
     return Callback(size=job.total_bytes, hooks={"transfer-chunk": after_chunk})
 
 
+# ============ Destination containment (#405) ============
+
+_MEMBER_DISPLAY_LIMIT = 120
+
+
+def _display_member(member: str) -> str:
+    """ASCII, bounded rendering of a Hub file name for an error message."""
+    shown = member.encode("ascii", "backslashreplace").decode("ascii")
+    return shown if len(shown) <= _MEMBER_DISPLAY_LIMIT else shown[:_MEMBER_DISPLAY_LIMIT] + "..."
+
+
+def resolve_member_path(root: Union[str, Path], member: str) -> Path:
+    """Map a Hub-listed file name onto ``root`` or refuse it.
+
+    Every destination the downloader writes is derived from names LISTED BY THE
+    HUB (``list_repo_files``), and any repository can be downloaded by link. The
+    rule is refuse, never normalise: the loaders (mlx-vlm, llama-server) expect
+    the repo's own names and subfolders, so a rewritten name would silently
+    produce a broken model and hide a hostile repo.
+
+    Rejected (``InvalidInputException``, ASCII message naming the member):
+      - empty name, or one carrying a NUL byte;
+      - any backslash (the Hub only ever lists ``/``-separated names);
+      - absolute forms on either family: POSIX (``/x``), Windows drive or
+        drive-relative (``C:/x``, ``C:x``) and UNC (``//server/share/x``),
+        checked with ``PurePosixPath``/``PureWindowsPath`` explicitly so the
+        outcome is identical on the three CI legs;
+      - any ``..``, ``.`` or empty segment (``a/../x``, ``./x``, ``a//b``, ``a/``);
+      - anything that, once resolved, does not land under ``root.resolve()``
+        (belt and braces after the syntactic checks).
+
+    Returns ``root / member`` unchanged otherwise. Pure: nothing is created.
+    """
+    root = Path(root)
+    shown = _display_member(member) if isinstance(member, str) else repr(member)
+
+    def refuse(reason: str) -> InvalidInputException:
+        return InvalidInputException(
+            f"Hub file name '{shown}' ({reason}; refusing to write outside the model directory)"
+        )
+
+    if not isinstance(member, str) or not member:
+        raise refuse("empty name")
+    if "\x00" in member:
+        raise refuse("NUL byte")
+    if "\\" in member:
+        raise refuse("backslash")
+    windows_form = PureWindowsPath(member)
+    if (
+        PurePosixPath(member).is_absolute()
+        or windows_form.is_absolute()
+        or windows_form.drive
+        or windows_form.anchor
+    ):
+        raise refuse("absolute path")
+    if any(segment in ("", ".", "..") for segment in member.split("/")):
+        raise refuse("'.', '..' or empty path segment")
+
+    root_resolved = root.resolve()
+    if not (root_resolved / member).resolve().is_relative_to(root_resolved):
+        raise refuse("resolves outside the model directory")
+    return root / member
+
+
+
 async def download_files_concurrent(
     fs: HfFileSystem,
     callback: Callback,
@@ -500,12 +566,14 @@ async def download_files_concurrent(
             raise DownloadCancelled(f"download cancelled before {remote} started")
         fs.get_file(remote, dest, callback)
 
+    # Contain every destination BEFORE scheduling anything (#405): a hostile
+    # member anywhere in the batch refuses the whole batch with no transfer
+    # started and no directory created.
+    dests = [(f"{repo_id}/{path}", resolve_member_path(local_dir, path)) for repo_id, path in tasks]
     coros = []
-    for repo_id, path in tasks:
-        remote = f"{repo_id}/{path}"
-        dest = os.path.join(local_dir, path)
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        coros.append(loop.run_in_executor(None, get_file_unless_cancelled, remote, dest))
+    for remote, dest in dests:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        coros.append(loop.run_in_executor(None, get_file_unless_cancelled, remote, str(dest)))
     await asyncio.gather(*coros)
 
 
@@ -637,6 +705,11 @@ async def download_llm(
         _assert_repo_has_engine_artifact(actual_download_link, info, all_repo_files)
         selection = _select_download_files(all_repo_files, file_sizes, _uses_gguf)
         all_files = selection.files
+        # Contain the WHOLE selection before a single byte is fetched (#405):
+        # the names come from the Hub listing, so a hostile repo fails here
+        # with a clear message and the job-failure path reports it.
+        for path in all_files:
+            resolve_member_path(temp_save_dir, path)
         if _uses_gguf:
             if selection.mmproj_files:
                 logger.info(
@@ -674,7 +747,9 @@ async def download_llm(
             for path in misc:
                 if not job.should_continue():
                     raise DownloadCancelled(f"download cancelled before {path} started")
-                await asyncio.to_thread(fs.get_file, f"{actual_download_link}/{path}", os.path.join(temp_save_dir, path), callback)
+                dest = resolve_member_path(temp_save_dir, path)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                await asyncio.to_thread(fs.get_file, f"{actual_download_link}/{path}", str(dest), callback)
                 logger.info(f"Downloaded {path}")
 
             # Download shards concurrently
