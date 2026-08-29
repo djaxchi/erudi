@@ -23,7 +23,6 @@ import logoErudi from "../assets/images/logos/logoerudifinal.png";
 import { API_BASE_URL } from "../config/api";
 import apiClient, { tracedFetch } from "../services/api/client";
 import { transformAppStartupInfo } from "../utils/hardwareTransform";
-import { downloadErrorMessage } from "../utils/downloadStatus";
 import { createLogger } from "../utils/logger";
 import { splitByBase, installedRepoKeys, modelRepoKey } from "../utils/modelCatalog";
 import { searchCatalog } from "../utils/catalogSearch";
@@ -353,12 +352,12 @@ export default function LandingPage() {
             localModelsRef.current.reloadLocalModels();
           }
         },
-        onError: (reason) => {
+        onError: () => {
           // A failed start means the page data may be stale (e.g. the catalog id
           // was deleted), so refresh silently and let the user re-click (#167).
+          // The failure itself is shown by the download widget (#292): no
+          // second dialog on top of it.
           refreshCatalog().catch(() => {});
-          const msg = downloadErrorMessage(reason);
-          if (msg) setErrorMessage(msg);
         },
       });
     }

@@ -1,9 +1,21 @@
 {
   "widget": {
-    "downloadingTitle": "Descargando: {{name}}",
-    "errorTitle": "Error: {{name}}",
-    "timeLeft": "Tiempo restante:",
-    "progress": "Progreso:",
+    "title": "Descarga del modelo",
+    "progressLabel": "Progreso de la descarga",
+    "phase": {
+      "queued": "Iniciando la descarga…",
+      "downloading": "Descargando",
+      "finalizing": "Finalizando…",
+      "completed": "Descarga completada",
+      "cancelled": "Descarga cancelada",
+      "failed": "La descarga ha fallado",
+      "stalled": "La finalización está tardando demasiado"
+    },
+    "completedHint": "Disponible en tus modelos instalados",
+    "bytes": "{{done}} de {{total}}",
+    "speed": "{{rate}}/s",
+    "remaining": "Quedan {{time}}",
+    "dismiss": "Cerrar",
     "expand": "Expandir",
     "collapse": "Contraer",
     "duration": {
@@ -19,7 +31,6 @@
     "startFailed": "No se pudo iniciar la descarga ({{status}}): {{detail}}",
     "unexpected": "Se produjo un error inesperado",
     "cancelFailed": "No se pudo cancelar la descarga: {{detail}}",
-    "failedRetry": "La descarga falló. Inténtalo de nuevo.",
     "stalled": "La descarga terminó, pero la aplicación está tardando más de lo esperado en finalizarla. Los archivos se han guardado. Reinicia Erudi y revisa tus modelos instalados antes de volver a descargar."
   },
   "hardwareWait": {
