@@ -40,7 +40,7 @@ class PdfExtractor:
         if not pages or total_chars / len(pages) < self.MIN_AVG_CHARS_PER_PAGE:
             logger.warning(
                 f"PDF {path.name}: no usable text layer "
-                f"({len(pages)} pages, {total_chars} chars) — "
+                f"({len(pages)} pages, {total_chars} chars) - "
                 f"routed to pending_vision (scanned?)"
             )
             return ExtractedDocument(
