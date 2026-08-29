@@ -12,6 +12,7 @@ import {
   DOWNLOAD_CANCELLED,
   DOWNLOAD_STALLED,
   deriveDownloadPhase,
+  downloadFailureDetail,
   downloadStalledMessage,
 } from "../utils/downloadStatus";
 const log = createLogger("DownloadModalContext");
@@ -240,10 +241,8 @@ export function DownloadModalProvider({ children }) {
               }),
             });
       if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(
-          t("downloads:errors.startFailed", { status: res.status, detail: errorText })
-        );
+        const detail = downloadFailureDetail(await res.text());
+        throw new Error(t("downloads:errors.startFailed", { status: res.status, detail }));
       }
       const job = await res.json();
 

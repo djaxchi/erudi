@@ -31,7 +31,6 @@
     "startFailed": "Impossible de démarrer le téléchargement ({{status}}) : {{detail}}",
     "unexpected": "Une erreur inattendue est survenue",
     "cancelFailed": "Impossible d'annuler le téléchargement : {{detail}}",
-    "failedRetry": "Le téléchargement a échoué. Veuillez réessayer.",
     "stalled": "Le téléchargement est terminé, mais l'application met plus de temps que prévu à le finaliser. Les fichiers ont été enregistrés. Redémarrez Erudi et vérifiez vos modèles installés avant de télécharger à nouveau."
   },
   "hardwareWait": {

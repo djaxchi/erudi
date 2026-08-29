@@ -61,11 +61,19 @@ export function deriveDownloadPhase({ status, progress = 0, errorMessage = "" })
 }
 
 /**
- * Map a download `onError` reason to a user-facing message, or `null` when there is
- * nothing to show (a cancellation is not a failure).
+ * The human part of a failed start-download response body. FastAPI wraps its
+ * errors as `{"detail": "..."}`; show that sentence rather than the raw JSON.
+ * Anything else (plain text, HTML from a proxy, empty body) is passed through.
  */
-export function downloadErrorMessage(reason) {
-  if (reason === DOWNLOAD_CANCELLED) return null;
-  if (reason === DOWNLOAD_STALLED) return downloadStalledMessage();
-  return i18n.t("downloads:errors.failedRetry");
+export function downloadFailureDetail(body) {
+  const text = (body ?? "").trim();
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed.detail === "string" && parsed.detail.trim()) {
+      return parsed.detail.trim();
+    }
+  } catch {
+    /* not JSON */
+  }
+  return text;
 }

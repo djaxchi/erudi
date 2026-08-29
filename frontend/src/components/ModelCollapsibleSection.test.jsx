@@ -178,10 +178,9 @@ describe("ModelCollapsibleSection download flow", () => {
     onComplete();
     expect(onLocalModelRefresh).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByText("llama-3-8b"));
-    const secondOpts = openDownloadMock.mock.calls[1][1];
-    secondOpts.onError(null);
-    await waitFor(() => expect(screen.getByText("Download failed.")).toBeDefined(), settle);
+    // No onError: a failed or cancelled download is the widget's to report
+    // (#292), so the rail must not raise a second dialog for it.
+    expect(openDownloadMock.mock.calls[0][1].onError).toBeUndefined();
   });
 });
 

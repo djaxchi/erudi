@@ -248,12 +248,17 @@ describe("Download widget terminal states (#292)", () => {
   });
 
   it("shows a failed START inline instead of vanishing", async () => {
-    postResponder = () => ({ ok: false, status: 500, text: async () => "gone" });
+    postResponder = () => ({
+      ok: false,
+      status: 500,
+      text: async () => JSON.stringify({ detail: "Model 1 not found" }),
+    });
     renderProvider();
     await startPollAndExpand();
 
     expect(phaseLine()).toBe("Download failed");
-    expect(screen.getByText(/Failed to start download \(500\)/)).toBeTruthy();
+    // The FastAPI envelope is unwrapped: the sentence, not the raw JSON.
+    expect(screen.getByText("Failed to start download (500): Model 1 not found")).toBeTruthy();
     expect(screen.getByText("Dismiss")).toBeTruthy();
   });
 

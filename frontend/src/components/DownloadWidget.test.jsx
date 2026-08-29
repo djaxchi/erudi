@@ -84,6 +84,9 @@ describe("DownloadWidget while downloading", () => {
     renderWidget();
     const root = screen.getByLabelText("Model download");
     expect(root.className).toContain("fixed");
+    // Tailwind emits `.relative` after `.fixed`, so the class must not be on the
+    // root at all or the panel silently falls into the document flow.
+    expect(root.className.split(" ")).not.toContain("relative");
     expect(root.className).toContain("left-[4.25rem]");
     expect(root.className).toContain("bottom-14");
   });

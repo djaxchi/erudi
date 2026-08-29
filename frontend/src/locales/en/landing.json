@@ -45,8 +45,7 @@
     "fetchModelsFailed": "Failed to fetch available models. Please try again and contact the Erudi team for support.",
     "deleteModelFailed": "Failed to delete the model. Please try again and contact the Erudi team for support.",
     "rebindFailed": "Failed to re-bind the assistant. Please try again and contact the Erudi team for support.",
-    "hardwareEvaluationFailed": "Failed to evaluate hardware capabilities. Please contact the Erudi team for support.",
-    "downloadFailed": "Download failed."
+    "hardwareEvaluationFailed": "Failed to evaluate hardware capabilities. Please contact the Erudi team for support."
   },
   "welcome": {
     "title": "Welcome!",

@@ -31,7 +31,6 @@
     "startFailed": "Failed to start download ({{status}}): {{detail}}",
     "unexpected": "An unexpected error occurred",
     "cancelFailed": "Failed to cancel download: {{detail}}",
-    "failedRetry": "Download failed. Please try again.",
     "stalled": "The download finished but the app is taking longer than expected to finalize it. The files have been saved. Restart Erudi and check your installed models before downloading again."
   },
   "hardwareWait": {

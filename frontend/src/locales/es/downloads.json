@@ -31,7 +31,6 @@
     "startFailed": "No se pudo iniciar la descarga ({{status}}): {{detail}}",
     "unexpected": "Se produjo un error inesperado",
     "cancelFailed": "No se pudo cancelar la descarga: {{detail}}",
-    "failedRetry": "La descarga falló. Inténtalo de nuevo.",
     "stalled": "La descarga terminó, pero la aplicación está tardando más de lo esperado en finalizarla. Los archivos se han guardado. Reinicia Erudi y revisa tus modelos instalados antes de volver a descargar."
   },
   "hardwareWait": {

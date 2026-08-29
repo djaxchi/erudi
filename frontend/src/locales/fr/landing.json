@@ -45,8 +45,7 @@
     "fetchModelsFailed": "Impossible de récupérer les modèles disponibles. Veuillez réessayer et contacter l'équipe Erudi pour obtenir de l'aide.",
     "deleteModelFailed": "Impossible de supprimer le modèle. Veuillez réessayer et contacter l'équipe Erudi pour obtenir de l'aide.",
     "rebindFailed": "Impossible de réassocier l'assistant. Veuillez réessayer et contacter l'équipe Erudi pour obtenir de l'aide.",
-    "hardwareEvaluationFailed": "Impossible d'évaluer les capacités de votre matériel. Veuillez contacter l'équipe Erudi pour obtenir de l'aide.",
-    "downloadFailed": "Échec du téléchargement."
+    "hardwareEvaluationFailed": "Impossible d'évaluer les capacités de votre matériel. Veuillez contacter l'équipe Erudi pour obtenir de l'aide."
   },
   "welcome": {
     "title": "Bienvenue !",

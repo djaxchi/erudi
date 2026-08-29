@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   deriveDownloadPhase,
-  downloadErrorMessage,
+  downloadFailureDetail,
   downloadStalledMessage,
   DOWNLOAD_CANCELLED,
   DOWNLOAD_STALLED,
@@ -44,18 +44,17 @@ describe("deriveDownloadPhase (#292)", () => {
   });
 });
 
-describe("downloadErrorMessage", () => {
-  it("returns null for a user-initiated cancellation (a cancel is not a failure)", () => {
-    expect(downloadErrorMessage(DOWNLOAD_CANCELLED)).toBeNull();
-    expect(downloadErrorMessage("cancelled")).toBeNull();
+describe("downloadFailureDetail", () => {
+  it("unwraps FastAPI's {detail} envelope so the user never sees raw JSON", () => {
+    expect(downloadFailureDetail('{"detail":"Model 14 not found"}')).toBe("Model 14 not found");
   });
 
-  it("returns a failure message for any real error reason", () => {
-    expect(downloadErrorMessage("Server responded with 500")).toBe(
-      "Download failed. Please try again."
-    );
-    expect(downloadErrorMessage(undefined)).toBe("Download failed. Please try again.");
-    expect(downloadErrorMessage(null)).toBe("Download failed. Please try again.");
+  it("passes anything that is not a detail envelope through, trimmed", () => {
+    expect(downloadFailureDetail("  Bad Gateway \n")).toBe("Bad Gateway");
+    expect(downloadFailureDetail('{"error":"x"}')).toBe('{"error":"x"}');
+    expect(downloadFailureDetail('{"detail":{"loc":[]}}')).toBe('{"detail":{"loc":[]}}');
+    expect(downloadFailureDetail("")).toBe("");
+    expect(downloadFailureDetail(undefined)).toBe("");
   });
 });
 
@@ -75,8 +74,6 @@ describe("DOWNLOAD_STALLED (#315)", () => {
     // The bytes are on disk; only the finalization bookkeeping did not finish
     // (#291). Reporting "Download failed. Please try again." would be wrong and
     // would push the user into re-downloading gigabytes they already have.
-    expect(downloadErrorMessage(DOWNLOAD_STALLED)).toBe(downloadStalledMessage());
-    expect(downloadErrorMessage(DOWNLOAD_STALLED)).not.toBe("Download failed. Please try again.");
     expect(downloadStalledMessage()).toMatch(/files have been saved/i);
   });
 });

@@ -138,13 +138,25 @@ ProgressRing.propTypes = {
   color: PropTypes.string.isRequired,
 };
 
-/** The phase glyph: a spinner while waiting on the backend, otherwise a verdict icon. */
+/**
+ * The phase glyph: a spinner while waiting on the backend, the progress ring
+ * (with a small download arrow inside) while bytes are flowing, otherwise a
+ * verdict icon.
+ */
 function PhaseGlyph({ phase, fraction, color, chipClass }) {
+  if (phase === "downloading") {
+    return (
+      <div
+        className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${chipClass}`}
+      >
+        <ProgressRing fraction={fraction} color={color} />
+        <Download className="absolute h-3 w-3" />
+      </div>
+    );
+  }
   let icon;
   if (phase === "queued" || phase === "finalizing") {
     icon = <Loader2 className="h-4 w-4 motion-safe:animate-spin" />;
-  } else if (phase === "downloading") {
-    icon = <Download className="h-4 w-4" />;
   } else if (phase === "completed") {
     icon = <Check className="h-4 w-4" />;
   } else if (phase === "cancelled") {
@@ -157,11 +169,6 @@ function PhaseGlyph({ phase, fraction, color, chipClass }) {
       className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${chipClass}`}
     >
       {icon}
-      {phase === "downloading" && (
-        <div className="absolute -bottom-1 -right-1 rounded-full bg-[var(--surface)] p-px">
-          <ProgressRing fraction={fraction} color={color} />
-        </div>
-      )}
     </div>
   );
 }
@@ -244,7 +251,9 @@ export default function DownloadWidget({
         // pill that lives at the bottom of the models sidebar (#303).
         "fixed bottom-14 left-[4.25rem] z-50",
         collapsed ? "w-auto" : "w-[min(22rem,calc(100vw_-_5.5rem))]",
-        "relative overflow-hidden rounded-2xl border",
+        // No `relative` here: Tailwind emits it after `fixed` and it would win,
+        // dropping the panel into the document flow under the app.
+        "overflow-hidden rounded-2xl border",
         tone.border,
         "bg-[rgba(12,39,34,0.72)] backdrop-blur-[14px] saturate-[1.3]",
         "shadow-[0_10px_30px_-6px_rgba(0,0,0,0.5),0_2px_6px_-1px_rgba(0,0,0,0.45)]",
