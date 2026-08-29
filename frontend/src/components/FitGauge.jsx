@@ -1,7 +1,7 @@
 import React from "react";
 import PropTypes from "prop-types";
 import { useTranslation } from "react-i18next";
-import { fitForModel, estimateFootprintGb, FIT_META } from "../utils/hardwareFit";
+import { fitForModel, fitForCatalogModel, modelFootprintGb, FIT_META } from "../utils/hardwareFit";
 import { formatGigabytes } from "../i18n/format";
 
 /**
@@ -9,12 +9,24 @@ import { formatGigabytes } from "../i18n/format";
  * against the machine's budget. The fill length encodes size; its color encodes
  * fit (mint/amber/rust); the tick marks the user's comfortable ceiling. When no
  * benchmark window is known it renders a neutral, label-only state.
+ *
+ * The footprint is the measured download size when the backend has it (#397),
+ * shown as an exact figure and driving the fill and the verdict alike, so the
+ * card face agrees with the info modal and the installed card; the parameter
+ * estimate ("~") is the fallback.
  */
-export default function FitGauge({ paramSize, quantized, range, showLabel = true }) {
+export default function FitGauge({ paramSize, quantized, sizeBytes, range, showLabel = true }) {
   const { t } = useTranslation();
-  const fit = fitForModel(paramSize, range);
-  const footprint = estimateFootprintGb(paramSize, quantized);
+  const subject = { param_size: paramSize, quantized, artifact_size_bytes: sizeBytes };
+  const fit = fitForCatalogModel(subject, range);
+  const footprint = modelFootprintGb(subject);
   const known = fit.tier !== "unknown";
+  let footprintLabel = "";
+  if (footprint) {
+    footprintLabel = footprint.measured
+      ? formatGigabytes(footprint.gb)
+      : t("models:fit.footprint", { size: formatGigabytes(footprint.gb) });
+  }
 
   return (
     <div className="w-full">
@@ -43,9 +55,7 @@ export default function FitGauge({ paramSize, quantized, range, showLabel = true
           >
             {known ? fit.label : t("models:fit.labels.unknown")}
           </span>
-          <span className="mono text-[11px] text-[var(--ink-faint)]">
-            {footprint ? t("models:fit.footprint", { size: formatGigabytes(footprint) }) : ""}
-          </span>
+          <span className="mono text-[11px] text-[var(--ink-faint)]">{footprintLabel}</span>
         </div>
       )}
     </div>
@@ -55,6 +65,8 @@ export default function FitGauge({ paramSize, quantized, range, showLabel = true
 FitGauge.propTypes = {
   paramSize: PropTypes.number,
   quantized: PropTypes.bool,
+  /** Measured download size (`artifact_size_bytes`); null/absent = use the estimate. */
+  sizeBytes: PropTypes.number,
   range: PropTypes.shape({ min: PropTypes.number, max: PropTypes.number }),
   showLabel: PropTypes.bool,
 };
