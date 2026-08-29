@@ -287,6 +287,36 @@ class TestCategoryReconcileFromSnapshot:
         Database_Seeder().reconcile_catalog_from_snapshot(db)
         assert db.query(Llm).filter(Llm.link == "org/q-GGUF").one().generation_hints == hints
 
+    def test_fresh_artifact_size_propagates_in_place(self, test_db_session, monkeypatch):
+        db = test_db_session
+        db.add(_llm(name="Q", local=0, link="org/q-GGUF", artifact_size_bytes=None))
+        db.commit()
+
+        _use_snapshot(monkeypatch, [_entry("org/q-GGUF", artifact_size_bytes=3_090_000_000)])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+
+        row = db.query(Llm).filter(Llm.link == "org/q-GGUF").one()
+        assert row.artifact_size_bytes == 3_090_000_000
+
+    def test_entry_without_artifact_size_keeps_existing_size(self, test_db_session, monkeypatch):
+        """Same #192 rule: a snapshot that predates the column (no key, or null)
+        means "unknown", never "clear" -- a known size survives the boot."""
+        db = test_db_session
+        db.add(_llm(name="Q", local=0, link="org/q-GGUF", artifact_size_bytes=3_090_000_000))
+        db.commit()
+
+        entry = _entry("org/q-GGUF")
+        entry.pop("artifact_size_bytes", None)
+        _use_snapshot(monkeypatch, [entry])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+        row = db.query(Llm).filter(Llm.link == "org/q-GGUF").one()
+        assert row.artifact_size_bytes == 3_090_000_000
+
+        _use_snapshot(monkeypatch, [_entry("org/q-GGUF", artifact_size_bytes=None)])
+        Database_Seeder().reconcile_catalog_from_snapshot(db)
+        row = db.query(Llm).filter(Llm.link == "org/q-GGUF").one()
+        assert row.artifact_size_bytes == 3_090_000_000
+
     def test_downloaded_row_hints_never_touched_by_snapshot(self, test_db_session, monkeypatch):
         db = test_db_session
         hints = {"base_repo": "org/q", "generation_config": {"temperature": 0.6},

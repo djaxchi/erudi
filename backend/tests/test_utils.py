@@ -21,7 +21,6 @@ from src.core import config
 from src.utils.hf_model_metadata import (
     BYTES_PER_GB,
     get_disk_size_after_quant,
-    get_model_size_estimate,
     extract_parameter_pattern,
     format_model_info_metadata,
     measure_dir_size_gb,
@@ -267,45 +266,6 @@ class TestHFMetadataUtils:
         assert size.is_estimate
         # Should use fallback calculation
         assert size.size_gb > 0
-
-    def test_get_model_size_estimate_mistral_7b(self):
-        """Test size estimation for Mistral 7B models.
-        
-        Should return ModelSize for Mistral family.
-        """
-        size = get_model_size_estimate(
-            "Mistral 7B Instruct",
-            "mistralai/Mistral-7B-Instruct-v0.3"
-        )
-        
-        assert isinstance(size, ModelSize)
-        assert size.size_gb > 10  # Should be around 13.5 GB
-
-    def test_get_model_size_estimate_gemma_2b(self):
-        """Test size estimation for Gemma 2B models.
-        
-        Should return ModelSize for Gemma family.
-        """
-        size = get_model_size_estimate(
-            "Gemma 2B",
-            "google/gemma-2b"
-        )
-        
-        assert isinstance(size, ModelSize)
-        assert size.size_gb > 4  # Should be around 5-6 GB
-
-    def test_get_model_size_estimate_unknown_model(self):
-        """Test size estimation for unknown model.
-        
-        Should return ModelSize with Unknown source for unknown models.
-        """
-        size = get_model_size_estimate(
-            "UnknownModel 5B",
-            "unknown/model-5b"
-        )
-        
-        assert isinstance(size, ModelSize)
-        # Should handle unknown models gracefully with fallback
 
     def test_extract_parameter_pattern_7b(self):
         """Test parameter extraction from model name (7B format).

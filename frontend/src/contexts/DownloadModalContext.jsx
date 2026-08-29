@@ -85,6 +85,9 @@ export function DownloadModalProvider({ children }) {
   // Stall guard state (#315): the last (status, progress) pair seen and how many
   // consecutive polls have reported it unchanged while at 100%.
   const stallRef = useRef({ signature: null, ticks: 0 });
+  // The job the poll is allowed to act on. Cleared on cancel so a poll reply
+  // already in flight cannot resurrect a job the backend has just dropped.
+  const activeJobRef = useRef(null);
 
   const toggleCollapse = useCallback(() => {
     setIsCollapsed((c) => !c);
@@ -103,6 +106,9 @@ export function DownloadModalProvider({ children }) {
     async (id) => {
       try {
         const res = await tracedFetch(`${API_BASE_URL}/llms/downloads/${id}/status`);
+        if (activeJobRef.current !== id) {
+          return;
+        }
         if (!res.ok) {
           if (res.status === 404) {
             // Le job n'existe plus (probablement annulé et nettoyé)
@@ -218,6 +224,7 @@ export function DownloadModalProvider({ children }) {
 
       // Sauvegarder le jobId pour l'annulation
       setJobId(job.id);
+      activeJobRef.current = job.id;
 
       stallRef.current = { signature: null, ticks: 0 };
       intervalRef.current = setInterval(() => {
@@ -253,15 +260,23 @@ export function DownloadModalProvider({ children }) {
         throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
       }
 
-      setStatus("cancelling");
       log.log(`Download cancelled for job ${jobId}`);
 
-      // Le statut final sera mis à jour par le polling
+      // The backend drops the job on acknowledgement: one more status poll
+      // would only be answered with a not-found warning in its log. Settle
+      // locally right away, exactly like the fallbacks below.
+      activeJobRef.current = null;
+      clearInterval(intervalRef.current);
+      setIsDownloading(false);
+      setProgress(0);
+      setStatus(DOWNLOAD_CANCELLED);
+      callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
     } catch (error) {
       log.error("Failed to cancel download:", error);
       setErrorMessage(t("downloads:errors.cancelFailed", { detail: error.message }));
 
       // Dans tous les cas, on nettoie localement
+      activeJobRef.current = null;
       clearInterval(intervalRef.current);
       setIsDownloading(false);
       setProgress(0);

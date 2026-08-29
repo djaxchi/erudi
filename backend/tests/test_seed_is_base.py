@@ -22,6 +22,8 @@ class _FakeHF:
 
 
 class _Size:
+    size_bytes = None
+
     def to_string(self):
         return "1 GB"
 
@@ -33,7 +35,6 @@ class _Engine:
 def _stub_metadata_helpers(monkeypatch):
     monkeypatch.setattr(seed_mod.config, "LLM_Engine", _Engine)
     monkeypatch.setattr(seed_mod, "format_model_info_metadata", lambda *a, **k: "meta")
-    monkeypatch.setattr(seed_mod, "get_model_size_estimate", lambda *a, **k: _Size())
     monkeypatch.setattr(seed_mod, "get_disk_size_after_quant", lambda *a, **k: _Size())
 
 

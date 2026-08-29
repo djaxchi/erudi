@@ -31,7 +31,8 @@
       "prompt": "Customize system instructions that guide AI behavior.",
       "webSearch": "Lets the model search the web for current facts. Searched queries are sent to external search engines."
     },
-    "noPublisherRecommendation": "No sampling recommendation from this model's publisher; neutral defaults applied."
+    "noPublisherRecommendation": "No sampling recommendation from this model's publisher; neutral defaults applied.",
+    "weightsMissingHint": "Weights missing — re-bind this assistant on the Models page"
   },
   "composer": {
     "placeholder": "Ask a question…",

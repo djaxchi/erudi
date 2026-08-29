@@ -31,7 +31,8 @@
       "prompt": "Personaliza las instrucciones del sistema que guían el comportamiento de la IA.",
       "webSearch": "Permite que el modelo busque en la web información actual. Las consultas de búsqueda se envían a motores de búsqueda externos."
     },
-    "noPublisherRecommendation": "El editor de este modelo no recomienda ajustes de muestreo; se aplican valores neutros."
+    "noPublisherRecommendation": "El editor de este modelo no recomienda ajustes de muestreo; se aplican valores neutros.",
+    "weightsMissingHint": "Faltan los pesos — vuelve a vincular este asistente en la página Modelos"
   },
   "composer": {
     "placeholder": "Haz una pregunta…",

@@ -94,9 +94,15 @@ def build_chat_model(
     translate = getattr(engine, "_translate_payload_kwargs", lambda kw: kw)
     extra_body = translate(raw_kwargs)
 
+    # Log the extra_body AS SENT (post-translation, so llama.cpp's wire names
+    # show up), one key=value per entry on the same line: the optional profile
+    # keys (top_k / min_p / presence_penalty, #388) are otherwise invisible in
+    # the INFO log and a QA pass cannot confirm they reached the server.
+    extra_body_desc = ", ".join(f"{key}={value}" for key, value in extra_body.items())
     logger.info(
         f"ChatOpenAI built: model={model_field}, base_url={handle['base_url']}/v1, "
-        f"temperature={temperature}, top_p={top_p}, max_tokens={max_tokens}"
+        f"temperature={temperature}, top_p={top_p}, max_tokens={max_tokens}, "
+        f"extra_body=[{extra_body_desc}]"
     )
     return ChatOpenAI(
         base_url=f"{handle['base_url']}/v1",

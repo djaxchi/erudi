@@ -260,7 +260,7 @@ class TestDownloadCarriesHints:
 
         monkeypatch.setattr(llm_endpoints, "download_llm", ok_download)
         monkeypatch.setattr(llm_endpoints, "_assert_downloaded_artifact_ok", lambda *a: None)
-        monkeypatch.setattr(llm_endpoints, "measure_dir_size_gb", lambda *a: 0.0)
+        monkeypatch.setattr(llm_endpoints, "measure_dir_size_bytes", lambda *a: 0)
         from src.domains.llms import repository as llm_repository
         for name in ("detect_supports_tools", "detect_wire_tools", "detect_supports_vision"):
             monkeypatch.setattr(llm_repository, name, lambda *a: None)
