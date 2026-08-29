@@ -9,11 +9,7 @@
 //   3. the footprint estimate from the parameter count (`estimateFootprintGb`).
 // Anything else yields null so the caller can fall back to what it has.
 import { formatNumber, formatGigabytes } from "../i18n/format";
-import { estimateFootprintGb } from "./hardwareFit";
-
-// The backend measures and labels sizes in decimal GB (1e9 bytes) so a model
-// does not "shrink" between the catalog and its installed card.
-const BYTES_PER_GB = 1_000_000_000;
+import { estimateFootprintGb, measuredSizeGb } from "./hardwareFit";
 
 // "~3.2 GB", "4.5 GB", "~3.0-4.0 GB" (range estimate). Anything else is null.
 const SIZE_RE = /^\s*(~)?\s*(\d+(?:\.\d+)?)(?:\s*-\s*(\d+(?:\.\d+)?))?\s*GB\s*$/i;
@@ -27,9 +23,6 @@ export function parseSizeGb(text) {
   return { minGb, maxGb, approximate: match[1] === "~" };
 }
 
-const isPositiveNumber = (value) =>
-  typeof value === "number" && Number.isFinite(value) && value > 0;
-
 function formatRange({ minGb, maxGb, approximate }) {
   const prefix = approximate ? "~" : "";
   if (minGb === maxGb) return `${prefix}${formatGigabytes(minGb)}`;
@@ -38,8 +31,9 @@ function formatRange({ minGb, maxGb, approximate }) {
 
 export function displayModelSize(model) {
   if (!model) return null;
-  if (isPositiveNumber(model.artifact_size_bytes)) {
-    return formatGigabytes(model.artifact_size_bytes / BYTES_PER_GB);
+  const measured = measuredSizeGb(model);
+  if (measured !== null) {
+    return formatGigabytes(measured);
   }
   const parsed = parseSizeGb(model.size);
   if (parsed) return formatRange(parsed);

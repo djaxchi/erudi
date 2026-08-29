@@ -71,6 +71,10 @@ def build_chat_model(
     # (repeat_penalty / repeat_last_n) via ``_translate_payload_kwargs``. Sent via
     # ChatOpenAI.extra_body so they land in the local server's chat-completions
     # body. (getattr keeps non-server engines / test stubs working via identity.)
+    # The MLX translation also stamps a fresh random ``seed`` per request: this
+    # factory runs once per turn, so every generation gets its own, which is what
+    # makes temperature / top_p / top_k actually vary the output on Apple Silicon
+    # (mlx_vlm.server replays a fixed default seed when the request has none).
     # #388: a resolved per-model profile supplies the repetition controls and,
     # ONLY when it defines them, top_k / min_p / presence_penalty. Without a
     # profile (or for a model without hints, whose profile is the fallback)

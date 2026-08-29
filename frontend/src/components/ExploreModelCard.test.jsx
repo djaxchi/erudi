@@ -38,6 +38,19 @@ describe("ExploreModelCard", () => {
     expect(screen.getByText("Size unknown")).toBeTruthy();
   });
 
+  it("shows the measured download size on the card face, like the info modal", () => {
+    // Qwen2.5 VL 3B: the estimate said "~2.3 GB" while the modal and the
+    // installed card said 3.1 GB (#397). One number everywhere.
+    render(
+      <ExploreModelCard
+        model={{ ...baseModel, param_size: 3.75, artifact_size_bytes: 3_100_000_000 }}
+        range={{ min: 2, max: 8 }}
+      />
+    );
+    expect(screen.getByText("3.1 GB")).toBeTruthy();
+    expect(screen.queryByText("~2.3 GB")).toBeNull();
+  });
+
   it("formats ten-million-plus counts without a decimal", () => {
     render(<ExploreModelCard model={{ ...baseModel, downloads: "12345678", likes: "512" }} />);
     expect(screen.getByText("12M")).toBeTruthy();

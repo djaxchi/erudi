@@ -161,9 +161,11 @@ class BaseChatServerEngine(BaseEngine):
         """Translate engine-agnostic kwarg names (HF/transformers vocabulary)
         into the names the upstream server expects.
 
-        Default: identity (mlx_vlm.server already uses HF names). LlamaCpp
-        engines override to translate `repetition_penalty → repeat_penalty`
-        and `repetition_context_size → repeat_last_n`.
+        Default: identity. LlamaCpp engines override to translate
+        `repetition_penalty → repeat_penalty` and `repetition_context_size →
+        repeat_last_n`; MLX keeps the HF names (mlx_vlm.server reads them
+        natively) but stamps a fresh random `seed` per request, since
+        mlx_vlm.server otherwise replays a fixed default seed.
         """
         return kwargs
 

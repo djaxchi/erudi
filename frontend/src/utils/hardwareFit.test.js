@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   fitForModel,
+  fitForCatalogModel,
+  modelFootprintGb,
   estimateFootprintGb,
   rankByFit,
   pickFlagships,
@@ -9,6 +11,65 @@ import {
 } from "./hardwareFit";
 
 const range = { min: 4, max: 8 };
+
+// The catalog card used to show the footprint ESTIMATE (param_size x 0.6 GB)
+// while the info modal and the installed card showed the measured
+// artifact_size_bytes (#397): "~2.3 GB" on the face, "3.1 GB" everywhere else.
+// The measured size now drives both the number and the verdict, the estimate
+// stays the fallback.
+describe("modelFootprintGb", () => {
+  it("prefers the measured artifact size, in decimal GB", () => {
+    expect(modelFootprintGb({ param_size: 3, artifact_size_bytes: 3_100_000_000 })).toEqual({
+      gb: 3.1,
+      measured: true,
+    });
+  });
+
+  it("falls back to the parameter estimate", () => {
+    const quant = modelFootprintGb({ param_size: 3, quantized: true });
+    expect(quant.measured).toBe(false);
+    expect(quant.gb).toBeCloseTo(1.8, 10);
+    const fp16 = modelFootprintGb({ param_size: 3, quantized: false });
+    expect(fp16.measured).toBe(false);
+    expect(fp16.gb).toBeCloseTo(6, 10);
+  });
+
+  it("ignores a non-positive or non-numeric measured size", () => {
+    expect(modelFootprintGb({ param_size: 3, artifact_size_bytes: 0 }).measured).toBe(false);
+    expect(modelFootprintGb({ param_size: 3, artifact_size_bytes: null }).measured).toBe(false);
+    expect(modelFootprintGb({ param_size: 3, artifact_size_bytes: "big" }).measured).toBe(false);
+  });
+
+  it("is null when neither a size nor a parameter count is known", () => {
+    expect(modelFootprintGb({})).toBeNull();
+    expect(modelFootprintGb(null)).toBeNull();
+  });
+});
+
+describe("fitForCatalogModel", () => {
+  const window = { min: 2, max: 4 };
+
+  it("judges a measured model by its real size, not its parameter count", () => {
+    // 3B looks ideal for a 2-4B window, but 3.1 GB of weights is what a
+    // 5.2B 4-bit model costs: the verdict must say so.
+    expect(fitForModel(3, window).tier).toBe("ideal");
+    const fit = fitForCatalogModel({ param_size: 3, artifact_size_bytes: 3_100_000_000 }, window);
+    expect(fit.tier).toBe("tight");
+    expect(fit.fraction).toBeCloseTo(3.1 / 0.6 / 8, 5);
+  });
+
+  it("is the parameter verdict when no size is measured", () => {
+    expect(fitForCatalogModel({ param_size: 3 }, window)).toEqual(fitForModel(3, window));
+    expect(fitForCatalogModel({ param_size: 3, artifact_size_bytes: null }, window)).toEqual(
+      fitForModel(3, window)
+    );
+  });
+
+  it("returns unknown without a range or any size", () => {
+    expect(fitForCatalogModel({ artifact_size_bytes: 3_100_000_000 }, null).tier).toBe("unknown");
+    expect(fitForCatalogModel({}, window).tier).toBe("unknown");
+  });
+});
 
 describe("fitForModel", () => {
   it("classifies within the window as ideal", () => {
@@ -169,5 +230,14 @@ describe("applyCatalogFilters", () => {
     const kept = applyCatalogFilters(models, { size: "any", fitOnly: true }, { min: 4, max: 8 });
     expect(kept.map((m) => m.name)).not.toContain("huge"); // 70B is heavy
     expect(kept.map((m) => m.name)).toContain("mid");
+  });
+
+  it("'fits my machine' judges a measured model by its real size, like its card", () => {
+    // 12 GB of weights is what a 20B 4-bit model costs: heavy for an 8B window,
+    // whatever the nominal parameter count says.
+    const fat = [{ name: "fat", param_size: 7, artifact_size_bytes: 12_000_000_000 }];
+    expect(applyCatalogFilters(fat, { size: "any", fitOnly: true }, { min: 4, max: 8 })).toEqual(
+      []
+    );
   });
 });

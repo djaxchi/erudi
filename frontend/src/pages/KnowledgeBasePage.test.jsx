@@ -444,6 +444,23 @@ describe("KnowledgeBasePage hardware readout", () => {
       await i18n.changeLanguage("en");
     }
   });
+
+  // The score was interpolated raw ("52.62/100" whatever the language); it
+  // goes through the locale number formatter like every other number shown.
+  it("formats the score in the active locale", async () => {
+    hwResponder = () => ({ global_inference_score: 52.62, global_inference_label: "Fair" });
+    render(<KnowledgeBasePage />);
+    expect(await screen.findByText("52.6/100")).toBeTruthy();
+    cleanup();
+
+    await i18n.changeLanguage("fr");
+    try {
+      render(<KnowledgeBasePage />);
+      expect(await screen.findByText("52,6/100")).toBeTruthy();
+    } finally {
+      await i18n.changeLanguage("en");
+    }
+  });
 });
 
 describe("KnowledgeBasePage model list and URL preselection", () => {
