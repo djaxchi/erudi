@@ -618,8 +618,9 @@ def _assert_repo_has_engine_artifact(model_link: str, repo_info, all_repo_files:
         present = bool(tag) and (tag in tags or getattr(repo_info, "library_name", None) == tag)
     if present:
         return
+    engine_name = getattr(engine, "__name__", type(engine).__name__)
     raise InvalidInputException(
-        f"{model_link} has no {tag} artefact for this machine's engine ({engine.__name__}): "
+        f"{model_link} has no {tag} artefact for this machine's engine ({engine_name}): "
         f"Erudi only downloads pre-built {tag} models and does not convert weights locally. "
         f"Pick a repository that ships {tag} files (for example one found through the "
         f"Hugging Face search in the app)."
