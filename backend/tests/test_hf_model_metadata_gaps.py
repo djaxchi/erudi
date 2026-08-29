@@ -220,6 +220,10 @@ class TestFormatModelInfoMetadata:
         assert "Size: Unknown" in out
         assert "Tags: None" in out
 
-    def test_formatting_failure_returns_error_string(self):
-        out = format_model_info_metadata(SimpleNamespace())  # no .id attribute
-        assert out.startswith("Error formatting metadata")
+    def test_formatting_failure_propagates(self):
+        # #354: a caught failure used to come back as the string
+        # "Error formatting metadata: ...", which the catalog then stored as
+        # real metadata. The formatter now lets the caller's per-model failure
+        # path decide (see test_seed_metadata_errors.py).
+        with pytest.raises(AttributeError):
+            format_model_info_metadata(SimpleNamespace())  # no .id attribute
