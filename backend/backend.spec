@@ -195,7 +195,6 @@ _hidden_common = [
     "src.core.exceptions",
     "src.core.logging",
     "src.core.health",
-    "src.config.secrets",
     "src.database.core",
     "src.database.seed",
     "src.entities.Conversation",
