@@ -1,9 +1,21 @@
 {
   "widget": {
-    "downloadingTitle": "Descargando: {{name}}",
-    "errorTitle": "Error: {{name}}",
-    "timeLeft": "Tiempo restante:",
-    "progress": "Progreso:",
+    "title": "Descarga del modelo",
+    "progressLabel": "Progreso de la descarga",
+    "phase": {
+      "queued": "Iniciando la descarga…",
+      "downloading": "Descargando",
+      "finalizing": "Finalizando…",
+      "completed": "Descarga completada",
+      "cancelled": "Descarga cancelada",
+      "failed": "La descarga ha fallado",
+      "stalled": "La finalización está tardando demasiado"
+    },
+    "completedHint": "Disponible en tus modelos instalados",
+    "bytes": "{{done}} de {{total}}",
+    "speed": "{{rate}}/s",
+    "remaining": "Quedan {{time}}",
+    "dismiss": "Cerrar",
     "expand": "Expandir",
     "collapse": "Contraer",
     "duration": {

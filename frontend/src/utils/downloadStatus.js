@@ -29,6 +29,38 @@ export function downloadStalledMessage() {
 }
 
 /**
+ * The phases the download widget renders (#292). `stalled` is the client-side
+ * "finalization never came back" state (#315); every other phase maps to a
+ * backend status, with `running` split at 100% into downloading / finalizing.
+ */
+export const DOWNLOAD_PHASES = [
+  "queued",
+  "downloading",
+  "finalizing",
+  "completed",
+  "cancelled",
+  "failed",
+  "stalled",
+];
+
+/**
+ * Derive the widget phase from the raw job state the context tracks.
+ *
+ * Order matters: a cancel that failed to reach the backend leaves a detail in
+ * `errorMessage` but is still a cancellation, whereas an error on a job that is
+ * not yet terminal (failed start, poll network error) IS a failure.
+ */
+export function deriveDownloadPhase({ status, progress = 0, errorMessage = "" }) {
+  if (status === DOWNLOAD_STALLED) return "stalled";
+  if (status === "failed") return "failed";
+  if (status === DOWNLOAD_CANCELLED) return "cancelled";
+  if (status === "completed") return "completed";
+  if (errorMessage) return "failed";
+  if (status === "running") return (progress ?? 0) >= 100 ? "finalizing" : "downloading";
+  return "queued";
+}
+
+/**
  * Map a download `onError` reason to a user-facing message, or `null` when there is
  * nothing to show (a cancellation is not a failure).
  */

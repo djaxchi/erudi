@@ -1,9 +1,21 @@
 {
   "widget": {
-    "downloadingTitle": "Downloading: {{name}}",
-    "errorTitle": "Error: {{name}}",
-    "timeLeft": "Time Left:",
-    "progress": "Progress:",
+    "title": "Model download",
+    "progressLabel": "Download progress",
+    "phase": {
+      "queued": "Starting download…",
+      "downloading": "Downloading",
+      "finalizing": "Finalizing…",
+      "completed": "Download complete",
+      "cancelled": "Download cancelled",
+      "failed": "Download failed",
+      "stalled": "Finalization is taking too long"
+    },
+    "completedHint": "Available in your installed models",
+    "bytes": "{{done}} of {{total}}",
+    "speed": "{{rate}}/s",
+    "remaining": "{{time}} left",
+    "dismiss": "Dismiss",
     "expand": "Expand",
     "collapse": "Collapse",
     "duration": {

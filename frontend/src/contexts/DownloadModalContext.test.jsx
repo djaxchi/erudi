@@ -29,8 +29,6 @@ vi.mock("../components/modals/ConfirmationModal", () => ({
     </div>
   ),
 }));
-vi.mock("../components/modals/ErrorModal", () => ({ default: () => null }));
-vi.mock("../components/Spinner", () => ({ default: () => null }));
 
 import { DownloadModalProvider, useDownloadModal } from "./DownloadModalContext";
 import { DOWNLOAD_CANCELLED, DOWNLOAD_STALLED } from "../utils/downloadStatus";

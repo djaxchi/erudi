@@ -1,9 +1,21 @@
 {
   "widget": {
-    "downloadingTitle": "正在下载：{{name}}",
-    "errorTitle": "错误：{{name}}",
-    "timeLeft": "剩余时间：",
-    "progress": "进度：",
+    "title": "模型下载",
+    "progressLabel": "下载进度",
+    "phase": {
+      "queued": "正在开始下载…",
+      "downloading": "正在下载",
+      "finalizing": "正在完成…",
+      "completed": "下载完成",
+      "cancelled": "下载已取消",
+      "failed": "下载失败",
+      "stalled": "完成阶段耗时过长"
+    },
+    "completedHint": "已加入你的已安装模型",
+    "bytes": "{{done}} / {{total}}",
+    "speed": "{{rate}}/秒",
+    "remaining": "剩余 {{time}}",
+    "dismiss": "关闭",
     "expand": "展开",
     "collapse": "收起",
     "duration": {

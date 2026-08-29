@@ -1,20 +1,19 @@
 // src/contexts/DownloadModalContext.jsx
-import React, { createContext, useContext, useState, useCallback, useRef } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import ReactDOM from "react-dom";
+import { AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import ConfirmationModal from "../components/modals/ConfirmationModal";
-import ErrorModal from "../components/modals/ErrorModal";
-import SpinnerDots from "../components/Spinner";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import DownloadWidget from "../components/DownloadWidget";
 import { API_BASE_URL } from "../config/api.js";
 import { tracedFetch } from "../services/api/client";
 import { createLogger } from "../utils/logger";
 import {
   DOWNLOAD_CANCELLED,
   DOWNLOAD_STALLED,
+  deriveDownloadPhase,
   downloadStalledMessage,
 } from "../utils/downloadStatus";
-import { formatPercent } from "../i18n/format";
 const log = createLogger("DownloadModalContext");
 
 // Poll cadence, and the stall guard on top of it (#315).
@@ -33,43 +32,31 @@ const log = createLogger("DownloadModalContext");
 const POLL_INTERVAL_MS = 2000;
 const FINALIZE_STALL_TICKS = 90; // 90 x 2s = 3 minutes stuck at 100%
 
+// The widget starts as a pill and opens by itself once the confirmation has
+// gone and the first poll is about to land.
+const AUTO_EXPAND_MS = 2000;
+
+// Terminal states that need no action linger just long enough to be read
+// (#292). A failure or a stall stays until the user dismisses it.
+const COMPLETED_DISMISS_MS = 4000;
+const CANCELLED_DISMISS_MS = 2500;
+
 const DownloadModalContext = createContext();
-
-// Placeholder for a readout that has no value yet (time left / progress before
-// the job runs). A typographic token, not copy: identical in every language.
-const UNKNOWN_VALUE = "--";
-
-// Helper function to format time with appropriate units
-const formatTimeLeft = (t, seconds) => {
-  if (!seconds || seconds <= 0) {
-    return UNKNOWN_VALUE;
-  }
-
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-
-  if (days > 0) {
-    return t("downloads:widget.duration.daysHours", { days, hours });
-  } else if (hours > 0) {
-    return t("downloads:widget.duration.hoursMinutes", { hours, minutes });
-  } else if (minutes > 0) {
-    return t("downloads:widget.duration.minutesSeconds", { minutes, seconds: secs });
-  } else {
-    return t("downloads:widget.duration.seconds", { seconds: secs });
-  }
-};
 
 export function DownloadModalProvider({ children }) {
   const { t } = useTranslation();
   const [model, setModel] = useState(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  // `isDownloading` is the consumer-facing "a job is in flight" flag (sidebar
+  // dimming, bug-report icon). The widget outlives it: it stays mounted through
+  // the terminal state until dismissed, which `isWidgetVisible` tracks.
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isWidgetVisible, setIsWidgetVisible] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("idle");
   const [timeLeft, setTimeLeft] = useState(null);
+  const [totalBytes, setTotalBytes] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
   const [jobId, setJobId] = useState(null);
   // Completion exposed as observable context STATE, not only as a stored callback.
@@ -81,6 +68,8 @@ export function DownloadModalProvider({ children }) {
   const [lastCompletedAt, setLastCompletedAt] = useState(null);
 
   const intervalRef = useRef(null);
+  const expandTimerRef = useRef(null);
+  const dismissTimerRef = useRef(null);
   const callbacksRef = useRef({ onComplete: null, onError: null });
   // Stall guard state (#315): the last (status, progress) pair seen and how many
   // consecutive polls have reported it unchanged while at 100%.
@@ -89,8 +78,27 @@ export function DownloadModalProvider({ children }) {
   // already in flight cannot resurrect a job the backend has just dropped.
   const activeJobRef = useRef(null);
 
+  useEffect(
+    () => () => {
+      clearInterval(intervalRef.current);
+      clearTimeout(expandTimerRef.current);
+      clearTimeout(dismissTimerRef.current);
+    },
+    []
+  );
+
   const toggleCollapse = useCallback(() => {
     setIsCollapsed((c) => !c);
+  }, []);
+
+  const dismissWidget = useCallback(() => {
+    clearTimeout(dismissTimerRef.current);
+    setIsWidgetVisible(false);
+  }, []);
+
+  const scheduleDismiss = useCallback((delayMs) => {
+    clearTimeout(dismissTimerRef.current);
+    dismissTimerRef.current = setTimeout(() => setIsWidgetVisible(false), delayMs);
   }, []);
 
   const open = useCallback((selectedModel, { onComplete, onError } = {}) => {
@@ -102,6 +110,17 @@ export function DownloadModalProvider({ children }) {
 
   const cancelConfirm = useCallback(() => setIsConfirmOpen(false), []);
 
+  // Local settle shared by every cancel path: the acknowledged one, the
+  // no-job-yet one, the endpoint-failed one and the poll's 404.
+  const settleCancelled = useCallback(() => {
+    activeJobRef.current = null;
+    clearInterval(intervalRef.current);
+    setIsDownloading(false);
+    setProgress(0);
+    setStatus(DOWNLOAD_CANCELLED);
+    scheduleDismiss(CANCELLED_DISMISS_MS);
+  }, [scheduleDismiss]);
+
   const checkDownloadStatus = useCallback(
     async (id) => {
       try {
@@ -111,11 +130,8 @@ export function DownloadModalProvider({ children }) {
         }
         if (!res.ok) {
           if (res.status === 404) {
-            // Le job n'existe plus (probablement annulé et nettoyé)
-            clearInterval(intervalRef.current);
-            setIsDownloading(false);
-            setProgress(0);
-            setStatus(DOWNLOAD_CANCELLED);
+            // The job no longer exists (most likely cancelled and cleaned up).
+            settleCancelled();
             return;
           }
           throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
@@ -124,6 +140,7 @@ export function DownloadModalProvider({ children }) {
         setProgress(data.progress);
         setStatus(data.status);
         setTimeLeft(data.time_left);
+        setTotalBytes(data.total_bytes ?? 0);
 
         const isTerminal =
           data.status === "completed" ||
@@ -163,8 +180,10 @@ export function DownloadModalProvider({ children }) {
           if (data.status === "completed") {
             setCompletionCount((c) => c + 1);
             setLastCompletedAt(Date.now());
+            scheduleDismiss(COMPLETED_DISMISS_MS);
             callbacksRef.current.onComplete?.();
           } else if (data.status === DOWNLOAD_CANCELLED) {
+            scheduleDismiss(CANCELLED_DISMISS_MS);
             callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
           } else {
             const errorMsg = data.error_message || t("downloads:errors.failedUnexpectedly");
@@ -181,17 +200,23 @@ export function DownloadModalProvider({ children }) {
         callbacksRef.current.onError?.(errorMsg);
       }
     },
-    [t]
+    [t, scheduleDismiss, settleCancelled]
   );
 
   const handleConfirm = useCallback(async () => {
     setIsConfirmOpen(false);
+    clearTimeout(dismissTimerRef.current);
+    setIsWidgetVisible(true);
+    setIsCollapsed(true);
     setIsDownloading(true);
     setStatus("pending");
     setProgress(0);
+    setTimeLeft(null);
+    setTotalBytes(0);
     setErrorMessage("");
 
-    setTimeout(() => setIsCollapsed(false), 2000);
+    clearTimeout(expandTimerRef.current);
+    expandTimerRef.current = setTimeout(() => setIsCollapsed(false), AUTO_EXPAND_MS);
 
     try {
       // Catalog models download by id; HF live-search hits have no id, so they
@@ -222,7 +247,7 @@ export function DownloadModalProvider({ children }) {
       }
       const job = await res.json();
 
-      // Sauvegarder le jobId pour l'annulation
+      // Keep the job id around for cancellation.
       setJobId(job.id);
       activeJobRef.current = job.id;
 
@@ -241,17 +266,13 @@ export function DownloadModalProvider({ children }) {
 
   const cancelDownload = useCallback(async () => {
     if (!jobId) {
-      // Si pas de jobId, on fait juste le nettoyage local
-      clearInterval(intervalRef.current);
-      setIsDownloading(false);
-      setProgress(0);
-      setStatus(DOWNLOAD_CANCELLED);
+      // No job id yet: nothing to tell the backend, settle locally.
+      settleCancelled();
       callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
       return;
     }
 
     try {
-      // Appeler l'endpoint d'annulation
       const response = await tracedFetch(`${API_BASE_URL}/llms/downloads/${jobId}/cancel`, {
         method: "POST",
       });
@@ -261,33 +282,30 @@ export function DownloadModalProvider({ children }) {
       }
 
       log.log(`Download cancelled for job ${jobId}`);
-
-      // The backend drops the job on acknowledgement: one more status poll
-      // would only be answered with a not-found warning in its log. Settle
-      // locally right away, exactly like the fallbacks below.
-      activeJobRef.current = null;
-      clearInterval(intervalRef.current);
-      setIsDownloading(false);
-      setProgress(0);
-      setStatus(DOWNLOAD_CANCELLED);
-      callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
     } catch (error) {
       log.error("Failed to cancel download:", error);
       setErrorMessage(t("downloads:errors.cancelFailed", { detail: error.message }));
-
-      // Dans tous les cas, on nettoie localement
-      activeJobRef.current = null;
-      clearInterval(intervalRef.current);
-      setIsDownloading(false);
-      setProgress(0);
-      setStatus(DOWNLOAD_CANCELLED);
-      callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
     }
-  }, [jobId, t]);
 
-  const closeErrorModal = () => {
-    setErrorMessage("");
-  };
+    // The backend drops the job on acknowledgement: one more status poll would
+    // only be answered with a not-found warning in its log. Settle locally
+    // right away -- and do the same when the cancel call itself failed, so the
+    // user is never left with a widget they cannot get rid of.
+    settleCancelled();
+    callbacksRef.current.onError?.(DOWNLOAD_CANCELLED);
+  }, [jobId, t, settleCancelled]);
+
+  // What the widget renders, derived from the raw job state above. Bytes and
+  // speed come from the status reply's `total_bytes` and `time_left`: the
+  // backend's ETA is remaining / rate, so rate = remaining / ETA.
+  const phase = deriveDownloadPhase({ status, progress, errorMessage });
+  const downloadedBytes = totalBytes > 0 ? (totalBytes * (progress ?? 0)) / 100 : null;
+  const speedBytesPerSec =
+    phase === "downloading" && totalBytes > 0 && timeLeft > 0
+      ? (totalBytes - downloadedBytes) / timeLeft
+      : null;
+
+  const portalRoot = typeof document === "undefined" ? null : document.getElementById("modal-root");
 
   return (
     <DownloadModalContext.Provider
@@ -300,7 +318,7 @@ export function DownloadModalProvider({ children }) {
     >
       {children}
 
-      {(isConfirmOpen || isDownloading) &&
+      {portalRoot &&
         ReactDOM.createPortal(
           <>
             {isConfirmOpen && (
@@ -311,92 +329,27 @@ export function DownloadModalProvider({ children }) {
                 text={model?.name}
               />
             )}
-            {isDownloading && (
-              <>
-                {/* Purely decorative, and it sits on top of the left rail's
-                    bottom-most entry (Settings), so it must not eat the click
-                    that was aimed at the gear behind it (#347). */}
-                <div className="fixed bottom-7 left-[1.5%] pointer-events-none">
-                  <SpinnerDots className="w-6 h-6 text-emerald-400 animate-spin" />
-                </div>
-                {/* Offset above the sidebar's bottom edge so the widget never
-                    covers the connection pill living there (#303). */}
-                <div
-                  className={`fixed bottom-14 bg-[#121212]/50 p-4 flex items-center rounded-r-3xl z-50 ${
-                    isCollapsed
-                      ? "left-[4.5%] w-0 bg-transparent"
-                      : "left-[4.5%] w-[35%] sm:w-[38%] xl:w-[28%] gap-3"
-                  }`}
-                >
-                  <div className="flex-1">
-                    {!isCollapsed && (
-                      <>
-                        <div className="flex items-center justify-between w-full">
-                          <p className="text-white font-semibold truncate flex-1">
-                            {errorMessage
-                              ? t("downloads:widget.errorTitle", { name: model?.name })
-                              : t("downloads:widget.downloadingTitle", { name: model?.name })}
-                          </p>
-                          <button
-                            onClick={cancelDownload}
-                            className="ml-2 p-1.5 bg-red-500/20 hover:bg-red-500/30 rounded transition-colors"
-                            aria-label={t("common:actions.cancel")}
-                          >
-                            <X className="w-4 h-4 text-red-400" />
-                          </button>
-                        </div>
-
-                        {errorMessage ? (
-                          <ErrorModal errorMessage={errorMessage} onClose={closeErrorModal} />
-                        ) : (
-                          <div className="flex gap-4 text-sm text-gray-300 mt-2">
-                            <span>
-                              {t("downloads:widget.timeLeft")}{" "}
-                              <span className="font-semibold">
-                                {status === "running" ? formatTimeLeft(t, timeLeft) : UNKNOWN_VALUE}
-                              </span>
-                            </span>
-                            <span>
-                              {t("downloads:widget.progress")}{" "}
-                              <span className="font-semibold">
-                                {status === "running"
-                                  ? formatPercent(progress ?? 0)
-                                  : UNKNOWN_VALUE}
-                              </span>
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Progress bar at bottom - only show if no error */}
-                        {!errorMessage && (
-                          <div className="absolute left-0 bottom-0 w-[96%] h-1 bg-gray-800/50 rounded-b-3xl overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-emerald-600 via-emerald-500 to-emerald-400 transition-all duration-300 ease-out"
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <button
-                    className="absolute bottom-8 right-0"
-                    onClick={toggleCollapse}
-                    aria-label={
-                      isCollapsed ? t("downloads:widget.expand") : t("downloads:widget.collapse")
-                    }
-                  >
-                    {isCollapsed ? (
-                      <ChevronRight className="w-6 h-6 text-gray-300 hover:text-white" />
-                    ) : (
-                      <ChevronLeft className="w-6 h-6 text-gray-300 hover:text-white" />
-                    )}
-                  </button>
-                </div>
-              </>
-            )}
+            <AnimatePresence>
+              {isWidgetVisible && (
+                <DownloadWidget
+                  key="download-widget"
+                  modelName={model?.name ?? ""}
+                  phase={phase}
+                  progress={progress ?? 0}
+                  timeLeft={timeLeft}
+                  totalBytes={totalBytes}
+                  downloadedBytes={downloadedBytes}
+                  speedBytesPerSec={speedBytesPerSec}
+                  message={errorMessage}
+                  collapsed={isCollapsed}
+                  onToggleCollapse={toggleCollapse}
+                  onCancel={cancelDownload}
+                  onDismiss={dismissWidget}
+                />
+              )}
+            </AnimatePresence>
           </>,
-          document.getElementById("modal-root")
+          portalRoot
         )}
     </DownloadModalContext.Provider>
   );
