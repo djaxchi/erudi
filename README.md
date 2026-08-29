@@ -23,7 +23,7 @@ Erudi is a desktop application that lets you download, run, and chat with open-s
 |---|---|---|
 | Windows (NVIDIA GPU) | CUDA via llama-server | ✅ |
 | Windows (no GPU) | CPU via llama-server | ✅ |
-| macOS Apple Silicon | MLX | 🚧 In progress |
+| macOS Apple Silicon (macOS 14+) | MLX | 🚧 In progress |
 | Linux (NVIDIA GPU) | CUDA via llama-server | 🚧 In progress |
 | Linux (CPU) | CPU via llama-server | 🚧 In progress |
 
