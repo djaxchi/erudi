@@ -30,7 +30,7 @@ class CsvExtractor:
             dialect = csv.Sniffer().sniff(text[:_SNIFF_BYTES], delimiters=",;\t")
         except csv.Error:
             logger.warning(
-                f"CSV {path.name}: dialect sniffing failed — "
+                f"CSV {path.name}: dialect sniffing failed - "
                 f"falling back to default comma dialect"
             )
             dialect = csv.excel  # default comma

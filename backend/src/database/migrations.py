@@ -75,7 +75,7 @@ def run_migrations(handle: PostgresHandle) -> None:
         # the baseline — replaying the baseline's CREATE TABLEs would collide.
         if current is None and has_business_tables:
             logger.info(
-                "Existing pre-Alembic schema detected — stamping baseline %s",
+                "Existing pre-Alembic schema detected - stamping baseline %s",
                 BASELINE_REVISION,
             )
             command.stamp(cfg, BASELINE_REVISION)
@@ -90,7 +90,7 @@ def run_migrations(handle: PostgresHandle) -> None:
             except Exception:
                 # A failed snapshot must NOT silently proceed into a (possibly
                 # destructive) migration with no safety net.
-                logger.error("Pre-migration backup failed — aborting migration", exc_info=True)
+                logger.error("Pre-migration backup failed - aborting migration", exc_info=True)
                 raise
 
         try:

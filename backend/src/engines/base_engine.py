@@ -591,7 +591,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
             # Testing override: ERUDI_FORCE_CPU=1 bypasses GPU detection entirely.
             # Use this to validate CPU fallback on a GPU machine without disabling hardware.
             if os.environ.get("ERUDI_FORCE_CPU"):
-                logger.info("[ERUDI_FORCE_CPU] Forcing CPU_Engine — GPU detection skipped.")
+                logger.info("[ERUDI_FORCE_CPU] Forcing CPU_Engine - GPU detection skipped.")
                 return CPU_Engine
 
             if system == "darwin": # MacOS

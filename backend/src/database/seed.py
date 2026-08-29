@@ -1441,13 +1441,13 @@ class Database_Seeder:
         tag = getattr(config.LLM_Engine, "FORMAT_TAG", None)
         entries = load_catalog_snapshot(tag) if tag else []
         if not entries:
-            logger.info("No bundled catalog snapshot — keeping the existing catalog")
+            logger.info("No bundled catalog snapshot - keeping the existing catalog")
             return {"resynced": False}
         fresh = [dict_to_llm(e) for e in entries]
         fresh_base = [m for m in fresh if m.is_base]
         fresh_derived = [m for m in fresh if not m.is_base]
         if not fresh_base:
-            logger.warning("Snapshot carries no base models — keeping the existing catalog")
+            logger.warning("Snapshot carries no base models - keeping the existing catalog")
             return {"resynced": False}
         res = self.reconcile_remote_catalog(db, fresh_base, fresh_derived)
         if res.get("resynced"):
