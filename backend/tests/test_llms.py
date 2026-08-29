@@ -1247,6 +1247,54 @@ class TestModelDeletionAndRebind:
         assert refreshed.kb_id == kb_id
         assert test_db_session.query(KnowledgeBase).filter_by(id=kb_id).first() is not None
 
+    def test_rebind_refreshes_the_publisher_generation_hints(
+        self, client, test_db_session, tmp_path
+    ):
+        # The sampling hints (#388) follow the weights: after a rebind the
+        # assistant must resolve the SAME sampling defaults as its new base,
+        # not keep the old base's (or none at all).
+        old_base, old_dir = self._make_base_with_files(
+            test_db_session, tmp_path, name="Old Base", subdir="old",
+        )
+        assistant, _kb = self._make_assistant(test_db_session, old_base)
+        assistant.generation_hints = {
+            "base_repo": "google/gemma-3-270m", "generation_config": {"temperature": 1.0},
+            "supports_thinking": False, "context_length": 32768,
+            "captured_at": "d", "source_stage": "base_generation_config", "evidence": None,
+        }
+        new_dir = tmp_path / "models" / "new"
+        new_dir.mkdir(parents=True)
+        (new_dir / "weights.safetensors").write_bytes(b"new weights")
+        new_hints = {
+            "base_repo": "Qwen/Qwen3-4B",
+            "generation_config": {"temperature": 0.6, "top_p": 0.95, "top_k": 20},
+            "supports_thinking": True, "context_length": 40960,
+            "captured_at": "d", "source_stage": "base_generation_config", "evidence": None,
+        }
+        new_base = Llm(
+            name="New Base", local=1, type="qwen", link=str(new_dir), param_size=4.0,
+            artifact_size_bytes=2_500_000_000, generation_hints=new_hints,
+        )
+        test_db_session.add(new_base)
+        test_db_session.flush()
+        shutil.rmtree(old_dir)
+        test_db_session.commit()
+        assistant_id, new_base_id = assistant.id, new_base.id
+
+        resp = client.post(
+            f"/erudi/llms/{assistant_id}/rebind",
+            json={"new_base_llm_id": new_base_id},
+        )
+
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        assert data["generation_hints"] == new_hints
+        assert data["artifact_size_bytes"] == 2_500_000_000
+        base_data = client.get(f"/erudi/llms/{new_base_id}").json()
+        assert data["sampling_defaults"] == base_data["sampling_defaults"]
+        assert data["sampling_defaults"]["top_k"] == 20
+        assert data["sampling_defaults"]["source"] == "base_generation_config"
+
     def test_rebind_rejects_target_without_weights(
         self, client, test_db_session, tmp_path
     ):
