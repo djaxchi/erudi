@@ -49,6 +49,14 @@ describe("downloadFailureDetail", () => {
     expect(downloadFailureDetail('{"detail":"Model 14 not found"}')).toBe("Model 14 not found");
   });
 
+  it("unwraps the app's {success, error: {type, message}} envelope too", () => {
+    const body = JSON.stringify({
+      success: false,
+      error: { type: "MODEL_NOT_FOUND", message: "Model with id 14 was not found" },
+    });
+    expect(downloadFailureDetail(body)).toBe("Model with id 14 was not found");
+  });
+
   it("passes anything that is not a detail envelope through, trimmed", () => {
     expect(downloadFailureDetail("  Bad Gateway \n")).toBe("Bad Gateway");
     expect(downloadFailureDetail('{"error":"x"}')).toBe('{"error":"x"}');

@@ -97,6 +97,14 @@ export function DownloadModalProvider({ children }) {
     setIsWidgetVisible(false);
   }, []);
 
+  // A terminal failure must be readable at once: the pill alone would only say
+  // "Download failed" with no model, no detail and no Dismiss until the 2 s
+  // auto-expand (or a click) came round.
+  const revealPanel = useCallback(() => {
+    clearTimeout(expandTimerRef.current);
+    setIsCollapsed(false);
+  }, []);
+
   const scheduleDismiss = useCallback((delayMs) => {
     clearTimeout(dismissTimerRef.current);
     dismissTimerRef.current = setTimeout(() => setIsWidgetVisible(false), delayMs);
@@ -168,6 +176,7 @@ export function DownloadModalProvider({ children }) {
             setIsDownloading(false);
             setStatus(DOWNLOAD_STALLED);
             setErrorMessage(downloadStalledMessage());
+            revealPanel();
             callbacksRef.current.onError?.(DOWNLOAD_STALLED);
             return;
           }
@@ -189,6 +198,7 @@ export function DownloadModalProvider({ children }) {
           } else {
             const errorMsg = data.error_message || t("downloads:errors.failedUnexpectedly");
             setErrorMessage(errorMsg);
+            revealPanel();
             callbacksRef.current.onError?.(errorMsg);
           }
         }
@@ -198,10 +208,11 @@ export function DownloadModalProvider({ children }) {
         setIsDownloading(false);
         const errorMsg = t("downloads:errors.pollFailed");
         setErrorMessage(errorMsg);
+        revealPanel();
         callbacksRef.current.onError?.(errorMsg);
       }
     },
-    [t, scheduleDismiss, settleCancelled]
+    [t, scheduleDismiss, settleCancelled, revealPanel]
   );
 
   const handleConfirm = useCallback(async () => {
@@ -258,10 +269,11 @@ export function DownloadModalProvider({ children }) {
       log.error("Download start error:", err);
       const errorMsg = err.message || err.toString() || t("downloads:errors.unexpected");
       setErrorMessage(errorMsg);
+      revealPanel();
       setIsDownloading(false);
       callbacksRef.current.onError?.(errorMsg);
     }
-  }, [model, checkDownloadStatus, t]);
+  }, [model, checkDownloadStatus, t, revealPanel]);
 
   const cancelDownload = useCallback(async () => {
     if (!jobId) {

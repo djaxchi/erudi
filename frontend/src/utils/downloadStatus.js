@@ -61,16 +61,19 @@ export function deriveDownloadPhase({ status, progress = 0, errorMessage = "" })
 }
 
 /**
- * The human part of a failed start-download response body. FastAPI wraps its
- * errors as `{"detail": "..."}`; show that sentence rather than the raw JSON.
- * Anything else (plain text, HTML from a proxy, empty body) is passed through.
+ * The human part of a failed start-download response body. The backend has
+ * two JSON envelopes: FastAPI's own `{"detail": "..."}` (HTTPException,
+ * validation) and the app handler's `{"success": false, "error": {"type",
+ * "message"}}` (AppBaseException). Show the sentence, not the JSON. Anything
+ * else (plain text, HTML from a proxy, empty body) is passed through.
  */
 export function downloadFailureDetail(body) {
   const text = (body ?? "").trim();
   try {
     const parsed = JSON.parse(text);
-    if (parsed && typeof parsed.detail === "string" && parsed.detail.trim()) {
-      return parsed.detail.trim();
+    const candidate = parsed?.error?.message ?? parsed?.detail;
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
     }
   } catch {
     /* not JSON */

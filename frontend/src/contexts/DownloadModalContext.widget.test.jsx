@@ -262,6 +262,23 @@ describe("Download widget terminal states (#292)", () => {
     expect(screen.getByText("Dismiss")).toBeTruthy();
   });
 
+  it("opens the panel at once when the start fails, without waiting for the auto-expand", async () => {
+    postResponder = () => ({ ok: false, status: 500, text: async () => "boom" });
+    renderProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByText("OPEN"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("CONFIRM"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    // Before the 2 s auto-expand: the detail and Dismiss are already there.
+    expect(screen.getByText("Base Model")).toBeTruthy();
+    expect(screen.getByText("Failed to start download (500): boom")).toBeTruthy();
+    expect(screen.getByText("Dismiss")).toBeTruthy();
+  });
+
   it("acknowledges a user cancel inline, then dismisses itself", async () => {
     renderProvider();
     await startPollAndExpand();
