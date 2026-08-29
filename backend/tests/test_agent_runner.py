@@ -1556,3 +1556,56 @@ async def test_oneshot_passes_the_resolved_sampling_too(monkeypatch):
     ):
         pass
     assert captured["sampling"].source == "none"
+
+
+# ---------------------------------------------------------------------------
+# Per-request seed on the MLX path: mlx_vlm.server replays DEFAULT_SEED when a
+# request carries no ``seed``, so "creativity" had no run-to-run effect on Apple
+# Silicon. The factory must let the engine translation stamp a fresh seed into
+# extra_body and the "ChatOpenAI built" line must show it.
+# ---------------------------------------------------------------------------
+from src.engines.mlx_engine import MLX_Engine  # noqa: E402
+
+
+class _MlxLikeEngine(_IdentityEngine):
+    _translate_payload_kwargs = MLX_Engine._translate_payload_kwargs
+
+
+def test_build_chat_model_mlx_extra_body_carries_a_fresh_seed(monkeypatch):
+    monkeypatch.setattr(config, "LLM_Engine", _MlxLikeEngine)
+    chats = [build_chat_model(_Llm(), temperature=0.6, top_p=0.95, max_tokens=55)
+             for _ in range(8)]
+    assert all(isinstance(chat.extra_body["seed"], int) for chat in chats)
+    assert len({chat.extra_body["seed"] for chat in chats}) > 1
+    # The repetition controls still ride next to it, untouched.
+    assert {k: v for k, v in chats[0].extra_body.items() if k != "seed"} == {
+        "repetition_penalty": 1.1, "repetition_context_size": 64}
+
+
+def test_build_chat_model_oneshot_on_mlx_also_gets_a_seed(monkeypatch):
+    # Titles run at temperature 1.0 with enable_thinking=False; a random seed
+    # there is fine and the body shape stays identical apart from the seed.
+    monkeypatch.setattr(config, "LLM_Engine", _MlxLikeEngine)
+    chat = build_chat_model(_Llm(), temperature=1.0, top_p=0.95, max_tokens=12,
+                            disable_thinking=True)
+    assert chat.extra_body["enable_thinking"] is False
+    assert isinstance(chat.extra_body["seed"], int)
+
+
+def test_build_chat_model_logs_the_seed_on_mlx(monkeypatch, caplog):
+    monkeypatch.setattr(config, "LLM_Engine", _MlxLikeEngine)
+    with caplog.at_level(logging.INFO, logger="erudi"):
+        chat = build_chat_model(_Llm(), temperature=0.6, top_p=0.95, max_tokens=55)
+    (line,) = [r.message for r in caplog.records if r.message.startswith("ChatOpenAI built:")]
+    assert f"seed={chat.extra_body['seed']}" in line
+
+
+def test_build_chat_model_llama_cpp_extra_body_has_no_seed(monkeypatch):
+    from src.engines.base_llama_cpp_engine import BaseLlamaCppEngine
+
+    class _LlamaEngine(_IdentityEngine):
+        _translate_payload_kwargs = BaseLlamaCppEngine._translate_payload_kwargs
+
+    monkeypatch.setattr(config, "LLM_Engine", _LlamaEngine)
+    chat = build_chat_model(_Llm(), temperature=0.6, top_p=0.95, max_tokens=55)
+    assert "seed" not in chat.extra_body

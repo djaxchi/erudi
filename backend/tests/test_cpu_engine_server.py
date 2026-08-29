@@ -155,6 +155,15 @@ class TestTranslatePayloadKwargs:
             "chat_template_kwargs": {"enable_thinking": False},
         }
 
+    def test_no_seed_is_injected(self):
+        # llama-server samples randomly by default (seed -1); only the MLX
+        # translation stamps a per-request seed, because mlx_vlm.server would
+        # otherwise replay DEFAULT_SEED on every generation.
+        out = CPU_Engine._translate_payload_kwargs({
+            "repetition_penalty": 1.1, "repetition_context_size": 64,
+        })
+        assert "seed" not in out
+
 
 # =====================================================================
 # UNIT — config attrs
