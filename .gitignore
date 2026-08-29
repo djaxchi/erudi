@@ -1,7 +1,7 @@
 
-# Secrets : il faut le mettre dans le gitignore une fois mis en prod
+# Secrets: real env files are never committed. The value-less template
+# backend/.env.example IS tracked -- it documents the variable names only.
 .env
-.env.example
 
 # Build
 /backend.spec
