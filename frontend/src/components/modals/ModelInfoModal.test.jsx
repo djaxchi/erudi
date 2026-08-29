@@ -132,4 +132,16 @@ describe("ModelInfoModal", () => {
     expect(props.onClose).toHaveBeenCalledTimes(2);
     expect(props.onDownload).not.toHaveBeenCalled();
   });
+
+  it("Escape closes the modal, and only while it is open", () => {
+    const { props } = setup();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(props.onDownload).not.toHaveBeenCalled();
+    cleanup();
+
+    const closed = setup(richModel, { isOpen: false });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(closed.props.onClose).not.toHaveBeenCalled();
+  });
 });
