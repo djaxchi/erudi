@@ -96,6 +96,10 @@ npm start
 The app opens automatically. The backend runs on `http://127.0.0.1:27182` by default
 (27182 = the digits of _e_, for erudites).
 
+Every environment variable the backend reads (`HF_TOKEN` for gated models, `ERUDI_FORCE_CPU`,
+`ERUDI_LOG_LEVEL`, ...) is listed with a one-line description in
+[`backend/.env.example`](backend/.env.example); copy it to `backend/.env` (git-ignored) if you need any.
+
 ---
 
 ## Building for Distribution
