@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import PropTypes from "prop-types";
 import { useTranslation } from "react-i18next";
 import { Search } from "lucide-react";
@@ -21,8 +21,19 @@ const SORT_KEYS = ["fit", "downloads", "likes", "smallest", "largest"];
  * it searches all of HF — beyond the curated catalog — but only for models that
  * run on this machine's engine, and ranks hits by how well they fit the hardware
  * budget. Empty and error states give direction rather than mood.
+ *
+ * `handoff` is how the offline catalog search escalates (#380): when nothing in
+ * the bundled catalog matches, the page hands the term over as
+ * `{ term, seq }` and this panel runs it as if the user had typed it here. `seq`
+ * increments on every handoff so the same term can be handed over twice.
  */
-export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isInstalled }) {
+export default function HuggingFaceSearchPanel({
+  range,
+  onDownload,
+  onInfo,
+  isInstalled,
+  handoff,
+}) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState(null); // null = not searched yet
@@ -97,6 +108,14 @@ export default function HuggingFaceSearchPanel({ range, onDownload, onInfo, isIn
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (handoff?.term) {
+      runSearch(handoff.term);
+    }
+    // runSearch is recreated every render; the handoff object is the trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handoff]);
 
   return (
     <section className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5">
@@ -213,4 +232,5 @@ HuggingFaceSearchPanel.propTypes = {
   onDownload: PropTypes.func,
   onInfo: PropTypes.func,
   isInstalled: PropTypes.func,
+  handoff: PropTypes.shape({ term: PropTypes.string, seq: PropTypes.number }),
 };
