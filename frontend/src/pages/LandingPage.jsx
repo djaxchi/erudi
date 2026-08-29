@@ -9,6 +9,7 @@ import MachineReadout from "../components/MachineReadout";
 import HuggingFaceSearchPanel from "../components/HuggingFaceSearchPanel";
 import CategorySections from "../components/CategorySections";
 import CatalogFilters from "../components/CatalogFilters";
+import CatalogSearch from "../components/CatalogSearch";
 import ExploreIndex from "../components/ExploreIndex";
 import ConnectionStatus from "../components/ConnectionStatus";
 import ModelInfoModal from "../components/modals/ModelInfoModal";
@@ -25,7 +26,9 @@ import { transformAppStartupInfo } from "../utils/hardwareTransform";
 import { downloadErrorMessage } from "../utils/downloadStatus";
 import { createLogger } from "../utils/logger";
 import { splitByBase, installedRepoKeys, modelRepoKey } from "../utils/modelCatalog";
+import { searchCatalog } from "../utils/catalogSearch";
 import { rankByFit, pickFlagships, applyCatalogFilters } from "../utils/hardwareFit";
+import useDebouncedValue from "../shared/hooks/useDebouncedValue";
 import { isTestedModel } from "../utils/testedModels";
 import { isKbAssistant, hasMissingWeights, findBaseModelName } from "../utils/modelWeights";
 import { fetchDeleteDependents, parseConflictDependents } from "../utils/deleteGuard";
@@ -56,7 +59,31 @@ export default function LandingPage() {
   const [brainSidebarCollapsed, setBrainSidebarCollapsed] = useState(false);
   const [communityOpen, setCommunityOpen] = useState(false);
   const [filters, setFilters] = useState({ size: "any", fitOnly: false });
+  // Offline catalog search (#380): the box is controlled on every keystroke,
+  // the matching runs a beat later on the debounced value. Clearing is
+  // immediate (an empty box never waits for the debounce).
+  const [catalogInput, setCatalogInput] = useState("");
+  const debouncedCatalogQuery = useDebouncedValue(catalogInput.trim(), 150);
+  const catalogQuery = catalogInput.trim() ? debouncedCatalogQuery : "";
+  // Term handed to the Hugging Face panel from an empty catalog result; `seq`
+  // makes handing the same term over twice a new event.
+  const [hfHandoff, setHfHandoff] = useState(null);
+  const [online, setOnline] = useState(
+    () => typeof navigator === "undefined" || navigator.onLine !== false
+  );
   const localModelsRef = useRef(null);
+
+  // Same signal the Hugging Face panel uses for its offline guard, kept live so
+  // the "search Hugging Face instead" escalation appears/disappears with it.
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine !== false);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
 
   // Helper function to parse model metadata
   const parseMetadata = (metadataString) => {
@@ -279,6 +306,11 @@ export default function LandingPage() {
   const filteredBase = applyCatalogFilters(baseModels, filters, range);
   const filteredCommunity = applyCatalogFilters(communityModels, filters, range);
   const filtersActive = filters.size !== "any" || filters.fitOnly;
+  // Search hits over the whole bundled catalog (base first, then community),
+  // AND-ed with the size / fit filters above; null while no query is active.
+  const catalogHits = catalogQuery
+    ? searchCatalog([...filteredBase, ...filteredCommunity], catalogQuery)
+    : null;
 
   // Catalog cards for models already on disk (#348). The local row and the
   // catalog row are separate records joined only by the Hugging Face repo id
@@ -422,6 +454,13 @@ export default function LandingPage() {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  // Nothing in the bundled catalog matched: escalate the same term to the
+  // Hugging Face panel, which is the "look beyond the curated list" step.
+  const handOffToHuggingFace = (term) => {
+    setHfHandoff((prev) => ({ term, seq: (prev?.seq ?? 0) + 1 }));
+    scrollToSection("explore-search");
+  };
+
   return (
     <div className="flex h-screen">
       <Sidebar
@@ -554,16 +593,76 @@ export default function LandingPage() {
               onDownload={handleDownload}
               onInfo={handleInfo}
               isInstalled={isInstalled}
+              handoff={hfHandoff}
             />
           </div>
 
-          {/* Browse by capability */}
-          <section>
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+          {/* Browse by capability — with the offline catalog search (#380) */}
+          <section id="explore-browse" className="scroll-mt-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <span className="eyebrow">{t("landing:browse.eyebrow")}</span>
               <CatalogFilters value={filters} onChange={setFilters} hasRange={!!range} />
             </div>
-            {filtersActive && filteredBase.length === 0 ? (
+            <div className="mb-5">
+              <CatalogSearch value={catalogInput} onChange={setCatalogInput} />
+            </div>
+            {catalogHits ? (
+              catalogHits.length > 0 ? (
+                <>
+                  <div className="flex items-center gap-3 mb-3 flex-wrap">
+                    <span className="eyebrow">
+                      {t("models:catalogSearch.resultsFor", {
+                        count: catalogHits.length,
+                        term: catalogQuery,
+                      })}
+                    </span>
+                    <span className="h-px flex-1 bg-white/10" />
+                    <button
+                      onClick={() => setCatalogInput("")}
+                      className="mono text-[11px] text-[var(--ink-dim)] hover:text-[var(--ink)] transition-colors"
+                    >
+                      {t("common:actions.clear")}
+                    </button>
+                  </div>
+                  <div
+                    data-testid="catalog-search-results"
+                    className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3"
+                  >
+                    {catalogHits.map((model) => (
+                      <ExploreModelCard
+                        key={`search-${model.id ?? model.link}`}
+                        model={model}
+                        range={range}
+                        onDownload={handleDownload}
+                        onInfo={handleInfo}
+                        installed={isInstalled(model)}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="py-8 text-center space-y-3">
+                  <p className="text-[var(--ink-dim)] text-sm">
+                    {t("models:catalogSearch.noMatch", { term: catalogQuery })}
+                  </p>
+                  {filtersActive && (
+                    <p className="text-[var(--ink-faint)] text-sm">{t("landing:browse.noMatch")}</p>
+                  )}
+                  {online ? (
+                    <button
+                      onClick={() => handOffToHuggingFace(catalogQuery)}
+                      className="mono text-[11px] rounded-full border border-[var(--fit-good)] text-[var(--fit-good)] bg-[var(--fit-good)]/10 px-3 py-1.5 transition-[filter] hover:brightness-110"
+                    >
+                      {t("models:catalogSearch.searchHuggingFaceInstead", { term: catalogQuery })}
+                    </button>
+                  ) : (
+                    <p className="mono text-[11px] text-[var(--ink-faint)]">
+                      {t("models:search.offline")}
+                    </p>
+                  )}
+                </div>
+              )
+            ) : filtersActive && filteredBase.length === 0 ? (
               <p className="text-[var(--ink-dim)] text-sm py-8 text-center">
                 {t("landing:browse.noMatch")}
               </p>
@@ -579,8 +678,11 @@ export default function LandingPage() {
             )}
           </section>
 
-          {/* Community fine-tunes — collapsed by default to keep the panel calm */}
-          {filteredCommunity.length > 0 && (
+          {/* Community fine-tunes — collapsed by default to keep the panel calm.
+              Hidden while a catalog query is active: the results grid above
+              already covers these rows, so the section would only duplicate
+              them under the results (or under the empty state). */}
+          {!catalogHits && filteredCommunity.length > 0 && (
             <section id="explore-community" className="scroll-mt-6">
               <button
                 className="flex items-center gap-3 w-full text-left mb-4 group"

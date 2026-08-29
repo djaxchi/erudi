@@ -138,6 +138,14 @@
       "largest": "Plus grands"
     }
   },
+  "catalogSearch": {
+    "label": "Rechercher dans le catalogue",
+    "placeholder": "Filtrer le catalogue — nom, famille, capacité…",
+    "resultsFor_one": "{{count}} modèle du catalogue pour « {{term}} »",
+    "resultsFor_other": "{{count}} modèles du catalogue pour « {{term}} »",
+    "noMatch": "Rien dans le catalogue ne correspond à « {{term}} ». Essayez un terme plus court ou un nom de famille comme « qwen » ou « llama ».",
+    "searchHuggingFaceInstead": "Chercher « {{term}} » sur Hugging Face à la place"
+  },
   "info": {
     "noDescription": "Aucune description disponible",
     "basicInfo": "Informations générales",
