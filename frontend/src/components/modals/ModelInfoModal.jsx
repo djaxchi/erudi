@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
@@ -49,6 +49,17 @@ export default function ModelInfoModal({
 }) {
   const { t } = useTranslation();
   const [showRawMetadata, setShowRawMetadata] = useState(false);
+
+  // Escape closes the modal, the way every dialog is expected to; the
+  // listener only exists while the modal is open.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, onClose]);
 
   return (
     <AnimatePresence>

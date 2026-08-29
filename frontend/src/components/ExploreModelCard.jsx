@@ -73,6 +73,7 @@ export default function ExploreModelCard({ model, range, onDownload, onInfo, ins
       <FitGauge
         paramSize={model.param_size}
         quantized={model.quantized}
+        sizeBytes={model.artifact_size_bytes}
         range={range}
         showLabel={!unavailable}
       />

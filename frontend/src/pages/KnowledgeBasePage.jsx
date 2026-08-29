@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { inferenceTierLabel } from "../utils/inferenceTier";
+import { formatNumber } from "../i18n/format";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import ModelLibrary from "../components/ModelLibrary";
@@ -38,7 +39,9 @@ export default function KnowledgeBasePage() {
   const ratingScore =
     rating.status === "ready"
       ? rating.score
-        ? t("knowledgeBase:page.rating.score", { score: rating.score })
+        ? t("knowledgeBase:page.rating.score", {
+            score: formatNumber(rating.score, { maximumFractionDigits: 1 }),
+          })
         : t("knowledgeBase:page.rating.notAvailable")
       : t(`knowledgeBase:page.rating.${rating.status}`);
 
