@@ -10,7 +10,8 @@ croisant lecture de code + `gh`/`git` live. Évidence en `fichier:ligne`.
 > (`release.yml`, 5 legs) — #110 fermée ; gate de merge full-app boot-to-`ready`
 > (`app-build-smoke.yml`) — #92 ; promote atomique all-green (`release-promote.yml`)
 > — #115 ; snapshots catalogue build-time + régénération CI — #112/#114. Première
-> release réelle **`v2.0.0` buildée 5/5** (draft en QA, #139). Restent ouverts :
+> release réelle buildée 5/5 (draft en QA, #139 ; retaguée **`v1.0.0`** le 2026-08-31,
+> même commit — l'app n'avait jamais eu de 1.0.0 publique). Restent ouverts :
 > Windows signing (SignPath, futur), Intel mac, merge queue (#94). Ce doc reste la
 > référence historique de l'audit et des décisions de périmètre.
 
