@@ -51,7 +51,7 @@ electronFuses:
 # installed app follows the channel baked into its app-update.yml at build time.
 publish:
   provider: github
-  owner: djaxchi
+  owner: erudi-app
   repo: erudi
   releaseType: draft
 
