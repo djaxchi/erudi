@@ -22,7 +22,7 @@ What you expected to happen.
 **Actual behavior**
 What actually happened. Include error messages, logs, or screenshots if relevant.
 
-Two log files help us diagnose issues (see [docs/logging.md](https://github.com/djaxchi/erudi/blob/main/docs/logging.md) for details):
+Two log files help us diagnose issues (see [docs/logging.md](https://github.com/erudi-app/erudi/blob/main/docs/logging.md) for details):
 
 App log (backend output + UI events):
 - macOS: `$TMPDIR/erudi-backend.log` — run `echo $TMPDIR` in a terminal to resolve the folder, or use the path shown on the in-app error screen
