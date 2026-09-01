@@ -715,7 +715,23 @@ def main() -> None:
                     time.sleep(1.0)
                     server_thread.join(timeout=1.0)
                 emit_event({"event": "shutdown"})
-                break
+                # By this point the lifespan shutdown has already run every
+                # explicit cleanup step (embedded Postgres, inference-child
+                # atexit unregister, checkpointer, KB store) — see
+                # src/core/api.py's lifespan. What's left of a normal Python
+                # exit is CPython's own interpreter teardown, which joins
+                # every live non-daemon thread process-wide, including
+                # concurrent.futures' default ThreadPoolExecutor workers. An
+                # in-flight model download's `loop.run_in_executor(None, ...)`
+                # (src/domains/llms/services.py download_files_concurrent)
+                # runs on exactly such a thread, blocked on a synchronous,
+                # unbounded socket read: if a download is active when we get
+                # here, that join can hang the whole process — and the port
+                # it holds — for as long as the read takes to resolve on its
+                # own. A quit is a quit (#224, same rationale as
+                # GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS) — force the exit instead
+                # of risking a wait on it.
+                os._exit(0)
 
             if not server_thread.is_alive():
                 emit_event(
