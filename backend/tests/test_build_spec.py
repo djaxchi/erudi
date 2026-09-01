@@ -42,3 +42,15 @@ def test_spec_ships_the_gguf_package_metadata():
     assert 'copy_metadata("gguf")' in text, (
         "backend.spec must ship gguf's dist-info via copy_metadata (#206)"
     )
+
+
+@pytest.mark.unit
+def test_spec_does_not_bundle_the_hf_to_gguf_conversion_toolchain():
+    # The app only downloads pre-built quants; the HF -> GGUF conversion path
+    # was removed (#408). convert_hf_to_gguf.py, llama.cpp's gguf-py tree and
+    # llama-quantize must not creep back into the bundle: they were dead weight
+    # and the converter pulled a second copy of `gguf` into sys.path.
+    text = SPEC.read_text(encoding="utf-8")
+    assert "convert*.py" not in text, "backend.spec must not bundle convert_hf_to_gguf.py (#408)"
+    assert "gguf-py" not in text, "backend.spec must not bundle llama.cpp's gguf-py tree (#408)"
+    assert "llama-quantize" not in text, "backend.spec must not bundle llama-quantize (#408)"

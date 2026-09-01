@@ -592,8 +592,16 @@ def format_model_info_metadata(
             Shows "True" or "False" in output.
 
     Returns:
-        Multi-line formatted string with all metadata fields, or error message
-        if formatting fails.
+        Multi-line formatted string with all metadata fields.
+
+    Raises:
+        Whatever reading the ``model_info`` fields raises. The formatter does
+        NOT catch its own failures (#354): a caught error used to come back as
+        the string ``"Error formatting metadata: ..."``, which the catalog
+        builders then stored as ``model_metadata``, so a broken row looked
+        populated and the error was frozen into the bundled snapshot. The
+        catalog builders' per-model failure paths log the repo id and skip
+        the model instead.
 
     Examples:
         >>> from src.utils.hf_model_metadata import format_model_info_metadata
@@ -625,19 +633,17 @@ def format_model_info_metadata(
     Notes:
         - Parameter extraction: Uses extract_parameter_pattern internally
         - Tag limit: Shows first 10 tags, adds "..." if more exist
-        - Error handling: Returns "Error formatting metadata: {error}" on failure
         - Use case: Store in Llm.model_metadata field for UI display
         - Timestamps: ISO format from HuggingFace Hub
     """
-    try:
-        # Extract parameter count from model ID
-        param_count = extract_parameter_pattern(model_info.id)
-        param_str = param_count.to_string() if param_count else "Unknown"
-        
-        # Format size estimate
-        size_str = size_estimate.to_string() if size_estimate else "Unknown"
-        
-        metadata_str = f"""Model ID: {model_info.id}
+    # Extract parameter count from model ID
+    param_count = extract_parameter_pattern(model_info.id)
+    param_str = param_count.to_string() if param_count else "Unknown"
+    
+    # Format size estimate
+    size_str = size_estimate.to_string() if size_estimate else "Unknown"
+    
+    metadata_str = f"""Model ID: {model_info.id}
 Author: {model_info.author or 'Unknown'}
 Created: {model_info.created_at or 'Unknown'}
 Downloads: {model_info.downloads or 0} 
@@ -652,14 +658,9 @@ Gated: {model_info.gated}
 Tags: {', '.join(model_info.tags[:10]) if model_info.tags else 'None'}{'...' if model_info.tags and len(model_info.tags) > 10 else ''}
 SHA: {model_info.sha or 'Unknown'}
 Last Modified: {model_info.last_modified or 'Unknown'}"""
-        
-        logger.debug(f"Formatted metadata for {model_info.id}")
-        return metadata_str
-        
-    except Exception as e:
-        error_msg = f"Error formatting metadata: {str(e)}"
-        logger.error(error_msg, exc_info=True)
-        return error_msg
+    
+    logger.debug(f"Formatted metadata for {model_info.id}")
+    return metadata_str
 
 
 # ============ On-disk size (measured reality, #220) ============

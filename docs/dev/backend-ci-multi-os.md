@@ -137,6 +137,8 @@ cleanup test. Note that `backend/tests/test_cpu_engine_hardware.py:309`
 (`.unlink()`, "binary missing") would pass for the *wrong reason*, and
 `:316`'s rename-to-legacy-name test fails too.
 → **Test fix**: name fixture binaries with the platform suffix.
+(Historical: `quant_and_save_from_hf_format` and these fixtures were removed
+altogether with #408 — the app only downloads pre-built quants.)
 
 **`sleep` is not a Windows executable.**
 `backend/tests/test_postgres_runtime.py:93` does

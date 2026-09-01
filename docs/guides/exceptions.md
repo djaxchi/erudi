@@ -65,7 +65,6 @@ AppBaseException (base class)
 ├── FAISSException (500, FAISS_ERROR)
 ├── HuggingFaceAPIException (503, HUGGINGFACE_API_ERROR)
 ├── ModelLoadingException (500, MODEL_LOADING_ERROR)
-├── QuantizationException (500, QUANTIZATION_ERROR)
 ├── GenerationException (500, GENERATION_ERROR)
 ├── KnowledgeBaseNotFoundException (404, KB_NOT_FOUND)
 ├── KnowledgeBaseCorruptedException (500, KB_CORRUPTED)
@@ -236,12 +235,6 @@ raise FileSystemException(
 # Loading
 raise ModelLoadingException(
     model_path=model_path,
-    trace=str(e)
-)
-
-# Quantization
-raise QuantizationException(
-    f"4-bit quantization failed for {model_path}",
     trace=str(e)
 )
 

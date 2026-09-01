@@ -38,8 +38,9 @@ Architecture:
     └────────────────────────────────────────────────────────────┘
 
 Download Process:
-    1. Fetch model from HuggingFace (snapshot_download)
-    2. Quantize to engine-specific format (MLX 4-bit, GGUF, etc.)
+    1. List the repo files and refuse the repo if it ships no artefact in the
+       engine's format (MLX repo tag / .gguf file) -- before any byte (#408)
+    2. Fetch the pre-built quant from HuggingFace (no local conversion)
     3. Save to config.LLM_DIR/{llm_id}/
     4. Update LLM record: local=1, link=local_path
     5. Mark DownloadJob as completed
@@ -83,7 +84,8 @@ Example:
 Note:
     - Downloads run in background via FastAPI BackgroundTasks
     - Large models (7B+) take 5-30 minutes depending on connection
-    - Quantization (MLX 4-bit) reduces size by ~75%
+    - Only pre-built quants are downloaded (MLX repos / GGUF files); nothing is
+      converted or quantized locally
     - Disk space check performed before download
 
 Warning:
@@ -809,8 +811,9 @@ async def download_llm_route(
 ):
     """Start background download of LLM from HuggingFace.
 
-    Creates a DownloadJob and runs download in background. Model is quantized
-    during download (MLX 4-bit for Mac Silicon, GGUF for others).
+    Creates a DownloadJob and runs download in background. The catalog link is
+    already a pre-built quant for this engine (MLX repo on Apple Silicon, GGUF
+    file elsewhere); nothing is converted locally.
 
     Args:
         llm_id: ID of the remote LLM to download.

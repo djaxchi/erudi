@@ -54,8 +54,9 @@ import time
 import threading
 import shutil
 import asyncio
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from threading import Lock
-from typing import NamedTuple, Optional, List, Tuple
+from typing import NamedTuple, Optional, List, Tuple, Union
 
 from huggingface_hub import HfApi, HfFileSystem
 from huggingface_hub.utils import GatedRepoError, HfHubHTTPError
@@ -264,8 +265,9 @@ def _select_download_files(
 
     GGUF repos: the single best quantization (pick_best_gguf) + mmproj gguf
     files + auxiliary non-gguf files with a known size under 10 MB. When the
-    repo has no .gguf at all, best_gguf is None and files is empty — the
-    caller raises with the repo id in the message.
+    repo has no .gguf at all, best_gguf is None and files is empty (the download
+    path never gets here in that case: `_assert_repo_has_engine_artifact` refuses
+    the repo first; `_chosen_artifact_bytes` falls back to the whole-repo sum).
 
     Non-GGUF repos: every repo file with a known size (exclusions were already
     applied when building file_sizes).
@@ -461,6 +463,71 @@ def make_callback(job: DownloadTracker) -> Callback:
     return Callback(size=job.total_bytes, hooks={"transfer-chunk": after_chunk})
 
 
+# ============ Destination containment (#405) ============
+
+_MEMBER_DISPLAY_LIMIT = 120
+
+
+def _display_member(member: str) -> str:
+    """ASCII, bounded rendering of a Hub file name for an error message."""
+    shown = member.encode("ascii", "backslashreplace").decode("ascii")
+    return shown if len(shown) <= _MEMBER_DISPLAY_LIMIT else shown[:_MEMBER_DISPLAY_LIMIT] + "..."
+
+
+def resolve_member_path(root: Union[str, Path], member: str) -> Path:
+    """Map a Hub-listed file name onto ``root`` or refuse it.
+
+    Every destination the downloader writes is derived from names LISTED BY THE
+    HUB (``list_repo_files``), and any repository can be downloaded by link. The
+    rule is refuse, never normalise: the loaders (mlx-vlm, llama-server) expect
+    the repo's own names and subfolders, so a rewritten name would silently
+    produce a broken model and hide a hostile repo.
+
+    Rejected (``InvalidInputException``, ASCII message naming the member):
+      - empty name, or one carrying a NUL byte;
+      - any backslash (the Hub only ever lists ``/``-separated names);
+      - absolute forms on either family: POSIX (``/x``), Windows drive or
+        drive-relative (``C:/x``, ``C:x``) and UNC (``//server/share/x``),
+        checked with ``PurePosixPath``/``PureWindowsPath`` explicitly so the
+        outcome is identical on the three CI legs;
+      - any ``..``, ``.`` or empty segment (``a/../x``, ``./x``, ``a//b``, ``a/``);
+      - anything that, once resolved, does not land under ``root.resolve()``
+        (belt and braces after the syntactic checks).
+
+    Returns ``root / member`` unchanged otherwise. Pure: nothing is created.
+    """
+    root = Path(root)
+    shown = _display_member(member) if isinstance(member, str) else repr(member)
+
+    def refuse(reason: str) -> InvalidInputException:
+        return InvalidInputException(
+            f"Hub file name '{shown}' ({reason}; refusing to write outside the model directory)"
+        )
+
+    if not isinstance(member, str) or not member:
+        raise refuse("empty name")
+    if "\x00" in member:
+        raise refuse("NUL byte")
+    if "\\" in member:
+        raise refuse("backslash")
+    windows_form = PureWindowsPath(member)
+    if (
+        PurePosixPath(member).is_absolute()
+        or windows_form.is_absolute()
+        or windows_form.drive
+        or windows_form.anchor
+    ):
+        raise refuse("absolute path")
+    if any(segment in ("", ".", "..") for segment in member.split("/")):
+        raise refuse("'.', '..' or empty path segment")
+
+    root_resolved = root.resolve()
+    if not (root_resolved / member).resolve().is_relative_to(root_resolved):
+        raise refuse("resolves outside the model directory")
+    return root / member
+
+
+
 async def download_files_concurrent(
     fs: HfFileSystem,
     callback: Callback,
@@ -499,12 +566,14 @@ async def download_files_concurrent(
             raise DownloadCancelled(f"download cancelled before {remote} started")
         fs.get_file(remote, dest, callback)
 
+    # Contain every destination BEFORE scheduling anything (#405): a hostile
+    # member anywhere in the batch refuses the whole batch with no transfer
+    # started and no directory created.
+    dests = [(f"{repo_id}/{path}", resolve_member_path(local_dir, path)) for repo_id, path in tasks]
     coros = []
-    for repo_id, path in tasks:
-        remote = f"{repo_id}/{path}"
-        dest = os.path.join(local_dir, path)
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        coros.append(loop.run_in_executor(None, get_file_unless_cancelled, remote, dest))
+    for remote, dest in dests:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        coros.append(loop.run_in_executor(None, get_file_unless_cancelled, remote, str(dest)))
     await asyncio.gather(*coros)
 
 
@@ -520,6 +589,42 @@ def _assert_runnable(model_link: str) -> None:
             feature=model_link,
             reason=f"this model is known not to run on {config.LLM_Engine.__name__}",
         )
+
+
+def _assert_repo_has_engine_artifact(model_link: str, repo_info, all_repo_files: List[str]) -> None:
+    """Refuse, before any byte is fetched, a repo that ships nothing this engine runs.
+
+    Erudi never converts weights locally (#408): it only downloads pre-built
+    artefacts, so a repo must already carry the active engine's format. Catalog
+    and HF-search links do by construction (``filter=FORMAT_TAG``); a repo id the
+    user pastes by hand may not -- e.g. a vendor's plain safetensors checkpoint.
+    Downloading that would report success and leave a model on disk the engine
+    cannot load, so fail here with the reason instead.
+
+    - llama.cpp engines (``USES_GGUF``): at least one text-model ``.gguf`` must be
+      listed (``mmproj-*.gguf`` vision projectors do not count).
+    - Tag-based engines (MLX): the repo must be tagged ``FORMAT_TAG`` or declare
+      it as its ``library_name``, exactly what the catalog search filters on.
+
+    Raises:
+        InvalidInputException: The repo has no ``<FORMAT_TAG>`` artefact for this engine.
+    """
+    engine = config.LLM_Engine
+    tag = getattr(engine, "FORMAT_TAG", None)
+    if getattr(engine, "USES_GGUF", False):
+        present = pick_best_gguf(all_repo_files) is not None
+    else:
+        tags = set(getattr(repo_info, "tags", None) or ())
+        present = bool(tag) and (tag in tags or getattr(repo_info, "library_name", None) == tag)
+    if present:
+        return
+    engine_name = getattr(engine, "__name__", type(engine).__name__)
+    raise InvalidInputException(
+        f"{model_link} has no {tag} artefact for this machine's engine ({engine_name}): "
+        f"Erudi only downloads pre-built {tag} models and does not convert weights locally. "
+        f"Pick a repository that ships {tag} files (for example one found through the "
+        f"Hugging Face search in the app)."
+    )
 
 
 async def download_llm(
@@ -547,7 +652,9 @@ async def download_llm(
         Path to temp_save_dir (note: moved to final_save_dir on success).
 
     Raises:
-        Exception: If HuggingFace API fails, the download fails, or a GGUF repo has no .gguf.
+        InvalidInputException: The repo ships no artefact in this engine's format
+            (checked before any byte is transferred, #408).
+        Exception: If HuggingFace API fails or the download fails.
 
     Example:
         >>> final_path = await download_llm(
@@ -595,10 +702,15 @@ async def download_llm(
             if s.size and s.rfilename not in FILES_TO_EXCLUDE
         }
         all_repo_files = list(api.list_repo_files(actual_download_link))
+        # Refuse a repo with nothing this engine runs BEFORE any transfer (#408).
+        _assert_repo_has_engine_artifact(actual_download_link, info, all_repo_files)
         selection = _select_download_files(all_repo_files, file_sizes, _uses_gguf)
-        if _uses_gguf and selection.best_gguf is None:
-            raise Exception(f"No .gguf files found in repo {actual_download_link}")
         all_files = selection.files
+        # Contain the WHOLE selection before a single byte is fetched (#405):
+        # the names come from the Hub listing, so a hostile repo fails here
+        # with a clear message and the job-failure path reports it.
+        for path in all_files:
+            resolve_member_path(temp_save_dir, path)
         if _uses_gguf:
             if selection.mmproj_files:
                 logger.info(
@@ -636,7 +748,9 @@ async def download_llm(
             for path in misc:
                 if not job.should_continue():
                     raise DownloadCancelled(f"download cancelled before {path} started")
-                await asyncio.to_thread(fs.get_file, f"{actual_download_link}/{path}", os.path.join(temp_save_dir, path), callback)
+                dest = resolve_member_path(temp_save_dir, path)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                await asyncio.to_thread(fs.get_file, f"{actual_download_link}/{path}", str(dest), callback)
                 logger.info(f"Downloaded {path}")
 
             # Download shards concurrently

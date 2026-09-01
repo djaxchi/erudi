@@ -16,8 +16,6 @@
 #
 # Output:
 #   backend\artifacts\llama-cpp\cuda\bin\llama-server.exe
-#   backend\artifacts\llama-cpp\cuda\bin\llama-quantize.exe
-#   backend\artifacts\llama-cpp\cuda\bin\convert_hf_to_gguf.py
 
 $ErrorActionPreference = "Stop"
 
@@ -247,31 +245,6 @@ Write-Step "Installing to $InstallDir..."
 & $VenvCmake --install $BuildDir --config Release
 if ($LASTEXITCODE -ne 0) { Write-Fail "Install step failed." }
 
-# -------- copy Python conversion tools --------
-Write-Step "Copying Python conversion tools..."
-
-$GgufPySrc  = Join-Path $SrcDir "gguf-py"
-$GgufPyDest = Join-Path $BinDir "gguf-py"
-
-if (Test-Path $GgufPySrc) {
-    if (Test-Path $GgufPyDest) { Remove-Item $GgufPyDest -Recurse -Force }
-    Copy-Item -Path $GgufPySrc -Destination $GgufPyDest -Recurse
-    Write-OK "gguf-py module copied to $GgufPyDest"
-} else {
-    Write-Warn "gguf-py not found at $GgufPySrc - HF to GGUF conversion will not work."
-}
-
-# Copy convert_hf_to_gguf.py and any other convert*.py scripts
-$ConvertScripts = Get-ChildItem -Path $SrcDir -Filter "convert*.py" -ErrorAction SilentlyContinue
-if ($ConvertScripts) {
-    foreach ($script in $ConvertScripts) {
-        Copy-Item -Path $script.FullName -Destination $BinDir -Force
-        Write-OK "Copied $($script.Name)"
-    }
-} else {
-    Write-Warn "No convert*.py scripts found in $SrcDir"
-}
-
 # -------- bundle the MSVC C++ runtime + CUDA runtime next to llama-server.exe --------
 # Same rationale as the CPU build's #144 fix: the Windows loader searches the exe's
 # own directory first, so shipping these here means the packaged app works on a
@@ -315,17 +288,14 @@ foreach ($dll in $RequiredCudaDlls) {
 Write-Host ""
 Write-Step "Verifying output..."
 
-$ServerExe   = Join-Path $BinDir "llama-server.exe"
-$QuantizeExe = Join-Path $BinDir "llama-quantize.exe"
+$ServerExe = Join-Path $BinDir "llama-server.exe"
 
 $allOk = $true
-foreach ($bin in @($ServerExe, $QuantizeExe)) {
-    if (Test-Path $bin) {
-        Write-OK "Found: $bin"
-    } else {
-        Write-Warn "Missing: $bin"
-        $allOk = $false
-    }
+if (Test-Path $ServerExe) {
+    Write-OK "Found: $ServerExe"
+} else {
+    Write-Warn "Missing: $ServerExe"
+    $allOk = $false
 }
 
 Write-Host ""

@@ -13,7 +13,6 @@ Exception Hierarchy:
     ├── FileSystemException (500, FILESYSTEM_ERROR)
     ├── HuggingFaceAPIException (503, HUGGINGFACE_API_ERROR)
     ├── ModelLoadingException (500, MODEL_LOADING_ERROR)
-    ├── QuantizationException (500, QUANTIZATION_ERROR)
     ├── GenerationException (500, GENERATION_ERROR)
     ├── KnowledgeBaseNotFoundException (404, KB_NOT_FOUND)
     ├── KnowledgeBaseCorruptedException (500, KB_CORRUPTED)
@@ -87,7 +86,6 @@ Exception Categories:
     - DatabaseException
     - FileSystemException
     - ModelLoadingException
-    - QuantizationException
     - GenerationException
     - KnowledgeBaseCorruptedException
     - TokenizationException
@@ -385,37 +383,6 @@ class ModelLoadingException(AppBaseException):
             message=message,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             erudi_code="MODEL_LOADING_ERROR",
-            trace=trace
-        )
-
-
-class QuantizationException(AppBaseException):
-    """Exception raised for model quantization failures.
-    
-    Raised when quantization or model conversion fails, including HuggingFace
-    to MLX conversion, bitsandbytes quantization, or GGUF conversion errors.
-    
-    Examples:
-        from src.core.exceptions import QuantizationException
-        try:
-            mlx_vlm.convert(hf_path, mlx_path, quantize=True, q_bits="4")
-        except Exception as e:
-            raise QuantizationException(f"Quantization failed: {e}", trace=str(e))
-
-    """
-    
-    def __init__(self, message: str, trace: Optional[str] = None):
-        """Initialize quantization exception with error details.
-        
-        Args:
-            message: Description of the quantization failure.
-            trace: Optional stack trace or additional context.
-
-        """
-        super().__init__(
-            message=message,
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            erudi_code="QUANTIZATION_ERROR",
             trace=trace
         )
 

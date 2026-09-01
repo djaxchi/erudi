@@ -29,11 +29,11 @@ elif system in ("linux", "windows"):
     ...
 ```
 
-### `cpu_engine.py` — llama-server and converter fallbacks
+### `cpu_engine.py` — llama-server fallback
 
-Fallbacks to `cuda/bin/` were added for `_find_llama_server`, the converter script, and `llama-quantize`. Each fallback checks `.exists()` before returning it — if `cuda/bin/` doesn't exist (as on macOS), the function raises the same error as before. No regression.
+A fallback to `cuda/bin/` was added for `_find_llama_server`. It checks `.exists()` before returning — if `cuda/bin/` doesn't exist (as on macOS), the function raises the same error as before. No regression.
 
-The in-process converter (`_run_converter_inprocess`) and atomic GGUF rename were also added. Both are pure Python and cross-platform.
+(The converter-script and `llama-quantize` fallbacks that were added alongside it, plus the in-process converter `_run_converter_inprocess`, were removed with #408: the app only downloads pre-built quants and no longer converts HF checkpoints locally.)
 
 ### `cuda_engine.py`
 
@@ -90,7 +90,7 @@ Optionally, if signing credentials are available in the environment, trigger not
 `mlx_engine.py` was not touched in the Windows stabilization work, but it should be smoke-tested on Apple Silicon before publishing a macOS build:
 
 - Engine selected at startup
-- Model download + conversion pipeline
+- Model download pipeline (pre-built MLX repos only, no local conversion since #408)
 - Inference / streaming
 - Knowledge Base (embedder on CPU)
 

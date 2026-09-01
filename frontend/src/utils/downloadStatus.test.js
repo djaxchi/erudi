@@ -1,23 +1,68 @@
 import { describe, it, expect } from "vitest";
 import {
-  downloadErrorMessage,
+  deriveDownloadPhase,
+  downloadFailureDetail,
   downloadStalledMessage,
   DOWNLOAD_CANCELLED,
   DOWNLOAD_STALLED,
 } from "./downloadStatus";
 
-describe("downloadErrorMessage", () => {
-  it("returns null for a user-initiated cancellation (a cancel is not a failure)", () => {
-    expect(downloadErrorMessage(DOWNLOAD_CANCELLED)).toBeNull();
-    expect(downloadErrorMessage("cancelled")).toBeNull();
+// The widget renders one of a handful of phases; the context derives them from
+// the raw (status, progress, errorMessage) triple it tracks (#292).
+describe("deriveDownloadPhase (#292)", () => {
+  it("is queued before the job runs", () => {
+    expect(deriveDownloadPhase({ status: "idle", progress: 0 })).toBe("queued");
+    expect(deriveDownloadPhase({ status: "pending", progress: 0 })).toBe("queued");
   });
 
-  it("returns a failure message for any real error reason", () => {
-    expect(downloadErrorMessage("Server responded with 500")).toBe(
-      "Download failed. Please try again."
+  it("splits a running job into downloading and finalizing at 100%", () => {
+    expect(deriveDownloadPhase({ status: "running", progress: 42 })).toBe("downloading");
+    expect(deriveDownloadPhase({ status: "running", progress: 99.9 })).toBe("downloading");
+    expect(deriveDownloadPhase({ status: "running", progress: 100 })).toBe("finalizing");
+  });
+
+  it("maps the terminal statuses one-to-one", () => {
+    expect(deriveDownloadPhase({ status: "completed", progress: 100 })).toBe("completed");
+    expect(deriveDownloadPhase({ status: "failed", progress: 10 })).toBe("failed");
+    expect(deriveDownloadPhase({ status: DOWNLOAD_CANCELLED, progress: 10 })).toBe("cancelled");
+    expect(deriveDownloadPhase({ status: DOWNLOAD_STALLED, progress: 100 })).toBe("stalled");
+  });
+
+  it("treats a client-side error (failed start, poll error) as a failure", () => {
+    expect(deriveDownloadPhase({ status: "pending", progress: 0, errorMessage: "boom" })).toBe(
+      "failed"
     );
-    expect(downloadErrorMessage(undefined)).toBe("Download failed. Please try again.");
-    expect(downloadErrorMessage(null)).toBe("Download failed. Please try again.");
+    expect(deriveDownloadPhase({ status: "running", progress: 30, errorMessage: "boom" })).toBe(
+      "failed"
+    );
+  });
+
+  it("keeps a cancel that failed to reach the backend a cancellation, not a failure", () => {
+    expect(
+      deriveDownloadPhase({ status: DOWNLOAD_CANCELLED, progress: 0, errorMessage: "500" })
+    ).toBe("cancelled");
+  });
+});
+
+describe("downloadFailureDetail", () => {
+  it("unwraps FastAPI's {detail} envelope so the user never sees raw JSON", () => {
+    expect(downloadFailureDetail('{"detail":"Model 14 not found"}')).toBe("Model 14 not found");
+  });
+
+  it("unwraps the app's {success, error: {type, message}} envelope too", () => {
+    const body = JSON.stringify({
+      success: false,
+      error: { type: "MODEL_NOT_FOUND", message: "Model with id 14 was not found" },
+    });
+    expect(downloadFailureDetail(body)).toBe("Model with id 14 was not found");
+  });
+
+  it("passes anything that is not a detail envelope through, trimmed", () => {
+    expect(downloadFailureDetail("  Bad Gateway \n")).toBe("Bad Gateway");
+    expect(downloadFailureDetail('{"error":"x"}')).toBe('{"error":"x"}');
+    expect(downloadFailureDetail('{"detail":{"loc":[]}}')).toBe('{"detail":{"loc":[]}}');
+    expect(downloadFailureDetail("")).toBe("");
+    expect(downloadFailureDetail(undefined)).toBe("");
   });
 });
 
@@ -37,8 +82,6 @@ describe("DOWNLOAD_STALLED (#315)", () => {
     // The bytes are on disk; only the finalization bookkeeping did not finish
     // (#291). Reporting "Download failed. Please try again." would be wrong and
     // would push the user into re-downloading gigabytes they already have.
-    expect(downloadErrorMessage(DOWNLOAD_STALLED)).toBe(downloadStalledMessage());
-    expect(downloadErrorMessage(DOWNLOAD_STALLED)).not.toBe("Download failed. Please try again.");
     expect(downloadStalledMessage()).toMatch(/files have been saved/i);
   });
 });

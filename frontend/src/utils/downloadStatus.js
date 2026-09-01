@@ -29,11 +29,54 @@ export function downloadStalledMessage() {
 }
 
 /**
- * Map a download `onError` reason to a user-facing message, or `null` when there is
- * nothing to show (a cancellation is not a failure).
+ * The phases the download widget renders (#292). `stalled` is the client-side
+ * "finalization never came back" state (#315); every other phase maps to a
+ * backend status, with `running` split at 100% into downloading / finalizing.
  */
-export function downloadErrorMessage(reason) {
-  if (reason === DOWNLOAD_CANCELLED) return null;
-  if (reason === DOWNLOAD_STALLED) return downloadStalledMessage();
-  return i18n.t("downloads:errors.failedRetry");
+export const DOWNLOAD_PHASES = [
+  "queued",
+  "downloading",
+  "finalizing",
+  "completed",
+  "cancelled",
+  "failed",
+  "stalled",
+];
+
+/**
+ * Derive the widget phase from the raw job state the context tracks.
+ *
+ * Order matters: a cancel that failed to reach the backend leaves a detail in
+ * `errorMessage` but is still a cancellation, whereas an error on a job that is
+ * not yet terminal (failed start, poll network error) IS a failure.
+ */
+export function deriveDownloadPhase({ status, progress = 0, errorMessage = "" }) {
+  if (status === DOWNLOAD_STALLED) return "stalled";
+  if (status === "failed") return "failed";
+  if (status === DOWNLOAD_CANCELLED) return "cancelled";
+  if (status === "completed") return "completed";
+  if (errorMessage) return "failed";
+  if (status === "running") return (progress ?? 0) >= 100 ? "finalizing" : "downloading";
+  return "queued";
+}
+
+/**
+ * The human part of a failed start-download response body. The backend has
+ * two JSON envelopes: FastAPI's own `{"detail": "..."}` (HTTPException,
+ * validation) and the app handler's `{"success": false, "error": {"type",
+ * "message"}}` (AppBaseException). Show the sentence, not the JSON. Anything
+ * else (plain text, HTML from a proxy, empty body) is passed through.
+ */
+export function downloadFailureDetail(body) {
+  const text = (body ?? "").trim();
+  try {
+    const parsed = JSON.parse(text);
+    const candidate = parsed?.error?.message ?? parsed?.detail;
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  } catch {
+    /* not JSON */
+  }
+  return text;
 }

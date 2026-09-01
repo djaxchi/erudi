@@ -131,7 +131,9 @@ class TestChunkCallbackHonoursCancel:
 def _fake_api(files):
     api = MagicMock()
     api.repo_info.return_value = SimpleNamespace(
-        siblings=[SimpleNamespace(rfilename=f, size=16) for f in files]
+        siblings=[SimpleNamespace(rfilename=f, size=16) for f in files],
+        tags=["mlx"],
+        library_name="mlx",
     )
     api.list_repo_files.return_value = list(files)
     return api
@@ -145,7 +147,7 @@ class TestDownloadLlmCancelledMidTransfer:
     ):
         monkeypatch.setattr(
             config, "LLM_Engine",
-            SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False),
+            SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False, FORMAT_TAG="mlx"),
         )
         files = ["config.json", *SHARDS]
         monkeypatch.setattr(llm_services, "HfApi", lambda token=None: _fake_api(files))

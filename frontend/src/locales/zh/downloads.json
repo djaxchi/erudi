@@ -1,9 +1,21 @@
 {
   "widget": {
-    "downloadingTitle": "正在下载：{{name}}",
-    "errorTitle": "错误：{{name}}",
-    "timeLeft": "剩余时间：",
-    "progress": "进度：",
+    "title": "模型下载",
+    "progressLabel": "下载进度",
+    "phase": {
+      "queued": "正在开始下载…",
+      "downloading": "正在下载",
+      "finalizing": "正在完成…",
+      "completed": "下载完成",
+      "cancelled": "下载已取消",
+      "failed": "下载失败",
+      "stalled": "完成阶段耗时过长"
+    },
+    "completedHint": "已加入你的已安装模型",
+    "bytes": "{{done}} / {{total}}",
+    "speed": "{{rate}}/秒",
+    "remaining": "剩余 {{time}}",
+    "dismiss": "关闭",
     "expand": "展开",
     "collapse": "收起",
     "duration": {
@@ -19,7 +31,6 @@
     "startFailed": "无法开始下载（{{status}}）：{{detail}}",
     "unexpected": "发生了意外错误",
     "cancelFailed": "无法取消下载：{{detail}}",
-    "failedRetry": "下载失败。请重试。",
     "stalled": "下载已完成，但应用完成收尾所需的时间比预期更长。文件已保存。请重启 Erudi，并在再次下载前检查已安装的模型。"
   },
   "hardwareWait": {

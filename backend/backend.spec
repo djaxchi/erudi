@@ -129,20 +129,17 @@ if IS_WIN or IS_LINUX:
     llama_bin = spec_root / "artifacts" / "llama-cpp" / _llama_flavour / "bin"
     if llama_bin.exists():
         _dest = f"artifacts/llama-cpp/{_llama_flavour}/bin"
-        for _stem in ("llama-server", "llama-quantize"):
-            _f = llama_bin / f"{_stem}{_exe_suffix}"
-            if _f.exists():
-                datas.append((str(_f), _dest))
-        for _f in llama_bin.glob("convert*.py"):
-            datas.append((str(_f), _dest))
+        # Only the inference server ships. The HF -> GGUF conversion toolchain
+        # (convert_hf_to_gguf.py, llama.cpp's Python gguf tree, the quantizer
+        # binary) was removed with #408: the app downloads pre-built quants only.
+        _server = llama_bin / f"llama-server{_exe_suffix}"
+        if _server.exists():
+            datas.append((str(_server), _dest))
         # Ship any runtime DLLs placed beside the server (the Windows CPU build
         # copies the MSVC C++ runtime here so llama-server.exe loads on machines
         # without the VC++ redistributable — #144). No-op on Linux (.so, not .dll).
         for _f in llama_bin.glob("*.dll"):
             datas.append((str(_f), _dest))
-        _gguf = llama_bin / "gguf-py"
-        if _gguf.exists():
-            datas.append((str(_gguf), f"{_dest}/gguf-py"))
     else:
         import warnings
         warnings.warn(
@@ -198,7 +195,6 @@ _hidden_common = [
     "src.core.exceptions",
     "src.core.logging",
     "src.core.health",
-    "src.config.secrets",
     "src.database.core",
     "src.database.seed",
     "src.entities.Conversation",

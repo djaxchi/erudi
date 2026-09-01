@@ -138,6 +138,14 @@
       "largest": "最大"
     }
   },
+  "catalogSearch": {
+    "label": "搜索目录",
+    "placeholder": "筛选目录 — 名称、系列、能力…",
+    "resultsFor_one": "目录中与“{{term}}”匹配的 {{count}} 个模型",
+    "resultsFor_other": "目录中与“{{term}}”匹配的 {{count}} 个模型",
+    "noMatch": "目录中没有与“{{term}}”匹配的模型。请尝试更短的词，或使用“qwen”、“llama”等系列名称。",
+    "searchHuggingFaceInstead": "改为在 Hugging Face 上搜索“{{term}}”"
+  },
   "info": {
     "noDescription": "暂无描述",
     "basicInfo": "基本信息",

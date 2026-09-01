@@ -1,9 +1,21 @@
 {
   "widget": {
-    "downloadingTitle": "Téléchargement : {{name}}",
-    "errorTitle": "Erreur : {{name}}",
-    "timeLeft": "Temps restant :",
-    "progress": "Progression :",
+    "title": "Téléchargement du modèle",
+    "progressLabel": "Progression du téléchargement",
+    "phase": {
+      "queued": "Démarrage du téléchargement…",
+      "downloading": "Téléchargement en cours",
+      "finalizing": "Finalisation…",
+      "completed": "Téléchargement terminé",
+      "cancelled": "Téléchargement annulé",
+      "failed": "Échec du téléchargement",
+      "stalled": "La finalisation prend trop de temps"
+    },
+    "completedHint": "Disponible dans vos modèles installés",
+    "bytes": "{{done}} sur {{total}}",
+    "speed": "{{rate}}/s",
+    "remaining": "Il reste {{time}}",
+    "dismiss": "Fermer",
     "expand": "Développer",
     "collapse": "Réduire",
     "duration": {
@@ -19,7 +31,6 @@
     "startFailed": "Impossible de démarrer le téléchargement ({{status}}) : {{detail}}",
     "unexpected": "Une erreur inattendue est survenue",
     "cancelFailed": "Impossible d'annuler le téléchargement : {{detail}}",
-    "failedRetry": "Le téléchargement a échoué. Veuillez réessayer.",
     "stalled": "Le téléchargement est terminé, mais l'application met plus de temps que prévu à le finaliser. Les fichiers ont été enregistrés. Redémarrez Erudi et vérifiez vos modèles installés avant de télécharger à nouveau."
   },
   "hardwareWait": {

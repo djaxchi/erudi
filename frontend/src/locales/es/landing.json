@@ -45,8 +45,7 @@
     "fetchModelsFailed": "No se pudieron obtener los modelos disponibles. Inténtelo de nuevo y contacte con el equipo de Erudi para obtener ayuda.",
     "deleteModelFailed": "No se pudo eliminar el modelo. Inténtelo de nuevo y contacte con el equipo de Erudi para obtener ayuda.",
     "rebindFailed": "No se pudo volver a vincular el asistente. Inténtelo de nuevo y contacte con el equipo de Erudi para obtener ayuda.",
-    "hardwareEvaluationFailed": "No se pudieron evaluar las capacidades del hardware. Contacte con el equipo de Erudi para obtener ayuda.",
-    "downloadFailed": "Error en la descarga."
+    "hardwareEvaluationFailed": "No se pudieron evaluar las capacidades del hardware. Contacte con el equipo de Erudi para obtener ayuda."
   },
   "welcome": {
     "title": "¡Bienvenido!",

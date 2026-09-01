@@ -45,8 +45,7 @@
     "fetchModelsFailed": "无法获取可用模型。请重试，并联系 Erudi 团队获取支持。",
     "deleteModelFailed": "无法删除该模型。请重试，并联系 Erudi 团队获取支持。",
     "rebindFailed": "无法重新绑定该助手。请重试，并联系 Erudi 团队获取支持。",
-    "hardwareEvaluationFailed": "无法评估硬件性能。请联系 Erudi 团队获取支持。",
-    "downloadFailed": "下载失败。"
+    "hardwareEvaluationFailed": "无法评估硬件性能。请联系 Erudi 团队获取支持。"
   },
   "welcome": {
     "title": "欢迎！",

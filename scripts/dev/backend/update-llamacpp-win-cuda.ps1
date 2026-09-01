@@ -187,7 +187,7 @@ if ($currentBuild -gt 0) {
     }
 }
 
-# Replace EXEs and DLLs (preserve Python scripts and gguf-py folder)
+# Replace EXEs and DLLs
 Write-Status "Replacing binaries..."
 
 Get-ChildItem -Path $extractedBinDir -Filter "*.exe" | ForEach-Object {

@@ -138,6 +138,14 @@
       "largest": "Largest"
     }
   },
+  "catalogSearch": {
+    "label": "Search the catalog",
+    "placeholder": "Filter the catalog — name, family, capability…",
+    "resultsFor_one": "{{count}} catalog match for “{{term}}”",
+    "resultsFor_other": "{{count}} catalog matches for “{{term}}”",
+    "noMatch": "Nothing in the catalog matches “{{term}}”. Try a shorter term, or a family name like “qwen” or “llama”.",
+    "searchHuggingFaceInstead": "Search Hugging Face for “{{term}}” instead"
+  },
   "info": {
     "noDescription": "No description available",
     "basicInfo": "Basic Info",

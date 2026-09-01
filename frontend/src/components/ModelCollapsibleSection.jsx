@@ -114,10 +114,9 @@ const CollapsibleSection = forwardRef(
         return; // not offered on this hardware — the row is rendered disabled
       }
       setErrorMessage("");
-      openDownload(model, {
-        onComplete: loadLocalModelsAfterDownload,
-        onError: (err) => setErrorMessage(err ?? t("landing:messages.downloadFailed")),
-      });
+      // Failures and cancellations are reported by the download widget itself
+      // (#292); this rail only needs to refresh once the weights are in.
+      openDownload(model, { onComplete: loadLocalModelsAfterDownload });
     };
 
     // Guarded base delete (#317): the rail runs the same flow as the installed

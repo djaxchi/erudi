@@ -220,7 +220,7 @@ screens, the shared chrome, and non-functional behavior.
 
 **Windows regression gate (#313, #321) — run these FIRST on any Windows candidate**
 
-*Both were release blockers on the previous 2.0.0 draft: the packaged Windows
+*Both were release blockers on an earlier draft (then numbered 2.0.0): the packaged Windows
 build deadlocked on the first chat turn and on the KB embedding download. The
 cause was a blocking stdin read parking a thread inside the Windows CRT, which
 froze every off-main-thread native import. If either of these hangs, stop the
@@ -233,7 +233,7 @@ pass and report — the candidate is not shippable.*
 **Tool-call gate (llama.cpp backends) — run on every candidate**
 
 *A turn that carries tools is the whole agentic knowledge base and the whole of
-web search. On the 2.0.0 draft the bundled `llama-server` exited silently the
+web search. On an earlier draft (then numbered 2.0.0) the bundled `llama-server` exited silently the
 moment a model emitted a tool call, taking both features out on Windows; a
 plain turn on the same model, in the same process, was unaffected. Test the
 tool path explicitly — a working chat proves nothing about it.*
