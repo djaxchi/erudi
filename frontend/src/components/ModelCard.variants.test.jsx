@@ -192,4 +192,22 @@ describe("ModelCard orphaned assistant (#225/#208)", () => {
     fireEvent.click(screen.getByTitle("Re-bind to another installed model"));
     expect(screen.getByText("No installed base model available")).toBeTruthy();
   });
+
+  it("portals the picker onto document.body instead of nesting it inside the card", () => {
+    // GradientBox wraps every card in nested `overflow-hidden` divs
+    // (GradientBox.jsx), which silently clip an absolutely-positioned
+    // dropdown rendered inside the card's own subtree: the button toggled a
+    // React state flag, but the picker itself was invisible/unclickable, so
+    // no re-bind request was ever fired. jsdom has no layout engine and
+    // can't see clipping, so this only asserts the escape hatch (a portal
+    // straight onto document.body) is actually in place.
+    const targets = [{ id: 1, name: "Base A" }];
+    render(<ModelCard model={orphanAssistant} type="local" rebindTargets={targets} />);
+
+    fireEvent.click(screen.getByTitle("Re-bind to another installed model"));
+    const menu = screen.getByText("Base A").closest(".fixed");
+
+    expect(menu).toBeTruthy();
+    expect(menu.parentElement).toBe(document.body);
+  });
 });

@@ -125,9 +125,17 @@ describe("LandingPage orphaned assistant cards (#225/#208)", () => {
 
     fireEvent.click(screen.getByTitle("Re-bind to another installed model"));
 
+    // The picker portals onto document.body (GradientBox clips an
+    // absolutely-positioned dropdown nested inside the card, see
+    // ModelCard.jsx), so it's no longer a DOM sibling of the button.
+    // "qwen-base" also names the plain installed card, so disambiguate by
+    // ancestry rather than assuming a single match.
+    const dropdown = screen
+      .getAllByText("qwen-base")
+      .map((el) => el.closest(".fixed"))
+      .find(Boolean);
     // The picker offers only installed base models with weights on disk —
     // never assistants (healthy or orphaned).
-    const dropdown = screen.getByTitle("Re-bind to another installed model").nextElementSibling;
     expect(within(dropdown).getByText("qwen-base")).toBeTruthy();
     expect(within(dropdown).queryByText("notes-assistant")).toBeNull();
     expect(within(dropdown).queryByText("docs-assistant")).toBeNull();

@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import ReactDOM from "react-dom";
 import PropTypes from "prop-types";
 import GradientBox from "./GradientBox";
 import {
@@ -44,6 +45,18 @@ function ModelCard({
 }) {
   const { open } = useDownloadModal();
   const [rebindOpen, setRebindOpen] = useState(false);
+  const [rebindMenuPos, setRebindMenuPos] = useState(null);
+  const rebindButtonRef = useRef(null);
+  const toggleRebind = () => {
+    if (!rebindOpen && rebindButtonRef.current) {
+      const rect = rebindButtonRef.current.getBoundingClientRect();
+      setRebindMenuPos({
+        bottom: window.innerHeight - rect.top + 4,
+        right: window.innerWidth - rect.right,
+      });
+    }
+    setRebindOpen((o) => !o);
+  };
   const unavailable = model?.runnable === false;
   // Orphan-model UX (#225/#208): a KB assistant uses its base model's weights
   // (its own link is a copy — it owns no disk space). When those weights are
@@ -183,35 +196,42 @@ function ModelCard({
               {isAssistant && weightsMissing && (
                 <div className="relative ml-auto">
                   <button
+                    ref={rebindButtonRef}
                     className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg transition-colors"
-                    onClick={() => setRebindOpen((o) => !o)}
+                    onClick={toggleRebind}
                     title="Re-bind to another installed model"
                   >
                     <Link2 className="w-3.5 h-3.5" />
                     Re-bind
                   </button>
-                  {rebindOpen && (
-                    <div className="absolute bottom-full right-0 mb-1 w-48 bg-[#2a2a2a] border border-white/20 rounded-lg shadow-lg z-20 max-h-40 overflow-y-auto">
-                      {rebindTargets.length === 0 ? (
-                        <p className="px-3 py-2 text-xs text-gray-400">
-                          No installed base model available
-                        </p>
-                      ) : (
-                        rebindTargets.map((target) => (
-                          <div
-                            key={target.id}
-                            className="px-3 py-2 text-xs hover:bg-white/10 cursor-pointer text-gray-100 border-b border-white/10 last:border-b-0"
-                            onClick={() => {
-                              setRebindOpen(false);
-                              onRebind && onRebind(model, target);
-                            }}
-                          >
-                            {target.name}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
+                  {rebindOpen &&
+                    rebindMenuPos &&
+                    ReactDOM.createPortal(
+                      <div
+                        className="fixed w-48 bg-[#2a2a2a] border border-white/20 rounded-lg shadow-lg z-50 max-h-40 overflow-y-auto"
+                        style={{ bottom: rebindMenuPos.bottom, right: rebindMenuPos.right }}
+                      >
+                        {rebindTargets.length === 0 ? (
+                          <p className="px-3 py-2 text-xs text-gray-400">
+                            No installed base model available
+                          </p>
+                        ) : (
+                          rebindTargets.map((target) => (
+                            <div
+                              key={target.id}
+                              className="px-3 py-2 text-xs hover:bg-white/10 cursor-pointer text-gray-100 border-b border-white/10 last:border-b-0"
+                              onClick={() => {
+                                setRebindOpen(false);
+                                onRebind && onRebind(model, target);
+                              }}
+                            >
+                              {target.name}
+                            </div>
+                          ))
+                        )}
+                      </div>,
+                      document.body
+                    )}
                 </div>
               )}
             </>
