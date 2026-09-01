@@ -605,7 +605,7 @@ const createApplicationMenu = () => {
         {
           label: t("menu.help.learnMore"),
           click: async () => {
-            await shell.openExternal("https://github.com/djaxchi/erudi");
+            await shell.openExternal("https://github.com/erudi-app/erudi");
           },
         },
       ],
