@@ -1,0 +1,71 @@
+# A scheduled workflow that fails talks to nobody: GitHub emails whoever started
+# a run, and a cron run has nobody. The weekly snapshot refresh broke and stayed
+# broken for six weeks before anyone noticed (#346).
+#
+# This workflow watches the scheduled ones and turns a failure into a GitHub
+# issue assigned to the maintainers, which GitHub then emails to them through
+# their usual notification settings. The alarm stays inside the tools we already
+# use: no SMTP server, no mail credentials in secrets, and it is a tracked,
+# closable item rather than a message that scrolls past.
+#
+# A repeat failure comments on the open issue instead of filing a new one, so a
+# job that breaks every Monday produces one thread, not a pile.
+name: Scheduled failure alarm
+
+on:
+  workflow_run:
+    # The `name:` of every workflow that runs on a schedule. Add new ones here.
+    workflows: ["Refresh catalog snapshots"]
+    types: [completed]
+
+permissions:
+  issues: write
+
+jobs:
+  alarm:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - name: File or update the alarm issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          TRIGGER: ${{ github.event.workflow_run.event }}
+          STARTED: ${{ github.event.workflow_run.run_started_at }}
+          # Who gets the email. Everyone listed needs write access to the repo.
+          ASSIGNEES: djaxchi,rayanhanader
+        run: |
+          set -euo pipefail
+
+          TITLE="Scheduled workflow failing: ${WORKFLOW}"
+
+          # The body goes through a file rather than a command substitution: a
+          # heredoc inside $(...) is mis-parsed by older bash, and --body-file
+          # keeps the text free of shell quoting concerns.
+          cat > alarm-body.md <<EOF
+          The "${WORKFLOW}" workflow failed: run #${RUN_NUMBER}, triggered by ${TRIGGER}, started ${STARTED}.
+
+          ${RUN_URL}
+
+          Nobody is emailed when a cron run fails, so this issue is the alarm. Close it once the
+          workflow is green again; the next failure opens a fresh one.
+          EOF
+
+          # One open thread per workflow, matched on the exact title, so a weekly
+          # failure keeps commenting instead of filing a new issue every Monday.
+          EXISTING=$(gh issue list --repo "$REPO" --state open --label ci-failure \
+            --json number,title --jq "[.[] | select(.title == \"$TITLE\")] | first | .number // empty")
+
+          if [ -n "$EXISTING" ]; then
+            echo "Issue #${EXISTING} is already open for ${WORKFLOW}; commenting on it."
+            gh issue comment "$EXISTING" --repo "$REPO" --body-file alarm-body.md
+          else
+            # The label may not exist yet, and creating it twice is not an error worth failing on.
+            gh label create ci-failure --repo "$REPO" --color B60205 \
+              --description "A scheduled workflow is failing" 2>/dev/null || true
+            gh issue create --repo "$REPO" --title "$TITLE" --body-file alarm-body.md \
+              --label ci-failure --assignee "$ASSIGNEES"
+          fi
