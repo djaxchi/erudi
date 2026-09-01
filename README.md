@@ -8,11 +8,11 @@ Erudi is a desktop application that lets you download, run, and chat with open-s
 
 ## Features
 
-- **Local inference** — models run on your hardware via [llama.cpp](https://github.com/ggerganov/llama.cpp)
+- **Local inference** — models run on your hardware via [llama.cpp](https://github.com/ggerganov/llama.cpp) on Windows and Linux, and [MLX](https://github.com/ml-explore/mlx) on Apple Silicon
 - **Automatic hardware detection** — picks CUDA, MLX, or CPU at startup
-- **Model library** — download and convert Hugging Face models in one click
-- **Knowledge Base** — attach PDF documents to a model for RAG (retrieval-augmented generation)
-- **Conversation memory** — short-term, middle-term (semantic), and long-term memory per conversation
+- **Model library** — browse a catalog of ready-to-run models, each card showing whether it fits your machine, and download it in one click. Erudi downloads pre-built MLX and GGUF artifacts; it never converts or quantizes weights locally
+- **Knowledge Base** — attach documents (`.pdf`, `.docx`, `.xlsx`, `.csv`, `.txt`, `.md`) to a model for RAG (retrieval-augmented generation), with hybrid dense + keyword retrieval
+- **Conversations kept on your machine** — history lives in an embedded database and is restored across restarts; older turns are summarized as a conversation grows
 - **Fully offline** — after initial model download, no internet connection required
 
 ---
@@ -24,8 +24,12 @@ Erudi is a desktop application that lets you download, run, and chat with open-s
 | Windows (NVIDIA GPU) | CUDA via `llama-server` | ✅ Supported |
 | Windows (no GPU) | CPU via `llama-server` | ✅ Supported |
 | macOS Apple Silicon (macOS 14+) | MLX | ✅ Supported |
-| Linux (NVIDIA GPU) | CUDA via `llama-server` | ✅ Supported |
-| Linux (CPU) | CPU via `llama-server` | 🚧 In progress |
+| Linux (NVIDIA GPU) | CUDA via `llama-server` | 🚧 Builds and launches in CI, not yet tested on real hardware |
+| Linux (CPU) | CPU via `llama-server` | 🚧 Builds and launches in CI, not yet tested on real hardware |
+
+✅ means the packaged app is built by CI and manually tested on that platform. 🚧 means every release
+builds and boots there in CI, but no one has yet run a full manual pass on real hardware — try it and
+tell us what breaks.
 
 ---
 
@@ -33,8 +37,8 @@ Erudi is a desktop application that lets you download, run, and chat with open-s
 
 ### Prerequisites
 
-- **Node.js** >= 18
-- **Python** >= 3.11
+- **Node.js** >= 20
+- **Python 3.12** exactly — `pgserver`, which ships the embedded PostgreSQL cluster, publishes wheels up to cp312 only
 - **Git**
 - Platform-specific requirements:
   - CUDA 12.1 toolkit for Windows with an NVIDIA GPU
@@ -123,9 +127,15 @@ The installer is generated at:
 frontend/out/installer/Erudi Setup <version>.exe
 ```
 
-### macOS
+### macOS (Apple Silicon)
 
-> The macOS build script is in progress. See [`docs/macos-build-readiness.md`](docs/macos-build-readiness.md) for the current status.
+```bash
+bash scripts/build/build-mac-silicon.sh
+```
+
+Signed and notarized builds are produced by CI: pushing a `vX.Y.Z` tag builds every platform and
+publishes a draft release. See [`docs/macos-build-readiness.md`](docs/macos-build-readiness.md) for
+the signing and notarization setup.
 
 ---
 
@@ -145,7 +155,7 @@ erudi/
 │   │   ├── main.js           # Electron main process
 │   │   ├── pages/            # React pages
 │   │   └── components/       # React components
-│   └── forge.config.js       # Electron Forge config
+│   └── electron-builder.yml  # Packaging, signing and update-feed config
 ├── scripts/
 │   ├── dev/backend/          # Development environment setup scripts
 │   └── build/                # Distribution build scripts
@@ -170,7 +180,7 @@ Windows/Linux + NVIDIA    → CUDA_Engine (llama-server with CUDA offload)
 Windows/Linux, no NVIDIA  → CPU_Engine  (llama-server, CPU only)
 ```
 
-All inference engines run an OpenAI-compatible HTTP server in a child process and communicate with it through `http://127.0.0.1:<port>/v1/chat/completions`. Windows and Linux NVIDIA backends and the CPU fallback use `llama-server` from llama.cpp. macOS Apple Silicon uses `mlx_vlm.server` for vision and tool calling. The bundled PyTorch distribution is CPU-only and is used exclusively for sentence-transformers embeddings in the Knowledge Base and conversation memory.
+All inference engines run an OpenAI-compatible HTTP server in a child process and communicate with it through `http://127.0.0.1:<port>/v1/chat/completions`. Windows and Linux NVIDIA backends and the CPU fallback use `llama-server` from llama.cpp. macOS Apple Silicon uses `mlx_vlm.server` for vision and tool calling. The bundled PyTorch distribution is CPU-only and is used exclusively for the Knowledge Base embedding model (`multilingual-e5-small`); conversation history and its rolling summary are handled by the LangGraph checkpointer, not by embeddings.
 
 ---
 
