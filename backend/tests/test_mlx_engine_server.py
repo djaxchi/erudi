@@ -388,6 +388,9 @@ class TestMlxVlmServerRunnerHelper:
             "_patch_inline_thinking",
             lambda: order.append("thinking-patch") or True,
         )
+        monkeypatch.setattr(
+            runner, "_patch_qwen25vl_vision_cu_seqlens_int_cast", lambda: True
+        )
         fake_main = MagicMock(side_effect=lambda: order.append("main"))
         monkeypatch.setattr(runner, "_import_mlx_vlm_server_main", lambda: fake_main)
         monkeypatch.setattr(sys, "argv", ["pytest"])
@@ -415,6 +418,9 @@ class TestMlxVlmServerRunnerHelper:
         )
         monkeypatch.setattr(runner, "_patch_gemma_end_of_turn_stop", lambda: True)
         monkeypatch.setattr(runner, "_patch_inline_thinking", lambda: True)
+        monkeypatch.setattr(
+            runner, "_patch_qwen25vl_vision_cu_seqlens_int_cast", lambda: True
+        )
         fake_main = MagicMock(side_effect=lambda: order.append("main"))
         monkeypatch.setattr(runner, "_import_mlx_vlm_server_main", lambda: fake_main)
         monkeypatch.setattr(sys, "argv", ["pytest"])
@@ -525,6 +531,9 @@ class TestGemmaEndOfTurnStopPatch:
             lambda: order.append("gemma-stop") or True,
         )
         monkeypatch.setattr(runner, "_patch_inline_thinking", lambda: True)
+        monkeypatch.setattr(
+            runner, "_patch_qwen25vl_vision_cu_seqlens_int_cast", lambda: True
+        )
         fake_main = MagicMock(side_effect=lambda: order.append("main"))
         monkeypatch.setattr(runner, "_import_mlx_vlm_server_main", lambda: fake_main)
         monkeypatch.setattr(sys, "argv", ["pytest"])
@@ -679,6 +688,110 @@ class TestGemma3TiedLmHeadQuantPatch:
         once = LM().sanitize(dict(weights))
         twice = LM().sanitize(dict(once))
         assert twice == once
+
+
+@pytest.mark.unit
+class TestQwen25VLVisionRepeatIntCastPatch:
+    """`_patch_qwen25vl_vision_cu_seqlens_int_cast` fixes a 100%-reproducible
+    crash on every Qwen2.5-VL vision forward pass on the pinned mlx-vlm 0.6.13.
+
+    `VisionModel.__call__` (`mlx_vlm/models/qwen2_5_vl/vision.py:367`) calls
+    `mx.repeat(seq_len, grid_thw[i, 0])`, and `grid_thw[i, 0]` is a 0-d
+    `mx.array` — mlx's binding requires `repeats` to be a plain `int`, so this
+    fails for every image, every time. Fixed upstream between 0.6.15 and
+    0.6.16 by casting to `int()` at the call site; this patch applies the same
+    cast at the `mx.repeat` call boundary instead, since wrapping the whole
+    method would mean duplicating and re-maintaining its body.
+    """
+
+    def _install_fake_mlx_core(self, monkeypatch):
+        import sys
+        import types
+
+        calls = []
+
+        def repeat(a, repeats, axis=None):
+            calls.append((a, repeats, axis))
+            return "repeated"
+
+        core = types.ModuleType("mlx.core")
+        core.repeat = repeat
+        mlx_pkg = types.ModuleType("mlx")
+        mlx_pkg.core = core
+        monkeypatch.setitem(sys.modules, "mlx", mlx_pkg)
+        monkeypatch.setitem(sys.modules, "mlx.core", core)
+        return core, calls
+
+    def test_returns_false_when_mlx_absent(self, monkeypatch):
+        import sys
+        import types
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        bare = types.ModuleType("mlx")  # no `core` submodule
+        monkeypatch.setitem(sys.modules, "mlx", bare)
+        monkeypatch.setitem(sys.modules, "mlx.core", None)
+        assert runner._patch_qwen25vl_vision_cu_seqlens_int_cast() is False
+
+    def test_casts_array_repeats_to_int(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        core, calls = self._install_fake_mlx_core(monkeypatch)
+        assert runner._patch_qwen25vl_vision_cu_seqlens_int_cast() is True
+
+        class _ZeroDArray:
+            def __int__(self):
+                return 4
+
+        core.repeat("seq_len", _ZeroDArray())
+
+        assert calls[-1][1] == 4
+        assert isinstance(calls[-1][1], int)
+
+    def test_leaves_int_repeats_unchanged(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        core, calls = self._install_fake_mlx_core(monkeypatch)
+        assert runner._patch_qwen25vl_vision_cu_seqlens_int_cast() is True
+
+        core.repeat("seq_len", 3, axis=0)
+
+        assert calls[-1] == ("seq_len", 3, 0)
+
+    def test_patch_is_idempotent(self, monkeypatch):
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        core, _ = self._install_fake_mlx_core(monkeypatch)
+        assert runner._patch_qwen25vl_vision_cu_seqlens_int_cast() is True
+        first = core.repeat
+        assert runner._patch_qwen25vl_vision_cu_seqlens_int_cast() is True
+        assert core.repeat is first  # not double-wrapped
+
+    def test_runner_applies_vision_repeat_patch_before_main(self, monkeypatch):
+        """Must run before the server's main() so every image processed by the
+        vision tower goes through the patched `mx.repeat`.
+
+        Sibling in-child patches are stubbed out so this test never imports
+        the real mlx-vlm (absent on Linux CI, mutated-in-pytest-process on Mac).
+        """
+        import sys
+        from src.engines import _mlx_vlm_server_runner as runner
+
+        order: list[str] = []
+        monkeypatch.setattr(runner, "_patch_gemma3_tied_lm_head_quant", lambda: True)
+        monkeypatch.setattr(runner, "_patch_gemma_end_of_turn_stop", lambda: True)
+        monkeypatch.setattr(runner, "_patch_inline_thinking", lambda: True)
+        monkeypatch.setattr(
+            runner,
+            "_patch_qwen25vl_vision_cu_seqlens_int_cast",
+            lambda: order.append("vision-repeat") or True,
+        )
+        fake_main = MagicMock(side_effect=lambda: order.append("main"))
+        monkeypatch.setattr(runner, "_import_mlx_vlm_server_main", lambda: fake_main)
+        monkeypatch.setattr(sys, "argv", ["pytest"])
+
+        runner.run_mlx_vlm_server(["mlx_vlm.server", "--port", "9080"])
+
+        assert order.index("vision-repeat") < order.index("main")
 
 
 @pytest.mark.unit

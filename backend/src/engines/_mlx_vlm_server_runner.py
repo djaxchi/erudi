@@ -21,7 +21,7 @@ unit tests that run on Linux CI where `mlx-vlm` is not installed.
 
 In-child patches (pinned mlx-vlm 0.6.13)
 ----------------------------------------
-Three monkeypatches are applied before the server starts. Two 0.6.2-era
+Four monkeypatches are applied before the server starts. Two 0.6.2-era
 patches were dropped with the 0.6.13 bump because upstream now runs weight
 sanitization unconditionally in `mlx_vlm.utils.load_model` (the 0.6.2
 `format == "mlx"` sanitize skip is gone) — but hardware validation showed the
@@ -299,6 +299,63 @@ def _patch_inline_thinking() -> bool:
     return True
 
 
+def _patch_qwen25vl_vision_cu_seqlens_int_cast() -> bool:
+    """Fix a 100%-reproducible crash on every Qwen2.5-VL vision forward pass.
+
+    Hardware-found regression on the pinned mlx-vlm 0.6.13: any image sent to
+    a Qwen2.5-VL-family model (e.g. ``mlx-community/Qwen2.5-VL-7B-Instruct``)
+    crashes the vision tower unconditionally:
+
+        File ".../mlx_vlm/models/qwen2_5_vl/vision.py", line 367, in __call__
+            cu_seqlens.append(mx.repeat(seq_len, grid_thw[i, 0]))
+        TypeError: repeat(): incompatible function arguments.
+
+    ``grid_thw[i, 0]`` is a 0-d ``mx.array`` (indexing an ``mx.array`` never
+    yields a Python scalar), but mlx's C++ binding for ``mx.repeat`` requires
+    ``repeats`` to be a plain ``int`` — so this line fails for every batch
+    item, on every call, regardless of image content or size. Confirmed fixed
+    upstream between 0.6.15 and 0.6.16 (``int(grid_thw[i, 0])``); the pinned
+    0.6.13 predates that fix and the two versions are otherwise identical at
+    this call site.
+
+    Wrapping the whole ``VisionModel.__call__`` to fix one argument would
+    mean duplicating and re-maintaining that method's body, so instead this
+    wraps ``mx.repeat`` itself: when ``repeats`` isn't already a Python
+    ``int`` (the only case the binding rejects), cast it before delegating to
+    the original. A 0-d/scalar array converts to ``int`` losslessly, so this
+    is exactly upstream's own fix, applied at the call boundary instead of
+    the call site. Well-formed callers that already pass an ``int`` see no
+    change in behaviour.
+
+    Returns:
+        True if the patch was applied (or already present), False if mlx
+        (non-MLX hosts, CI) could not be imported. Idempotent.
+    """
+    try:
+        import mlx.core as mx
+    except Exception:
+        return False
+
+    if getattr(mx, "_erudi_repeat_int_cast_patch", False):
+        return True
+
+    _orig_repeat = mx.repeat
+
+    def _repeat(a, repeats, axis=None, **kwargs):
+        if not isinstance(repeats, int):
+            try:
+                repeats = int(repeats)
+            except (TypeError, ValueError):
+                pass
+        if axis is None:
+            return _orig_repeat(a, repeats, **kwargs)
+        return _orig_repeat(a, repeats, axis, **kwargs)
+
+    mx.repeat = _repeat
+    mx._erudi_repeat_int_cast_patch = True
+    return True
+
+
 def _import_mlx_vlm_server_main():
     """Import and return `mlx_vlm.server.cli.main`.
 
@@ -336,5 +393,9 @@ def run_mlx_vlm_server(argv: List[str]) -> None:
     # builds keeps reasoning inline in delta.content (#90) — see the patch's
     # docstring for why 0.6.13 offers no configuration path for this.
     _patch_inline_thinking()
+    # Applied in-child before any image is processed so Qwen2.5-VL's vision
+    # tower doesn't crash on its first `mx.repeat` call — see the patch's
+    # docstring for why 0.6.13 fails on every image.
+    _patch_qwen25vl_vision_cu_seqlens_int_cast()
     main = _import_mlx_vlm_server_main()
     main()
