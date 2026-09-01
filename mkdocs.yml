@@ -1,5 +1,5 @@
 site_name: Erudi Documentation
-repo_url: https://github.com/djaxchi/erudi
+repo_url: https://github.com/erudi-app/erudi
 
 theme:
   name: material

@@ -24,7 +24,7 @@ Guide de démarrage rapide pour installer et lancer Erudi localement.
 ### 1. Cloner le repository
 
 ```bash
-git clone https://github.com/djaxchi/erudi.git
+git clone https://github.com/erudi-app/erudi.git
 cd erudi
 ```
 

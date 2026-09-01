@@ -67,7 +67,7 @@ Voir [Usage](usage.md) pour les détails.
 
 ## 🔗 Liens Utiles
 
-- [GitHub Repository](https://github.com/djaxchi/erudi)
+- [GitHub Repository](https://github.com/erudi-app/erudi)
 - [Architecture détaillée](architecture.md)
 - [API Reference complète](reference/core.md)
 
