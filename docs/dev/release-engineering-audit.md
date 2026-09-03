@@ -1,5 +1,15 @@
 # Release Engineering — Audit & Roadmap (build/release multi-OS)
 
+!!! warning "Historical record (June 2026, in French)"
+    This is the audit that shaped the release pipeline, kept for the reasoning
+    behind it. Most of its findings are resolved: the repository is public, the
+    five-leg signed release matrix, the packaged-app smoke gate and the
+    all-green promote all exist. What still stands as of September 2026: no
+    `needs:` between release legs, actions pinned by tag rather than SHA, no
+    `permissions:` block in the CI workflows, no `CODEOWNERS`, no Dependabot.
+    For the current procedure read [BUILD.md](https://github.com/erudi-app/erudi/blob/main/BUILD.md)
+    and the [release QA checklist](release-qa-checklist.md).
+
 Audit du 2026-06-16, branche `main`. Confronte l'état réel du repo au référentiel
 « best practices open-source » (apps Mac + Windows + Linux, builds de prod,
 auto-release, gating par tests, supply-chain). Établi par 4 audits parallèles
@@ -174,3 +184,52 @@ Sur 5 cibles, **seules 2 ont une chaîne spec→requirements→handoff→signing
 - Specs : `backend.spec:53-65`, `backend-mac-silicon.spec:55-59,253`, `backend-cpu.spec:13,21-37`.
 - Requirements : `meta/mac-intel-specs.txt` (vide), `meta/linux-specs.txt` (vide), `entrypoints/prod/*`.
 - Gouvernance : `.env`/`backend/.env` suivis, `LICENSE` (propriétaire), pas de `SECURITY.md`/`CODEOWNERS`/`dependabot.yml`.
+
+---
+
+## 8. Windows packaging post-mortems
+
+Two Windows-specific failures worth keeping, extracted from the retired
+`docs/windows-build-notes.md`. Both are historical records of root causes, not current
+build instructions.
+
+### Backend crash on launch — `[WinError 126]`
+
+**Symptom.** The backend process started, then died immediately; `shm.dll` failed to
+load.
+
+**Root cause.** `backend/backend.spec` strips CUDA DLLs after PyInstaller's Analysis
+pass, because the built-in torch hook auto-collects all of `torch/lib/*.dll` regardless
+of what the spec asks for. The first version of the filter left behind small stubs —
+`c10_cuda.dll`, `cudart64_12.dll`, `cupti64_*.dll`, `nvToolsExt64_1.dll`. Those stubs
+were present in the bundle, but their own dependencies (cuBLAS, cuDNN, …) had been
+stripped. When torch loaded `shm.dll`, Windows tried to resolve the full dependency chain
+and failed with `[WinError 126]`.
+
+**Fix.** Extend the filter's fragment list to strip the stubs too:
+
+```python
+_cuda_fragments = (
+    "torch_cuda", "cublas", "cublaslt", "cufft", "curand",
+    "cusolver", "cusolvermg", "cusparse", "cudnn", "nvrtc",
+    "nvjitlink", "nvjpeg", "nvperf", "caffe2_nvrtc",
+    # Small CUDA stubs -- their deps (cublas, cudnn, etc.) are stripped above.
+    # Leaving them causes [WinError 126] via shm.dll -> c10_cuda -> missing CUDA DLLs.
+    "c10_cuda", "cudart", "cupti", "nvtoolsext",
+)
+```
+
+This is safe because the embedding model runs CPU-only in the packaged build; GPU
+inference is handled by `llama-server.exe`, which ships its own CUDA binaries.
+
+### Why Squirrel was dropped
+
+`electron-winstaller` 5.4.0 silently fails on nupkgs larger than roughly 1 GB. It writes
+an empty `RELEASES` file (a UTF-8 BOM and nothing else), then crashes with
+`System.InvalidOperationException: Source sequence doesn't contain any elements`. The
+packaging step swallowed the `-1` exit code and reported success, leaving behind a 290 KB
+dummy `Setup.exe` — a green build that shipped nothing installable.
+
+Erudi's bundle is far past that limit, so Squirrel was replaced by an NSIS installer:
+a single file, no size ceiling, LZMA2 compression, user-scope install with no
+administrator prompt, and `electron-updater` for auto-update.

@@ -1,238 +1,211 @@
 # Engines Architecture
 
-## Overview
+`backend/src/engines/` holds every inference engine. All three run an
+OpenAI-compatible HTTP server in a child process and stream from it over SSE.
 
-The `src/engines/` directory contains all inference engine implementations for Erudi. Engines are responsible for loading models, generating text, and encoding embeddings.
+## Hierarchy
 
-## Engine Types
-
-### LLM Engines
-
-The hierarchy is now two-tier:
-
-```
+```text
 BaseEngine
 └── BaseChatServerEngine        ← shared: port pick, /health + chat-ping probe,
     │                             SSE byte-buffer parser, atexit storage,
     │                             idle-cleanup active marker, kwarg translation
-    ├── MLX_Engine               (mp.Process + mlx_vlm.server, port 27300+)
+    ├── MLX_Engine               (mp.Process + mlx_vlm.server, ports 27300-27399)
     └── BaseLlamaCppEngine      ← shared CPU/CUDA: Popen, llama-server resolution,
-        │                         GGUF picker (q4_k_m > q4_0 > … > smallest),
-        │                         `repetition_penalty → repeat_penalty` rename
-        ├── CPU_Engine           (Popen + llama-server CPU, -ngl 0, port 27200+)
-        └── CUDA_Engine          (Popen + llama-server CUDA, -ngl <computed>, port 27200+)
+        │                         GGUF picker, `repetition_penalty → repeat_penalty`
+        ├── CPU_Engine           (Popen + llama-server CPU, -ngl 0, ports 27200-27299)
+        └── CUDA_Engine          (Popen + llama-server CUDA, -ngl <computed>, 27200-27299)
 ```
 
-Concrete engines implement only the small surface that is genuinely
-backend-specific: `_spawn_child` (CPU/CUDA via `subprocess.Popen`, MLX
-via `multiprocessing.Process(target=run_mlx_vlm_server, ...)`),
-`_terminate_process`, `_proc_is_alive`, and `_resolve_model_artifact`.
-LlamaCpp subclasses additionally implement `_build_spawn_argv` and
-`_build_spawn_env` (CUDA prepends the CUDA toolkit `bin/` to `PATH` for
-the runtime DLLs).
+Concrete engines implement only the four hooks that are genuinely backend-specific:
 
-`multiprocessing.Process` is required for MLX because PyInstaller frozen
-builds have no Python interpreter at `sys.executable` to pass `-m` to;
-`mp.spawn` (configured in `backend/run.py`) re-executes the binary in
-child mode. CPU/CUDA can use `Popen` because the `llama-server` binary
-is bundled in `backend/artifacts/llama-cpp/<cpu|cuda>/bin/`.
+| Hook | CPU / CUDA | MLX |
+|---|---|---|
+| `_spawn_child` | `subprocess.Popen` | `multiprocessing.Process(target=run_mlx_vlm_server, ...)` |
+| `_terminate_process` | process-group / job-object teardown | child process terminate |
+| `_proc_is_alive` | `Popen.poll()` | `Process.is_alive()` |
+| `_resolve_model_artifact` | pick a `.gguf` in the model directory | resolve the MLX repo directory |
 
-#### Engine Selection
+The llama.cpp subclasses additionally implement `_build_spawn_argv` and
+`_build_spawn_env` (CUDA prepends the CUDA toolkit `bin/` to `PATH` so the runtime DLLs
+resolve).
 
-The appropriate engine is automatically selected based on hardware detection:
+`multiprocessing.Process` is required for MLX because a PyInstaller frozen build has no
+Python interpreter at `sys.executable` to pass `-m` to; `mp.spawn` (configured in
+`backend/run.py`) re-executes the binary in child mode. CPU and CUDA can use `Popen`
+because the `llama-server` binary is bundled at
+`backend/artifacts/llama-cpp/<cpu|cuda>/bin/`.
+
+## Engine selection
 
 ```python
 from src.engines.base_engine import BaseEngine
+from src.core import config
 
-# Auto-select engine class (not an instance — engines expose only
+# Auto-select the engine CLASS (not an instance — engines expose only
 # classmethods; instantiation is intentionally blocked).
-engine_class = BaseEngine.get_engine()
-
-# Set globally for the lifetime of the FastAPI app (see core/api.py:lifespan).
-from src.core import config
-config.LLM_Engine = engine_class
+config.LLM_Engine = BaseEngine.get_engine()
 ```
 
-### Embedder Engine
+`BaseEngine.get_engine()` (`base_engine.py:528`) dispatches at startup:
 
-The `Embedder_Engine` is a singleton that manages the sentence transformer model used for:
-- Knowledge base vector creation
-- Semantic search in conversations
-- Query embedding for RAG
+- macOS ARM (`platform.system() == "Darwin"` and `"arm" in platform.machine()`) → `MLX_Engine`
+- Windows/Linux with `pynvml.nvmlDeviceGetCount() > 0` → `CUDA_Engine`
+- otherwise → `CPU_Engine`
 
-```python
-from src.engines.embedder_engine import Embedder_Engine
+`ERUDI_FORCE_CPU=1` bypasses GPU detection entirely.
 
-# Get embedder instance (lazy loaded)
-embedder = Embedder_Engine.get_embedder()
+## Model specifications
 
-# Encode text
-embedding = embedder.encode("Sample text")
+| Engine | Hardware | Model format | Server | Child launch | Ports |
+|---|---|---|---|---|---|
+| MLX | Apple Silicon | MLX repos (`mlx-community/*`) | `mlx_vlm.server` | `mp.Process` | 27300-27399 |
+| CUDA | NVIDIA GPU | GGUF | `llama-server` (CUDA build) | `subprocess.Popen` | 27200-27299 |
+| CPU | Windows / Linux CPU | GGUF | `llama-server` (CPU build) | `subprocess.Popen` | 27200-27299 |
 
-# Cleanup to free memory
-Embedder_Engine.cleanup()
-```
+The backend's own HTTP server binds 27182-27199, below both pools, so the three local
+servers never contend for a port.
 
-## Architecture Principles
+`BaseLlamaCppEngine._find_llama_server` tries the configured flavour first and falls back
+to the other one: a CUDA-built artifact runs CPU inference fine, whereas the CPU artifact
+simply will not use the GPU.
 
-### Separation of Concerns
+When the model path is a directory, `BaseLlamaCppEngine` picks the GGUF file by quant
+preference — `q4_k_m` > `q4_0` > `q5_k_m` > `q8_0` > `f16`, then the smallest remaining
+file — skipping `mmproj` sidecars.
 
-- **Engines** (`src/engines/`): Inference backends (LLM generation, text embedding)
-- **Utils** (`src/utils/`): Pure utility functions (prompts, file processing)
-- **Domains** (`src/domains/`): Business logic using engines and utils
+## Generation
 
-### Why Embedder is an Engine
-
-The `Embedder_Engine` is in `src/engines/` (not `src/utils/`) because:
-
-1. **Inference Backend**: Loads and runs ML models (sentence transformer)
-2. **Memory Management**: Requires explicit lifecycle management (load/cleanup)
-3. **Hardware Dependent**: Performance varies by backend (GPU/CPU)
-4. **Singleton Pattern**: Prevents multiple instances in memory
-5. **Architectural Consistency**: Aligns with other engine patterns
-
-## Model Specifications
-
-### LLM Engines
-
-| Engine | Hardware | Model format | Inference backend | Child launch |
-|--------|----------|--------------|--------------------|--------------|
-| MLX    | Mac Silicon | MLX 4-bit (mlx-community/* repos) | `mlx_vlm.server` | `mp.Process` |
-| CUDA   | NVIDIA GPU | GGUF (Q4_K_M default, Q5_K_M, Q8_0, FP16 fallback) | `llama-server` binary | `subprocess.Popen` |
-| CPU    | Any CPU | GGUF (same as CUDA) | `llama-server` binary | `subprocess.Popen` |
-
-### Embedder Engine
-
-| Model | Dimensions | Size | Framework |
-|-------|-----------|------|-----------|
-| paraphrase-multilingual-MiniLM-L12-v2 | 384 | ~470 MB | sentence-transformers |
-
-## Usage Patterns
-
-### LLM Generation
+Streaming does not go through the engine directly. The agent layer
+(`backend/src/agents/runner.py`) talks to the child server through
+`ChatOpenAI(base_url=...)` and wraps model resolution plus the whole token stream in
+`BaseEngine.generation_guard()`:
 
 ```python
 from src.core import config
 
-# Load (or reuse cached) model handle; spawns subprocess if first call.
-model, tokenizer = config.LLM_Engine.get_model_and_tokenizer(
-    llm_id=llm.id,
-    llm_local_path=llm.link,
-)
-
-# Sync generator — wrapped by Starlette via iterate_in_threadpool when
-# passed to StreamingResponse.
-for token in config.LLM_Engine.generate_stream(
-    model=model,
-    tokenizer=tokenizer,
-    prompt=[{"role": "user", "content": "Hello, world!"}],
-    max_tokens=100,
-    temperature=0.7,
-    top_p=0.9,
-):
-    print(token, end="", flush=True)
+async with config.LLM_Engine.generation_guard():
+    ...  # resolve the model and stream the turn
 ```
 
-### Embedder
+The guard serializes concurrent requests on one asyncio lock so they cannot thrash the
+single-model subprocess, and the idle-cleanup tick shares that same lock, so a model can
+never be reaped mid-stream. On exit the idle clock restarts from the end of the
+generation.
+
+## Memory lifecycle
+
+`BaseEngine` keeps `_model`, `_tokenizer`, `_model_id` and `_last_used` as class
+attributes shared across requests. A cleanup monitor started in the FastAPI lifespan
+(`core/api.py`, `start_cleanup_task()`) ticks every 300 seconds and unloads the model once
+it has been idle for longer than `_max_idle_time` (300 seconds, `base_engine.py:100`).
+While a generation is in flight the active marker `_last_used = None` makes
+`_should_cleanup()` return `False`.
+
+## Embeddings
+
+Embeddings are **not** an engine. The Knowledge Base uses `E5Embeddings`
+(`backend/src/ingestion/embeddings.py`), a LangChain `Embeddings` implementation over a
+resident `intfloat/multilingual-e5-small` singleton (384 dimensions), cached inside the
+app data directory. The `passage: ` and `query: ` prefixes required by the e5 family are
+applied by `embed_documents` and `embed_query` respectively and are mandatory. Vectors go
+to `rag.kb_chunks` through langchain-postgres' `PGVectorStore`. See the
+[Knowledge Base guide](../../guides/knowledge_base.md).
+
+## Error handling
+
+Engines raise the structured exceptions from `src.core.exceptions`:
 
 ```python
-from src.engines.embedder_engine import Embedder_Engine
-import numpy as np
+from src.core.exceptions import EngineException, ModelLoadingException, GenerationException
 
-# Load embedder
-embedder = Embedder_Engine.get_embedder()
-
-# Encode for KB
-texts = ["Document 1", "Document 2"]
-embeddings = embedder.encode(texts, convert_to_tensor=True)
-
-# Convert to numpy for FAISS
-emb_np = embeddings.detach().cpu().numpy().astype("float32")
-
-# Cleanup
-Embedder_Engine.cleanup()
+raise ModelLoadingException(f"Failed to load {model_path}", trace=str(e))
 ```
 
-## Migration Guide
+`EngineException` (`LLM_ENGINE_FAILURE`) covers subprocess and server lifecycle failures,
+`ModelLoadingException` covers load failures, and `GenerationException` covers failures
+during a stream. See [Exception Handling](../exceptions.md).
 
-### From utils.inference_utils to engines.embedder_engine
+## Building llama.cpp
 
-**Old code (deprecated):**
-```python
-from src.utils.inference_utils import EmbedderService
+The `llama-server` binary is never committed. `backend/forks/llama-cpp` is a git
+submodule, so a fresh clone needs:
 
-embedder = EmbedderService.get_embedder()
-EmbedderService.cleanup()
+```bash
+git submodule update --init --recursive
 ```
 
-**New code (preferred):**
-```python
-from src.engines.embedder_engine import Embedder_Engine
+Then build for your platform, from the repository root:
 
-embedder = Embedder_Engine.get_embedder()
-Embedder_Engine.cleanup()
+```bash
+# macOS Apple Silicon (local CPU engine, development convenience)
+bash scripts/dev/backend/build-llamacpp-cpu-macos-silicon.sh
+
+# Linux
+bash scripts/dev/backend/build-llamacpp-cpu-linux.sh
+bash scripts/dev/backend/build-llamacpp-cuda-linux.sh
 ```
 
-**Backward compatibility:**
-The old import still works via re-export in `src/utils/inference_utils.py`, but will be removed in v1.0.0.
+```powershell
+# Windows
+.\scripts\dev\backend\build-llamacpp-cpu-win.ps1
+.\scripts\dev\backend\build-llamacpp-cuda-win.ps1
+```
 
-## Performance Considerations
+The shipped CPU and CUDA engines target **Windows and Linux**. On macOS the shipped
+engine is MLX; the macOS CPU build exists so the llama.cpp path can be exercised locally
+on a Mac, not as a distribution target.
 
-### Memory Management
+### What the macOS Apple Silicon script does
 
-- **LLM Engines**: Models stay loaded until engine replacement
-- **Embedder**: Call `cleanup()` after batch operations to free ~470 MB
+`scripts/dev/backend/build-llamacpp-cpu-macos-silicon.sh`:
 
-### Batching
+1. Checks the toolchain (`clang` from the Xcode Command Line Tools, `curl`, `tar`).
+2. Installs `cmake` into `backend/venv` — no global or Homebrew install.
+3. Offers to delete a previous `backend/forks/llama-cpp/build-cpu` and
+   `backend/artifacts/llama-cpp/cpu`.
+4. Configures CMake for an arm64 CPU-only build. It deliberately does **not** set
+   `CMAKE_OSX_ARCHITECTURES`, letting it default to the host arm64:
 
-- **Embedder**: Encode in batches for better GPU utilization
-- **LLM**: Use streaming for responsive UX
+   | Flag | Why |
+   |---|---|
+   | `GGML_CPU=ON`, `GGML_NATIVE=ON` | let ggml pick the Apple M-series optimized kernels |
+   | `GGML_ACCELERATE=ON` | link Apple's Accelerate framework for BLAS |
+   | `GGML_BLAS=OFF` | no third-party BLAS |
+   | `GGML_OPENMP=OFF` | AppleClang ships no libomp; skips a slow probe |
+   | `GGML_METAL=OFF` | the CPU engine must not call Metal |
+   | `GGML_CUDA/HIP/VULKAN/SYCL/RPC/WEBGPU=OFF` | CPU backend only |
+   | `BUILD_SHARED_LIBS=ON` with `CMAKE_INSTALL_RPATH=@executable_path/../lib` | keeps the install tree self-contained |
 
-### Hardware Detection
+5. Builds into `backend/forks/llama-cpp/build-cpu/` and installs into
+   `backend/artifacts/llama-cpp/cpu/`.
 
-`BaseEngine.get_engine()` (base_engine.py:507) dispatches at startup:
-- macOS ARM (`platform.system() == "Darwin"` and `"arm" in platform.machine()`) → MLX_Engine
-- macOS Intel → CPU_Engine
-- Linux/Windows with CUDA (`pynvml.nvmlDeviceGetCount() > 0`) → CUDA_Engine
-- Otherwise → CPU_Engine
+Verify the result:
 
-Set `ERUDI_FORCE_CPU=1` to bypass GPU detection entirely.
+```bash
+backend/artifacts/llama-cpp/cpu/bin/llama-cli -h
+```
+
+The other scripts follow the same shape with their platform's toolchain and flags.
+
+### Build outputs are never committed
+
+`backend/forks/llama-cpp/build-*/` and `backend/artifacts/llama-cpp/` are git-ignored.
+Build outputs are environment-specific; CI rebuilds them per OS and bundles only the
+artifact matching the target.
 
 ## Testing
 
-Test engines with mocks to avoid loading actual models:
+Engine tests mock the child process rather than loading real models:
 
-```python
-import pytest
-from unittest.mock import MagicMock
-
-def test_embedder_cleanup(monkeypatch):
-    mock_embedder = MagicMock()
-    monkeypatch.setattr(
-        "src.engines.embedder_engine.Embedder_Engine._instance",
-        mock_embedder
-    )
-    
-    Embedder_Engine.cleanup()
-    assert Embedder_Engine._instance is None
+```bash
+cd backend && pytest tests/test_engines.py -x
+cd backend && pytest tests/ -m mlx_only      # MLX integration, Apple Silicon only
 ```
 
-## Error Handling
+## See also
 
-Engines should raise specific exceptions from `src.core.exceptions`:
-
-```python
-from src.core.exceptions import ModelLoadError, InferenceError
-
-try:
-    embedder = Embedder_Engine.get_embedder()
-except Exception as e:
-    logger.error(f"Failed to load embedder: {e}")
-    raise ModelLoadError(f"Embedder initialization failed: {e}") from e
-```
-
-## See Also
-
-- [Base Engine Documentation](./base_engine.md)
-- [Multi-Engine Architecture](./multi_engine.md)
-- [Model Lifecycle](./model_lifecycle.md)
+- [Architecture](../../architecture.md) — how engines fit into the backend
+- [Engines Reference](../../reference/engines.md) — API documentation
+- [Hardware guide](../../guides/hardware.md) — detection and performance scores
+- [Backend Launcher](../../guides/backend-run.md) — ports and lifecycle events

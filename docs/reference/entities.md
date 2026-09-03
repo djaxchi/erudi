@@ -10,6 +10,8 @@
 
 ::: src.entities.KnowledgeBase
 
+::: src.entities.KnowledgeDocument
+
 ::: src.entities.Llm
 
 ::: src.entities.Message
@@ -18,6 +20,4 @@
 
 ::: src.entities.HardwareProfile
 
-::: src.entities.TrainingJob
-
-::: src.entities.VectorStore
+::: src.entities.UserSettings

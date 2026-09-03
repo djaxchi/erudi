@@ -1,382 +1,213 @@
-# 🖥️ Guide — Hardware Detection & Performance
+# Hardware Detection & Performance
 
-User guide for understanding hardware detection, performance scores, and multi-backend support.
+How Erudi detects your hardware, which inference backend it picks, and what the
+performance scores mean.
 
 ## Overview
 
-Erudi automatically detects your hardware and optimizes performance based on available resources:
+Erudi detects the machine at startup and routes inference to the best available backend:
 
-- **Apple Silicon (M1/M2/M3/M4)**: Uses Metal Performance Shaders (MPS) and unified memory
-- **NVIDIA GPUs**: Uses CUDA for GPU acceleration
-- **CPU Fallback**: Runs on any system when GPU is unavailable
+- **Apple Silicon (M1/M2/M3/M4)**: the **MLX** backend, running `mlx_vlm.server` on
+  unified memory
+- **NVIDIA GPUs**: the **CUDA** backend, running the CUDA build of `llama-server`
+- **CPU fallback**: the CPU build of `llama-server`, on Windows and Linux
 
-## How Hardware Detection Works
+## How detection works
 
-### Automatic Backend Selection
+`BaseEngine.get_engine()` (`backend/src/engines/base_engine.py`) dispatches on
+`platform.system()` and `platform.machine()`, and detects NVIDIA GPUs through `pynvml`
+(not PyTorch):
 
-When you start Erudi, it automatically:
+1. macOS with an `arm` machine string → `MLX_Engine`
+2. Windows or Linux where `pynvml.nvmlDeviceGetCount() > 0` → `CUDA_Engine`
+3. Otherwise → `CPU_Engine`
 
-1. **Checks for Apple Silicon** → Uses MLX backend if detected
-2. **Checks for NVIDIA GPU** → Uses CUDA backend if available
-3. **Falls back to CPU** → Uses CPU-only backend for unsupported hardware
-
-```
+```text
 Priority: MLX > CUDA > CPU
 ```
 
-### What Gets Detected
+Setting `ERUDI_FORCE_CPU=1` skips GPU detection entirely and returns `CPU_Engine`. It is
+the supported way to exercise the CPU path on a GPU machine; see
+[`backend/.env.example`](https://github.com/erudi-app/erudi/blob/main/backend/.env.example).
 
-**All Backends:**
+The chosen engine is logged at startup (`Engine chosen: ...`).
+
+### What gets detected
+
+**All backends**
+
 - CPU model and core count
 - Total and available RAM
-- Disk space (total and available)
+- Disk space, total and available
 - Operating system and architecture
 
-**MLX (Apple Silicon) Specific:**
-- Chip model (e.g., "M3 Max", "M4 Pro")
+**MLX (Apple Silicon)**
+
+- Chip model (for example "M3 Max")
 - GPU core count
 - Neural Engine TOPS
 - Memory bandwidth
-- MPS (Metal Performance Shaders) availability
+- Unified memory capacity
 
-**CUDA (NVIDIA) Specific:**
-- GPU model name
-- CUDA core count
+**CUDA (NVIDIA)**
+
+- GPU name
+- CUDA core count and compute capability
 - CUDA runtime version
-- Compute capability (e.g., "8.6")
-- VRAM (total and available)
+- VRAM, total and available
 - Memory bandwidth
 
-**CPU Specific:**
+**CPU**
+
 - Logical core count
 - Estimated memory bandwidth
 - No GPU acceleration
 
-## Performance Scores Explained
+## Performance scores
 
-### Score Range: 0-100
+Each backend computes a 0-100 inference score from a weighted mix of compute, memory
+bandwidth, memory capacity, and storage. There is a single score: inference. Erudi does
+not train or fine-tune models.
 
-Erudi calculates two main scores for your hardware:
+### Score labels differ by backend
 
-1. **Inference Score**: How fast your system can generate text
-2. **Fine-Tuning Score**: How well your system can train models
+The numeric score is comparable across backends, but the **label thresholds are not
+shared** — each engine has its own scale. Do not compare labels across machines with
+different backends.
 
-### Score Labels
+| Source | Scale |
+|---|---|
+| `MLX_Engine` (`backend/src/engines/mlx_engine.py`) | 80 Excellent · 60 Good · 40 Fair · 20 Poor · below Weak |
+| `CPU_Engine` (`backend/src/engines/cpu_engine.py`) | 85 Amazing · 70 Excellent · 55 Very Good · 40 Good · 25 Medium · 10 Poor · below Terrible |
+| `CUDA_Engine` (`backend/src/engines/cuda_engine.py`) | 90 Amazing · 80 Excellent · 70 Very High · 60 High · 50 Good · 40 Medium · 30 Bad · 20 Very Bad · 10 Poor · below Terrible |
+| Hardware service (`backend/src/domains/hardware/services.py`) | 80 Excellent · 60 Good · 40 Fair · 20 Poor · below Weak |
 
-| Score | Label | Meaning |
-|-------|-------|---------|
-| 85-100 | **Amazing** | Top-tier hardware, excellent for large models |
-| 70-84 | **Excellent** | High-end hardware, great for most use cases |
-| 55-69 | **Very Good** | Mid-high range, good for medium models |
-| 40-54 | **Good** | Mid-range, suitable for smaller models |
-| 25-39 | **Medium** | Entry-level, may struggle with large models |
-| 10-24 | **Poor** | Limited capability, small models only |
-| 0-9 | **Terrible** | Very limited, not recommended |
+The label the UI displays comes from the hardware service, applied to the boosted score.
 
-### What Affects Your Score?
+### Boosted scores in the UI
 
-**For Inference (Text Generation):**
+The UI shows a **boosted score**: the raw score plus 20 points, capped at 100
+(`Hardware_Service.calculate_boosted_scores`).
 
-- **GPU/CPU Power** (35-40%): More cores = faster generation
-- **Memory Bandwidth** (20-30%): How fast data moves between components
-- **RAM Capacity** (15-30%): Larger models need more memory
-- **Storage** (10%): For loading models
-
-**For Fine-Tuning (Training):**
-
-- **Memory Capacity** (40-50%): Training needs significant RAM/VRAM
-- **GPU/CPU Power** (25-35%): Training is compute-intensive
-- **Memory Bandwidth** (5-20%): Data transfer matters for training
-- **Storage** (15%): Saving checkpoints and datasets
-
-### Boosted Scores in UI
-
-The UI shows **boosted scores** (+20 points, max 100) to make them more user-friendly:
-
-```
-Raw score: 65/100 → UI shows: 85/100 ("Excellent")
-Raw score: 82/100 → UI shows: 100/100 ("Amazing")
+```text
+Raw 65/100 → UI 85/100
+Raw 82/100 → UI 100/100
 ```
 
-**Why?** Most modern hardware is quite capable, and the boost reflects practical real-world performance.
+Both values are returned by the API, so the boost is always visible for debugging.
 
-**Transparency**: Both raw and boosted scores are available via API for debugging.
+### Recommended model size
 
-## Viewing Hardware Information
+Alongside the scores, the backend computes the model-size window the machine runs
+comfortably at 4-bit, in billions of parameters: `recommended_param_min` and
+`recommended_param_max` on `GET /erudi/hardware/app_startup`
+(`recommended_param_range` in `backend/src/domains/hardware/services.py`).
 
-### Training Page
+The window is the smaller of two limits — what fits in usable memory after an overhead
+reserve, and what is fast enough given memory bandwidth — clamped to a floor and a
+ceiling. The model library uses it to tell you which catalog entries fit your machine.
 
-Shows detailed hardware specs:
+## Refreshing hardware data
 
-- **Available Storage**: Free disk space for models
-- **Total RAM**: System memory capacity
-- **CPU Model**: Processor information
-- **GPU Information**:
-  - MLX: Chip model, GPU cores, Neural Engine
-  - CUDA: GPU name, CUDA cores, VRAM
-  - CPU: "No GPU detected"
-- **Fine-Tuning Rating**: Overall training capability
-
-### Landing Page
-
-Shows quick performance summary on startup:
-
-- Backend type (MLX/CUDA/CPU)
-- Inference score and label
-- Fine-tuning score and label
-
-### Dataset Card
-
-Shows device used for training:
-
-- **Apple Silicon**: "Apple M3 Max GPU (128 GB Unified Memory)"
-- **NVIDIA**: "NVIDIA RTX 4090 (24 GB VRAM)"
-- **CPU**: "Intel Core i9-13900K (64 GB RAM)"
-
-## Multi-Backend Compatibility
-
-### Same UI, Different Hardware
-
-Erudi's UI adapts automatically to your backend:
-
-**MLX Users See:**
-```
-Chip: M3 Max
-GPU Cores: 40 cores
-Neural Engine: 18.0 TOPS
-Memory: Unified Memory
-```
-
-**CUDA Users See:**
-```
-GPU: NVIDIA RTX 4090
-CUDA Cores: 16,384 cores
-VRAM: 24 GB
-Compute: 8.9
-```
-
-**CPU Users See:**
-```
-CPU: Intel Core i9-13900K
-Cores: 24 cores
-RAM: 64 GB
-GPU: No GPU detected
-```
-
-### Performance Differences
-
-Expected performance by backend (for similar-sized models):
-
-| Backend | Relative Speed | Best For |
-|---------|---------------|----------|
-| **MLX (M3 Max)** | 1.0x (baseline) | Mac users, great balance |
-| **CUDA (RTX 4090)** | 1.5-2.5x | Windows/Linux, maximum speed |
-| **CPU (High-end)** | 0.1-0.2x | No GPU, slower but works |
-
-## Refreshing Hardware Data
-
-### When to Refresh
-
-Refresh hardware detection if you:
-
-- Upgraded RAM
-- Added/removed a GPU
-- Connected external GPU (eGPU)
-- Notice incorrect specs
-
-### How to Refresh
-
-**Via API** (for developers):
+Hardware is re-detected on every app launch. Force a re-detection without restarting:
 
 ```bash
-curl -X POST http://127.0.0.1:27182/hardware/refresh
+curl -X POST http://127.0.0.1:27182/erudi/hardware/refresh
 ```
 
-**Via UI** (coming soon):
+Refresh after a RAM upgrade, a GPU change, or if the reported specs look wrong.
 
-- Settings → Hardware → Refresh
+## API endpoints
 
-**Via App Restart**:
+### Startup summary
 
-Hardware is re-detected on every app launch.
+```bash
+curl http://127.0.0.1:27182/erudi/hardware/app_startup
+```
+
+Returns the backend type, the boosted score and its label, the raw score, and the
+recommended parameter range.
+
+### Detailed diagnostics
+
+```bash
+curl http://127.0.0.1:27182/erudi/hardware/detailed
+```
+
+Returns the full profile with the score breakdown and both raw and boosted values.
+
+### Refresh
+
+```bash
+curl -X POST http://127.0.0.1:27182/erudi/hardware/refresh
+```
+
+Forces re-detection and updates the stored profile.
+
+## Backend differences
+
+Expected relative throughput for a similarly sized model:
+
+| Backend | Relative speed | Best for |
+|---|---|---|
+| MLX (Apple Silicon) | baseline | Macs; good balance of speed and memory |
+| CUDA (recent NVIDIA GPU) | faster | Windows/Linux with a discrete GPU |
+| CPU | much slower | machines with no supported GPU |
+
+### Memory model
+
+- **Apple Silicon** uses unified memory shared between CPU and GPU, which is why a Mac
+  can hold a larger model than its GPU-only equivalent.
+- **NVIDIA** uses dedicated VRAM; the CUDA engine offloads as many layers as fit and
+  leaves the rest on the CPU.
+- **CPU** uses system RAM only.
 
 ## Troubleshooting
 
-### Hardware Shows "Error fetching"
+### Hardware shows an error in the UI
 
-**Possible Causes:**
+1. Check the backend is running: `curl http://127.0.0.1:27182/erudi/health/`
+2. Look for a `HARDWARE_ERROR` entry in `backend/logs/backend.log`
+3. Force a refresh with `POST /erudi/hardware/refresh`
 
-1. Backend not running
-2. Hardware detection failed
-3. Permissions issue (rare)
-
-**Solutions:**
-
-1. Restart Erudi
-2. Check backend logs for errors
-3. Try refreshing hardware data
-
-### Incorrect GPU Detected
-
-**Example**: Shows CPU when you have a GPU
-
-**For NVIDIA GPUs:**
-
-1. Check CUDA is installed: `nvidia-smi`
-2. Check PyTorch CUDA: `python -c "import torch; print(torch.cuda.is_available())"`
-3. Reinstall CUDA drivers if needed
-
-**For Apple Silicon:**
-
-- Erudi should auto-detect, no drivers needed
-- Make sure you're on macOS (not Rosetta)
-
-### Low Performance Score
-
-**Your score depends on:**
-
-- Hardware age (older chips score lower)
-- Available resources (close other apps)
-- Thermal throttling (ensure good cooling)
-
-**Improving scores:**
-
-- Upgrade RAM (helps fine-tuning)
-- Upgrade GPU (helps both inference and training)
-- Close background applications
-- Ensure adequate cooling
-
-### Unified Memory vs VRAM
-
-**Apple Silicon (MLX):**
-
-- Uses **unified memory** (shared between CPU/GPU)
-- More flexible than dedicated VRAM
-- Shows as "Unified Memory" in UI
-
-**NVIDIA (CUDA):**
-
-- Uses **dedicated VRAM** (GPU-only memory)
-- Faster than system RAM for GPU tasks
-- Shows as "XX GB VRAM" in UI
-
-**CPU:**
-
-- Uses **system RAM** only
-- Slower for ML tasks than GPU memory
-- Shows as "XX GB RAM" in UI
-
-## Understanding Backend Selection
-
-### Why MLX for Mac?
-
-- **Native**: Built specifically for Apple Silicon
-- **Efficient**: Optimized for unified memory architecture
-- **Fast**: Metal Performance Shaders acceleration
-- **No drivers**: Just works on macOS
-
-### Why CUDA for NVIDIA?
-
-- **Mature**: Industry-standard GPU computing
-- **Fast**: Dedicated VRAM and tensor cores
-- **Powerful**: Supports massive models
-- **Widely supported**: Excellent library ecosystem
-
-### Why CPU Fallback?
-
-- **Universal**: Works on any system
-- **Reliable**: No driver dependencies
-- **Slower**: 10-50x slower than GPU
-- **Last resort**: Use only if no GPU available
-
-## API Endpoints for Developers
-
-### Get Training Info
+### The wrong backend was selected
 
 ```bash
-curl http://127.0.0.1:27182/hardware/training_info
+# What the selector sees
+python -c "import platform; print(platform.system(), platform.machine())"
+
+# NVIDIA detection, the same way the backend does it
+python -c "import pynvml; pynvml.nvmlInit(); print(pynvml.nvmlDeviceGetCount())"
 ```
 
-Returns full backend-specific hardware profile.
+- On macOS, MLX requires an `arm64` machine string. Running under Rosetta reports
+  `x86_64` and the selector falls through.
+- On Windows and Linux, CUDA requires `pynvml` to report at least one device; check the
+  driver with `nvidia-smi`.
+- Confirm `ERUDI_FORCE_CPU` is not set in your environment.
 
-### Get Startup Info
+### A low score
 
-```bash
-curl http://127.0.0.1:27182/hardware/app_startup
-```
-
-Returns minimal UI data with boosted scores.
-
-### Get Detailed Info
-
-```bash
-curl http://127.0.0.1:27182/hardware/detailed
-```
-
-Returns comprehensive diagnostics with raw/boosted comparison.
-
-### Refresh Hardware
-
-```bash
-curl -X POST http://127.0.0.1:27182/hardware/refresh
-```
-
-Forces hardware re-detection.
-
-## Best Practices
-
-### For Optimal Performance
-
-1. **Close unnecessary applications** before training
-2. **Ensure adequate cooling** for sustained performance
-3. **Use SSD** for faster model loading
-4. **Monitor memory usage** during training
-5. **Update drivers** (NVIDIA users)
-
-### For Different Hardware Tiers
-
-**High-End (Score 80+)**:
-
-- Train large models (7B-13B parameters)
-- Use higher batch sizes
-- Fine-tune with larger datasets
-
-**Mid-Range (Score 50-80)**:
-
-- Train medium models (3B-7B parameters)
-- Use moderate batch sizes
-- Fine-tune with medium datasets
-
-**Entry-Level (Score < 50)**:
-
-- Use small models (1B-3B parameters)
-- Use small batch sizes
-- Consider quantized models (4-bit)
+The score reflects sustained inference throughput, so it is affected by available RAM,
+background load, and thermal throttling. Closing other applications and improving cooling
+both help. A mid-range score still runs the models inside your recommended parameter
+range.
 
 ## FAQ
 
-**Q: Can I use both MLX and CUDA?**  
-A: No, Erudi selects one backend per session based on detection priority.
+**Can I use MLX and CUDA at the same time?**
+No. One backend is selected per session by the detection cascade.
 
-**Q: Will CPU backend damage my computer?**  
-A: No, it's completely safe. Just slower than GPU.
+**Can I choose the backend manually?**
+Only `ERUDI_FORCE_CPU=1`, which forces the CPU engine. There is no UI switch.
 
-**Q: Why is my score lower than expected?**  
-A: Scores are calibrated across all hardware types. A "Good" score is still quite capable.
+**Does a higher score mean better answers?**
+No. It means faster generation. Answer quality depends on the model.
 
-**Q: Can I manually select backend?**  
-A: Not yet, but coming in future versions. Currently auto-detected.
+**What if I have several GPUs?**
+The CUDA backend uses the primary GPU.
 
-**Q: Does higher score mean better models?**  
-A: Higher score means faster training/inference, not better model quality. Quality depends on training data and hyperparameters.
+## Technical details
 
-**Q: What if I have multiple GPUs?**  
-A: CUDA backend will use the primary GPU. Multi-GPU support coming soon.
-
-## Technical Details
-
-For developers wanting to understand the scoring algorithms, normalization factors, and backend implementation details, see:
-
-- [Hardware Domain Reference](../reference/hardware.md)
-- [Engine Architecture](../dev/architecture/engines.md)
-- [Performance Evaluation](../dev/architecture/performance.md)
+- [Hardware Domain Reference](../reference/hardware.md) — schemas and endpoints
+- [Engines Architecture](../dev/architecture/engines.md) — engine hierarchy and lifecycle

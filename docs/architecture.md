@@ -1,98 +1,119 @@
-# 🧩 Architecture
+# Architecture
 
-Documentation de l'architecture technique d'Erudi : structure DDD, multi-engine, patterns et flux.
+Technical architecture of Erudi: layering, multi-engine inference, startup sequence,
+storage, and the main request flows.
 
-## Vue d'Ensemble
+## Overview
 
-Erudi suit une **architecture hexagonale** avec séparation claire entre domaines métier, infrastructure et adapters. Le backend FastAPI utilise un **Domain-Driven Design (DDD)** organisé par domaines.
+The backend is a FastAPI application organised by business domain. Each domain owns its
+HTTP surface, its business logic, and its data access; infrastructure concerns (engines,
+database, ingestion, launcher) live outside the domains.
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
-│ Frontend (Electron + React + Tailwind)                         │
-│  - Contexts: LLM, Conversation, KB                             │
-│  - Services: API client (REST)                                 │
+│ Frontend (Electron + React + Tailwind)                          │
+│  - Contexts: KnowledgeBase, DownloadModal                       │
+│  - services/api/client.js (retry, timeout, X-Request-ID)         │
 └────────────────┬────────────────────────────────────────────────┘
-                 │ REST API (JSON)
+                 │ HTTP on 127.0.0.1:27182, all routes under /erudi
 ┌────────────────▼────────────────────────────────────────────────┐
 │ Backend FastAPI                                                 │
 │ ┌─────────────────────────────────────────────────────────────┐ │
-│ │ API Layer (endpoints/)                                      │ │
-│ │  - Route handlers, Pydantic schemas, DI                     │ │
-│ └────────────────┬────────────────────────────────────────────┘ │
-│ ┌────────────────▼────────────────────────────────────────────┐ │
-│ │ Service Layer (services/)                                   │ │
-│ │  - Business logic, orchestration                            │ │
-│ └────────────────┬────────────────────────────────────────────┘ │
-│ ┌────────────────▼────────────────────────────────────────────┐ │
-│ │ Repository Layer (repository/)                              │ │
-│ │  - Data access, queries                                     │ │
-│ └────────────────┬────────────────────────────────────────────┘ │
-│ ┌────────────────▼────────────────────────────────────────────┐ │
-│ │ Entity Layer (entities/)                                    │ │
-│ │  - SQLAlchemy models, validators                            │ │
+│ │ endpoints.py — routes, Pydantic schemas, dependencies       │ │
+│ ├─────────────────────────────────────────────────────────────┤ │
+│ │ services.py — business logic, orchestration                 │ │
+│ ├─────────────────────────────────────────────────────────────┤ │
+│ │ repository.py — data access                                 │ │
+│ ├─────────────────────────────────────────────────────────────┤ │
+│ │ entities/*.py — SQLAlchemy models                           │ │
 │ └─────────────────────────────────────────────────────────────┘ │
 ├─────────────────────────────────────────────────────────────────┤
 │ Infrastructure                                                  │
-│  - Engines: MLX / CUDA / CPU (BaseEngine abstraction)          │
-│  - Database: SQLite + SQLAlchemy ORM                           │
-│  - Utils: RAG (FAISS), embeddings, prompting                   │
+│  - engines/    MLX / CUDA / CPU behind BaseEngine               │
+│  - agents/     LangChain agent runner + LangGraph checkpointer  │
+│  - ingestion/  document reader, chunking, embeddings, vectors   │
+│  - database/   embedded PostgreSQL + pgvector, seeding          │
+│  - launcher/   runtime paths, Postgres runtime, DB watchdog     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Domaines Principaux
+## Domains
+
+Routers are mounted under the `/erudi` prefix in `register_routers`
+(`backend/src/core/api.py`): `llms`, `hardware`, `arena`, `knowledge_base`,
+`conversations`, `health`, `startup`, `user_settings`.
 
 ### 1. Conversations
-- **Responsabilité** : Gestion des sessions de chat et streaming
-- **Endpoints** : POST `/conversations`, GET, DELETE, streaming
-- **Entities** : `Conversation`, `Message`
-- **Features** : Multi-tier memory (short/middle/long-term + KB), paramètres (temperature, top_p)
-- [Référence complète](reference/conversations.md)
+
+- **Responsibility**: chat sessions, streaming generation, message persistence
+- **Endpoints**: `POST /erudi/conversations/`, `GET /erudi/conversations/`,
+  `POST /erudi/conversations/{id}/query`, `PATCH /erudi/conversations/{id}`,
+  `GET /erudi/conversations/{id}/fetch_messages`,
+  `POST /erudi/conversations/{id}/generate_title`,
+  `POST /erudi/conversations/star_message` and `/unstar_message`
+- **Entities**: `Conversation`, `Message`
+- **Conversation state**: held by the LangGraph checkpointer, not rebuilt from the
+  message table; older turns are summarized by a middleware as the thread grows
+- [Reference](reference/conversations.md)
 
 ### 2. LLMs
-- **Responsabilité** : Cycle de vie des modèles (download, load, unload, cleanup)
-- **Endpoints** : GET `/llms`, POST download, DELETE
-- **Entities** : `Llm`, `DownloadJob`
-- **Features** : HuggingFace integration, quantization MLX, attachement KB
-- [Référence complète](reference/llms.md)
+
+- **Responsibility**: catalog, downloads, deletion, KB assistant binding
+- **Endpoints**: `GET /erudi/llms/`, `GET /erudi/llms/search?name=`,
+  `GET /erudi/llms/search/huggingface`, `POST /erudi/llms/{llm_id}/download`,
+  `POST /erudi/llms/download/huggingface`, the `downloads/*` job routes,
+  `DELETE /erudi/llms/{id}`, `GET /erudi/llms/{llm_id}/dependents`,
+  `POST /erudi/llms/{assistant_id}/rebind`
+- **Entities**: `Llm`, `DownloadJob`
+- **Features**: Hugging Face integration, download of pre-built quants only, KB attachment
+- [Reference](reference/llms.md)
 
 ### 3. Knowledge Base
-- **Responsabilité** : RAG via FAISS vectorization
-- **Endpoints** : POST `/knowledge_base`, GET status
-- **Entities** : `KnowledgeBase`, `VectorStore`, `KBJob`
-- **Features** : PDF/TXT processing, chunking, embedding, top-k retrieval
-- [Référence complète](reference/knowledge_base.md)
+
+- **Responsibility**: document ingestion and hybrid retrieval
+- **Endpoints**: `POST /erudi/knowledge_base/create`,
+  `GET /erudi/knowledge_base/{llm_id}/status`,
+  `GET|POST /erudi/knowledge_base/embedding-model/status|download`
+- **Entities**: `KnowledgeBase`, `KnowledgeDocument`, `KBJob`; chunks live in the
+  `rag.kb_chunks` table
+- **Formats**: `.pdf`, `.docx`, `.xlsx`, `.csv`, `.txt`, `.md`. Images are accepted and
+  recorded as `pending_vision` — no OCR tier is bundled
+- **Deletion**: there is no KB delete route; a KB assistant is removed through
+  `DELETE /erudi/llms/{llm_id}`
+- [Reference](reference/knowledge_base.md)
 
 ### 4. Arena
-- **Responsabilité** : Comparaison côte-à-côte de modèles
-- **Endpoints** : POST `/arena/compare` (streaming)
-- **Features** : Génération parallèle, streaming synchronisé
-- [Référence complète](reference/arena.md)
+
+- **Responsibility**: comparing models on the same prompt
+- **Endpoint**: `POST /erudi/arena/{llm_id}/query` (one call per model, plain-text stream)
+- [Reference](reference/arena.md)
 
 ### 5. Hardware
-- **Responsabilité** : Monitoring système et scoring de performance
-- **Endpoints** : GET `/hardware/static`, `/dynamic`, `/training`
-- **Entities** : `StaticHardwareInfos`
-- **Features** : Détection Apple Silicon, scoring GPU/CPU, estimations de perf
-- [Référence complète](reference/hardware.md)
 
-### 6. Training
-- **Responsabilité** : Fine-tuning causal LM (future feature, stub actuel)
-- **Entities** : `TrainingJob`
-- **Status** : En développement
-- [Référence complète](reference/training.md)
+- **Responsibility**: hardware profiling and performance scoring
+- **Endpoints**: `GET /erudi/hardware/app_startup`, `GET /erudi/hardware/detailed`,
+  `POST /erudi/hardware/refresh`
+- **Entities**: `HardwareProfile`
+- [Reference](reference/hardware.md) · [Hardware guide](guides/hardware.md)
 
-## Architecture Multi-Engine
+### 6. Startup and user settings
 
-### Pattern uniforme « subprocess + HTTP OpenAI-compat »
+- `GET /erudi/startup/welcome-popup` and `GET /erudi/startup/connection-status` drive
+  first-run UI state (`StartupVariables`).
+- `GET|PUT /erudi/user_settings/` reads and writes the UI language (`UserSettings`).
+  See [Internationalization](i18n.md).
 
-Les trois engines d'inférence suivent le **même pattern** : ils spawnent un
-serveur HTTP OpenAI-compatible dans un processus enfant et communiquent
-avec lui en SSE sur `http://127.0.0.1:<port>/v1/chat/completions`. Cette
-uniformité, acquise par la PR `refactor/mlx-server-subprocess`, permet à
-terme de wrapper les trois engines derrière un unique `ChatOpenAI(base_url=...)`
-(LangChain) sans code custom par backend.
+## Multi-engine architecture
 
-```
+### The uniform "subprocess + OpenAI-compatible HTTP" pattern
+
+The three inference engines follow the **same pattern**: they spawn an
+OpenAI-compatible HTTP server in a child process and talk to it over SSE at
+`http://127.0.0.1:<port>/v1/chat/completions`. That uniformity is what lets the agent
+layer address all three through a single `ChatOpenAI(base_url=...)` client, with no
+per-backend code.
+
+```text
             ┌───────────────────────────────────┐
             │ FastAPI backend (parent process)  │
             │   src/engines/<engine>.py         │
@@ -107,115 +128,148 @@ terme de wrapper les trois engines derrière un unique `ChatOpenAI(base_url=...)
             └───────────────────────────────────┘
 ```
 
-Différence d'invocation child :
-- **CPU/CUDA** : `subprocess.Popen([llama-server, ...])` — binary natif (`backend/artifacts/llama-cpp/<cpu|cuda>/bin/llama-server`).
-- **MLX** : `multiprocessing.Process(target=run_mlx_vlm_server, args=(argv,))` — pas de binary natif côté MLX, donc on utilise `mp.spawn` (déjà configuré dans `backend/run.py` via `mp.freeze_support()` + `set_start_method("spawn", force=True)`). Cette approche fonctionne identiquement en dev (vrai Python) et en PyInstaller frozen où `sys.executable` est le binary launcher (impossible d'utiliser `Popen([sys.executable, "-m", "mlx_vlm.server"])`).
+How the child is launched differs:
 
-```python
-# backend/src/engines/base_engine.py  (simplifié)
-class BaseEngine(ABC):
-    @classmethod
-    def get_engine(cls) -> type["BaseEngine"]:
-        """Auto-select engine based on hardware."""
-        if platform.system() == "Darwin" and "arm" in platform.machine():
-            return MLX_Engine
-        if cuda_available():
-            return CUDA_Engine
-        return CPU_Engine
+- **CPU/CUDA**: `subprocess.Popen([llama-server, ...])` — a native binary at
+  `backend/artifacts/llama-cpp/<cpu|cuda>/bin/llama-server`.
+- **MLX**: `multiprocessing.Process(target=run_mlx_vlm_server, args=(argv,))`. There is
+  no native binary on the MLX side, and a PyInstaller frozen build has no Python
+  interpreter at `sys.executable` to pass `-m` to, so the process is spawned with
+  `mp.spawn` (configured in `backend/run.py` via `mp.freeze_support()` and
+  `set_start_method("spawn", force=True)`), which re-executes the launcher in child mode.
 
-    @classmethod
-    @abstractmethod
-    def generate_stream(cls, model, tokenizer, prompt, max_tokens, temperature, top_p, **kwargs):
-        """Stream tokens from the loaded model. Sync generator → wrapped by Starlette."""
-        ...
+Shared lifecycle (port pick, two-stage `/health` + chat-ping probe, SSE byte-buffer
+parser, atexit storage, idle-cleanup active marker, kwarg translation) lives in
+`BaseChatServerEngine`; `BaseLlamaCppEngine` factors what is specific to `llama-server`.
+See [Engines Architecture](dev/architecture/engines.md).
+
+### Available engines
+
+| Engine | Platform | Inference backend | Child launch | Port pool |
+|---|---|---|---|---|
+| **MLX_Engine** | macOS 14+ Apple Silicon | `mlx_vlm.server` | `mp.Process` | 27300-27399 |
+| **CUDA_Engine** | Windows / Linux + NVIDIA | `llama-server` (CUDA build) | `subprocess.Popen` | 27200-27299 |
+| **CPU_Engine** | Windows / Linux | `llama-server` (CPU build) | `subprocess.Popen` | 27200-27299 |
+
+The FastAPI backend itself binds 27182 and scans 27182-27199, stopping short of 27200 so
+the launcher and the inference pools can never fight over a port. Erudi's whole port
+footprint is 271xx-273xx. See [Backend Launcher](guides/backend-run.md).
+
+### Automatic selection
+
+At startup the engine class is selected by `BaseEngine.get_engine()`
+(`backend/src/engines/base_engine.py`):
+
+1. **macOS ARM** (`platform.system() == "Darwin"` and `"arm" in platform.machine()`) → `MLX_Engine`
+2. **Linux/Windows with an NVIDIA GPU** (`pynvml.nvmlDeviceGetCount() > 0`) → `CUDA_Engine`
+3. **Otherwise** → `CPU_Engine`
+
+`ERUDI_FORCE_CPU=1` short-circuits detection entirely and returns `CPU_Engine`.
+
+Engines are never instantiated: they expose classmethods only, and the selected class is
+stored on `src.core.config.LLM_Engine`.
+
+## Agent layer (`src/agents`)
+
+Conversations and Arena share one streaming primitive, `AgentRunner`
+(`backend/src/agents/runner.py`), built on LangChain's `create_agent`:
+
+- **Conversations** run with a `thread_id`, summarization enabled, and the LangGraph
+  checkpointer, so history is restored from the checkpointer (only the new message is
+  sent) and older turns are summarized in the agent state.
+- **Arena** runs stateless: no `thread_id`, no summarization, no checkpointer.
+
+A turn is captured as structured events — `answer`, `thinking`, `tool_call`,
+`tool_result` — which the conversation service frames as NDJSON. Arena projects the same
+stream down to answer text only, preserving its plain-text contract.
+
+Other modules in the layer:
+
+| Module | Role |
+|---|---|
+| `checkpoint.py` | Opens the `AsyncPostgresSaver` checkpointer held on `app.state.checkpointer` |
+| `kb_mode.py` | Chooses agentic (tool-driven) vs systematic KB retrieval; `ERUDI_KB_AGENTIC` overrides |
+| `tools.py` | Tool definitions, including `search_knowledge_base` |
+| `prompts.py` | System-prompt construction |
+| `middleware.py` | Summarization and related agent middleware |
+| `model_factory.py` | Builds the `ChatOpenAI` client pointed at the engine's child server |
+| `think_splitter.py` | Splits inline reasoning tokens out of the answer stream |
+
+## Startup sequence (lifespan)
+
+`backend/src/core/api.py:lifespan` runs, in order:
+
+1. **Embedded PostgreSQL** — `start_postgres(config.POSTGRES_DATA_DIR)`. On a first run
+   this pays a one-time `initdb`; the phase event `preparing_database` is emitted so the
+   Electron loader can say so.
+2. **Bind SQLAlchemy** — `init_database(app.state.postgres.sqlalchemy_url)`.
+3. **Engine selection** — `config.LLM_Engine = BaseEngine.get_engine()`.
+4. **Schema migration** — Alembic, forward-only, run off the event loop
+   (`run_in_threadpool(run_migrations, ...)`). Phase event: `running_migrations`. See
+   [Database migrations](dev/db-migrations.md).
+5. **Seed and catalog** — `startup_populate_database()` sets startup variables, the
+   hardware profile, and reconciles the model catalog from the bundled snapshots. Phase
+   event: `loading_catalog`.
+6. **KB vector store** — `init_kb_store(...)`, after the migration because its
+   cross-schema foreign keys reference the business tables.
+7. **Checkpointer** — `open_checkpointer(...)` on the same database, kept open for the
+   app lifetime and published on `app.state.checkpointer`.
+8. **Idle cleanup task** — `config.LLM_Engine.start_cleanup_task()`; the monitor ticks
+   every 300 s and unloads the model once it has been idle longer than
+   `_max_idle_time` (300 s).
+9. **Database watchdog** — `start_watchdog(app)` detects a dead embedded cluster,
+   resurrects it, and exposes the state on `/erudi/health/` as `db`.
+10. **Post-ready backfill** — a background task verifies the tool-call wire capability of
+    models downloaded before that column existed. It runs after readiness, in a
+    threadpool, never inside the awaited boot sequence.
+
+Shutdown reverses the order: cancel the backfill task, stop the watchdog, stop the
+cleanup task, clean up the engine, close the checkpointer, close the KB store, and stop
+the PostgreSQL cluster last.
+
+Startup phase events are informational. Readiness is the launcher's `ready` event or a
+confirming health check — never a phase.
+
+### Catalog snapshots
+
+The remote catalog (which quant exists for each foundation model in a given engine
+format) is identical for every user, so it is resolved once at build time and shipped as
+JSON: `backend/src/database/catalog_snapshot_mlx.json` and
+`catalog_snapshot_gguf.json`. First boot loads the snapshot for the active engine's
+`FORMAT_TAG` with zero Hugging Face calls. Regeneration is a build-time CLI:
+
+```bash
+cd backend
+python -m src.database.catalog_snapshot                     # active engine (mlx on Mac)
+ERUDI_FORCE_CPU=1 python -m src.database.catalog_snapshot   # gguf
 ```
 
-### Engines disponibles
-
-| Engine | Platform | Backend | Lancement child | Port range | Status |
-|--------|----------|---------|------------------|------------|--------|
-| **MLX_Engine** | Mac Silicon (M1/M2/M3/M4) | `mlx_vlm.server` | `mp.Process` | 9080+ | 🚧 macOS build en cours |
-| **CUDA_Engine** | Windows + NVIDIA | `llama-server` (CUDA build) | `subprocess.Popen` | 8080+ | ✅ Shippé Windows |
-| **CUDA_Engine** | Linux + NVIDIA | `llama-server` (CUDA build) | `subprocess.Popen` | 8080+ | 🚧 Planifié |
-| **CPU_Engine** | Windows / Linux / macOS Intel | `llama-server` (CPU build) | `subprocess.Popen` | 8080+ | ✅ Shippé Windows ; 🚧 ailleurs |
-
-Le backend FastAPI lui-même écoute sur 27182-27199 (cf `backend/run.py:72`),
-distinct des port ranges engine pour éviter les collisions sur les machines
-de dev qui font tourner plusieurs engines successivement.
-
-### Sélection automatique
-
-Au démarrage (`lifespan`), l'engine est auto-sélectionné par
-`BaseEngine.get_engine()` (cf. `backend/src/engines/base_engine.py:507`) :
-
-1. **macOS ARM** → `MLX_Engine`
-2. **macOS Intel** → `CPU_Engine`
-3. **Linux/Windows + CUDA détecté (pynvml)** → `CUDA_Engine`
-4. **Sinon** → `CPU_Engine`
-
-Override pour test : `ERUDI_FORCE_CPU=1` court-circuite la détection GPU
-et force `CPU_Engine`.
-
-Voir [Engines Reference](reference/engines.md) pour détails d'implémentation.
-
-## Flux de Démarrage (Lifespan)
-
-```python
-# backend/src/core/api.py
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 1. Sélection de l'engine
-    config.LLM_Engine = BaseEngine.get_engine()
-    
-    # 2. Création des tables SQLite
-    createTables()
-    
-    # 3. Seed de la base (HuggingFace models)
-    startup_populate_database()
-    
-    # 4. Démarrage du cleanup task (30s interval)
-    cleanup_task = asyncio.create_task(cleanup_loop())
-    
-    yield  # Application running
-    
-    # 5. Cleanup à l'arrêt
-    cleanup_task.cancel()
-```
-
-Ordre d'exécution :
-1. **Engine selection** → `config.LLM_Engine` global
-2. **Database init** → Tables créées si absentes
-3. **Seed** → Modèles HF populaires ajoutés (Mistral, Gemma, Qwen)
-4. **Cleanup loop** → Décharge modèles inactifs toutes les 30s
-5. **Yield** → Application prête
-6. **Shutdown** → Cancel cleanup task
-
-## Conventions de Code
+## Code conventions
 
 ### Naming
-- **snake_case** : variables, fonctions, fichiers, directories
-- **Capitalized_Snake_Case** : classes
-- **UPPER_SNAKE_CASE** : constantes
-- **Imports absolus** : toujours `from src.core.config import ...`
 
-### Structure de Domaine
+- **snake_case** for variables, functions, files, directories
+- **Capitalized_Snake_Case** for classes (`MLX_Engine`, `CUDA_Engine`)
+- **UPPER_SNAKE_CASE** for constants
+- Absolute imports: always `from src.core.config import ...`
 
-Chaque domaine suit cette structure :
+### Domain structure
 
-```
+```text
 backend/src/domains/<domain>/
 ├── __init__.py
-├── endpoints.py      # FastAPI routes (API layer)
-├── schemas.py        # Pydantic models (validation)
-├── services.py       # Business logic
-└── repository.py     # Data access (optionnel)
+├── endpoints.py      # FastAPI routes
+├── schemas.py        # Pydantic models
+├── services.py       # business logic
+└── repository.py     # data access (optional)
 ```
 
-Pattern de flux :
-```
-HTTP Request
+Request flow:
+
+```text
+HTTP request
    ↓
-endpoints.py (validation Pydantic)
+endpoints.py (Pydantic validation)
    ↓
 services.py (business logic)
    ↓
@@ -224,228 +278,213 @@ repository.py (DB queries)
 entities/*.py (SQLAlchemy models)
 ```
 
-### Gestion des Erreurs
+### Error handling
 
-Hiérarchie d'exceptions applicatives :
-
-```python
-# backend/src/core/exceptions.py
-class AppBaseException(Exception):
-    """Base pour toutes les exceptions Erudi."""
-    
-class ModelNotFoundError(AppBaseException):
-    """Modèle LLM introuvable."""
-    
-class InferenceError(AppBaseException):
-    """Erreur durant la génération."""
-```
-
-Handler global dans `api.py` :
+All business exceptions inherit from `AppBaseException`
+(`backend/src/core/exceptions.py`), which carries a message, an HTTP status code, an
+`erudi_code`, an optional `trace` (logged, never returned), and an optional `detail`
+payload returned verbatim to the client.
 
 ```python
-@app.exception_handler(AppBaseException)
-async def app_base_exception_handler(req, exc):
-    return JSONResponse(
-        status_code=400,
-        content={"error": str(exc)}
-    )
+from src.core.exceptions import ModelNotFoundException, StateConflictException
+
+raise ModelNotFoundException("qwen2.5-7b")            # 404 MODEL_NOT_FOUND
+raise StateConflictException(                          # 409 STATE_CONFLICT
+    "Base model has dependent assistants",
+    status_code=409,
+    detail={"dependents": [...]},
+)
 ```
 
-### Logging Structuré
+Two handlers are registered in `add_exception_handlers` (`core/api.py`):
+`app_base_exception_handler` for `AppBaseException`, and `unhandled_exception_handler`
+for bare `Exception`. Both return the same shape:
+
+```json
+{
+  "success": false,
+  "error": {
+    "type": "MODEL_NOT_FOUND",
+    "message": "Model 'qwen2.5-7b' not found\nPlease report the bug…",
+    "detail": { "…": "present only when the exception carries one" }
+  }
+}
+```
+
+See [Exception Handling](dev/exceptions.md).
+
+### Structured logging
 
 ```python
 from src.core.logging import logger
 
-logger.info("Model loaded", extra={
-    "llm_id": 42,
-    "model_name": "mistral-7b",
-    "engine": "mlx"
-})
+logger.info("Model loaded")
 ```
 
-Format : `[TIMESTAMP] [LEVEL] [MODULE] Message {context}`
+Log-message literals must stay ASCII-only. Logs are written to
+`backend/logs/backend.log` in development (rotating file, 10 MB, 10 backups). Packaged
+builds write to the OS log directory instead — macOS: `~/Library/Logs/erudi/backend.log`,
+Windows: `%LOCALAPPDATA%\erudi\logs\backend.log`, Linux:
+`${XDG_STATE_HOME:-~/.local/state}/erudi/logs/backend.log`. See
+[Logging & Traceability](logging.md).
 
-Logs are written to `backend/logs/backend.log` in development (rotating file, 10 MB, 10 backups). Packaged builds write to the OS log directory instead — macOS: `~/Library/Logs/erudi/backend.log`, Windows: `%LOCALAPPDATA%\erudi\logs\backend.log`, Linux: `${XDG_STATE_HOME:-~/.local/state}/erudi/logs/backend.log`. See [Logging & Traceability](logging.md).
+## Persistence
 
-## Persistence (SQLite + SQLAlchemy)
+Storage is an **embedded PostgreSQL cluster with pgvector**, provided by `pgserver` as
+pip wheels — no Docker, no system install. The lifespan boots the cluster
+(`src/launcher/postgres_runtime.py`; data directory `backend/data/postgres/` in
+development, a user-writable directory in packaged builds), creates the `erudi` database
+and the `vector` extension, then binds SQLAlchemy through `init_database(url)` over
+psycopg3 (`postgresql+psycopg://`).
 
-### Modèles Principaux
+Never import `db_engine` by value — read it through `src.database.core` attributes after
+initialization.
 
-- **Llm** : Catalogue de modèles (name, link, local, quantized, kb_id)
-- **Conversation** : Sessions de chat (llm_id, temperature, top_p, max_tokens)
-- **Message** : Messages individuels (conversation_id, sender, content, starred)
-- **KnowledgeBase** : Métadonnées KB (index_path, file_names_list)
-- **VectorStore** : Mapping FAISS ID → texte (vectors_data JSON)
-- **DownloadJob** : Jobs de téléchargement (status, progress, total_bytes)
-- **StaticHardwareInfos** : Profil matériel (singleton)
+One database, three tenants:
 
-Voir [Entities Reference](reference/entities.md) pour schémas complets.
+| Tenant | Location | Owner |
+|---|---|---|
+| Business tables | `public` | SQLAlchemy ORM |
+| Conversation state | `public` (LangGraph tables) | `AsyncPostgresSaver` |
+| KB chunks | `rag.kb_chunks` | langchain-postgres `PGVectorStore` |
 
-### Repository Pattern
+### Main entities
 
-```python
-# backend/src/domains/llms/repository.py (example)
-def get_llm_by_id(db: Session, llm_id: int) -> Optional[Llm]:
-    return db.query(Llm).filter(Llm.id == llm_id).first()
+- **Llm** — catalog and local models (name, link, `local`, `quantized`, `param_size`,
+  `is_base`, `supports_tools`, KB binding)
+- **Conversation** — chat sessions (llm_id, temperature, top_p, max_tokens, custom_prompt)
+- **Message** — individual messages (conversation_id, sender, content, starred)
+- **KnowledgeBase** — KB metadata and status
+- **KnowledgeDocument** — one row per ingested file, with its SHA-256 for dedup and a
+  status (`ingested`, `empty`, `pending_vision`, …)
+- **KBJob** — ingestion jobs
+- **DownloadJob** — download jobs (status, progress, total bytes)
+- **HardwareProfile** — detected hardware and its performance scores
+- **StartupVariables**, **UserSettings** — first-run flags and UI language
+
+See [Entities Reference](reference/entities.md).
+
+PostgreSQL sequences are non-transactional, so tests never assert absolute primary-key
+values.
+
+## Retrieval-augmented generation
+
+### Ingestion pipeline (`src/ingestion`)
+
+```text
+Source files (.pdf .docx .xlsx .csv .txt .md; images → pending_vision)
+   ↓  reader.py — DocumentReader routes to a per-format extractor
+Markdown pivot
+   ↓  cleaning.py — non-destructive cleaning (accents and casing preserved)
+   ↓  chunking.py — 3-pass, token-accurate on the e5 tokenizer
+Chunks (~180 tokens, ~15 % overlap)
+   ↓  embeddings.py — intfloat/multilingual-e5-small, 384 dimensions
+   ↓  vector_store.py — add_kb_chunks into rag.kb_chunks
+KnowledgeDocument rows (SHA-256 dedup, per-file status)
 ```
 
-Accès DB via dependency injection :
+Chunk defaults live in `backend/src/ingestion/chunking.py`
+(`DEFAULT_TARGET_TOKENS = 180`, `DEFAULT_OVERLAP_TOKENS = 27`).
 
-```python
-@router.get("/llms/{llm_id}")
-def get_llm(llm_id: int, db: Session = Depends(get_db)):
-    llm = get_llm_by_id(db, llm_id)
-    if not llm:
-        raise ModelNotFoundError(f"LLM {llm_id} not found")
-    return llm
-```
+The `query:` and `passage:` prefixes required by the e5 model family are mandatory and
+applied by `E5Embeddings`; skipping them silently degrades retrieval.
 
-## RAG (Retrieval-Augmented Generation)
+### Retrieval
 
-### Architecture FAISS
+`rag.kb_chunks` carries both a dense HNSW index (cosine over 384-dim embeddings) and a
+sparse `tsvector` column (`pg_catalog.simple`). A query runs both and fuses the two
+rankings with Reciprocal Rank Fusion (k = 60).
 
-1. **Embedder** : `paraphrase-multilingual-MiniLM-L12-v2` (384 dims)
-2. **Chunking** : Token-aware (384 tokens, 15% overlap)
-3. **Index** : FAISS `IndexFlatL2` (L2 distance)
-4. **Storage** : `VectorStore.vectors_data` JSON mapping ID → texte
+Always search through `search_kb_chunks`: langchain-postgres 0.0.17 freezes the first
+query's `fts_query` on the shared hybrid config, so each call needs a fresh config.
 
-### Flux de Création KB
+The conversation-side entry point is `retrieve_kb_excerpts`
+(`backend/src/utils/kb_utils.py`).
 
-```
-PDF/TXT files
-   ↓
-file_processor.prepare_for_knowledge_base()  # Extract + clean
-   ↓
-chunk_by_tokens()  # 384 tokens per chunk
-   ↓
-EmbedderService.get_embedder().encode()  # Generate embeddings
-   ↓
-faiss.IndexFlatL2()  # Build index
-   ↓
-VectorStore (save mapping)
-   ↓
-KnowledgeBase (save metadata)
-```
+Whether the model retrieves by calling the `search_knowledge_base` tool (agentic) or the
+service retrieves on every turn (systematic) depends on the model's tool-calling support;
+`ERUDI_KB_AGENTIC` forces either mode.
 
-### Injection dans Prompt
+See the [Knowledge Base guide](guides/knowledge_base.md).
 
-```python
-# backend/src/utils/kb_utils.py
-def get_relevant_texts_from_kb(query, llm, db, kb_top_k=3):
-    # 1. Embed query
-    embedder = EmbedderService.get_embedder()
-    query_embedding = embedder.encode([query])
-    
-    # 2. FAISS search
-    index = faiss.read_index(kb.index_path)
-    distances, indices = index.search(query_embedding, kb_top_k)
-    
-    # 3. Retrieve texts
-    vector_store = db.query(VectorStore).filter(...).first()
-    texts = [vector_store.vectors_data[str(idx)] for idx in indices[0]]
-    
-    return texts
-```
+## Context budget by model size
 
-Voir [Knowledge Base Guide](guides/knowledge_base.md) et [KB Reference](reference/knowledge_base.md).
+`get_prompting_strategy(param_size)` (`backend/src/utils/prompt_utils.py`) returns the
+system-prompt tier and the **KB token budget** — a ceiling in e5 tokens (roughly 180 per
+chunk), not a chunk count. The adaptive cut in `kb_utils` decides per query how much of
+the budget to consume.
 
-## Prompting Multi-Tier Memory
+| Parameter size | Tier | KB token budget |
+|---|---|---|
+| ≤ 2B (or unknown) | `tiny` | 400 |
+| ≤ 4B | `small` | 700 |
+| < 8B | `medium` | 1000 |
+| ≤ 16B | `large` | 1400 |
+| > 16B | `xlarge` | 2000 |
 
-### Stratégie par Taille de Modèle
+## Performance notes
 
-| Size | Short-term | Middle-term (vector) | Long-term (summary) | KB top-k |
-|------|------------|----------------------|---------------------|----------|
-| <2B (tiny) | 2 turns | 1 chunk | ❌ | 1 |
-| 2-4B (small) | 3 turns | ❌ | ❌ | 1 |
-| 4-8B (medium) | 3 turns | 1 chunk | ✅ | 1 |
-| 8-16B (large) | 3 turns | 1 chunk | ✅ | 1 |
-| 16B+ (xlarge) | 5 turns | 2 chunks | ✅ | 3 |
+### Idle model cleanup
 
-Implémentation : `backend/src/utils/prompt_utils.py`
+`BaseEngine` keeps a single model in memory as class state. The cleanup monitor started
+in the lifespan ticks every 300 seconds and unloads the model once it has been idle
+longer than `_max_idle_time` (300 seconds). A generation in flight sets the active marker
+`_last_used = None`, which blocks the monitor from reaping the model mid-stream.
 
-Voir [Prompt Utils Reference](reference/core.md).
+### Streaming
 
-## Performance et Optimisations
+Conversation turns stream as **NDJSON** (`application/x-ndjson`): one JSON event per
+line, typed `answer`, `thinking`, `tool_call`, `tool_result`, `error`, or `done`. Title
+generation and Arena keep a plain-text stream.
 
-### Model Cleanup Loop
+## Main flows
 
-Task background qui décharge les modèles inactifs :
+### Conversation turn
 
-```python
-async def cleanup_loop():
-    while True:
-        await asyncio.sleep(30)  # Every 30s
-        if config.LLM_Engine.is_loaded():
-            inactive_time = datetime.now() - last_generation_time
-            if inactive_time > timedelta(minutes=5):
-                config.LLM_Engine.unload_model()
-```
-
-### Streaming Response
-
-```python
-async def generate_stream():
-    for token in engine.generate_stream(prompt, params):
-        yield token
-        
-return StreamingResponse(generate_stream(), media_type="text/plain")
-```
-
-Évite le buffering et réduit la latence perçue.
-
-### FAISS Index Optimization
-
-- **IndexFlatL2** : Exact search, pas d'approximation
-- **Performance** : ~10-50ms pour top-k=3 sur 1000 chunks
-- **Memory** : ~1.5 MB par 1000 chunks (384 dims, fp32)
-
-## Références Rapides
-
-- [Core Reference](reference/core.md) — Config, logging, exceptions
-- [Engines Reference](reference/engines.md) — MLX, CUDA, CPU
-- [Conversations Reference](reference/conversations.md) — Chat endpoints
-- [LLMs Reference](reference/llms.md) — Model management
-- [KB Reference](reference/knowledge_base.md) — RAG
-- [Entities Reference](reference/entities.md) — SQLAlchemy models
-
-## Diagrammes Supplémentaires
-
-### Flux de Génération Streaming
-
-```
-User → POST /conversations/{id}/generate
+```text
+POST /erudi/conversations/{id}/query  {"question": "..."}
   ↓
-endpoints.generate_message_stream()
+endpoints.query_and_respond → StreamingResponse(application/x-ndjson)
   ↓
-services.prepare_prompt() → Multi-tier memory injection
+ConversationService.query_and_respond_stream
   ↓
-engine.generate_stream(prompt, params)
+AgentRunner: create_agent(thread_id, checkpointer, summarization)
+  ↓  history restored from the checkpointer; KB retrieval agentic or systematic
+engine child server /v1/chat/completions (SSE)
   ↓
-yield token → StreamingResponse
+structured events → one JSON line each → renderer
   ↓
-User receives tokens in real-time
+user + assistant messages persisted after the stream completes
 ```
 
-### Flux de Téléchargement
+### Model download
 
-```
-User → POST /llms/{id}/download  (catalogue)
-     ou POST /llms/download/huggingface {link}  (recherche HF / lien collé)
+```text
+POST /erudi/llms/{id}/download          (catalog)
+  or POST /erudi/llms/download/huggingface {"link": ...}   (search / pasted link)
   ↓
 Create DownloadJob (status=pending)
   ↓
 Background task starts
   ↓
-List repo files → gate: the repo MUST ship an artefact in the engine's
-format (FORMAT_TAG: MLX repo tag on Apple Silicon, .gguf file on CPU/CUDA)
-  → otherwise InvalidInputException BEFORE any byte is downloaded (#408)
+List repo files → gate: the repo MUST ship an artefact in the engine's format
+(FORMAT_TAG: an MLX repo tag on Apple Silicon, a .gguf file on CPU/CUDA)
+  → otherwise InvalidInputException BEFORE a single byte is downloaded
   ↓
-Download the pre-built quant from HuggingFace → Update progress
+Download the pre-built quant from Hugging Face → update progress
   ↓
-Move into place (no local conversion / quantization — see #408)
+Move into place (no local conversion or quantization)
   ↓
-Llm entry local=1, DownloadJob status=completed
+Llm row local=1, DownloadJob status=completed
 ```
 
-Voir [LLMs Guide](guides/llms.md) pour utilisation pratique.
+See the [LLMs guide](guides/llms.md).
 
+## Quick reference
+
+- [Core Reference](reference/core.md) — config, logging, exceptions
+- [Engines Reference](reference/engines.md) — MLX, CUDA, CPU
+- [Conversations Reference](reference/conversations.md) — chat endpoints
+- [LLMs Reference](reference/llms.md) — model management
+- [KB Reference](reference/knowledge_base.md) — ingestion and retrieval
+- [Entities Reference](reference/entities.md) — SQLAlchemy models

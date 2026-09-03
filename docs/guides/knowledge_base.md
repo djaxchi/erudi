@@ -1,420 +1,255 @@
-# 📚 Guide — Knowledge Base
+---
+title: Knowledge Base
+description: How Erudi turns a base model plus your documents into a Knowledge Base assistant, and how the ingestion and retrieval pipeline works.
+---
 
-Guide pratique pour créer des bases de connaissances (RAG) et spécialiser des modèles.
+# Knowledge Base
 
-## But
+A **Knowledge Base (KB) assistant** is a base model you have installed, plus a set of your own
+documents. Erudi creates a second model row that reuses the base model's weights (the `link` is
+copied, not duplicated on disk), attaches a `KnowledgeBase` to it, and indexes the documents into a
+vector store. Chatting with that assistant answers from your documents; the base model stays
+available untouched.
 
-Le domaine **Knowledge Base** permet d'attacher des documents (PDF, TXT) à un modèle LLM pour :
-- **RAG (Retrieval-Augmented Generation)** : Injection de contexte pertinent lors de la génération
-- **Spécialisation** : Le modèle accède à des connaissances spécifiques (docs internes, code, etc.)
-- **Réduction d'hallucinations** : Réponses fondées sur des documents fournis
+Everything runs locally: extraction, chunking, embeddings and search all happen in the backend
+process against the embedded PostgreSQL cluster. No document ever leaves the machine.
 
-## Architecture RAG
+## Supported formats
 
-```
-User Query
-   ↓
-Embed query (384 dims)
-   ↓
-FAISS similarity search → Top-K chunks
-   ↓
-Inject chunks in system prompt
-   ↓
-LLM generates with context
-```
+| Extension | Extractor | Result |
+|-----------|-----------|--------|
+| `.pdf` | `PdfExtractor` (pypdf) | Text layer extracted page by page; a scanned PDF with no text layer is accepted as `pending_vision` |
+| `.docx` | `DocxExtractor` (python-docx) | Paragraphs and tables to Markdown |
+| `.xlsx` | `XlsxExtractor` (openpyxl) | One Markdown section per sheet |
+| `.csv` | `CsvExtractor` | Markdown table |
+| `.txt`, `.md` | `TextExtractor` | Read as-is |
+| `.png`, `.jpg`, `.jpeg`, `.webp` | none | Accepted and recorded as `pending_vision` |
 
-**Embedder** : `paraphrase-multilingual-MiniLM-L12-v2` (384 dimensions)  
-**Index** : FAISS `IndexFlatL2` (exact search, L2 distance)  
-**Chunking** : 384 tokens per chunk, 15% overlap
+Any other extension is rejected with an `InvalidInputException` listing the supported set.
 
-## Créer une Knowledge Base
+**Images are not read.** Erudi bundles no OCR or vision tier today, so images and scanned PDFs are
+registered in the KB with the status `pending_vision` and contribute zero searchable chunks. A batch
+made only of such files fails the job rather than reporting a misleading success.
 
-### Upload Documents
+The routing table lives in `backend/src/ingestion/reader.py`; `DocumentReader.read(path)` is the
+single extraction surface the service layer sees.
+
+## The ingestion pipeline
+
+Ingestion runs as a FastAPI background task, one file at a time
+(`backend/src/domains/knowledge_base/services.py`). A failure on one file marks that document
+`failed` and the run continues.
+
+1. **Hash and dedup.** The file bytes are SHA-256 hashed. A hash already present in this KB
+   (`knowledge_documents.content_hash_sha256`, unique per `kb_id`) is skipped as a duplicate.
+2. **Register the document.** A `KnowledgeDocument` row is created and committed before indexing —
+   the vector store writes through its own connection and needs the row for its foreign key.
+3. **Extract.** `DocumentReader` routes by extension and returns an `ExtractedDocument` carrying
+   Markdown (and per-page text for PDFs).
+4. **Clean, non-destructively.** Each extractor passes its text through
+   `clean_extracted_text` (`src/ingestion/cleaning.py`): NFC normalization, control/format characters
+   and NUL bytes removed, PDF end-of-line hyphenation rejoined, whitespace collapsed. Accents,
+   currency signs and CJK are **preserved** — stripping them would desynchronize the indexed corpus
+   from real user queries and break the sparse branch of hybrid search.
+5. **Chunk in three passes** (`src/ingestion/chunking.py`), token-accurate against the real
+   `intfloat/multilingual-e5-small` tokenizer:
+   split on Markdown headers `h1`–`h4`; sub-split oversized sections with a token-aware recursive
+   splitter (paragraph > line > sentence > word); prefix each chunk with its heading breadcrumb
+   (`# A > ## B`) and re-attach Markdown table headers lost mid-split.
+   Defaults: `DEFAULT_TARGET_TOKENS = 180`, `DEFAULT_OVERLAP_TOKENS = 27` (about 15 %).
+6. **Embed.** `E5Embeddings` (`src/ingestion/embeddings.py`) holds a resident
+   `multilingual-e5-small` (384 dimensions, 512-token window). The asymmetric prefixes are
+   mandatory: `passage: ` for indexed chunks, `query: ` for searches. Vectors are L2-normalized, so
+   cosine similarity is a dot product. The embedded text is
+   `passage: [document_name:<file>]\n<breadcrumb>\n\n<chunk>` — the document-name prefix boosts
+   retrieval but is **not** stored: the stored content is the clean chunk, which is what goes into
+   the prompt.
+7. **Store.** `add_kb_chunks` writes the vectors plus the metadata columns
+   (`kb_id`, `document_id`, `source_file`, `page`, `chunk_index`) into `rag.kb_chunks`.
+
+A document that extracts fine but yields zero chunks (blank file, parser that returned no text) is
+marked `empty`, never `active`.
+
+### Document statuses
+
+`active` (indexed and retrievable), `empty` (no indexable content), `failed` (ingestion raised),
+`pending_vision` (image or scanned PDF, awaiting a future OCR/vision tier). Defined in
+`backend/src/entities/KnowledgeDocument.py`.
+
+### Job outcome
+
+The KB job reports `completed` only when at least one file was indexed, or when every file was a
+duplicate of content already in the KB. A batch that indexed nothing new and had no duplicates fails
+with a message counting the failed, empty and pending-vision files.
+
+## Retrieval
+
+All chunks of all knowledge bases share one table, `rag.kb_chunks`, managed by
+`langchain-postgres` `PGVectorStore` and filtered by the typed `kb_id` column at query time
+(`src/ingestion/vector_store.py`).
+
+Search is hybrid from the first query:
+
+- **Dense**: HNSW index, cosine distance, over the e5 vectors.
+- **Sparse**: a `tsvector` column built with `pg_catalog.simple` — language-neutral, no stemming, so
+  identifiers and product codes survive intact; the dense branch compensates for the missing
+  stemming.
+- **Fusion**: Reciprocal Rank Fusion with `k = 60`. RRF is rank algebra, not a reranker model.
+
+The retrieval entry point is `search_kb_chunks_scored(query, kb_id=...)`. It returns the candidate
+pool in RRF order, each candidate carrying its dense cosine similarity re-read from the stored
+vectors (the fusion overwrites per-row scores with rank harmonics, which have no semantic scale).
+
+`retrieve_kb_excerpts` (`src/utils/kb_utils.py`) then selects what actually reaches the model:
+
+1. Fetch a wide pool (`POOL_K = 20`).
+2. **Adaptive cut**: keep candidates above the largest similarity drop-off, so a factoid question
+   injects a narrow context while a panorama question keeps its whole cluster. Two guards keep the
+   purely relative cut from starving recall: a widest gap sitting right after the top hit is honored
+   only when it is a true outlier, and a recall floor (`K_MIN_EXCERPTS = 2`) re-extends the pool from
+   candidates within `RECALL_BAND = 0.05` of the top similarity.
+3. **Token budget**: keep whole chunks best-first until the model's budget is spent.
+
+Each excerpt keeps its `source_file` so the prompt can attribute it (`[Document: report.pdf]`).
+
+### Token budget per model size
+
+There is no fixed top-k. The ceiling is a token budget chosen from the model's parameter count by
+`get_prompting_strategy` (`backend/src/utils/prompt_utils.py`), measured in e5 tokens (roughly 180
+per chunk):
+
+| Parameters | Prompt tier | KB token budget |
+|------------|-------------|-----------------|
+| `None` or ≤ 2 B | `tiny` | 400 |
+| ≤ 4 B | `small` | 700 |
+| < 8 B | `medium` | 1000 |
+| ≤ 16 B | `large` | 1400 |
+| > 16 B | `xlarge` | 2000 |
+
+An unmeasured parameter count is treated as the smallest tier — the conservative choice.
+
+## Agentic vs systematic mode
+
+The KB mode is derived per turn from the model, never from a user toggle
+(`backend/src/agents/kb_mode.py`, `plan_turn`):
+
+- **Agentic** — the KB is exposed as the `search_knowledge_base` tool and the model decides when to
+  consult it. Requires a KB attached, a size tier that allows KB context, and a model whose tool
+  calls are *verified* to parse on the active engine's wire (`supports_tools` **and**
+  `supports_tools_wire is True`).
+- **Systematic** — excerpts are retrieved up front and merged into the request. This path carries
+  **zero tools**: leak-prone models otherwise wrap the answer in raw tool-call JSON.
+- **Plain** — no KB attached, or the size tier disables KB context, or retrieval returned nothing.
+
+`ERUDI_KB_AGENTIC` overrides the routing and is tri-state (`src/core/config.py`): unset means
+per-model routing (the default), `1`/`true` forces agentic for every KB turn (debugging), `0`/`false`
+forces systematic (kill switch). The forced-agentic value never grants the web-search tool to a model
+whose wire capability is unverified.
+
+Every turn logs the decision, including which gate decided it (`Turn mode: agentic KB (... decided_by=...)`).
+
+## The embedding-model gate
+
+The KB needs `intfloat/multilingual-e5-small` for both embeddings and token-accurate chunking. It is
+**not** bundled: it is downloaded on demand into the app's own cache directory
+(`config.CACHE_DIR`, i.e. `data/models_cache`), so a single download serves both consumers.
+
+Presence is filesystem-driven, never a database flag: `embedding_model_available()` checks every file
+a `SentenceTransformer` load touches, so a partial download reads as unavailable and the gate
+reappears. Once the cache is complete, loads run with `local_files_only=True` and never touch the
+network — an offline machine works.
 
 ```bash
-curl -X POST http://127.0.0.1:27182/erudi/knowledge_base \
-  -F "base_model_id=1" \
-  -F "files=@docs/manual.pdf" \
-  -F "files=@docs/faq.txt" \
-  -F "files=@docs/code_examples.pdf"
+curl http://127.0.0.1:27182/erudi/knowledge_base/embedding-model/status
+# {"available": false, "downloading": false, "error": null}
+
+curl -X POST http://127.0.0.1:27182/erudi/knowledge_base/embedding-model/download
+# {"available": false, "downloading": true, "error": null}
 ```
 
-**Formats supportés** :
-- **PDF** : Extraction via pypdf (texte uniquement, pas d'OCR)
-- **TXT** : Lecture directe avec encoding UTF-8
+`POST .../download` is idempotent: it is a no-op if the model is already present or a download is
+already running. The download runs in a background thread, so navigating away from the KB page does
+not lose it; the UI polls the status route.
 
-**Réponse** :
+## API
+
+All routes are mounted under `/erudi` on `127.0.0.1:27182`.
+
+### Create or extend a Knowledge Base
+
+`POST /erudi/knowledge_base/create` takes a **JSON body with local file paths** — it is not a
+multipart upload. In the desktop app, the drop area resolves each selected or dropped file to its
+absolute path through Electron's `webUtils.getPathForFile` before posting.
+
+```bash
+curl -X POST http://127.0.0.1:27182/erudi/knowledge_base/create \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "selectedModel": 42,
+        "modelName": "Financial Reports",
+        "description": "Quarterly earnings, 2025",
+        "paths": [
+          "/Users/me/Documents/q1.pdf",
+          "/Users/me/Documents/q2.docx"
+        ]
+      }'
+```
 
 ```json
-{
-  "kb_id": 1,
-  "specialized_model_id": 35,
-  "status": "processing",
-  "message": "KB job created"
-}
+{ "msg": "Knowledge Base Assistant is being created.", "model_id": 108 }
 ```
 
-### Surveiller le Traitement
+Body fields (`KnowledgeBaseCreate`): `paths` (non-empty list of file paths), `selectedModel` (id of
+the installed base model), `modelName` (name of the assistant), `description` (optional).
+
+Behaviour depends on `selectedModel`:
+
+- The base model has **no** KB attached: a new assistant is created and `model_id` is its new id.
+  A name already used by another installed model is refused with **409**.
+- The base model **already has** a KB attached: the same route adds the new documents to the existing
+  KB and `model_id` is that model's own id. The name is not read on this path.
+
+### Poll the job
 
 ```bash
-curl http://127.0.0.1:27182/erudi/knowledge_base/jobs/1
+curl http://127.0.0.1:27182/erudi/knowledge_base/108/status
 ```
 
-**Status possibles** :
-- `pending` : En file d'attente
-- `running` : Traitement en cours (extraction, embedding, indexation)
-- `completed` : KB prête à l'emploi
-- `failed` : Erreur (voir `error_message`)
+```json
+{ "status": "running", "status_updated_at": "2026-09-03T09:12:44.310Z", "error_message": null }
+```
 
-### Temps de Traitement
+`status` is `pending`, `running`, `completed` or `failed`; `error_message` is only populated on
+`failed`. Polling a **failed creation** also cleans up: the half-built assistant and its
+`KnowledgeBase` are deleted (a failed *update* never deletes an assistant that already works).
 
-**Dépend de** :
-- Nombre de pages/documents
-- Taille totale (chars)
-- Performance CPU/GPU (embedding)
+### Deleting a Knowledge Base
 
-**Estimations** :
-- 10 pages PDF : ~5-10 secondes
-- 100 pages PDF : ~30-60 secondes
-- 1000 pages PDF : ~5-10 minutes
-
-## Utiliser un Modèle Spécialisé
-
-### Créer une Conversation
+There is no `DELETE` route in the knowledge base domain. Deleting the assistant deletes its KB:
 
 ```bash
-curl -X POST http://127.0.0.1:27182/erudi/conversations \
-  -H "Content-Type: application/json" \
-  -d '{
-    "llm_id": 35,
-    "name": "Doc Q&A"
-  }'
+curl -X DELETE http://127.0.0.1:27182/erudi/llms/108
 ```
 
-**Note** : `llm_id=35` est le modèle spécialisé (clone du base avec `kb_id` attaché).
-
-### Poser des Questions
-
-```bash
-curl -X POST http://127.0.0.1:27182/erudi/conversations/42/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "content": "What is the installation procedure?"
-  }'
-```
-
-Le système :
-1. Embed la question
-2. Cherche les top-K chunks pertinents dans FAISS
-3. Injecte les chunks dans le system prompt
-4. Génère la réponse avec contexte
-
-**Top-K selon taille du modèle** :
-- <2B : 1 chunk
-- 2-16B : 1 chunk
-- 16B+ : 3 chunks
-
-Voir `backend/src/utils/prompt_utils.py::get_prompting_strategy()`.
-
-## Supprimer une KB
-
-```bash
-curl -X DELETE http://127.0.0.1:27182/erudi/knowledge_base/1
-```
-
-Supprime :
-- Le `KnowledgeBase`
-- Le `VectorStore` (mapping ID → texte)
-- L'index FAISS sur disque
-- Le modèle spécialisé
-- Les conversations associées (cascade)
-
-**Attention** : Le modèle de base reste intact.
-
-## Pipeline de Traitement
-
-### 1. Extraction
-
-**PDF** :
-```python
-from src.utils.file_processor import extract_text_from_pdf
-
-text = extract_text_from_pdf("document.pdf")
-# Retourne le texte brut de toutes les pages
-```
-
-**TXT** :
-```python
-with open("document.txt", "r", encoding="utf-8") as f:
-    text = f.read()
-```
-
-### 2. Nettoyage
-
-```python
-from src.utils.file_processor import clean_text
-
-cleaned = clean_text(raw_text)
-# - Normalise Unicode (NFKD)
-# - Supprime accents
-# - Collapse whitespace
-# - Filtre contrôle chars
-# - ASCII only
-```
-
-### 3. Chunking
-
-```python
-from src.utils.file_processor import chunk_by_tokens
-
-chunks = chunk_by_tokens(cleaned)
-# - Target: 384 tokens per chunk (~1152 chars)
-# - Overlap: 15% (~58 tokens)
-# - Returns: List[str]
-```
-
-### 4. Embedding
-
-```python
-from src.utils.inference_utils import EmbedderService
-
-embedder = EmbedderService.get_embedder()
-embeddings = embedder.encode(chunks, convert_to_tensor=True)
-# Shape: (n_chunks, 384)
-```
-
-### 5. Indexation FAISS
-
-```python
-import faiss
-import numpy as np
-
-# Create index
-index = faiss.IndexFlatL2(384)
-
-# Add vectors
-embeddings_np = embeddings.cpu().numpy().astype('float32')
-index.add(embeddings_np)
-
-# Save to disk
-faiss.write_index(index, "backend/data/indexes/1.index")
-```
-
-### 6. VectorStore
-
-Stocke le mapping FAISS ID → texte :
-
-```python
-vectors_data = {
-    "0": "First chunk text...",
-    "1": "Second chunk text...",
-    ...
-}
-
-vector_store = VectorStore(
-    kb_id=1,
-    vectors_data=json.dumps(vectors_data)
-)
-db.add(vector_store)
-```
-
-## Retrieval (Top-K)
-
-### Embed Query
-
-```python
-query = "What is the installation procedure?"
-query_embedding = embedder.encode([query])  # (1, 384)
-```
-
-### FAISS Search
-
-```python
-index = faiss.read_index("backend/data/indexes/1.index")
-distances, indices = index.search(query_embedding, k=3)
-
-# distances: array([[0.23, 0.45, 0.67]])
-# indices: array([[42, 17, 89]])
-```
-
-### Retrieve Texts
-
-```python
-vector_store = db.query(VectorStore).filter(VectorStore.kb_id == 1).first()
-vectors_data = json.loads(vector_store.vectors_data)
-
-relevant_texts = [vectors_data[str(idx)] for idx in indices[0]]
-```
-
-### Inject in Prompt
-
-```python
-kb_context = "\n\n".join(relevant_texts)
-system_prompt += f"\n\nRelevant context:\n{kb_context}"
-```
-
-Voir `backend/src/utils/kb_utils.py::get_relevant_texts_from_kb()`.
-
-## Bonnes Pratiques
-
-### Qualité des Documents
-
-**Préférer** :
-- PDFs avec texte sélectionnable (pas scannés)
-- Textes structurés (sections, listes)
-- Langage clair et concis
-
-**Éviter** :
-- PDFs scannés (nécessite OCR non supporté)
-- Images, diagrammes (texte non extractible)
-- Documents très longs sans structure (>1000 pages)
-
-### Taille du KB
-
-**Recommandations** :
-- **Petits projets** : 10-50 documents (~500 KB)
-- **Projets moyens** : 50-200 documents (~5 MB)
-- **Grands projets** : 200-1000 documents (~50 MB)
-
-**Limitations** :
-- FAISS IndexFlatL2 : Pas de limite théorique
-- Performance : ~50ms pour top-k=3 sur 10K chunks
-- Disque : ~1.5 MB par 1000 chunks
-
-### Chunking Strategy
-
-**Default (384 tokens)** : Bon équilibre contexte/granularité
-
-**Ajustements** :
-- **Plus petit (256 tokens)** : Recherche plus précise, risque de fragmentation
-- **Plus grand (512 tokens)** : Plus de contexte par chunk, moins précis
-
-Modifier dans `backend/src/utils/file_processor.py::chunk_by_tokens()`.
-
-### Top-K Selection
-
-**Default (1-3 selon modèle)** : Évite surcharge du context window
-
-**Ajustements** :
-- **Augmenter** : Plus de contexte, risque de bruit
-- **Réduire** : Moins de bruit, risque de manquer info
-
-Modifier dans `backend/src/utils/prompt_utils.py::get_prompting_strategy()`.
-
-## Debugging
-
-### KB Vide ou Pas de Résultats
-
-Vérifier :
-```bash
-# Nombre de chunks
-curl http://127.0.0.1:27182/erudi/knowledge_base/1
-# Retourne "file_names_list" et count
-
-# Index FAISS
-ls -lh backend/data/indexes/1.index
-# Doit exister et avoir taille > 0
-```
-
-### Mauvaise Qualité de Retrieval
-
-**Causes possibles** :
-- Query trop vague ("help" vs "how to install on Mac")
-- Documents mal structurés
-- Top-K trop faible
-
-**Solutions** :
-- Reformuler la question avec mots-clés spécifiques
-- Augmenter top-K temporairement
-- Restructurer les documents source
-
-### Performance Lente
-
-**Embed query** : ~10-50ms (normal)  
-**FAISS search** : ~10-50ms (normal)  
-**Total retrieval** : <100ms
-
-Si > 500ms :
-- Vérifier CPU/GPU load
-- Vérifier index size (>100K chunks = considérer HNSW)
-
-## Exemples d'Utilisation
-
-### Workflow Complet
-
-```python
-import requests
-import time
-
-base_url = 'http://127.0.0.1:27182/erudi'
-
-# 1. Créer KB avec documents
-files = [
-    ('files', open('manual.pdf', 'rb')),
-    ('files', open('faq.txt', 'rb'))
-]
-resp = requests.post(f'{base_url}/knowledge_base', 
-                     data={'base_model_id': 1}, 
-                     files=files)
-kb_id = resp.json()['kb_id']
-model_id = resp.json()['specialized_model_id']
-
-# 2. Attendre traitement
-while True:
-    job = requests.get(f'{base_url}/knowledge_base/jobs/{kb_id}').json()
-    if job['status'] == 'completed':
-        break
-    elif job['status'] == 'failed':
-        raise Exception(job['error_message'])
-    time.sleep(2)
-
-# 3. Créer conversation avec modèle spécialisé
-conv = requests.post(f'{base_url}/conversations', json={
-    'llm_id': model_id,
-    'name': 'Doc Q&A'
-}).json()
-
-# 4. Poser questions
-resp = requests.post(f'{base_url}/conversations/{conv["id"]}/generate',
-                     json={'content': 'How to install?'}, stream=True)
-for chunk in resp.iter_content(decode_unicode=True):
-    print(chunk, end='')
-```
-
-### Multi-document KB
-
-```python
-# Organiser par thème
-kb_configs = [
-    {
-        'name': 'Product Docs',
-        'files': ['docs/user_guide.pdf', 'docs/api_reference.pdf']
-    },
-    {
-        'name': 'Internal Wiki',
-        'files': ['wiki/processes.txt', 'wiki/faq.txt']
-    }
-]
-
-for config in kb_configs:
-    files = [('files', open(f, 'rb')) for f in config['files']]
-    resp = requests.post(f'{base_url}/knowledge_base',
-                         data={'base_model_id': 1},
-                         files=files)
-    print(f"Created KB: {config['name']}, ID: {resp.json()['kb_id']}")
-```
-
-## API Référence
-
-Documentation complète des endpoints :
-
-- [Knowledge Base Reference](../reference/knowledge_base.md)
-- [Schemas Reference](../reference/knowledge_base.md#schemas)
-- [Utils Reference](../reference/core.md) (kb_utils, file_processor)
-
-## Voir Aussi
-
-- [Guide Conversations](conversations.md) — Utiliser les modèles spécialisés
-- [Guide LLMs](llms.md) — Charger les modèles de base
-- [Architecture](../architecture.md) — RAG architecture détaillée
-- [File Processor Reference](../reference/core.md) — Chunking et extraction
+The assistant's `link` is a copy of the base model's, so the **weights are left on disk** — they
+belong to the base model. The `KnowledgeBase` row is deleted instead, and server-side cascades sweep
+its `knowledge_documents` and its `rag.kb_chunks`. The assistant's conversations survive with a null
+`llm_id`.
+
+Deleting the **base** model of an assistant is guarded: without `?orphan_dependents=true` it returns
+**409** with the list of dependent assistants. See [LLMs](llms.md#deleting-a-model-with-dependents).
+
+## Notes for contributors
+
+- **Always search through `search_kb_chunks_scored`.** `langchain-postgres` 0.0.17 writes the first
+  query's `fts_query` onto the *shared* `HybridSearchConfig`, so every later sparse search would
+  silently reuse the first query's tsquery. `search_kb_chunks_scored` works around it by building a
+  fresh config on every call. Do not "simplify" that away.
+- `HybridSearchConfig.primary_top_k` / `secondary_top_k` default to 4 in the library. They are
+  overridden explicitly, otherwise the wide pool silently degrades to 4 + 4 candidates.
+- The adaptive cut runs on **dense cosine similarities**, never on RRF scores.
+- `langchain_text_splitters` is imported in function scope only: its package `__init__` eagerly
+  imports `sentence_transformers`, which would tax every backend start.
+- Related pages: [LLMs](llms.md), [Conversations](conversations.md),
+  [API reference](../reference/knowledge_base.md), and the retrieval-quality evaluation notes in
+  [`docs/dev/rag-quality-eval.md`](../dev/rag-quality-eval.md).

@@ -164,7 +164,8 @@ def load_base_models_fallback() -> List[Dict[str, Any]]:
     
     Example:
         >>> models = load_base_models_fallback()
-        >>> print(models[0]['name'])  # "Gemma-1B"
+        >>> first = models[0]
+        >>> print(first.get("name"))  # Gemma-1B
     """
     fallback_path = config.ROOT_DIR / "src" / "database" / "base_models_fallback.json"
     

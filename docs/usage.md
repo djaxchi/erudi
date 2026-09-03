@@ -1,172 +1,296 @@
-# 🚀 Getting Started
+# Getting Started
 
-Guide de démarrage rapide pour installer et lancer Erudi localement.
+How to set up and run Erudi from source. All commands are run **from the repository
+root** unless stated otherwise.
 
-## Prérequis
+## Prerequisites
 
-### Système d'exploitation
-- **macOS** (Apple Silicon M1/M2/M3 recommandé pour MLX)
-- **Linux** (avec NVIDIA GPU pour CUDA)
-- **Windows** (avec NVIDIA GPU pour CUDA)
+### Platform support
 
-### Logiciels requis
-- **Python 3.12.3+**
-- **Node.js 18+** (pour le frontend)
-- **Git**
+| Platform | Backend | Status |
+|---|---|---|
+| Windows (NVIDIA GPU) | CUDA via `llama-server` | Supported |
+| Windows (no GPU) | CPU via `llama-server` | Supported |
+| macOS Apple Silicon (macOS 14+) | MLX | Supported |
+| Linux (NVIDIA GPU) | CUDA via `llama-server` | Builds and launches in CI, not yet tested on real hardware |
+| Linux (CPU) | CPU via `llama-server` | Builds and launches in CI, not yet tested on real hardware |
 
-### Matériel recommandé
-- **Mac Silicon** : M1/M2/M3 avec 16+ GB RAM unifié
-- **NVIDIA GPU** : RTX 3060+ avec 8+ GB VRAM
-- **CPU uniquement** : 16+ GB RAM (mode fallback, plus lent)
+Intel Macs are not a target.
+
+### Software
+
+- **Python 3.12 exactly** — `pgserver`, which ships the embedded PostgreSQL cluster,
+  publishes wheels up to cp312 only.
+- **Node.js 20 or later** — the CI legs run Node 20.
+- **Git**, with submodule support (llama.cpp is a submodule).
+- Platform extras: the CUDA 12.1 toolkit on Windows/Linux with an NVIDIA GPU; Xcode
+  Command Line Tools on macOS.
+
+### Recommended hardware
+
+- **Apple Silicon**: M1 or later, 16 GB or more of unified memory
+- **NVIDIA GPU**: 8 GB or more of VRAM
+- **CPU only**: 16 GB or more of RAM (slower fallback)
+
+The app computes a recommended model-size range for your machine and exposes it on
+`GET /erudi/hardware/app_startup`. See the [Hardware guide](guides/hardware.md).
 
 ## Installation
 
-### 1. Cloner le repository
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/erudi-app/erudi.git
 cd erudi
+git submodule update --init --recursive
 ```
 
-### 2. Setup Backend
+The submodule at `backend/forks/llama-cpp` is required for the CPU and CUDA builds.
 
-#### Mac Silicon (MLX)
+### 2. Set up the backend
+
+Run the script for your platform from the repository root. Each one creates
+`backend/venv` and installs the matching entrypoint from `backend/requirements/`.
+
+| Platform | Script |
+|---|---|
+| macOS Apple Silicon | `bash scripts/dev/backend/setup-mac-silicon.sh` |
+| Windows CUDA 12.1 | `.\scripts\dev\backend\setup-win-cuda-121.ps1` |
+| Windows CPU | `.\scripts\dev\backend\setup-win-cpu.ps1` |
+| Linux CUDA 12.1 | `bash scripts/dev/backend/setup-linux-cuda-121.sh` |
+| Linux CPU | `bash scripts/dev/backend/setup-linux-cpu.sh` |
+
+### 3. Build llama.cpp
+
+The `llama-server` binary is not committed; build it for your platform before running
+the CPU or CUDA engine.
 
 ```bash
-cd backend
-bash setup-mac-silicon.sh
+# macOS Apple Silicon (local CPU engine, for development)
+bash scripts/dev/backend/build-llamacpp-cpu-macos-silicon.sh
+
+# Linux CPU
+bash scripts/dev/backend/build-llamacpp-cpu-linux.sh
+
+# Linux CUDA
+bash scripts/dev/backend/build-llamacpp-cuda-linux.sh
 ```
 
-Ce script crée un `venv` et installe les dépendances MLX depuis `requirements/entrypoints/dev/mac-silicon.txt`.
-
-#### Linux CUDA 12.1
-
-```bash
-cd backend
-bash setup-linux-cuda-121.sh
-```
-
-#### Windows CUDA 12.1
+On Windows, in PowerShell:
 
 ```powershell
-cd backend
-.\setup-win-cuda-121.ps1
+.\scripts\dev\backend\build-llamacpp-cpu-win.ps1
+.\scripts\dev\backend\build-llamacpp-cuda-win.ps1
 ```
 
-### 3. Setup Frontend
+Artifacts land in `backend/artifacts/llama-cpp/<cpu|cuda>/`. See
+[Engines Architecture](dev/architecture/engines.md) for the build flags and what the
+scripts do.
+
+### 4. Set up the frontend
 
 ```bash
 cd frontend
 npm install
 ```
 
-## Lancement
+## Running
 
-### Backend (API FastAPI)
+### Backend
 
 ```bash
 cd backend
-source venv/bin/activate  # Mac/Linux
-# ou
-venv\Scripts\activate  # Windows
+source venv/bin/activate        # macOS/Linux
+# Windows: .\venv\Scripts\Activate
 
-python run.py            # production-faithful launcher (JSON lifecycle events)
-# OR for API-only iteration:
+python run.py --port 27182
+```
+
+`run.py` is the production entrypoint: it prepares data and log directories, starts the
+embedded PostgreSQL cluster through the app lifespan, and emits newline-delimited JSON
+lifecycle events on stdout (`starting`, `ready`, `shutdown`, `startup_error`). Keep using
+it when testing the Electron integration.
+
+For API-only iteration you can skip the JSON events:
+
+```bash
+cd backend && source venv/bin/activate
 PYTHONPATH=. uvicorn src.main:app --reload --port 27182
 ```
 
-Le backend démarre sur **http://127.0.0.1:27182** (cf `backend/run.py:72` —
-le port défaut est 27182, scan jusqu'à 27199 si occupé).
+The backend prefers port 27182 and scans 27182-27199 if it is taken, announcing the
+resolved port in its `ready` event. See [Backend Launcher](guides/backend-run.md).
 
-### Frontend (Electron)
+### Frontend
 
 ```bash
 cd frontend
 npm start
 ```
 
-L'application desktop Electron s'ouvre automatiquement.
+The Electron window opens on its own. In development the frontend expects the backend to
+be running already.
 
-## Premiers Tests
-
-### Health Check
-
-Vérifier que le backend répond :
+### Both at once (macOS)
 
 ```bash
-curl http://127.0.0.1:27182/erudi/health
+bash scripts/dev/dev-start.sh
 ```
 
-Réponse attendue :
+This opens two Terminal windows (backend and frontend) and first kills whatever is
+listening on the port. Set `BACKEND_PORT` to override 27182.
+
+### Environment variables
+
+Every variable the backend reads is documented in
+[`backend/.env.example`](https://github.com/erudi-app/erudi/blob/main/backend/.env.example).
+Copy it to the git-ignored `backend/.env`, or export the variables in your shell — the
+backend runs fine with no `.env` at all. The only secret is `HF_TOKEN`, needed for gated
+Hugging Face repositories.
+
+Two useful ones during development:
+
+```bash
+ERUDI_FORCE_CPU=1   # force CPU_Engine even when a GPU is present
+ERUDI_LOG_LEVEL=DEBUG
+```
+
+## First checks
+
+### Health
+
+```bash
+curl http://127.0.0.1:27182/erudi/health/
+```
+
+The trailing slash matters. Expected response:
 
 ```json
-{
-  "status": "healthy",
-  "engine": "mlx",  # ou "cuda" ou "cpu"
-  "timestamp": "2025-10-25T..."
-}
+{"status": "ok", "message": "Backend is running", "db": "ok"}
 ```
 
-### Lister les modèles disponibles
+The HTTP status is always 200 so that the Electron boot sequence never mistakes a dead
+database for a dead backend; `db` carries the truth (`ok`, `recovering`, or `failed`).
+
+### List models
 
 ```bash
-curl http://127.0.0.1:27182/erudi/llms
+curl http://127.0.0.1:27182/erudi/llms/
 ```
 
-Retourne les modèles seed depuis HuggingFace (Mistral, Gemma, etc.).
+On a first boot the catalog is reconciled from the snapshot bundled with the app, with no
+network calls. Rows with `local = 0` are catalog suggestions; `local = 1` means the model
+is downloaded.
 
-### Créer une conversation
+### Create a conversation
 
 ```bash
-curl -X POST http://127.0.0.1:27182/erudi/conversations \
+curl -X POST http://127.0.0.1:27182/erudi/conversations/ \
   -H "Content-Type: application/json" \
-  -d '{"llm_id": 1, "name": "Test Chat"}'
+  -d '{"llm_id": 1, "temperature": 0.2, "top_p": 0.5, "max_tokens": 1024}'
 ```
 
-Retourne un objet `Conversation` avec `id`, `llm_id`, `name`, etc.
+`llm_id` is the only required field; there is no `name` field — a title is generated
+later through `POST /erudi/conversations/{id}/generate_title`.
 
-## Structure des Fichiers
+### Ask a question
 
+```bash
+curl -N -X POST http://127.0.0.1:27182/erudi/conversations/1/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is the capital of France?"}'
 ```
+
+The response is `application/x-ndjson`: one JSON event per line, typed `answer`,
+`thinking`, `tool_call`, `tool_result`, `error`, or `done`. See the
+[Conversations guide](guides/conversations.md).
+
+## Repository layout
+
+```text
 erudi/
 ├── backend/
-│   ├── src/             # Code source
-│   │   ├── core/        # Config, logging, exceptions
-│   │   ├── domains/     # Business logic (conversations, llms, etc.)
-│   │   ├── engines/     # MLX/CUDA/CPU
-│   │   ├── entities/    # SQLAlchemy models
-│   │   └── utils/       # RAG, prompts, embeddings
-│   ├── data/            # SQLite DB, models, cache
-│   ├── logs/            # Application logs
-│   └── requirements/    # Platform-specific deps
+│   ├── src/
+│   │   ├── core/         config, logging, exceptions, API wiring, health
+│   │   ├── domains/      conversations, llms, knowledge_base, arena, hardware,
+│   │   │                 startup, user_settings
+│   │   ├── engines/      MLX / CUDA / CPU behind BaseEngine
+│   │   ├── agents/       LangChain runner, checkpointer, prompts, tools
+│   │   ├── ingestion/    document reader, cleaning, chunking, embeddings, vectors
+│   │   ├── entities/     SQLAlchemy models
+│   │   ├── database/     init, migrations, seeding, catalog snapshots
+│   │   ├── launcher/     runtime paths, embedded Postgres, DB watchdog
+│   │   └── utils/        hf_model_metadata, kb_utils, prompt_utils
+│   ├── alembic/          migration scripts
+│   ├── artifacts/        built llama.cpp binaries (git-ignored)
+│   ├── forks/llama-cpp/  llama.cpp submodule
+│   ├── data/             downloaded models + embedded Postgres cluster
+│   ├── logs/             backend.log
+│   ├── requirements/     composed dependency files
+│   └── run.py            launcher / production entrypoint
 ├── frontend/
-│   └── src/             # React components
-└── docs/                # Cette documentation
+│   └── src/              Electron main, preload, React app
+├── scripts/
+│   ├── dev/              setup, llama.cpp builds, dev-start.sh
+│   └── build/            distribution builds
+└── docs/                 this documentation
 ```
 
-## Prochaines Étapes
+## Tests and lint
 
-- [Architecture](architecture.md) — Comprendre la structure du code
-- [Guide Conversations](guides/conversations.md) — Utiliser l'API de chat
-- [Guide LLMs](guides/llms.md) — Télécharger et gérer des modèles
-- [API Reference](reference/conversations.md) — Documentation complète des endpoints
+```bash
+cd backend && pytest tests/                                       # full suite
+cd backend && pytest tests/ --ignore=tests/e2e -m "not mlx_only"  # what CI runs
+cd backend && ruff check src
 
-## Dépannage
+cd frontend && npm run lint:check && npm run format:check
+```
 
-### Le backend ne démarre pas
+## Next steps
 
-1. Vérifier que le venv est activé : `which python` doit pointer vers `backend/venv/bin/python`
-2. Réinstaller les dépendances : `pip install -r requirements/entrypoints/dev/<platform>.txt`
-3. Consulter les logs : `backend/logs/backend.log`
+- [Architecture](architecture.md) — how the code is organised
+- [Conversations guide](guides/conversations.md) — the chat API
+- [LLMs guide](guides/llms.md) — catalog and downloads
+- [API reference](reference/conversations.md)
 
-### Erreur "No module named 'src'"
+## Troubleshooting
 
-Le backend doit être lancé depuis le dossier `backend/` avec le venv activé.
+### The backend does not start
 
-### Erreur "Engine not available"
+1. Check the virtualenv is active: `which python` must point at `backend/venv/bin/python`.
+2. Reinstall dependencies by re-running your platform's setup script.
+3. Read `backend/logs/backend.log`, and the launcher's `startup_error` JSON line on
+   stdout — its `code` names the failure (`PORT_IN_USE`, `NO_PORT_AVAILABLE`,
+   `IMPORT_ERROR`, `DATA_PREP_ERROR`, …). See [Backend Launcher](guides/backend-run.md).
 
-- **MLX** : Uniquement sur Mac Silicon. Vérifiez `platform.processor() == 'arm'`
-- **CUDA** : Vérifiez `nvidia-smi` et PyTorch CUDA : `torch.cuda.is_available()`
-- **Fallback CPU** : Toujours disponible mais plus lent
+### `No module named 'src'`
 
-Voir [Hardware Reference](reference/hardware.md) pour diagnostics détaillés.
+Run the backend from the `backend/` directory with the virtualenv active, or set
+`PYTHONPATH=.` when invoking uvicorn directly.
+
+### The wrong engine was selected
+
+`BaseEngine.get_engine()` dispatches on `platform.system()` and `platform.machine()`, and
+detects NVIDIA GPUs through `pynvml` — not through PyTorch.
+
+```bash
+# What the selector sees
+python -c "import platform; print(platform.system(), platform.machine())"
+
+# NVIDIA detection, the same way the backend does it
+python -c "import pynvml; pynvml.nvmlInit(); print(pynvml.nvmlDeviceGetCount())"
+```
+
+- **MLX** requires macOS with an `arm64` machine string. Under Rosetta the machine string
+  is `x86_64`, so the selector will not pick MLX.
+- **CUDA** requires `pynvml` to report at least one device. Check the driver with
+  `nvidia-smi`.
+- Set `ERUDI_FORCE_CPU=1` to bypass detection and force `CPU_Engine`.
+
+The selected engine is logged at startup (`Engine chosen: ...`).
+
+### `llama-server` not found
+
+Build it (step 3 above) and confirm the binary exists at
+`backend/artifacts/llama-cpp/<cpu|cuda>/bin/llama-server`. If the submodule directory is
+empty, run `git submodule update --init --recursive`.

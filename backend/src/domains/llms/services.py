@@ -820,8 +820,10 @@ def cancel_download_job(job_id: int, job_repo, llm_repo, db) -> dict:
         dict with cancellation status.
 
     Raises:
-        DownloadJobNotFoundException, ModelNotFoundException,
-        InvalidInputException, StateConflictException
+        DownloadJobNotFoundException: no job with this id.
+        ModelNotFoundException: the job's model row is gone.
+        InvalidInputException: the job is not in a cancellable state.
+        StateConflictException: the transfer already finished.
     """
     job = job_repo.get_by_id(job_id)
     if not job:

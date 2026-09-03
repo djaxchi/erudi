@@ -2,7 +2,28 @@
 
 **Run local AI models on your machine — no cloud, no subscription, no data leaving your device.**
 
+[![Latest release](https://img.shields.io/github/v/release/erudi-app/erudi?include_prereleases&label=release)](https://github.com/erudi-app/erudi/releases)
+[![Backend CI](https://github.com/erudi-app/erudi/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/erudi-app/erudi/actions/workflows/backend-ci.yml)
+[![App build smoke](https://github.com/erudi-app/erudi/actions/workflows/app-build-smoke.yml/badge.svg)](https://github.com/erudi-app/erudi/actions/workflows/app-build-smoke.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-erudi--app.github.io-1f7a5a)](https://erudi-app.github.io/erudi/)
+
 Erudi is a desktop application that lets you download, run, and chat with open-source language models entirely offline. It automatically detects your hardware and routes inference to the best available backend: NVIDIA GPU (CUDA), Apple Silicon (MLX), or CPU.
+
+![Chatting with Qwen3 4B in Erudi — the model's reasoning streams into a collapsible strip above the answer](docs/assets/screenshots/chat-reasoning.png)
+
+**[Download the latest release](https://github.com/erudi-app/erudi/releases)** — signed installers for macOS (Apple Silicon), Windows (CPU and NVIDIA CUDA) and Linux. Open it, pick a model that fits your machine, start chatting.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/models-catalog.png" alt="The model catalog: each card says whether the model fits the machine, and the machine readout shows a recommended size window"></td>
+    <td width="50%"><img src="docs/assets/screenshots/knowledge-base.png" alt="The knowledge base screen: attach documents to a local model to build an assistant that answers from them"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Catalog ranked for your hardware</sub></td>
+    <td align="center"><sub>Knowledge base: documents in, grounded answers out</sub></td>
+  </tr>
+</table>
 
 ---
 
@@ -134,8 +155,7 @@ bash scripts/build/build-mac-silicon.sh
 ```
 
 Signed and notarized builds are produced by CI: pushing a `vX.Y.Z` tag builds every platform and
-publishes a draft release. See [`docs/macos-build-readiness.md`](docs/macos-build-readiness.md) for
-the signing and notarization setup.
+publishes a draft release. See [`BUILD.md`](BUILD.md) for the signing and notarization setup.
 
 ---
 

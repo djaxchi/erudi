@@ -1,5 +1,13 @@
 # Backend CI on Windows and macOS: predicted failures and triage guide
 
+> **Historical — reviewed 2026-09-03.** This is the triage record written while
+> the Windows and macOS legs were being brought up; it is not a description of
+> today's CI. All three legs (`ubuntu-latest`, `windows-latest`, `macos-14`) now
+> gate merges and run with `-x`, and `pytest-timeout` is installed with
+> `timeout = 600` set in `pytest.ini`, so a hung test fails instead of eating the
+> job. Check `.github/workflows/backend-ci.yml` and `backend/pytest.ini` before
+> acting on anything below.
+
 Until #335, `backend-ci.yml` ran `pytest` on `ubuntu-latest` and nowhere else. Two
 of the three platforms we ship a backend for had no automated signal at all, and
 that gap was not theoretical: #331 was a POSIX-only test assumption found by
