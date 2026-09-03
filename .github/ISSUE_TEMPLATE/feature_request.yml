@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose something Erudi should do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The most useful requests describe a situation, not a solution: what were you trying to do, and where did Erudi get in the way? If the idea is still forming, start a [Discussion](https://github.com/erudi-app/erudi/discussions) instead.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you were trying to do, how often it comes up, and what you do today instead.
+      placeholder: "Every time I switch models I lose the sampling settings I had tuned…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like Erudi to do
+      description: A concrete scenario — what the user does, what the app does in response.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Other ways to solve it, including other apps that do it well, and why they fall short here.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Screenshots, mockups, links to prior discussions.
