@@ -13,5 +13,11 @@
     "description": "El idioma de los menús, botones y mensajes en toda la aplicación. Las respuestas de los modelos se mantienen en el idioma en que escribas.",
     "note": "Se aplica de inmediato y se recuerda para el próximo inicio. En el primer inicio se toma del idioma de tu sistema.",
     "selectLabel": "Idioma de la aplicación"
+  },
+  "privacy": {
+    "title": "Qué sale de tu equipo",
+    "description": "Los modelos se ejecutan en este ordenador y tus conversaciones y documentos se quedan en él. La página enumera cada solicitud de red que la aplicación puede hacer, cuándo ocurre y el código que lo demuestra.",
+    "note": "Se abre en tu navegador.",
+    "linkLabel": "Leer la página"
   }
 }

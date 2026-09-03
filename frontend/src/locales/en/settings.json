@@ -13,5 +13,11 @@
     "description": "The language of menus, buttons and messages across the whole app. Model answers stay in whatever language you write in.",
     "note": "Applied immediately and remembered for the next launch. Set from your system language on first launch.",
     "selectLabel": "Application language"
+  },
+  "privacy": {
+    "title": "What leaves your machine",
+    "description": "Models run on this computer and your conversations and documents stay on it. The page lists every network request the app can make, when it happens, and the code that proves it.",
+    "note": "Opens in your browser.",
+    "linkLabel": "Read the page"
   }
 }

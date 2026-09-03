@@ -141,4 +141,13 @@ describe("SettingsPage", () => {
     renderPage();
     expect(screen.getByTestId("sidebar")).toBeTruthy();
   });
+
+  it("links to the 'what leaves your machine' page in the system browser", async () => {
+    renderPage();
+    expect(await screen.findByText("What leaves your machine")).toBeTruthy();
+    const link = screen.getByRole("link", { name: "Read the page" });
+    expect(link.getAttribute("href")).toBe("https://erudi-app.github.io/erudi/privacy/");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noreferrer");
+  });
 });

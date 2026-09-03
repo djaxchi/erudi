@@ -1,6 +1,6 @@
 import React from "react";
 import PropTypes from "prop-types";
-import { Globe, Languages } from "lucide-react";
+import { Globe, Languages, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import Sidebar from "../components/Sidebar";
 import ToggleSwitch from "../components/ToggleSwitch";
@@ -10,6 +10,11 @@ import { LANGUAGE_NAMES, SUPPORTED_LANGUAGES } from "../i18n/languages";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("SettingsPage");
+
+// The privacy page lives in the documentation site so every claim on it can
+// point at the code that backs it. The window-open handler in main.js routes
+// target="_blank" links to the system browser.
+export const PRIVACY_PAGE_URL = "https://erudi-app.github.io/erudi/privacy/";
 
 /**
  * One settings card: icon, title, description, optional fine-print note and
@@ -138,6 +143,23 @@ export default function SettingsPage() {
                   </option>
                 ))}
               </select>
+            }
+          />
+
+          <SettingsCard
+            icon={<ShieldCheck className="w-5 h-5 text-[var(--fit-good)]" />}
+            title={t("settings:privacy.title")}
+            description={t("settings:privacy.description")}
+            note={t("settings:privacy.note")}
+            control={
+              <a
+                href={PRIVACY_PAGE_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block text-[13px] rounded-lg border border-[var(--line)] bg-[var(--canvas)] text-[var(--ink)] px-3 py-1.5 hover:border-[var(--fit-good)] focus:outline-none focus:border-[var(--fit-good)] transition-colors whitespace-nowrap"
+              >
+                {t("settings:privacy.linkLabel")}
+              </a>
             }
           />
         </div>

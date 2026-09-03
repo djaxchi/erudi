@@ -23,6 +23,8 @@ Erudi is a volunteer-run open-source project. There is no bug bounty programme, 
 
 ## Scope
 
+The network surface of the application — every request it can make, when, and what it exposes locally — is documented with code references on [What leaves your machine](https://erudi-app.github.io/erudi/privacy/). A report that shows that page to be wrong is a valid security report.
+
 In scope: the Erudi desktop application (the Electron frontend, the Python backend it spawns, the packaged installers) and the release pipeline that produces them.
 
 The backend listens only on `127.0.0.1` and accepts requests only from the packaged renderer; anything that lets another local process or a web page reach it, read another user's data, or execute code is in scope. So is anything that makes the app contact a network endpoint other than the model download it was explicitly asked to perform.
