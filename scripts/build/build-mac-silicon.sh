@@ -8,7 +8,7 @@
 #   2. Install PyInstaller into the backend venv (if missing)
 #   3. Run PyInstaller with backend-mac-silicon.spec  → backend/dist/backend/
 #   4. Copy backend bundle into frontend/             → frontend/backend/
-#   5. Run `npm run make` in frontend/                → electron-forge DMG
+#   5. Run `npm run dist:mac` in frontend/            → electron-builder DMG + zip
 #
 # Usage (from repo root):
 #   bash scripts/build/build-mac-silicon.sh
@@ -19,7 +19,7 @@
 #   bash scripts/build/build-mac-silicon.sh
 #
 # Output:
-#   frontend/out/make/erudi-Installer.dmg
+#   frontend/dist/*.dmg
 
 set -euo pipefail
 
@@ -57,7 +57,7 @@ ok "Backend venv found"
 ok "backend-mac-silicon.spec found"
 
 command -v npm >/dev/null 2>&1 || \
-    fail "npm not found in PATH. Install Node.js 18+."
+    fail "npm not found in PATH. Install Node.js 20."
 ok "npm found: $(command -v npm)"
 
 # ── PyInstaller ────────────────────────────────────────────────────────────────

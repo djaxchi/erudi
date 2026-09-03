@@ -1,5 +1,11 @@
 # Test strategy — LangChain conversation/arena refactor (PR1)
 
+> **Historical — reviewed 2026-09-03.** This is the PR1 execution record. Its
+> storage assumptions are obsolete: the checkpointer is `AsyncPostgresSaver` on
+> the embedded PostgreSQL cluster, not SQLite, and the frontend now has
+> Playwright and vitest suites of its own. Check the code before acting on any
+> step here.
+
 > **Status: DRAFT for agreement.** Validates the PR1 socle (agent runner + SQLite
 > checkpointer + summarization + arena) on the **Gemma3 270M** model.
 

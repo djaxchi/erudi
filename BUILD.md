@@ -1,375 +1,205 @@
 # Building Erudi for Distribution
 
-This guide explains how to build Erudi for deployment on macOS.
+Erudi ships as an Electron app with a PyInstaller-frozen Python backend bundled
+inside it. Every distributable is produced the same way:
 
-## Overview
+1. Freeze the backend with PyInstaller → `backend/dist/backend/`
+2. Stage that bundle where electron-builder expects it → `frontend/backend/`
+3. Package the Electron app with **electron-builder** → `frontend/dist/`
 
-Erudi is an Electron application with an embedded Python backend. The build process involves:
-1. Building the Python backend with PyInstaller
-2. Copying the backend into the frontend directory
-3. Building the Electron app with the backend included
-4. Creating a DMG installer
+There is no electron-forge in this repository: `frontend/electron-builder.yml`
+is the single packaging configuration, and it picks the frozen backend up from
+`../backend/dist/backend` via `extraResources`.
+
+PyInstaller cannot cross-compile, so **each platform is built on that platform**
+(natively or on a matching CI runner).
+
+---
 
 ## Prerequisites
 
-### Backend Requirements
-- Python 3.11 or later
-- Virtual environment (`venv`)
-- All dependencies from `backend/requirements.txt`
-- PyInstaller
+| Tool | Version | Why |
+|---|---|---|
+| Python | **exactly 3.12** | `pgserver` only ships cp312 wheels; CI pins `3.12` |
+| Node.js | **20** | matches the CI runners |
+| npm | bundled with Node 20 | |
+| PyInstaller | latest | installed into the backend venv |
 
-### Frontend Requirements
-- Node.js 18 or later
-- npm
-- All dependencies from `frontend/package.json`
+Backend dependencies are not a single `requirements.txt`. Composed entrypoints
+live under `backend/requirements/entrypoints/`:
 
-## Build Process
-
-### Option 1: Full Build (Recommended)
-
-Use the automated build script:
-
-```bash
-./build-scripts/build-erudi.sh
+```
+backend/requirements/entrypoints/dev/{mac-silicon,win-cpu,win-cuda,linux-cpu,linux-cuda}.txt
+backend/requirements/entrypoints/prod/{mac-silicon,win-cpu,win-cuda,linux-cpu,linux-cuda}-prod.txt
 ```
 
-or 
+Read `backend/requirements/README.md` before touching any of them — common deps
+live in `meta/base.txt` and platform/hardware specifics in `meta/*-specs.txt`;
+the entrypoints only compose those.
+
+On Windows and Linux the inference binary (`llama-server`) is compiled from the
+`backend/forks/llama-cpp` submodule before PyInstaller runs, so clone with
+`--recurse-submodules` (or run `git submodule update --init --recursive`).
+macOS does not need it: inference there goes through MLX, which is a pip
+dependency.
+
+### PyInstaller specs
+
+| Spec | Target |
+|---|---|
+| `backend/backend-mac-silicon.spec` | macOS Apple Silicon |
+| `backend/backend.spec` | Windows CUDA |
+| `backend/backend-cpu.spec` | Windows CPU **and** Linux CPU |
+
+The Linux CUDA leg reuses `backend/backend.spec`.
+
+---
+
+## Local builds
+
+### macOS (Apple Silicon)
+
 ```bash
-# Load your credentials
+bash scripts/build/build-mac-silicon.sh
+```
+
+The script verifies the backend venv and npm, installs PyInstaller if missing,
+runs `backend-mac-silicon.spec` into `backend/dist/backend/`, copies the bundle
+to `frontend/backend/`, then runs `npm run dist:mac`. The DMG lands in
+`frontend/dist/`.
+
+To sign and notarize, export the credentials before running it:
+
+```bash
+# .env.notarize
+export APPLE_ID=...
+export APPLE_ID_PASSWORD=...     # app-specific password
+export APPLE_TEAM_ID=...
+export APPLE_SIGNING_IDENTITY=...
+
 source .env.notarize
-
-# Build with automatic signing & notarization
-./build-scripts/build-erudi.sh
+bash scripts/build/build-mac-silicon.sh
 ```
-for notorization
 
-with 
+Without `APPLE_SIGNING_IDENTITY` the script still builds, but warns that the app
+is unsigned and macOS may block it on first launch. See `NOTARIZATION.md` for
+how to obtain the certificate and the app-specific password.
 
-.env.notarize having
+### Windows (CUDA)
 
-export APPLE_ID=
-export APPLE_ID_PASSWORD=
-export APPLE_TEAM_ID=
-export APPLE_SIGNING_IDENTITY=
+```powershell
+.\scripts\build\build-win-cuda-121.ps1
+```
 
+Same shape: prerequisites, PyInstaller with `backend.spec`, copy to
+`frontend\backend\`, then `npm run dist:win`. The NSIS installer lands in
+`frontend\dist\`.
 
+### Linux, and Windows CPU
 
-This will:
-1. Build the backend with PyInstaller
-2. Copy it to the frontend directory
-3. Install frontend dependencies if needed
-4. Build the Electron app
-5. Create the DMG installer in `frontend/out/make/Erudi-Installer.dmg`
+There is no local build script for these two. Build them through CI (a `v*` tag,
+see below) or run the manual sequence.
 
-### Option 2: Manual Build
-
-If you prefer to build manually or need more control:
-
-#### Step 1: Build the Backend
+### Manual sequence (any platform)
 
 ```bash
+# 1. Backend
 cd backend
-
-# Activate virtual environment
-source venv/bin/activate
-
-# Install PyInstaller if not already installed
+source venv/bin/activate                       # venv\Scripts\activate on Windows
+pip install -r requirements/entrypoints/prod/<platform>-prod.txt
 pip install pyinstaller
+pyinstaller <spec> --distpath dist             # -> backend/dist/backend/
 
-# Build the backend
-pyinstaller backend.spec
-```
-
-This creates `backend/dist/backend/` containing the executable and dependencies.
-
-#### Step 2: Copy Backend to Frontend
-
-```bash
+# 2. Frontend
 cd ../frontend
-
-# Remove old backend if exists
-rm -rf backend/
-
-# Copy new backend
-cp -r ../backend/dist/backend ./backend
+npm ci
+npm run dist:mac     # or dist:win / dist:linux
 ```
 
-#### Step 3: Build Electron App
+`electron-builder.yml` pulls the backend straight from `../backend/dist/backend`,
+so the copy into `frontend/backend/` that the platform scripts do is a
+convenience, not a requirement of the manual path.
+
+---
+
+## Build outputs
+
+Everything electron-builder produces goes to `frontend/dist/` (`directories.output`):
+
+| Platform | Artifacts |
+|---|---|
+| macOS | `.dmg` (first install) + `.zip` (electron-updater deltas), arm64 |
+| Windows | NSIS `.exe`, x64 |
+| Linux | `AppImage`, x64 |
+
+macOS builds set `hardenedRuntime`, apply `assets/entitlements.mac.plist`,
+`notarize: true`, and explicitly sign the bundled backend through
+`mac.binaries` (`Contents/Resources/backend/backend`) — electron-builder does
+not discover arbitrary Mach-O binaries under `Resources/` on its own.
+
+---
+
+## Development mode
+
+Development does **not** need a frozen backend. Run the two processes side by
+side; the Electron main process expects the backend to be up already and simply
+health-checks it.
 
 ```bash
-# Make sure dependencies are installed
-npm install
+# Terminal 1 — backend
+cd backend && source venv/bin/activate && python run.py --port 27182
 
-# Build the app and create DMG
-npm run make
+# Terminal 2 — frontend
+cd frontend && npm start
 ```
 
-The DMG will be created at `frontend/out/make/Erudi-Installer.dmg`.
-
-### Option 3: Quick Backend Rebuild
-
-If you only changed Python code and already have a frontend build:
-
-```bash
-./build-scripts/quick-backend-rebuild.sh
-cd frontend
-npm run make
-```
-
-## Development Mode
-
-For development, you can run the app without building:
-
-### Option 1: Using the Dev Script
-
-```bash
-./build-scripts/dev-start.sh
-```
-
-This automatically:
-- Starts the Python backend
-- Waits for it to be ready
-- Launches the Electron app
-- Cleans up when you exit
-
-### Option 2: Manual Dev Setup
-
-Terminal 1 - Backend:
-```bash
-cd backend
-source venv/bin/activate
-uvicorn app.main:app --reload --port 8000
-```
-
-Terminal 2 - Frontend:
-```bash
-cd frontend
-npm start
-```
-
-**Note:** In dev mode, the frontend expects a built backend at `backend/dist/backend/backend`. Build it once with PyInstaller if you haven't.
-
-## Build Configuration Files
-
-### Backend: `backend/backend.spec`
-
-PyInstaller specification file that:
-- Defines what to include in the backend bundle
-- Specifies hidden imports for ML libraries
-- Configures data files (models, configs, etc.)
-
-Key sections:
-- `datas`: Data files to include (torch, transformers, etc.)
-- `hiddenimports`: Python modules that PyInstaller might miss
-- `Analysis`: Entry point is `run_mac.py`
-
-### Frontend: `frontend/forge.config.js`
-
-Electron Forge configuration that:
-- Bundles the backend as an extra resource
-- Configures the DMG maker
-- Sets app metadata and icons
-
-Key settings:
-```javascript
-packagerConfig: {
-  extraResource: ["./backend"],  // Include backend
-  icon: "./assets/icons/icon",   // App icon
-  // ... other metadata
-}
-```
-
-### Frontend: `frontend/src/main.js`
-
-Main Electron process that:
-- Detects if app is packaged or in development
-- Finds and spawns the backend executable
-- Manages backend lifecycle
-- Creates the application window
-
-Key features:
-- **Dev mode**: Looks for backend in `../backend/dist/backend/`
-- **Build mode**: Looks for backend in packaged resources
-- Logs to `/tmp/erudi-backend.log` for debugging
-- Automatically shuts down backend on app exit
-
-## Icon Setup
-
-Place application icons in `frontend/assets/icons/`:
-
-- `icon.icns` - macOS (required for proper DMG)
-- `icon.ico` - Windows
-- `icon.png` - Linux/fallback (512x512 recommended)
-
-See `frontend/assets/icons/README.md` for icon creation instructions.
-
-## Build Artifacts
-
-After a successful build, you'll find:
-
-```
-frontend/
-├── out/
-│   ├── erudi-darwin-arm64/          # Unpacked app
-│   │   └── erudi.app/
-│   └── make/
-│       └── Erudi-Installer.dmg      # Distributable DMG
-```
-
-The DMG file is what you distribute to users.
-
-## Testing the Build
-
-### Quick Test
-
-```bash
-./build-scripts/test-build.sh
-```
-
-This verifies:
-- Backend executable exists and is correct architecture
-- All dependencies are included
-- Configuration files are correct
-- DMG was created successfully
-
-### Manual Test
-
-1. **Test the packaged app directly:**
-   ```bash
-   open frontend/out/erudi-darwin-arm64/erudi.app
-   ```
-
-2. **Test the DMG installer:**
-   ```bash
-   open frontend/out/make/Erudi-Installer.dmg
-   ```
-   - Mount the DMG
-   - Drag Erudi to Applications
-   - Launch from Applications
-
-3. **Check backend logs:**
-   ```bash
-   tail -f /tmp/erudi-backend.log
-   ```
-
-## Troubleshooting
-
-### Backend Build Issues
-
-**Error: "ModuleNotFoundError" when running packaged app**
-- Add the missing module to `hiddenimports` in `backend.spec`
-- Rebuild the backend
-
-**Error: "Backend executable not found"**
-- Ensure you built the backend with `pyinstaller backend.spec`
-- Check that `backend/dist/backend/backend` exists
-- Verify it was copied to `frontend/backend/`
-
-### Frontend Build Issues
-
-**Error: "Backend not starting"**
-- Check `/tmp/erudi-backend.log` for backend errors
-- Verify backend has execute permissions: `chmod +x frontend/backend/backend`
-- On macOS, check System Settings > Privacy & Security for blocked executables
-
-**Error: "DMG not created"**
-- Ensure `@electron-forge/maker-dmg` is installed
-- Check that `forge.config.js` includes the DMG maker
-- Look for build errors in the terminal output
-
-**Error: "Icon not found"**
-- Place icons in `frontend/assets/icons/`
-- Ensure files are named correctly (`icon.icns`, `icon.ico`, `icon.png`)
-- Icon path in `forge.config.js` should be `./assets/icons/icon` (no extension)
-
-### Runtime Issues
-
-**App launches but can't connect to backend**
-- Check if backend is running: `ps aux | grep backend`
-- Check logs: `tail -f /tmp/erudi-backend.log`
-- Verify port 8000 is not blocked
-
-**macOS security warning about backend**
-- On first run, macOS may block the unsigned backend binary
-- Go to System Settings > Privacy & Security
-- Click "Allow" next to the backend binary warning
-- Relaunch the app
-
-**Database/models not found**
-- Backend expects `data/` directory relative to its location
-- In packaged app, this is inside the backend bundle
-- Check working directory is set correctly in `main.js`
-
-## File Size Considerations
-
-The built DMG will be large (300-500MB+) because it includes:
-- Complete Python runtime
-- PyTorch and ML libraries
-- Transformers models cache
-- All dependencies
-
-This is normal for ML applications with embedded Python.
-
-## Distribution Checklist
-
-Before distributing the DMG:
-
-- [ ] Backend builds successfully
-- [ ] Frontend builds successfully
-- [ ] DMG is created
-- [ ] Icons are properly set
-- [ ] App launches from DMG
-- [ ] Backend starts and responds
-- [ ] Can create/load conversations
-- [ ] Can download models
-- [ ] Can run inference
-- [ ] Test on a fresh Mac (if possible)
-- [ ] Update version numbers in `package.json` and `forge.config.js`
-
-## Environment Variables
-
-The backend is spawned with these environment variables (set in `main.js`):
-
-```javascript
-DATABASE_URL: "sqlite:///./data/erudi.db"
-CACHE_DIR: "./data/models_cache"
-INDEXES_DIR: "./data/indexes"
-```
-
-These are relative to the backend's working directory.
-
-## Code Signing (Optional)
-
-For distribution outside of development, you should code sign the app:
-
-1. Get an Apple Developer certificate
-2. Add to `forge.config.js`:
-   ```javascript
-   packagerConfig: {
-     osxSign: {
-       identity: 'Developer ID Application: Your Name (TEAM_ID)',
-     },
-     osxNotarize: {
-       appleId: 'your-apple-id@example.com',
-       appleIdPassword: '@keychain:AC_PASSWORD',
-     },
-   }
-   ```
-
-Without code signing, users will see security warnings on first launch.
-
-## Next Steps
-
-After building successfully:
-
-1. Test the DMG on multiple Macs if possible
-2. Consider code signing for easier distribution
-3. Create release notes
-4. Upload to distribution platform or share DMG directly
-
-## Support
-
-For build issues:
-- Check `/tmp/erudi-backend.log` for backend errors
-- Check Electron console (Cmd+Option+I in dev mode)
-- Run `./build-scripts/test-build.sh` for diagnostics
+`bash scripts/dev/dev-start.sh` does both in two Terminal windows (macOS only)
+after killing whatever holds `BACKEND_PORT`.
+
+Keep `run.py` as the entrypoint rather than a bare `uvicorn` call: it supervises
+uvicorn, scans ports `27182-27199`, and emits the newline-delimited JSON
+lifecycle events (`starting`, `ready`, `shutdown`, `startup_error`) that the
+Electron main process parses.
+
+In production the main process spawns the packaged backend with only two extra
+environment variables — `PYTHONUTF8=1` and `ERUDI_WATCH_STDIN=1`
+(`frontend/src/main.js`). Everything else (data directories, database URL) is
+resolved by the backend itself in `src/launcher/runtime_paths.py`.
+
+---
+
+## CI release pipeline
+
+`.github/workflows/release.yml` runs on any `v*` tag with a five-leg matrix:
+
+| Leg | Runner | Requirements | Spec | llama-server |
+|---|---|---|---|---|
+| `mac-arm` | `macos-14` | `mac-silicon-prod.txt` | `backend-mac-silicon.spec` | — (MLX) |
+| `win-cpu` | `windows-2022` | `win-cpu-prod.txt` | `backend-cpu.spec` | cpu |
+| `win-cuda` | `windows-2022` | `win-cuda-prod.txt` | `backend.spec` | cuda |
+| `linux-cpu` | `ubuntu-22.04` | `linux-cpu-prod.txt` | `backend-cpu.spec` | cpu |
+| `linux-cuda` | `ubuntu-22.04` | `linux-cuda-prod.txt` | `backend.spec` | cuda |
+
+Each leg: checks out with submodules, sets up Python 3.12 and Node 20, compiles
+`llama-server` from the submodule (Windows/Linux only), runs
+`pyinstaller backend/<spec> --distpath backend/dist`, then `npm ci`,
+`npm version <tag>` and `npm run release:<platform>`.
+
+The CUDA legs inject `-c.publish.channel=cuda` (plus a distinct artifact name)
+so the GPU builds feed a separate `cuda` auto-update channel while the CPU
+builds feed the default `latest` channel. macOS signing and notarization happen
+on the `mac-arm` leg only.
+
+### Draft, QA, promote
+
+A tag publishes a **draft** GitHub Release (`releaseType: draft` in
+`electron-builder.yml`). electron-updater's feed 404s while a release is
+drafted, so no installed client is touched.
+
+Promotion is a separate manual step: `.github/workflows/release-promote.yml`
+(`workflow_dispatch`, takes the tag as input). It refuses to publish unless all
+five platform legs of the tag's `release.yml` run concluded green, which
+prevents a partial release with a missing `latest-*.yml` feed.
+
+Between the two, run the manual QA pass on the real signed artifact:
+`docs/dev/release-qa-checklist.md`.

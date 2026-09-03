@@ -1,73 +1,97 @@
-# 🧠 Erudi Documentation
+# Erudi Documentation
 
-Bienvenue dans la documentation technique d'Erudi — une application desktop pour l'inférence locale de LLMs open-source avec spécialisation et RAG.
+Technical documentation for Erudi — a desktop application that runs open-source
+LLMs locally, with retrieval over your own documents.
 
-## 🎯 Vue d'Ensemble
+## Overview
 
-Erudi permet de :
-- **Exécuter des LLMs localement** sur Mac Silicon (MLX), NVIDIA GPU (CUDA), ou CPU
-- **Spécialiser les modèles** via attachement de bases de connaissances (RAG)
-- **Comparer des modèles** en mode Arena
-- **Gérer le cycle de vie** : téléchargement, quantization, déchargement
+Erudi lets you:
 
-## 📚 Sections
+- **Run LLMs locally** on Apple Silicon (MLX), NVIDIA GPUs (CUDA), or CPU (llama.cpp)
+- **Ground a model on your documents** by attaching a Knowledge Base (hybrid RAG)
+- **Compare models** side by side in the Arena
+- **Manage the model lifecycle**: catalog, download of pre-built quants, idle unloading
 
-### Démarrage
-- [🚀 Getting Started](usage.md) — Installation, lancement backend/frontend, premiers tests
+Erudi downloads pre-built MLX and GGUF artifacts. It never converts or quantizes
+weights locally.
+
+## Sections
+
+### Getting started
+
+- [Getting Started](usage.md) — prerequisites, backend/frontend setup, first API calls
+- [Backend Launcher](guides/backend-run.md) — `run.py`, ports, lifecycle events
 
 ### Concepts
-- [🧩 Architecture](architecture.md) — Structure DDD, multi-engine, flux de démarrage
-- [🪵 Logging & Traceability](logging.md) — Log files, request-id correlation, how to trace a bug
 
-### Guides Pratiques
-- [💬 Conversations](guides/conversations.md) — Créer des sessions, streaming, paramètres
-- [🤖 LLMs](guides/llms.md) — Télécharger, charger, gérer les modèles
-- [📚 Knowledge Base](guides/knowledge_base.md) — Créer des KB, attacher à un modèle
+- [Architecture](architecture.md) — DDD layering, multi-engine, startup sequence
+- [Logging & Traceability](logging.md) — log files, request-id correlation, tracing a bug
+- [Internationalization](i18n.md) — locale files, the no-literal-string rule
 
-### Référence API
-- [Core](reference/core.md) — Configuration, logging, santé
+### Guides
+
+- [Conversations](guides/conversations.md) — sessions, streaming, parameters
+- [LLMs](guides/llms.md) — catalog, downloads, model management
+- [Knowledge Base](guides/knowledge_base.md) — ingestion, retrieval, attaching a KB
+- [Hardware Detection](guides/hardware.md) — engine selection and performance scores
+
+### Development
+
+- [Exception Handling](dev/exceptions.md) — exception hierarchy and error wire format
+- [Engines Architecture](dev/architecture/engines.md) — engine hierarchy, llama.cpp builds
+- [Database Migrations](dev/db-migrations.md) — Alembic workflow
+
+### API reference
+
+- [Core](reference/core.md) — configuration, logging, health
 - [Engines](reference/engines.md) — MLX, CUDA, CPU
-- [Conversations](reference/conversations.md) — Endpoints de chat
-- [LLMs](reference/llms.md) — Gestion des modèles
-- [Knowledge Base](reference/knowledge_base.md) — RAG et vectorisation
-- [Arena](reference/arena.md) — Comparaison de modèles
-- [Hardware](reference/hardware.md) — Monitoring système
-- [Entities](reference/entities.md) — Modèles SQLAlchemy
-- [Database](reference/database.md) — Seed et accès DB
+- [Agents](reference/agents.md) — LangChain runner, prompts, middlewares, checkpointer
+- [Ingestion](reference/ingestion.md) — document reader, chunking, embeddings, vector store
+- [Launcher](reference/launcher.md) — runtime paths, embedded PostgreSQL
+- [Conversations](reference/conversations.md) — chat endpoints
+- [LLMs](reference/llms.md) — model management
+- [Knowledge Base](reference/knowledge_base.md) — ingestion and retrieval
+- [Arena](reference/arena.md) — model comparison
+- [Hardware](reference/hardware.md) — system monitoring
+- [Entities](reference/entities.md) — SQLAlchemy models
+- [Database](reference/database.md) — seeding and DB access
 
-## 🏗️ Architecture Rapide
+## Architecture at a glance
 
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ Frontend (Electron + React)                                 │
+└────────────────┬────────────────────────────────────────────┘
+                 │ HTTP on 127.0.0.1:27182, routes under /erudi
+┌────────────────▼────────────────────────────────────────────┐
+│ Backend (FastAPI)                                           │
+│  ├─ Domains: conversations, llms, knowledge_base, arena,    │
+│  │            hardware, startup, user_settings              │
+│  ├─ Agents:  LangChain/LangGraph runner + checkpointer      │
+│  ├─ Engines: MLX_Engine / CUDA_Engine / CPU_Engine          │
+│  ├─ Database: embedded PostgreSQL + pgvector (SQLAlchemy)   │
+│  └─ Ingestion: document reader, chunking, e5 embeddings,    │
+│                hybrid dense + keyword retrieval             │
+└─────────────────────────────────────────────────────────────┘
 ```
-┌─────────────────────────────────────────────────────────┐
-│ Frontend (Electron + React)                             │
-└────────────────┬────────────────────────────────────────┘
-                 │ REST API
-┌────────────────▼────────────────────────────────────────┐
-│ Backend (FastAPI)                                       │
-│  ├─ Domains: conversations, llms, KB, arena, hardware  │
-│  ├─ Engines: MLX_Engine / CUDA_Engine / CPU_Engine     │
-│  ├─ Database: SQLite + SQLAlchemy ORM                   │
-│  └─ Utils: RAG (FAISS), prompting, embeddings          │
-└─────────────────────────────────────────────────────────┘
-```
 
-## 🚦 Démarrage Rapide
+## Quick start
 
 ```bash
-# Backend
+# Backend (from the repo root)
 cd backend
-source venv/bin/activate  # Mac/Linux
-uvicorn src.main:app --reload
+source venv/bin/activate         # macOS/Linux; Windows: .\venv\Scripts\Activate
+python run.py --port 27182
 
-# Frontend
+# Frontend (second terminal)
+cd frontend
 npm start
 ```
 
-Voir [Usage](usage.md) pour les détails.
+See [Getting Started](usage.md) for the full setup, including the llama.cpp build step.
 
-## 🔗 Liens Utiles
+## Links
 
-- [GitHub Repository](https://github.com/erudi-app/erudi)
-- [Architecture détaillée](architecture.md)
-- [API Reference complète](reference/core.md)
-
+- [GitHub repository](https://github.com/erudi-app/erudi)
+- [Architecture](architecture.md)
+- [API reference](reference/core.md)

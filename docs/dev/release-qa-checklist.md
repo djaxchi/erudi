@@ -31,18 +31,20 @@ the goal is **zero deviation** from what ships. Instead, by convention:
   machine — they are developers, not clients. Their Erudi data is disposable.
 - This also gives the **upgrade path test for free**: keeping the data dir from a
   previous version and installing the new RC exercises the real client migration
-  path (see #96).
+  path.
 
-Safety net: once DB migrations land (#96), the pre-upgrade **data-dir backup**
-protects testers from a bad destructive migration — the same mechanism that
-protects clients.
+Safety net: Alembic ships, and `src/database/backup.py` takes a `pg_dump`
+snapshot **before** each applied migration — the same mechanism that protects
+clients from a bad destructive migration.
 
 ### Reset to a clean slate (fresh-install scenario)
 
-Quit Erudi, delete the data dir, relaunch:
+Quit Erudi, delete the data dir, relaunch. The paths come from
+`src/launcher/runtime_paths.py`:
 
 - **macOS**: `~/Library/Application Support/erudi/`
-- **Windows**: `%APPDATA%\erudi\` (the `runtime_paths` packaged data root)
+- **Windows**: `%LOCALAPPDATA%\erudi\`
+- **Linux**: `$XDG_DATA_HOME/erudi/` (default `~/.local/share/erudi/`)
 
 (Keep the dir to test an **upgrade** instead of a fresh install.)
 

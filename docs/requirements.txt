@@ -1,0 +1,8 @@
+# Documentation site only (mkdocs.yml). Not part of the application.
+# Pinned to the versions the site was last built and reviewed with.
+mkdocs==1.6.1
+mkdocs-material==9.5.47
+mkdocstrings[python]==0.27.0
+mkdocstrings-python==1.13.0
+griffe==2.0.2
+pymdown-extensions==10.21.3

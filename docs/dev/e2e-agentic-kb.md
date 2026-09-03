@@ -1,5 +1,14 @@
 # Test strategy — Agentic Knowledge Base (#84)
 
+> **Historical — reviewed 2026-09-03.** This is the execution record of the #84
+> test campaign, kept for the scenarios and the reasoning; the mechanics it
+> describes have moved on. The agentic path is now gated on
+> `supports_tools_wire` plus the tri-state `config.KB_AGENTIC_MODE`, decided in
+> `src/agents/kb_mode.py`; the UI surfaces tool calls in
+> `frontend/src/components/TraceStrip.jsx`; and the repository has real
+> Playwright and vitest suites rather than the ad-hoc harness assumed below.
+> Re-read the code before acting on any step here.
+
 > **Status: DRAFT for agreement.** Validates the agentic KB feature (#84) on top of
 > the PR3 RAG stack. Builds on the PR1 conversation/arena harness
 > (`e2e-conversation-langchain.md`) — same pyramid, same E2E rule.

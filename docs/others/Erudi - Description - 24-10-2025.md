@@ -1,5 +1,13 @@
 # 🧠 Erudi — Présentation complète
 
+> **Historical document — kept as a product snapshot from October 2025.** It records
+> what Erudi was meant to be at that date, not what it does today: storage moved to an
+> embedded PostgreSQL cluster with pgvector, the knowledge base became a multi-format
+> ingestion pipeline with hybrid retrieval, conversation memory is now a LangGraph
+> checkpointer, and the three inference engines were unified behind a shared
+> chat-server base class. Read `docs/architecture.md` for the current design; treat
+> everything below as history.
+
 ---
 
 ## Vision (bigger picture)

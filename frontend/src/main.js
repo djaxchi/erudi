@@ -213,7 +213,7 @@ const startRealBackend = () => {
 
         // If we get here, backend is not responding
         log(
-          "Backend is not responding. Make sure to run: ./build-scripts/dev-start.sh or set BACKEND_PORT env variable"
+          "Backend is not responding. Make sure to run: scripts/dev/dev-start.sh or set BACKEND_PORT env variable"
         );
         reject(new Error(`Backend is not responding on localhost:${devPort}`));
       };

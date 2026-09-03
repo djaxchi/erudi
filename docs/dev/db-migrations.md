@@ -60,8 +60,12 @@ let app N run — recovery is at the **app-version** level:
    rolled-back schema and runs again.
 4. For a **destructive** migration (column drop / data rewrite) that lost data, a
    `pg_dump` snapshot is taken **before** each applied migration, in
-   `…/db-backups/erudi-<from_rev>.dump` (the last few are kept). Restore it with
-   the bundled `pg_restore` while on the previous app version:
+   `…/db-backups/erudi-<from_rev>.dump`. The three most recent snapshots are
+   kept (`KEEP_BACKUPS = 3` in `src/database/backup.py`); older ones are pruned.
+   Restore one with the bundled `pg_restore` while on the previous app version.
+   That binary ships inside the pgserver install — `pginstall/bin/pg_restore`
+   next to `pg_dump`, under `pgserver.__file__`'s directory — which resolves the
+   same way in dev and in the PyInstaller bundle:
 
    ```bash
    pg_restore --clean --dbname '<psycopg_url>' '…/db-backups/erudi-<rev>.dump'

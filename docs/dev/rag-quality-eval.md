@@ -162,6 +162,13 @@ wording changed, and the score went 4 PASS → 8 PASS.
    Panorama questions (T1), cross-document questions (T7) and multi-source
    aggregations (T9) fail **by construction** — the information physically
    isn't in the prompt. Inherited from the 270M/FAISS era, never recalibrated.
+
+   > **Historical.** `kb_top_k` no longer exists. `get_prompting_strategy`
+   > (`src/utils/prompt_utils.py`) now returns a `kb_token_budget` in e5 tokens,
+   > tiered by parameter count: 400 / 700 / 1000 / 1400 / 2000. Retrieval keeps
+   > whole chunks best-first up to that budget, after an adaptive similarity cut
+   > with a recall floor (`src/utils/kb_utils.py`). This finding is what drove
+   > that change.
 3. **Language drift**: Gemma-4B answers French questions in English (7/10
    turns) despite the "same language" line in the system prompt; obeys an
    explicit request but it doesn't persist to the next turn.

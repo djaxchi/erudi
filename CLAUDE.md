@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Desktop app that runs open-source LLMs locally. Two processes:
 
 - **Backend** — Python **3.12** FastAPI server (3.12 is required: `pgserver` only ships wheels up to cp312), launched by `backend/run.py`, listens on `127.0.0.1:27182` by default. Routes are mounted under the `/erudi` prefix.
-- **Frontend** — Electron + React + Tailwind, packaged with electron-forge. In production the main process spawns the bundled PyInstaller backend executable; in dev it expects the backend to be running already.
+- **Frontend** — Electron + React + Tailwind, packaged with electron-builder. In production the main process spawns the bundled PyInstaller backend executable; in dev it expects the backend to be running already.
 
-Hardware backend is selected at startup by `BaseEngine.get_engine()` (`backend/src/engines/base_engine.py:507`): `MLX_Engine` on macOS ARM, `CUDA_Engine` on Linux/Windows with NVIDIA, `CPU_Engine` otherwise. Set `ERUDI_FORCE_CPU=1` to bypass GPU detection. Every environment variable the backend reads is listed in `backend/.env.example` (the only secret is `HF_TOKEN`, read from the environment at runtime and never embedded in a build); `tests/test_env_example.py` fails on any new `os.getenv` that is not listed there.
+Hardware backend is selected at startup by `BaseEngine.get_engine()` (`backend/src/engines/base_engine.py:528`): `MLX_Engine` on macOS ARM, `CUDA_Engine` on Linux/Windows with NVIDIA, `CPU_Engine` otherwise. Set `ERUDI_FORCE_CPU=1` to bypass GPU detection. Every environment variable the backend reads is listed in `backend/.env.example` (the only secret is `HF_TOKEN`, read from the environment at runtime and never embedded in a build); `tests/test_env_example.py` fails on any new `os.getenv` that is not listed there.
 
 **All three engines follow the same pattern**: they spawn an OpenAI-compatible HTTP server in a child process and talk to it over `http://127.0.0.1:<port>/v1/chat/completions` (SSE). The shared lifecycle (port pick, two-stage `/health` + chat-ping probe, SSE byte-buffer parser, atexit storage with proper unregister-on-swap, idle-cleanup active marker, kwarg translation) lives in `BaseChatServerEngine`. `BaseLlamaCppEngine` sits between it and the CPU/CUDA concretes to factor what's specific to the `llama-server` binary (Popen lifecycle, GGUF picker, install-dir resolution, `repetition_penalty → repeat_penalty` kwarg rename). Concrete subclasses implement four small hooks: `_spawn_child` (CPU/CUDA via `subprocess.Popen`, MLX via `multiprocessing.Process(target=run_mlx_vlm_server, ...)` because PyInstaller frozen builds have no Python interpreter at `sys.executable` to pass `-m` to), `_terminate_process`, `_proc_is_alive`, and `_resolve_model_artifact`.
 
@@ -47,7 +47,7 @@ ERUDI_TEST_GEMMA=1 pytest tests/ -k gemma                # opt-in regression: Ge
 cd backend && ruff check src
 ```
 
-`pytest.ini` sets `asyncio_mode = auto`, `pythonpath = .`, and `addopts = --strict-markers` — any `@pytest.mark.<name>` not declared in `pytest.ini:markers` is a hard error. Declared markers: `unit`, `integration`, `mlx_only`, `e2e`. Imports use `from src.*` and `from tests._helpers import is_mlx_platform` (etc.) for the platform-skip helpers.
+`pytest.ini` sets `asyncio_mode = auto`, `pythonpath = .`, and `addopts = --strict-markers` — any `@pytest.mark.<name>` not declared in `pytest.ini:markers` is a hard error. Declared markers: `unit`, `integration`, `mlx_only`, `e2e`, `network`. Imports use `from src.*` and `from tests._helpers import is_mlx_platform` (etc.) for the platform-skip helpers.
 
 MLX integration tests rely on a session-scoped fixture (`mlx_test_model_path` in `tests/conftest.py`) that downloads `mlx-community/Qwen2.5-0.5B-Instruct-4bit` (~280 MB, Apache 2.0, no HF license accept) on first run. The fixture `pytest.skip`s cleanly on non-MLX hosts.
 
@@ -60,10 +60,9 @@ npm start                # dev mode (expects backend already running)
 npm run lint             # ESLint with autofix
 npm run lint:check       # ESLint without autofix (matches CI)
 npm run format:check     # Prettier check (matches CI)
-npm run package          # build app without installer
-npm run make             # build + installer (DMG/ZIP/DEB/RPM)
 npm run dist:mac         # macOS arm64 via electron-builder
 npm run dist:win         # Windows x64 via electron-builder
+npm run dist:linux       # Linux x64 AppImage via electron-builder
 ```
 
 ### Combined dev workflow
@@ -72,7 +71,7 @@ npm run dist:win         # Windows x64 via electron-builder
 
 ### Production build
 
-Backend → PyInstaller bundle → copied into `frontend/backend/` → packaged by electron-forge. See `BUILD.md` for the orchestrated scripts; the spec files are `backend/backend.spec` (Windows CUDA), `backend/backend-mac-silicon.spec` (macOS), and `backend/backend-cpu.spec` (Windows CPU).
+Backend → PyInstaller bundle → copied into `frontend/backend/` → packaged by electron-builder. See `BUILD.md` for the orchestrated scripts; the spec files are `backend/backend.spec` (Windows CUDA), `backend/backend-mac-silicon.spec` (macOS), and `backend/backend-cpu.spec` (Windows CPU and Linux CPU).
 
 ## Architecture essentials
 
@@ -158,7 +157,7 @@ frontend/src/
 
 ## Logs
 
-- Backend: `/tmp/erudi-backend.log` (macOS/Linux) or `%TEMP%\erudi-backend.log` (Windows), written by `frontend/src/main.js`. Backend's own logger writes to `backend/logs/app.log`.
+- Backend: `/tmp/erudi-backend.log` (macOS/Linux) or `%TEMP%\erudi-backend.log` (Windows), written by `frontend/src/main.js`. Backend's own logger writes to `backend/logs/backend.log`.
 - Frontend (production): electron-log default location.
 
 ## Conflict with the global CLAUDE.md

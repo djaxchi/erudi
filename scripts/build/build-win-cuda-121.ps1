@@ -8,7 +8,7 @@
 #   3. Generate icon.ico from icon.png (if missing)
 #   4. Run PyInstaller with backend.spec  → backend/dist/backend/
 #   5. Copy backend bundle into frontend/  → frontend/backend/
-#   6. Run `npm run dist:win` in frontend/ → electron-forge package + electron-builder NSIS
+#   6. Run `npm run dist:win` in frontend/ → electron-builder NSIS installer
 #
 # Usage (from repo root):
 #   .\scripts\build\build-win-cuda-121.ps1
@@ -85,7 +85,7 @@ if (-not (Test-Path $BackendSpec)) {
 Write-OK "backend.spec found"
 
 $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
-if (-not $npmCmd) { Write-Fail "npm not found in PATH. Install Node.js 18+." }
+if (-not $npmCmd) { Write-Fail "npm not found in PATH. Install Node.js 20." }
 Write-OK "npm found: $($npmCmd.Source)"
 
 # ── PyInstaller ────────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ if (Test-Path $OutDir) {
 }
 
 # ── Build Electron app + NSIS installer ───────────────────────────────────────
-Write-Step "Building Electron app and NSIS installer (electron-forge package + electron-builder)..."
+Write-Step "Building Electron app and NSIS installer (electron-builder)..."
 Push-Location $FrontendRoot
 try {
     cmd /c "npm run dist:win"

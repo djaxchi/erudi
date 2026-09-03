@@ -19,7 +19,7 @@ Thank you for your interest in contributing. This document explains how the proj
 ## How to contribute
 
 1. **Open an issue first** for anything non-trivial (new features, engine changes, architecture decisions). It saves everyone time if we align before you write code.
-2. **Fork and branch** — branch off `main`, name your branch descriptively (`fix/cpu-engine-converter`, `feat/ollama-backend`, etc.).
+2. **Fork and branch** — branch off an up-to-date `main`, name your branch descriptively (`fix/cpu-engine-port-reuse`, `feat/ollama-backend`, etc.).
 3. **Keep PRs focused** — one concern per PR. A bug fix doesn't need a refactor attached.
 4. **Test on your platform** — at minimum run the dev stack end-to-end before opening a PR.
 
@@ -31,7 +31,7 @@ See [README.md](README.md) for the full setup walkthrough. The short version:
 
 ```bash
 # 1. Clone
-git clone https://github.com/your-org/erudi.git && cd erudi
+git clone https://github.com/erudi-app/erudi.git && cd erudi
 
 # 2. Backend (pick your platform script)
 bash scripts/dev/backend/setup-mac-silicon.sh
@@ -50,9 +50,9 @@ cd frontend && npm install && npm start
 
 ### Python
 
-- Python 3.11+
+- Python 3.12 exactly — `pgserver` only publishes cp312 wheels, and CI pins `3.12` on all three OS legs
 - No type annotations required on code you didn't write, but add them to new public methods
-- Logging via the module-level `logger = logging.getLogger(__name__)` — no bare `print()` in production paths
+- Logging via the shared app logger: `from src.core.logging import logger` — no bare `print()` in production paths
 - Exceptions: use `EngineException` (from `src.core.exceptions`) for engine errors, `DatabaseException` for DB errors — don't raise generic `Exception` in domain code
 - Keep engine-specific code inside the engine classes (`CUDA_Engine`, `CPU_Engine`, `MLX_Engine`) — `base_engine.py` and `services.py` should stay platform-agnostic
 
@@ -64,7 +64,10 @@ cd frontend && npm install && npm start
 
 ### Git
 
-- Commit messages: short imperative summary (`fix cpu engine frozen mode converter`, not `Fixed the issue with the CPU engine`)
+- Conventional commits: `type(scope): description` — `feat`, `fix`, `docs`, `chore`, `ci`. One logical change per commit (`fix(cpu-engine): stop the frozen build from reusing a stale port`)
+- Branch from an **up to date** `main`; the repo requires branches to be current before they can merge
+- **Never rebase or amend a branch you have already pushed.** Rewriting history forces a force-push, which dismisses reviews and strands inline comments on SHAs that no longer exist. When GitHub says your branch is behind, use **"Update branch"** (or `git merge origin/main`) and push normally
+- Don't groom the branch history either — PRs are squash-merged through a merge queue, so the individual commits are discarded anyway
 - Don't commit `.env` files, model files, `venv/`, `node_modules/`, or PyInstaller `dist/`/`build/` directories
 
 ---
@@ -80,10 +83,15 @@ src/engines/
 ├── base_engine.py            ← abstract base + engine selection logic
 ├── cuda_engine.py            ← NVIDIA GPU via llama-server subprocess (Windows/Linux)
 ├── cpu_engine.py             ← CPU via llama-server subprocess (all platforms, fallback)
-├── mlx_engine.py             ← Apple Silicon via mlx_lm.server subprocess (macOS ARM)
-├── _mlx_server_runner.py     ← picklable target for the MLX server child process
-└── embedder_engine.py        ← sentence-transformers for KB and memory
+├── mlx_engine.py             ← Apple Silicon via mlx_vlm.server child process (macOS ARM)
+└── _mlx_vlm_server_runner.py ← picklable target for the MLX server child process
 ```
+
+The MLX engine runs `mlx_vlm.server` (pinned `mlx-vlm==0.6.17`), which is a
+superset of `mlx_lm.server`: same wire protocol, plus vision and native tool
+calling. There is no `embedder_engine.py` — embeddings are handled outside the
+engine layer by `E5Embeddings` in `src/ingestion/embeddings.py`
+(`intfloat/multilingual-e5-small`, 384 dimensions).
 
 All three inference engines follow the same pattern: they spawn an
 OpenAI-compatible HTTP server in a child process and talk to it over
@@ -99,7 +107,7 @@ Inheritance:
 ```
 BaseEngine
 └── BaseChatServerEngine
-    ├── MLX_Engine        (mp.Process + mlx_lm.server)
+    ├── MLX_Engine        (mp.Process + mlx_vlm.server)
     └── BaseLlamaCppEngine
         ├── CPU_Engine    (Popen + llama-server, -ngl 0)
         └── CUDA_Engine   (Popen + llama-server cuda, -ngl <computed>)
@@ -115,32 +123,40 @@ hooks: `_spawn_child`, `_terminate_process`, `_proc_is_alive`,
 ```
 src/domains/
 ├── conversations/      ← chat, message history, context/memory
-├── llms/               ← model download, conversion, management
-├── knowledge_base/     ← PDF ingestion, FAISS indexing, RAG
+├── llms/               ← model catalog, download, management
+├── knowledge_base/     ← multi-format ingestion, pgvector hybrid RAG
+├── arena/              ← side-by-side model comparison
 ├── hardware/           ← hardware detection and scoring
+├── user_settings/      ← persisted user preferences
 └── startup/            ← first-run seeding, job cleanup
 ```
 
-Each domain has `endpoints.py` (FastAPI routes), `services.py` (business logic), `repository.py` (DB queries), and `schemas.py` (Pydantic models).
+Each domain has `endpoints.py` (FastAPI routes), `repository.py` (DB queries) and `schemas.py` (Pydantic models); most also have `services.py` (business logic).
 
 ### Running backend tests
 
 ```bash
 cd backend
 source venv/bin/activate
-pytest tests/                       # full suite (default)
-pytest tests/ -m "not mlx_only"     # skip MLX integration (CI default)
-pytest tests/ -m "mlx_only"         # only MLX integration (local Mac)
-pytest tests/ -m "e2e"              # only full-stack e2e tests
+pytest tests/                                            # full suite (local Mac)
+pytest tests/ -q --ignore=tests/e2e -m "not mlx_only"    # exactly what CI runs
+pytest tests/ -m "mlx_only"                              # only MLX integration (local Mac)
+pytest tests/ -m "e2e"                                   # only full-stack e2e tests
 ```
 
 Pytest markers (declared in `backend/pytest.ini`):
 
 - `unit` — fully mocked, no external dep, runs everywhere
 - `integration` — cross-component, may hit DB/filesystem
-- `mlx_only` — requires Apple Silicon + `mlx-lm` + a downloaded MLX model;
-  skipped automatically on Linux CI by `BaseEngine.get_engine() != "MLX_Engine"`
+- `mlx_only` — requires Apple Silicon + `mlx-vlm` + a downloaded MLX model;
+  skipped automatically off Apple Silicon by `is_mlx_platform()`
+  (`backend/tests/_helpers.py`), which mirrors `BaseEngine.get_engine()`
 - `e2e` — full-stack via FastAPI TestClient + real model
+- `network` — hits the live Hugging Face API; opt-in via `ERUDI_TEST_NETWORK=1`
+  and skipped in CI
+
+`pytest.ini` sets `addopts = --strict-markers`, so any `@pytest.mark.<name>` not
+declared there is a hard error.
 
 MLX integration tests use a shared session-scoped fixture
 (`mlx_test_model_path`) that downloads `mlx-community/Qwen2.5-0.5B-Instruct-4bit`
@@ -164,7 +180,8 @@ Test-mode environment variables:
 
 ## Frontend guide
 
-The frontend is Electron + React, bundled with webpack via electron-forge.
+The frontend is Electron + React, bundled with webpack and packaged with
+electron-builder (`frontend/electron-builder.yml`).
 
 ```
 frontend/src/
@@ -181,11 +198,20 @@ frontend/src/
 ```bash
 cd frontend
 
-npm start           # dev mode (hot reload)
-npm run lint        # ESLint
-npm run package     # package without installer (for testing)
-npm run dist:win    # full Windows installer build
+npm start            # dev mode (hot reload)
+npm run lint         # ESLint with autofix
+npm run lint:check   # ESLint without autofix (what CI runs)
+npm run format:check # Prettier check (what CI runs)
+npx vitest run       # unit tests (renderer + utils)
+npm run dist:mac     # macOS DMG + zip
+npm run dist:win     # Windows NSIS installer
+npm run dist:linux   # Linux AppImage
 ```
+
+Every user-facing string goes through `t('ns:key')` over
+`frontend/src/locales/<lang>/*.json` — hardcoded copy in JSX or in the Electron
+menus/dialogs is caught by the `i18next/no-literal-string` ESLint rule and by
+`locales.test.js`. See `docs/i18n.md`.
 
 ### IPC pattern
 
@@ -208,11 +234,34 @@ Don't call Node APIs directly from renderer code.
 
 ## Submitting a pull request
 
-1. Make sure `npm run lint` passes (frontend)
-2. Make sure `pytest tests/` passes (backend)
-3. Test the full dev stack end-to-end on your platform
-4. Write a clear PR description: what changed, why, and how to test it
-5. Reference any related issues (`Closes #123`)
+Run the same gates CI runs, locally, before you push.
+
+**Backend** (`.github/workflows/backend-ci.yml`, Python 3.12, blocking on
+`ubuntu-latest`, `windows-latest` and `macos-14`):
+
+```bash
+cd backend
+ruff check src
+pytest tests/ -q --ignore=tests/e2e -m "not mlx_only"
+```
+
+**Frontend** (`.github/workflows/frontend-ci.yml`, Node 20):
+
+```bash
+cd frontend
+npm run lint:check
+npm run format:check
+npx vitest run
+```
+
+Then:
+
+1. Test the full dev stack end-to-end on your platform
+2. Write a clear PR description: what changed, why, and how to test it
+3. Reference any related issues (`Closes #123`)
+
+PRs are squash-merged through a merge queue, so keep the PR title in the
+`type(scope): description` form — it becomes the commit on `main`.
 
 PRs that touch engine code (`cuda_engine.py`, `cpu_engine.py`, `mlx_engine.py`, `base_engine.py`) should be tested on the relevant platform before merging.
 
@@ -224,5 +273,5 @@ Look for issues tagged `good first issue` on GitHub. Some areas that are always 
 
 - **Documentation** — improve setup guides, add docstrings to undocumented methods
 - **Tests** — the test suite has gaps, especially around engine selection and model download flows
-- **Linux support** — the CUDA and CPU engines work on Linux but the build pipeline hasn't been tested there
+- **Linux support** — the CPU and CUDA builds are produced by CI, but they get far less real-hardware testing than macOS and Windows
 - **Error messages** — many engine errors surface as generic 500s; better user-facing messages are always useful

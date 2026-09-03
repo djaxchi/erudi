@@ -20,7 +20,7 @@ from the click in the UI down to the backend work it triggered.
 ### Rotation
 
 - `backend.log` rotates at 10 MB and keeps up to 10 previous files (`backend.log.1` … `backend.log.10`).
-- `erudi-backend.log` rotates at 10 MB and keeps one previous file (`.old`).
+- `erudi-backend.log` rotates at 10 MB and keeps one previous file, `erudi-backend.old.log`.
 
 All timestamps in both files are UTC, ISO-8601, with milliseconds — so lines
 from the two files can be correlated reliably.

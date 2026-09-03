@@ -1,19 +1,28 @@
 site_name: Erudi Documentation
+site_url: https://erudi-app.github.io/erudi/
 repo_url: https://github.com/erudi-app/erudi
+repo_name: erudi-app/erudi
+edit_uri: edit/main/docs/
 
 theme:
   name: material
   features:
+    - navigation.sections
     - navigation.expand
+    - navigation.top
     - content.code.copy
     - content.code.annotate
+    - content.action.edit
   palette:
     - scheme: slate
       primary: custom
       accent: custom
-  custom_dir: docs
 
 markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
@@ -25,24 +34,47 @@ markdown_extensions:
 extra_css:
   - stylesheets/extra.css
 
+# Historical records live under docs/others/ and are reachable by link only.
+not_in_nav: |
+  others/*
+
 nav:
-  - 🧠 Overview: index.md
-  - 🧩 Architecture: architecture.md
-  - 🚀 Getting Started: usage.md
-  - 🪵 Logging: logging.md
-  - 📚 Guides:
+  - Overview: index.md
+  - Getting started: usage.md
+  - How it works:
+      - Architecture: architecture.md
+      - Inference engines: dev/architecture/engines.md
+      - Backend launcher and ports: guides/backend-run.md
+      - Logging and traceability: logging.md
+  - Guides:
       - Conversations: guides/conversations.md
-      - LLMs: guides/llms.md
-      - Knowledge Base: guides/knowledge_base.md
-      - Hardware Detection: guides/hardware.md
-  - ⚙️ API Reference:
+      - Models: guides/llms.md
+      - Knowledge base: guides/knowledge_base.md
+      - Hardware detection: guides/hardware.md
+  - Contributing:
+      - Internationalization: i18n.md
+      - Exceptions: dev/exceptions.md
+      - Database migrations: dev/db-migrations.md
+      - Release QA checklist: dev/release-qa-checklist.md
+      - RAG quality evaluation: dev/rag-quality-eval.md
+      - Archive:
+          - Backend CI on three OSes: dev/backend-ci-multi-os.md
+          - Release engineering audit: dev/release-engineering-audit.md
+          - E2E — agentic knowledge base: dev/e2e-agentic-kb.md
+          - E2E — LangChain conversations: dev/e2e-conversation-langchain.md
+  - API reference:
       - Core: reference/core.md
       - Engines: reference/engines.md
+      - Agents: reference/agents.md
+      - Ingestion: reference/ingestion.md
+      - Launcher: reference/launcher.md
       - Conversations: reference/conversations.md
-      - LLMs: reference/llms.md
-      - Knowledge Base: reference/knowledge_base.md
+      - Models: reference/llms.md
+      - Knowledge base: reference/knowledge_base.md
       - Arena: reference/arena.md
       - Hardware: reference/hardware.md
+      - User settings: reference/user_settings.md
+      - Startup: reference/startup.md
       - Entities: reference/entities.md
       - Database: reference/database.md
 
@@ -55,8 +87,8 @@ plugins:
           options:
             show_source: true
             docstring_style: google
+            docstring_options:
+              warn_missing_types: false
             merge_init_into_class: true
             show_root_heading: true
             show_signature: true
-            separate_signature: true
-            line_length: 88
