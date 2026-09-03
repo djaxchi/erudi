@@ -1,0 +1,81 @@
+name: Bug report
+description: Something crashes, misbehaves, or does not do what the app says it does
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. A few precise details get a bug fixed far faster than a long description, so the form asks for them up front.
+
+        If you are not sure it is a bug, or you need help getting started, [Discussions](https://github.com/erudi-app/erudi/discussions) is the right place.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what Erudi did instead. Error messages verbatim if there were any.
+      placeholder: |
+        1. Downloaded Qwen3-4B from the catalog
+        2. Opened a new chat and sent "hello"
+        3. Expected an answer; got "Something went wrong" after ~30 s
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Erudi version
+      description: Shown in Settings, or the release tag you installed. Say "built from source" plus the commit if that is the case.
+      placeholder: 1.0.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows 10 / 11
+        - Linux
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      description: Chip or GPU and memory. This decides which inference engine ran, so it matters.
+      placeholder: "M3 Pro, 36 GB  /  RTX 4070, 12 GB VRAM, 32 GB RAM  /  CPU only, 16 GB"
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model involved, if any
+      placeholder: "mlx-community/Qwen3-4B-4bit"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Two files help most (details in [docs/logging.md](https://github.com/erudi-app/erudi/blob/main/docs/logging.md)):
+
+        **App log** — macOS: `$TMPDIR/erudi-backend.log` · Linux: `/tmp/erudi-backend.log` · Windows: `%TEMP%\erudi-backend.log`
+        **Backend log** — macOS: `~/Library/Logs/erudi/backend.log` · Linux: `~/.local/state/erudi/logs/backend.log` · Windows: `%LOCALAPPDATA%\erudi\logs\backend.log`
+
+        ⚠️ Logs include your conversations and document names. Please read them and remove anything private before pasting.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate
+          required: true
+        - label: I removed private content from any logs or screenshots above
+          required: true
