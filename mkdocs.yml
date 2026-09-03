@@ -41,6 +41,7 @@ not_in_nav: |
 nav:
   - Overview: index.md
   - Getting started: usage.md
+  - What leaves your machine: privacy.md
   - How it works:
       - Architecture: architecture.md
       - Inference engines: dev/architecture/engines.md

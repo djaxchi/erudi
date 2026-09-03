@@ -1,6 +1,10 @@
 # Erudi
 
-**Run local AI models on your machine — no cloud, no subscription, no data leaving your device.**
+**Open models on your machine. No account, no server to run, no data leaving your device.**
+
+Erudi is a desktop app that downloads open-source language models, runs them on your own hardware — Apple Silicon, NVIDIA GPU or CPU — and lets you chat with them and with your documents, entirely offline. It installs like any other app: no Docker, no terminal, no runtime to manage.
+
+**[Download for macOS · Windows · Linux](https://github.com/erudi-app/erudi/releases)**
 
 [![Latest release](https://img.shields.io/github/v/release/erudi-app/erudi?include_prereleases&label=release)](https://github.com/erudi-app/erudi/releases)
 [![Backend CI](https://github.com/erudi-app/erudi/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/erudi-app/erudi/actions/workflows/backend-ci.yml)
@@ -8,11 +12,26 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-erudi--app.github.io-1f7a5a)](https://erudi-app.github.io/erudi/)
 
-Erudi is a desktop application that lets you download, run, and chat with open-source language models entirely offline. It automatically detects your hardware and routes inference to the best available backend: NVIDIA GPU (CUDA), Apple Silicon (MLX), or CPU.
-
 ![Chatting with Qwen3 4B in Erudi — the model's reasoning streams into a collapsible strip above the answer](docs/assets/screenshots/chat-reasoning.png)
 
-**[Download the latest release](https://github.com/erudi-app/erudi/releases)** — signed installers for macOS (Apple Silicon), Windows (CPU and NVIDIA CUDA) and Linux. Open it, pick a model that fits your machine, start chatting.
+<sub>Qwen3 4B (MLX, 4-bit) on a MacBook Air M4 with 16 GB, in the packaged 1.0.0 build. The model's reasoning streams into the collapsible strip; the answer below it is the model's own.</sub>
+
+## What leaves your machine
+
+- **Nothing you type.** Prompts, answers and documents are processed by a model running in a child process on this computer, started from a local file and bound to `127.0.0.1`, and stored in an embedded database in your user folder.
+- **No account, no telemetry, no crash reporter.** The backend listens on `127.0.0.1` only; nothing on your network can reach it.
+- **Three requests you did not ask for, none carrying your data**: a reachability check to `huggingface.co`, an update check against this repository's releases, and a fetch of a model's generation defaults after you download it. Everything else — model downloads, Hugging Face search, the optional web search (off by default) — happens when you press the button.
+
+Every request, when it happens and the code behind it: **[What leaves your machine →](https://erudi-app.github.io/erudi/privacy/)**
+
+## What it does
+
+- **A catalog that knows your machine.** Every model card shows whether the model fits — memory *and* the speed you can expect — and the readout gives you a recommended size window. Erudi downloads pre-built MLX and GGUF quantizations; it never converts or quantizes weights on your computer.
+- **A knowledge base on your documents.** Attach `.pdf`, `.docx`, `.xlsx`, `.csv`, `.txt` or `.md` files to a model and get an assistant that searches them before answering, cites the excerpt it used, and says so when the documents do not cover the question.
+- **Inference that fits the hardware.** [MLX](https://github.com/ml-explore/mlx) on Apple Silicon, [llama.cpp](https://github.com/ggerganov/llama.cpp) with CUDA on NVIDIA GPUs, llama.cpp on CPU otherwise — picked automatically at launch.
+- **Reasoning and tool calls you can see.** Thinking models stream their reasoning into a strip above the answer; when a model searches your documents or the web, the call and its result are shown there, never mixed into the answer.
+- **Conversations kept on your machine**, restored across restarts, summarized as they grow.
+- **Fully offline** once a model is downloaded.
 
 <table>
   <tr>
@@ -25,16 +44,13 @@ Erudi is a desktop application that lets you download, run, and chat with open-s
   </tr>
 </table>
 
----
+## Install
 
-## Features
+1. **[Download](https://github.com/erudi-app/erudi/releases)** the installer for your platform — a notarized `.dmg` for macOS (Apple Silicon, macOS 14+), a `Setup.exe` for Windows (a separate CUDA build for NVIDIA GPUs), an `.AppImage` for Linux.
+2. Open it. The first launch prepares the embedded database and the model catalog; it takes a few seconds.
+3. Pick a model marked **Runs easily** or **Ideal fit** and press Download. Once it is on disk, you can unplug the network and keep working.
 
-- **Local inference** — models run on your hardware via [llama.cpp](https://github.com/ggerganov/llama.cpp) on Windows and Linux, and [MLX](https://github.com/ml-explore/mlx) on Apple Silicon
-- **Automatic hardware detection** — picks CUDA, MLX, or CPU at startup
-- **Model library** — browse a catalog of ready-to-run models, each card showing whether it fits your machine, and download it in one click. Erudi downloads pre-built MLX and GGUF artifacts; it never converts or quantizes weights locally
-- **Knowledge Base** — attach documents (`.pdf`, `.docx`, `.xlsx`, `.csv`, `.txt`, `.md`) to a model for RAG (retrieval-augmented generation), with hybrid dense + keyword retrieval
-- **Conversations kept on your machine** — history lives in an embedded database and is restored across restarts; older turns are summarized as a conversation grows
-- **Fully offline** — after initial model download, no internet connection required
+The app updates itself from the GitHub releases of this repository, and only from there.
 
 ---
 
@@ -51,6 +67,12 @@ Erudi is a desktop application that lets you download, run, and chat with open-s
 ✅ means the packaged app is built by CI and manually tested on that platform. 🚧 means every release
 builds and boots there in CI, but no one has yet run a full manual pass on real hardware — try it and
 tell us what breaks.
+
+---
+
+## How it compares
+
+Most local-AI tools are either a runtime you drive from a terminal, or a web interface you host on top of one. Erudi is the whole thing in one signed desktop app: the inference engine is inside it, the catalog tells you what your machine can actually run, and your documents become an assistant without anything to host, configure or pay for. If you already run Ollama or LM Studio and like it, keep it; Erudi is for the people who would rather not.
 
 ---
 

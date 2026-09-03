@@ -13,5 +13,11 @@
     "description": "La langue des menus, des boutons et des messages dans toute l'application. Les réponses des modèles restent dans la langue dans laquelle vous écrivez.",
     "note": "Appliquée immédiatement et mémorisée pour le prochain lancement. Déterminée à partir de la langue de votre système au premier lancement.",
     "selectLabel": "Langue de l'application"
+  },
+  "privacy": {
+    "title": "Ce qui quitte votre machine",
+    "description": "Les modèles tournent sur cet ordinateur et vos conversations et documents y restent. La page liste chaque requête réseau que l'application peut faire, quand elle a lieu, et le code qui le prouve.",
+    "note": "S'ouvre dans votre navigateur.",
+    "linkLabel": "Lire la page"
   }
 }
