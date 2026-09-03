@@ -1,0 +1,8 @@
+# Review requests are assigned automatically from this file: every pull request
+# that touches a matching path asks the listed owner for a review. Approval by
+# an owner is not required to merge (branch protection does not enforce code
+# owners), so this routes reviews without blocking anyone.
+#
+# Later rules override earlier ones for the same path.
+
+* @rayanhanader
