@@ -1,0 +1,19 @@
+# Dependabot: security alerts are enabled on the repository; this file only
+# turns on version updates for GitHub Actions.
+#
+# Python and npm version updates are deliberately left off. The backend pins
+# several packages on purpose and revalidates them by hand (mlx-vlm, mlx,
+# transformers, torch CPU-only, pgserver — see backend/requirements/README.md),
+# and the frontend's Electron/electron-builder pair is bumped with a packaged
+# build behind it. Weekly automated bumps of those would be closed unread.
+# Security alerts still cover both ecosystems.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [ci]
+    commit-message:
+      prefix: "ci(deps)"
