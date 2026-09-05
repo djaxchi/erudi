@@ -77,7 +77,7 @@ jobs:
           submodules: recursive # llama.cpp source for the Windows inference build
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12" # hard pin: pgserver ships cp312 wheels only
           cache: pip
