@@ -22,6 +22,7 @@ Example:
     llm_repo = Llm_Repository(db)
     llm = llm_repo.get_by_id(42)
 """
+
 import os
 import shutil
 import time
@@ -238,11 +239,7 @@ class Llm_Repository:
         """
         from src.entities.Conversation import Conversation
 
-        return (
-            self.db.query(Conversation)
-            .filter(Conversation.llm_id == llm_id)
-            .count()
-        )
+        return self.db.query(Conversation).filter(Conversation.llm_id == llm_id).count()
 
     def update(self, llm: Llm, **kwargs) -> Llm:
         """Update LLM fields (partial update).
@@ -272,7 +269,7 @@ class Llm_Repository:
             Does not commit. Caller must handle db.commit() and file cleanup.
         """
         logger.info(f"Deleting LLM {llm.id}: {llm.name}")
-        
+
         self.db.delete(llm)
         self.db.flush()
 
@@ -327,7 +324,7 @@ class Download_Job_Repository:
         """
         logger.debug(f"Retrieving most recent active job (max age: {max_age_seconds}s)")
         cutoff = datetime.utcnow() - timedelta(seconds=max_age_seconds)
-        
+
         return (
             self.db.query(DownloadJobModel)
             .filter(DownloadJobModel.status.in_(["running", "pending"]))
@@ -375,7 +372,9 @@ class Download_Job_Repository:
         logger.info(f"Created download job {job.id}")
         return job
 
-    def update_status(self, job: DownloadJobModel, status: str, error_message: Optional[str] = None) -> None:
+    def update_status(
+        self, job: DownloadJobModel, status: str, error_message: Optional[str] = None
+    ) -> None:
         """Update download job status and optionally set error message.
 
         Args:
@@ -610,13 +609,13 @@ def update_db_with_progress(job_tracker, job_id: int, model_id: int) -> None:
         # _run_download_task in its own session after download_llm returns. That
         # guarantees completion is recorded even if this thread's session hangs.
         logger.info(f"Job {job_id} progress tracking finished")
-        
+
     except Exception as e:
         logger.exception(f"Job {job_id} failed during progress tracking")
         try:
             dbj.status = "failed"
             dbj.error_message = str(e)
-            
+
             # Clean up temp files
             if dbj.temp_local_model_link:
                 if os.path.exists(dbj.temp_local_model_link):
@@ -625,16 +624,16 @@ def update_db_with_progress(job_tracker, job_id: int, model_id: int) -> None:
                     temp_fallback = config.LLM_DIR / f"temp_{model_id}"
                     if temp_fallback.exists():
                         shutil.rmtree(temp_fallback, ignore_errors=True)
-            
+
             if dbj.final_local_model_link and os.path.exists(dbj.final_local_model_link):
                 shutil.rmtree(dbj.final_local_model_link, ignore_errors=True)
-            
+
             # Delete the temp LLM entry
             session.delete(llm)
             session.commit()
-            
+
         except Exception as cleanup_error:
             logger.exception(f"Failed to cleanup after job {job_id} failure: {cleanup_error}")
-            
+
     finally:
         session.close()

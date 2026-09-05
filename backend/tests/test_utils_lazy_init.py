@@ -67,7 +67,7 @@ def test_seed_metadata_import_does_not_drag_kb_stack():
     assert line, f"probe marker missing:\n{proc.stdout}"
     import json
 
-    dragged = json.loads(line[-1][len("DRAGGED_JSON:"):])
+    dragged = json.loads(line[-1][len("DRAGGED_JSON:") :])
     assert dragged == [], (
         "importing src.utils.hf_model_metadata (the seed's boot import) must not "
         f"pull the KB/ingestion/ML stack; dragged: {dragged}"

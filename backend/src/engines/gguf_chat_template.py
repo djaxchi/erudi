@@ -27,6 +27,7 @@ by calling ``raise_exception(...)``, so an environment without it fails BOTH
 renders, the differential sees "unrenderable" and returns the graceful default,
 and the fold silently stops firing for the one model it exists for.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -160,7 +161,5 @@ def load_gguf_chat_template(gguf_path: Union[str, Path]) -> Optional[GgufChatTem
             eos_token=_token_at(reader, eos_id.contents() if eos_id else None),
         )
     except Exception:
-        logger.warning(
-            f"Could not read the chat template from {gguf_path}", exc_info=True
-        )
+        logger.warning(f"Could not read the chat template from {gguf_path}", exc_info=True)
         return None

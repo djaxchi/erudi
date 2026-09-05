@@ -4,6 +4,7 @@ One singleton resource: the app-wide user settings. It carries the global
 web-search default (#310), the interface language (#385) and the
 automatic-update preference; new settings slot in as additional fields.
 """
+
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
@@ -22,6 +23,7 @@ class UserSettingsResponse(BaseModel):
         auto_update_enabled: Whether the Electron main process may check for,
             download and install a new version on its own.
     """
+
     web_search_enabled: bool = Field(
         ...,
         description="Global default for the web_search agent tool (new conversations inherit it)",
@@ -45,6 +47,7 @@ class UserSettingsUpdate(BaseModel):
     Partial update: every field is optional and an omitted field is left
     untouched, but an empty payload is rejected (nothing to update).
     """
+
     web_search_enabled: Optional[bool] = Field(
         None,
         description="Enable or disable the global web-search default",

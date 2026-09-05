@@ -9,6 +9,7 @@ Example:
     repo = ArenaRepository(db)
     llm = repo.get_llm_by_id(42)
 """
+
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -19,7 +20,7 @@ from src.core.exceptions import ModelNotFoundException, DatabaseException
 
 class ArenaRepository:
     """Repository for arena database queries with error handling."""
-    
+
     def __init__(self, db: Session):
         """Initialize repository with database session.
 
@@ -50,19 +51,16 @@ class ArenaRepository:
         try:
             logger.debug(f"Retrieving LLM {llm_id}")
             llm = self.db.query(Llm).filter(Llm.id == llm_id).first()
-            
+
             if not llm:
                 logger.warning(f"LLM {llm_id} not found")
                 raise ModelNotFoundException(f"LLM {llm_id}")
-            
+
             logger.debug(f"Retrieved LLM {llm_id}: {llm.name}")
             return llm
-            
+
         except ModelNotFoundException:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Database error retrieving LLM {llm_id}: {str(e)}")
-            raise DatabaseException(
-                "Could not retrieve LLM",
-                trace=str(e)
-            )
+            raise DatabaseException("Could not retrieve LLM", trace=str(e))

@@ -9,6 +9,7 @@ successful render, which flips a verdict instead of raising.
 Every test here drives the NEW route. A pin that exercises the old path proves
 nothing about the code that now runs.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -64,9 +65,7 @@ def test_gemma_rejects_system_through_raise_exception():
     stops firing for the one model family it exists for."""
     tpl = _template("gemma-2.jinja")
     # user-only renders fine...
-    assert tpl.apply_chat_template(
-        [{"role": "user", "content": "hi"}], add_generation_prompt=True
-    )
+    assert tpl.apply_chat_template([{"role": "user", "content": "hi"}], add_generation_prompt=True)
     # ...and a system message is what breaks it.
     with pytest.raises(Exception, match="System role not supported"):
         tpl.apply_chat_template(
@@ -102,8 +101,9 @@ def test_loopcontrols_extension_is_enabled():
 def test_bos_and_eos_tokens_are_bound():
     """Gemma's template references bos_token; an unbound name raises on use and
     would look like an unrenderable template."""
-    tpl = GgufChatTemplate(chat_template="{{ bos_token }}|{{ eos_token }}",
-                           bos_token="<A>", eos_token="<B>")
+    tpl = GgufChatTemplate(
+        chat_template="{{ bos_token }}|{{ eos_token }}", bos_token="<A>", eos_token="<B>"
+    )
     assert tpl.apply_chat_template([]) == "<A>|<B>"
 
 

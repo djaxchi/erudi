@@ -10,17 +10,13 @@ from src.core.subprocess_flags import _CREATE_NO_WINDOW, hidden_console_creation
 @pytest.mark.unit
 class TestHiddenConsoleCreationflags:
     def test_windows_returns_create_no_window(self, monkeypatch):
-        monkeypatch.setattr(
-            "src.core.subprocess_flags.platform.system", lambda: "Windows"
-        )
+        monkeypatch.setattr("src.core.subprocess_flags.platform.system", lambda: "Windows")
         assert hidden_console_creationflags() == _CREATE_NO_WINDOW
 
     @pytest.mark.parametrize("system", ["Linux", "Darwin"])
     def test_posix_returns_zero(self, monkeypatch, system):
         # 0 is required: Popen rejects a non-zero creationflags on POSIX.
-        monkeypatch.setattr(
-            "src.core.subprocess_flags.platform.system", lambda: system
-        )
+        monkeypatch.setattr("src.core.subprocess_flags.platform.system", lambda: system)
         assert hidden_console_creationflags() == 0
 
 
@@ -45,9 +41,7 @@ class TestLlamaServerSpawnHidesConsole:
             return _FakeProc()
 
         monkeypatch.setattr(mod.subprocess, "Popen", fake_popen)
-        monkeypatch.setattr(
-            CPU_Engine, "_default_install_dir", classmethod(lambda cls: tmp_path)
-        )
+        monkeypatch.setattr(CPU_Engine, "_default_install_dir", classmethod(lambda cls: tmp_path))
         monkeypatch.setattr(
             CPU_Engine, "_find_llama_server", classmethod(lambda cls, d: tmp_path / "llama-server")
         )

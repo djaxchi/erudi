@@ -32,8 +32,7 @@ def _make_pdf(pages_lines: list[list[str]]) -> bytes:
     objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")
     objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {n} >>".encode())
     objects.append(
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica"
-        b" /Encoding /WinAnsiEncoding >>"
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica" b" /Encoding /WinAnsiEncoding >>"
     )
     for i, lines in enumerate(pages_lines):
         body = " T* ".join(f"({_esc(line)}) Tj" for line in lines)
@@ -46,9 +45,7 @@ def _make_pdf(pages_lines: list[list[str]]) -> bytes:
             ).encode()
         )
         objects.append(
-            f"<< /Length {len(content)} >>\nstream\n".encode()
-            + content
-            + b"\nendstream"
+            f"<< /Length {len(content)} >>\nstream\n".encode() + content + b"\nendstream"
         )
     out = bytearray(b"%PDF-1.4\n")
     offsets = []
@@ -60,8 +57,7 @@ def _make_pdf(pages_lines: list[list[str]]) -> bytes:
     for off in offsets:
         out += f"{off:010d} 00000 n \n".encode()
     out += (
-        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
-        f"startxref\n{xref}\n%%EOF\n"
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n" f"startxref\n{xref}\n%%EOF\n"
     ).encode()
     return bytes(out)
 
@@ -181,7 +177,13 @@ La précision moyenne constatée (MAPE) est de 11,4 % sur les prévisions à 3 m
     ws1 = wb.active
     ws1.title = "CA trimestriel 2025"
     for row in [
-        ["Trimestre", "CA total (k€)", "Dont abonnements (k€)", "Dont services (k€)", "Nouveaux clients"],
+        [
+            "Trimestre",
+            "CA total (k€)",
+            "Dont abonnements (k€)",
+            "Dont services (k€)",
+            "Nouveaux clients",
+        ],
         ["T1 2025", 1240, 1085, 155, 18],
         ["T2 2025", 1378, 1196, 182, 24],
         ["T3 2025", 1456, 1301, 155, 21],
@@ -301,8 +303,7 @@ production et des sauvegardes dans un délai maximal de cent vingt (120) jours.
     d = docx.Document()
     d.add_heading("Comité stratégie — synthèse du 9 janvier 2026", level=1)
     d.add_paragraph(
-        "Participants : direction générale, VP Produit, VP Ventes, DAF. "
-        "Diffusion restreinte."
+        "Participants : direction générale, VP Produit, VP Ventes, DAF. " "Diffusion restreinte."
     )
     d.add_heading("Objectifs 2026", level=2)
     d.add_paragraph(

@@ -34,6 +34,7 @@ Example:
         vram_total_gb=24.0
     )
 """
+
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, Float
 from sqlalchemy.schema import CheckConstraint
 from sqlalchemy.sql import func
@@ -109,72 +110,73 @@ class HardwareProfile(Base):
         >>> db.add(hw)
         >>> db.commit()
     """
+
     __tablename__ = "hardware_profiles"
 
     # Primary key (singleton)
     id = Column(Integer, primary_key=True, index=True)
-    
+
     # ============================================================================
     # COMMON FIELDS (All Backends)
     # ============================================================================
-    
+
     # Backend discriminator
     backend_type = Column(String, nullable=False)  # "mlx", "cuda", "cpu"
-    
+
     # CPU information
     cpu_model = Column(String, nullable=False)
-    
+
     # Memory information (system RAM)
     total_memory_gb = Column(Float, nullable=False)
     available_memory_gb = Column(Float, nullable=False)
-    
+
     # Storage information
     disk_total_gb = Column(Float, nullable=False)
     disk_available_gb = Column(Float, nullable=False)
-    
+
     # Performance scores (0-100)
     global_inference_score = Column(Float, nullable=False)
     global_inference_label = Column(String, nullable=False)
     cpu_score = Column(Float, nullable=False)
     memory_score = Column(Float, nullable=False)
-    
+
     # System platform
     system_platform = Column(String, nullable=True)
-    
+
     # ============================================================================
     # COMMON ACCELERATOR FIELDS (MLX & CUDA)
     # ============================================================================
-    
+
     gpu_name = Column(String, nullable=True)  # GPU/Accelerator name
     estimated_tflops = Column(Float, nullable=True)  # Estimated TFLOPS
     memory_bandwidth_gbs = Column(Float, nullable=True)  # Memory bandwidth
     architecture = Column(String, nullable=True)  # Architecture identifier
     gpu_score = Column(Float, nullable=True)  # GPU score (0-100)
-    
+
     # ============================================================================
     # MLX-SPECIFIC FIELDS (Apple Silicon)
     # ============================================================================
-    
+
     mlx_chip_model = Column(String, nullable=True)  # M1/M2/M3/M4 + variant
     mlx_gpu_cores = Column(Integer, nullable=True)  # GPU cores (8-76)
     mps_available = Column(Boolean, nullable=True)  # Metal Performance Shaders
     neural_engine_tops = Column(Float, nullable=True)  # Neural Engine TOPS
     unified_memory = Column(Boolean, nullable=True)  # Unified memory architecture
-    
+
     # ============================================================================
     # CUDA-SPECIFIC FIELDS (NVIDIA)
     # ============================================================================
-    
+
     cuda_cores = Column(Integer, nullable=True)  # CUDA cores
     cuda_version = Column(String, nullable=True)  # CUDA runtime version
     compute_capability = Column(String, nullable=True)  # Compute capability
     vram_total_gb = Column(Float, nullable=True)  # Total dedicated VRAM
     vram_available_gb = Column(Float, nullable=True)  # Available VRAM
-    
+
     # ============================================================================
     # PERFORMANCE METRICS
     # ============================================================================
-    
+
     cpu_performance_units = Column(Float, nullable=True)  # CPU performance metric
     performance_breakdown = Column(JSON, nullable=True)  # Detailed breakdown
 
@@ -188,17 +190,14 @@ class HardwareProfile(Base):
     # ============================================================================
     # TIMESTAMPS
     # ============================================================================
-    
+
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
-    
+
     # ============================================================================
     # CONSTRAINTS
     # ============================================================================
-    
+
     __table_args__ = (
-        CheckConstraint(
-            backend_type.in_(["mlx", "cuda", "cpu"]),
-            name="valid_backend_type"
-        ),
+        CheckConstraint(backend_type.in_(["mlx", "cuda", "cpu"]), name="valid_backend_type"),
     )

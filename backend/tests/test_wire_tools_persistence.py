@@ -6,6 +6,7 @@
   ran), a row round-trips, ``LLMResponse`` surfaces it from the ORM, and the
   startup backfill computes+persists it for local rows where it is NULL.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -104,8 +105,13 @@ def test_supports_tools_wire_column_exists(test_db_engine):
 @pytest.mark.integration
 def test_supports_tools_wire_roundtrip(test_db_session):
     llm = Llm(
-        name="wire model", local=1, link="m/x", type="qwen", param_size=0.5,
-        supports_tools=True, supports_tools_wire=True,
+        name="wire model",
+        local=1,
+        link="m/x",
+        type="qwen",
+        param_size=0.5,
+        supports_tools=True,
+        supports_tools_wire=True,
     )
     test_db_session.add(llm)
     test_db_session.commit()
@@ -125,7 +131,11 @@ def test_supports_tools_wire_defaults_null(test_db_session):
 @pytest.mark.integration
 def test_llmresponse_serializes_supports_tools_wire_from_orm(test_db_session):
     llm = Llm(
-        name="wire model", local=1, link="m/z", type="qwen", param_size=0.5,
+        name="wire model",
+        local=1,
+        link="m/z",
+        type="qwen",
+        param_size=0.5,
         supports_tools_wire=False,
     )
     test_db_session.add(llm)
@@ -143,8 +153,13 @@ def _local_model(db, tmp_path, name, *, wire=None, local=1, with_dir=True):
     if with_dir:
         (tmp_path / name).mkdir()
     llm = Llm(
-        name=name, local=local, link=link, type="qwen", param_size=0.5,
-        supports_tools=True, supports_tools_wire=wire,
+        name=name,
+        local=local,
+        link=link,
+        type="qwen",
+        param_size=0.5,
+        supports_tools=True,
+        supports_tools_wire=wire,
     )
     db.add(llm)
     db.commit()
@@ -241,8 +256,13 @@ def test_backfill_computes_shared_links_once(test_db_session, tmp_path, monkeypa
     monkeypatch.setattr("src.core.config.LLM_Engine", _Counting)
     base = _local_model(test_db_session, tmp_path, "base")
     assistant = Llm(
-        name="assistant", local=1, link=base.link, type="qwen", param_size=0.5,
-        supports_tools=True, is_attached_to_kb=True,
+        name="assistant",
+        local=1,
+        link=base.link,
+        type="qwen",
+        param_size=0.5,
+        supports_tools=True,
+        is_attached_to_kb=True,
     )
     test_db_session.add(assistant)
     test_db_session.commit()

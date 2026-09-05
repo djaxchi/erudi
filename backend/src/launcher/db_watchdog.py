@@ -246,9 +246,7 @@ async def _resurrect_once(attempt: int) -> bool:
     and reported as False so the caller can walk the backoff ladder.
     """
     try:
-        logger.info(
-            f"DB watchdog: resurrection attempt {attempt} - restarting embedded Postgres"
-        )
+        logger.info(f"DB watchdog: resurrection attempt {attempt} - restarting embedded Postgres")
         _evict_pgserver_cache(config.POSTGRES_DATA_DIR)
         handle = await run_in_threadpool(start_postgres, config.POSTGRES_DATA_DIR)
         # Tenant 1: SQLAlchemy engine + session factory (rebinds core.db_engine).
@@ -277,8 +275,7 @@ async def _run_recovery_episode() -> None:
         if await _resurrect_once(attempt):
             db_state = DB_OK
             logger.info(
-                f"DB watchdog: recovered in {time.monotonic() - start:.1f}s "
-                f"(attempt {attempt})"
+                f"DB watchdog: recovered in {time.monotonic() - start:.1f}s " f"(attempt {attempt})"
             )
             return
         await asyncio.sleep(delay)

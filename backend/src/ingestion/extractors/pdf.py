@@ -34,9 +34,7 @@ class PdfExtractor:
         ]
 
         total_chars = sum(len(p.text) for p in pages)
-        logger.debug(
-            f"PDF extracted: {path.name} ({len(pages)} pages, {total_chars} chars)"
-        )
+        logger.debug(f"PDF extracted: {path.name} ({len(pages)} pages, {total_chars} chars)")
         if not pages or total_chars / len(pages) < self.MIN_AVG_CHARS_PER_PAGE:
             logger.warning(
                 f"PDF {path.name}: no usable text layer "

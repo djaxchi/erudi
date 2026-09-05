@@ -18,6 +18,7 @@ Example:
         starred=False
     )
 """
+
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Boolean, Text, JSON
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
@@ -45,6 +46,7 @@ class Message(Base):
         >>> msg = Message(conversation_id=42, sender="user", content="Hello!")
         >>> print(msg.starred)  # False (starring is done via MessageRepository)
     """
+
     __tablename__ = "messages"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -63,7 +65,7 @@ class Message(Base):
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
 
-    @validates('sender')
+    @validates("sender")
     def validate_sender(self, key: str, sender: str) -> str:
         """Validate sender is either 'user' or 'llm'.
 
@@ -77,11 +79,11 @@ class Message(Base):
         Raises:
             ValueError: If sender not in ['user', 'llm'].
         """
-        if sender not in ['user', 'llm']:
+        if sender not in ["user", "llm"]:
             raise ValueError("Sender must be either 'user' or 'llm'")
         return sender
 
-    @validates('content')
+    @validates("content")
     def validate_content(self, key: str, content: str) -> str:
         """Validate content is non-empty and within size limit.
 
@@ -100,7 +102,6 @@ class Message(Base):
         if len(content) > 32768:  # 32K chars limit
             raise ValueError("Message content too long (max 32K chars)")
         return content
-
 
     def __repr__(self) -> str:
         """String representation of the message."""

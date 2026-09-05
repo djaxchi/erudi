@@ -184,9 +184,7 @@ def configure_stdio() -> None:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             try:
-                stream.reconfigure(
-                    line_buffering=True, encoding="utf-8", errors="replace"
-                )
+                stream.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
             except Exception:
                 pass  # exotic stream: keep whatever it supports
 
@@ -290,13 +288,10 @@ def find_available_port(start_port: int, host: str, count: int = PORT_SCAN_COUNT
 def kill_port_process(port: int) -> bool:
     """Attempt to kill process on given port. Returns True if successful."""
     import subprocess
-    
+
     try:
         result = subprocess.run(
-            ["lsof", "-ti", f":{port}"],
-            capture_output=True,
-            text=True,
-            timeout=2
+            ["lsof", "-ti", f":{port}"], capture_output=True, text=True, timeout=2
         )
         pid = result.stdout.strip()
         if pid:
@@ -647,7 +642,7 @@ def main() -> None:
 
     # Find available port
     port = find_available_port(requested_port, host)
-    
+
     if port is None:
         # Every candidate is busy — last resort, try to reclaim the middle of the
         # scan window. (POSIX-only via lsof/kill; a no-op on Windows, where this

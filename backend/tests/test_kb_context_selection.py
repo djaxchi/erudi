@@ -151,7 +151,9 @@ class TestRetrieveKbExcerpts:
         with patch("src.utils.kb_utils.search_kb_chunks_scored", return_value=pool):
             excerpts = retrieve_kb_excerpts("question", llm.kb_id, token_budget=2000)
         assert [e.text for e in excerpts] == [
-            "chunk pertinent A", "chunk pertinent B", "chunk pertinent C",
+            "chunk pertinent A",
+            "chunk pertinent B",
+            "chunk pertinent C",
         ]
 
     def test_excerpts_carry_their_source_file(self):

@@ -6,6 +6,7 @@ interface language (#385) and the automatic-update preference. Follows the
 startup domain's layering (endpoints -> repository) — the resource is a
 one-row singleton with no business logic beyond get-or-create.
 """
+
 from fastapi import Depends, APIRouter
 from sqlalchemy.orm import Session
 

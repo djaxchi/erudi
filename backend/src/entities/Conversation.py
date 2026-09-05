@@ -18,6 +18,7 @@ Example:
         max_tokens=2048
     )
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -62,6 +63,7 @@ class Conversation(Base):
         >>> conv = Conversation(llm_id=42, name="Debug Session", temperature=0.3, max_tokens=4096)
         >>> print(conv.message_count)  # 0 (messages are added via MessageRepository)
     """
+
     __tablename__ = "conversations"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -92,11 +94,11 @@ class Conversation(Base):
         back_populates="conversation",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        order_by="Message.id"
+        order_by="Message.id",
     )
     llm = relationship("Llm", back_populates="conversations")
 
-    @validates('temperature')
+    @validates("temperature")
     def validate_temperature(self, key: str, temperature: float) -> float:
         """Validate temperature parameter is within allowed range.
 
@@ -114,7 +116,7 @@ class Conversation(Base):
             raise ValueError("Temperature must be between 0.0 and 2.0")
         return temperature
 
-    @validates('top_p')
+    @validates("top_p")
     def validate_top_p(self, key: str, top_p: float) -> float:
         """Validate top_p parameter is within allowed range.
 
@@ -132,7 +134,7 @@ class Conversation(Base):
             raise ValueError("Top_p must be between 0.0 and 1.0")
         return top_p
 
-    @validates('max_tokens')
+    @validates("max_tokens")
     def validate_max_tokens(self, key: str, max_tokens: int) -> int:
         """Validate max_tokens parameter is within allowed range.
 
@@ -170,10 +172,8 @@ class Conversation(Base):
             return max(msg.timestamp for msg in self.messages)
         return self.created_at
 
-
     def __repr__(self) -> str:
         """String representation of the conversation."""
         return (
-            f"<Conversation(id={self.id}, name='{self.name}', "
-            f"messages={self.message_count})>"
+            f"<Conversation(id={self.id}, name='{self.name}', " f"messages={self.message_count})>"
         )

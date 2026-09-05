@@ -138,7 +138,9 @@ def bind_children_to_this_process() -> bool:
         # GetCurrentProcess() returns a pseudo-handle (-1) valid for this call
         # without needing OpenProcess/PROCESS_SET_QUOTA|PROCESS_TERMINATE rights.
         current_process = kernel32.GetCurrentProcess()
-        ok = kernel32.AssignProcessToJobObject(wintypes.HANDLE(job), wintypes.HANDLE(current_process))
+        ok = kernel32.AssignProcessToJobObject(
+            wintypes.HANDLE(job), wintypes.HANDLE(current_process)
+        )
         if not ok:
             logger.warning(
                 f"AssignProcessToJobObject failed (error={ctypes.get_last_error()}); "

@@ -397,8 +397,7 @@ class AgentRunner:
             hop_text_buffer: list[str] = []
             hop_has_tool_call = False
             logger.info(
-                f"Agent stream started: llm={getattr(llm, 'id', '?')}, "
-                f"thread_id={thread_id}"
+                f"Agent stream started: llm={getattr(llm, 'id', '?')}, " f"thread_id={thread_id}"
             )
             try:
                 async for token, meta in agent.astream(

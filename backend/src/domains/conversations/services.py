@@ -147,15 +147,12 @@ class ConversationService:
         """
         logger.info(f"Creating new conversation with LLM {llm_id}")
         if temperature is None or top_p is None or max_tokens is None:
-            defaults = resolve_sampling_defaults(
-                self.conversation_repo.get_llm_by_id(llm_id))
+            defaults = resolve_sampling_defaults(self.conversation_repo.get_llm_by_id(llm_id))
             temperature = defaults.temperature if temperature is None else temperature
             top_p = defaults.top_p if top_p is None else top_p
             max_tokens = defaults.max_tokens if max_tokens is None else max_tokens
         if web_search_enabled is None:
-            web_search_enabled = User_Settings_Repository(
-                self.db
-            ).get_web_search_enabled()
+            web_search_enabled = User_Settings_Repository(self.db).get_web_search_enabled()
         return self.conversation_repo.create_conversation(
             llm_id=llm_id,
             name="New Conversation",
@@ -202,11 +199,9 @@ class ConversationService:
         await run_in_threadpool(self._delete_conversation_db, conversation_id)
         await self._purge_thread(conversation_id)
 
-
     def _delete_conversation_db(self, conversation_id: int) -> None:
         self.conversation_repo.delete_conversation(conversation_id)
         self.db.commit()
-
 
     async def _purge_thread(self, conversation_id: int) -> None:
         if self.checkpointer is None:
@@ -246,9 +241,7 @@ class ConversationService:
             return []
 
         try:
-            return retrieve_kb_excerpts(
-                query, llm.kb_id, token_budget=strategy["kb_token_budget"]
-            )
+            return retrieve_kb_excerpts(query, llm.kb_id, token_budget=strategy["kb_token_budget"])
         except Exception:
             logger.exception("KB retrieval failed; continuing without context")
             return []
@@ -329,7 +322,9 @@ class ConversationService:
             await run_in_threadpool(
                 self._persist_user_message,
                 conversation_id,
-                self._user_display_content(payload.question, payload.images, payload.image_paths or []),
+                self._user_display_content(
+                    payload.question, payload.images, payload.image_paths or []
+                ),
             )
 
             starred = await run_in_threadpool(
@@ -351,7 +346,9 @@ class ConversationService:
                 web_search_enabled=bool(conversation.web_search_enabled),
             )
             params = GenParams(
-                temperature=payload.temperature if payload.temperature is not None else conversation.temperature,
+                temperature=payload.temperature
+                if payload.temperature is not None
+                else conversation.temperature,
                 top_p=payload.top_p if payload.top_p is not None else conversation.top_p,
                 max_tokens=payload.max_new_tokens or conversation.max_tokens or 1024,
             )

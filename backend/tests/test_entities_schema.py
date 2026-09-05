@@ -88,9 +88,7 @@ class TestKnowledgeDocument:
     def test_status_must_be_known(self, test_db_session):
         kb = _make_kb(test_db_session)
         with pytest.raises(ValueError, match="status"):
-            _make_document(test_db_session, kb.id, name="x", content_hash="b" * 64).status = (
-                "bogus"
-            )
+            _make_document(test_db_session, kb.id, name="x", content_hash="b" * 64).status = "bogus"
 
     @pytest.mark.integration
     def test_unique_per_kb_and_hash(self, test_db_session):
@@ -130,10 +128,7 @@ class TestIntegerForeignKeys:
         cols = {c["name"]: c["type"] for c in sa_inspect(test_db_engine).get_columns("kb_jobs")}
         for name in ("base_model_id", "new_model_id", "kb_id"):
             assert isinstance(cols[name], Integer), f"{name} should be Integer"
-        dl = {
-            c["name"]: c["type"]
-            for c in sa_inspect(test_db_engine).get_columns("download_jobs")
-        }
+        dl = {c["name"]: c["type"] for c in sa_inspect(test_db_engine).get_columns("download_jobs")}
         assert isinstance(dl["local_model_id"], Integer)
 
     @pytest.mark.integration

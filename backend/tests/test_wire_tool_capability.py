@@ -14,6 +14,7 @@ handler so any usable template gets structured tool handling.
 - llama.cpp: template loads -> True (native or generic handler); no template ->
   False; unreadable artifact -> None.
 """
+
 from __future__ import annotations
 
 import sys
@@ -75,7 +76,8 @@ class TestMlxComputeWireTools:
     def test_true_when_a_parser_is_inferred(self, monkeypatch):
         _fake_mlx_vlm(monkeypatch, lambda t: "json_tools" if "tool_call.name" in t else None)
         monkeypatch.setattr(
-            MLX_Engine, "_load_capability_tokenizer",
+            MLX_Engine,
+            "_load_capability_tokenizer",
             classmethod(lambda cls, p: _tokenizer_with(QWEN3_STYLE_TEMPLATE)),
         )
         assert MLX_Engine.compute_wire_tools("/m/qwen3") is True
@@ -83,7 +85,8 @@ class TestMlxComputeWireTools:
     def test_false_when_no_parser_matches(self, monkeypatch):
         _fake_mlx_vlm(monkeypatch, lambda t: None)
         monkeypatch.setattr(
-            MLX_Engine, "_load_capability_tokenizer",
+            MLX_Engine,
+            "_load_capability_tokenizer",
             classmethod(lambda cls, p: _tokenizer_with(NO_PARSER_TEMPLATE)),
         )
         assert MLX_Engine.compute_wire_tools("/m/qwen3-2507") is False
@@ -95,7 +98,8 @@ class TestMlxComputeWireTools:
             lambda t: "json_tools" if isinstance(t, str) and "tool_call.name" in t else None,
         )
         monkeypatch.setattr(
-            MLX_Engine, "_load_capability_tokenizer",
+            MLX_Engine,
+            "_load_capability_tokenizer",
             classmethod(lambda cls, p: _tokenizer_with(None)),
         )
         assert MLX_Engine.compute_wire_tools("/m/no-template") is False
@@ -105,7 +109,8 @@ class TestMlxComputeWireTools:
         monkeypatch.setitem(sys.modules, "mlx_vlm", broken)
         monkeypatch.delitem(sys.modules, "mlx_vlm.tool_parsers", raising=False)
         monkeypatch.setattr(
-            MLX_Engine, "_load_capability_tokenizer",
+            MLX_Engine,
+            "_load_capability_tokenizer",
             classmethod(lambda cls, p: _tokenizer_with(QWEN3_STYLE_TEMPLATE)),
         )
         assert MLX_Engine.compute_wire_tools("/m/path") is None
@@ -116,9 +121,7 @@ class TestMlxComputeWireTools:
         def _boom(cls, p):
             raise RuntimeError("unreadable artifact")
 
-        monkeypatch.setattr(
-            MLX_Engine, "_load_capability_tokenizer", classmethod(_boom)
-        )
+        monkeypatch.setattr(MLX_Engine, "_load_capability_tokenizer", classmethod(_boom))
         assert MLX_Engine.compute_wire_tools("/m/path") is None
 
     def test_none_when_inference_itself_raises(self, monkeypatch):
@@ -127,7 +130,8 @@ class TestMlxComputeWireTools:
 
         _fake_mlx_vlm(monkeypatch, _raise)
         monkeypatch.setattr(
-            MLX_Engine, "_load_capability_tokenizer",
+            MLX_Engine,
+            "_load_capability_tokenizer",
             classmethod(lambda cls, p: _tokenizer_with(QWEN3_STYLE_TEMPLATE)),
         )
         assert MLX_Engine.compute_wire_tools("/m/path") is None
@@ -147,7 +151,8 @@ class TestMlxComputeWireToolsRealMlxVlm:
     def test_qwen3_style_template_gets_a_parser(self, monkeypatch):
         pytest.importorskip("mlx_vlm")
         monkeypatch.setattr(
-            MLX_Engine, "_load_capability_tokenizer",
+            MLX_Engine,
+            "_load_capability_tokenizer",
             classmethod(lambda cls, p: _tokenizer_with(QWEN3_STYLE_TEMPLATE)),
         )
         assert MLX_Engine.compute_wire_tools("/m/qwen3") is True
@@ -155,7 +160,8 @@ class TestMlxComputeWireToolsRealMlxVlm:
     def test_2507_style_template_gets_no_parser(self, monkeypatch):
         pytest.importorskip("mlx_vlm")
         monkeypatch.setattr(
-            MLX_Engine, "_load_capability_tokenizer",
+            MLX_Engine,
+            "_load_capability_tokenizer",
             classmethod(lambda cls, p: _tokenizer_with(NO_PARSER_TEMPLATE)),
         )
         assert MLX_Engine.compute_wire_tools("/m/qwen3-2507") is False
@@ -169,14 +175,16 @@ class TestLlamaComputeWireTools:
         # Any usable template -> True: with --jinja an unmatched template still
         # gets the grammar-constrained generic handler (chat.cpp:2793).
         monkeypatch.setattr(
-            CPU_Engine, "_load_capability_tokenizer",
+            CPU_Engine,
+            "_load_capability_tokenizer",
             classmethod(lambda cls, p: _tokenizer_with(NO_PARSER_TEMPLATE)),
         )
         assert CPU_Engine.compute_wire_tools("/m/model.gguf") is True
 
     def test_false_without_a_chat_template(self, monkeypatch):
         monkeypatch.setattr(
-            CPU_Engine, "_load_capability_tokenizer",
+            CPU_Engine,
+            "_load_capability_tokenizer",
             classmethod(lambda cls, p: _tokenizer_with(None)),
         )
         assert CPU_Engine.compute_wire_tools("/m/model.gguf") is False
@@ -185,9 +193,7 @@ class TestLlamaComputeWireTools:
         def _boom(cls, p):
             raise RuntimeError("gguf unreadable")
 
-        monkeypatch.setattr(
-            CPU_Engine, "_load_capability_tokenizer", classmethod(_boom)
-        )
+        monkeypatch.setattr(CPU_Engine, "_load_capability_tokenizer", classmethod(_boom))
         assert CPU_Engine.compute_wire_tools("/m/model.gguf") is None
 
 
@@ -213,7 +219,8 @@ class TestLlamaNativeFormatTable:
     def test_generic_never_flips_the_verdict(self, monkeypatch):
         # A template no native handler matches is still wire-capable on llama.
         monkeypatch.setattr(
-            CPU_Engine, "_load_capability_tokenizer",
+            CPU_Engine,
+            "_load_capability_tokenizer",
             classmethod(lambda cls, p: _tokenizer_with("plain {{ messages }}")),
         )
         assert CPU_Engine.compute_wire_tools("/m/model.gguf") is True

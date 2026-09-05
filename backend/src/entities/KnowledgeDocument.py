@@ -15,6 +15,7 @@ Statuses:
     - ``pending_vision``: image or scanned PDF accepted but not yet readable
       (OCR/VLM tiers land in a later release); zero chunks indexed.
 """
+
 from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func

@@ -26,7 +26,7 @@ Examples:
             llm_id="1",
             llm_local_path="backend/data/models/llama-7b"
         )
-    
+
     Stream tokens (driven by the agent layer, not the engine):
         the model handle's ``base_url`` is consumed by ``ChatOpenAI`` in
         ``src.agents.model_factory``; the engine only spawns / probes /
@@ -50,24 +50,24 @@ from src.core.logging import logger
 
 class EngineMeta(ABCMeta):
     """Metaclass for Engine classes with custom repr."""
-    
+
     def __repr__(cls):
         """Return human-readable engine class name.
-        
+
         Returns:
             String representation like "LLM Engine: MLX_Engine".
 
         """
         return f"LLM Engine: {cls.__name__}"
-    
+
 
 class BaseEngine(ABC, metaclass=EngineMeta):
     """Abstract base class for all LLM inference engines.
-    
+
     Implements singleton pattern with shared model state, automatic cleanup,
     and platform-aware engine selection. Subclasses must implement backend-
     specific model loading and inference methods.
-    
+
     Class Attributes:
         _model: Currently loaded model instance (shared across all engines).
         _tokenizer: Currently loaded tokenizer instance.
@@ -76,7 +76,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         _cleanup_task: Async task monitoring idle time.
         _max_idle_time: Seconds before automatic memory cleanup (default: 300).
         MODEL_MAPPING: Dictionary mapping model architectures to classes.
-    
+
     Note:
         Do not instantiate directly. Use get_engine() to obtain the appropriate
         engine class, then call class methods for operations.
@@ -149,13 +149,12 @@ class BaseEngine(ABC, metaclass=EngineMeta):
 
     def __init__(self):
         """Prevent direct instantiation.
-        
+
         Raises:
             RuntimeError: Always raised as engines use class methods only.
 
         """
         raise RuntimeError("Use the methods instead of instantiating")
-
 
     @classmethod
     def __repr__(cls):
@@ -165,28 +164,25 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     @classmethod
     @abstractmethod
     def get_model_and_tokenizer(
-        cls,
-        llm_id: str,
-        llm_local_path: Union[str, Path],
-        *args
+        cls, llm_id: str, llm_local_path: Union[str, Path], *args
     ) -> Tuple[Any, Any]:
         """Load or retrieve cached model and tokenizer for inference.
-        
+
         Implements singleton pattern: returns cached model if already loaded
         for the given llm_id, otherwise loads from disk. Thread-safe.
-        
+
         Args:
             llm_id: Unique identifier for the model (used for caching).
             llm_local_path: Path to the model directory on disk.
             *args: Engine-specific loading arguments (e.g., device, dtype).
-            
+
         Returns:
             Tuple of (model, tokenizer) ready for inference.
-            
+
         Raises:
             EngineException: If model loading fails.
             FileNotFoundError: If model path doesn't exist.
-            
+
         Examples:
             from src.engines.base_engine import BaseEngine
             engine = BaseEngine.get_engine()
@@ -197,7 +193,6 @@ class BaseEngine(ABC, metaclass=EngineMeta):
 
         """
         pass
-
 
     # ======================= TOOL-CALLING CAPABILITY =======================
     @classmethod
@@ -273,13 +268,13 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     @abstractmethod
     def get_hardware_info(cls) -> Dict[str, Any]:
         """Get comprehensive hardware information for this backend.
-        
+
         Returns detailed hardware specifications including CPU, GPU/accelerator,
         memory, and platform-specific details. Implementation varies by backend:
         - MLX: Apple Silicon chip model, unified memory, MPS availability
         - CUDA: NVIDIA GPU model, CUDA cores, separate VRAM
         - CPU: Processor model, core count, system RAM
-        
+
         Returns:
             Dict containing hardware specifications with the following structure:
             {
@@ -327,14 +322,14 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 "backend_type": str,  # "mlx", "cuda", or "cpu"
                 "timestamp": float
             }
-            
+
         Raises:
             EngineException: If hardware detection fails critically.
-            
+
         Note:
             Implementation should handle errors gracefully and return fallback
             values rather than raising exceptions for non-critical failures.
-            
+
         Examples:
             >>> engine = BaseEngine.get_engine()
             >>> hw_info = engine.get_hardware_info()
@@ -348,27 +343,27 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     @abstractmethod
     def warm_up_accelerator(cls, duration_seconds: float = 1.0) -> bool:
         """Warm up the hardware accelerator (GPU/Neural Engine) for optimal performance.
-        
+
         Runs compute-intensive operations to bring the accelerator to optimal
         performance state before benchmarking or inference. Implementation varies:
         - MLX: Matrix operations on MPS device
         - CUDA: CUDA kernel warm-up on GPU
         - CPU: CPU cache warm-up (minimal effect)
-        
+
         Args:
             duration_seconds: How long to run warm-up operations (default: 1.0).
-            
+
         Returns:
             bool: True if warm-up completed successfully, False otherwise.
-            
+
         Raises:
             EngineException: If warm-up fails critically (rare, usually returns False).
-            
+
         Note:
             This is particularly important for GPUs that dynamically adjust clocks.
             MLX/MPS benefits significantly from warm-up due to power management.
             CPU backend may implement minimal warm-up or skip entirely.
-            
+
         Examples:
             >>> engine = BaseEngine.get_engine()
             >>> success = engine.warm_up_accelerator(1.5)
@@ -382,7 +377,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     @abstractmethod
     def get_performance_evaluation(cls) -> Dict[str, Any]:
         """Calculate comprehensive performance metrics and scores for this backend.
-        
+
         Evaluates hardware capabilities and returns performance scores for
         inference workloads. Scoring methodology varies by backend but results
         are normalized to 0-100 scale for cross-platform comparison.
@@ -399,39 +394,39 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 "backend_type": str,  # "mlx", "cuda", "cpu"
                 "accelerator_name": str,  # GPU/chip model
                 "cpu_model": str,
-                
+
                 # Memory metrics
                 "total_memory_gb": float,
                 "available_memory_gb": float,
                 "memory_bandwidth_gbs": Optional[float],
-                
+
                 # Storage metrics
                 "disk_total_gb": float,
                 "disk_available_gb": float,
-                
+
                 # Compute metrics
                 "estimated_tflops": Optional[float],  # GPU compute power
                 "compute_units": Optional[int],  # GPU cores or CUDA cores
                 "cpu_performance_units": float,
-                
+
                 # Backend-specific metrics
                 "neural_engine_tops": Optional[float],  # MLX only
                 "cuda_version": Optional[str],  # CUDA only
                 "compute_capability": Optional[str],  # CUDA only
                 "architecture": Optional[str],  # MLX: "3nm", CUDA: "Ampere"
-                
+
                 # Performance scores (0-100)
                 "global_inference_score": float,
                 "global_inference_label": str,  # "Very Good", "Good", "Medium", "Poor"
                 "gpu_score": float,
                 "cpu_score": float,
                 "memory_score": float,
-                
+
                 # Technical details
                 "unified_memory": bool,
                 "accelerator_available": bool,
                 "system_platform": str,
-                
+
                 # Performance breakdown for debugging
                 "performance_breakdown": {
                     "compute_score": float,
@@ -441,15 +436,15 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                     # Backend-specific breakdown
                 }
             }
-            
+
         Raises:
             EngineException: If evaluation fails critically.
-            
+
         Note:
             Scores are platform-specific estimates based on hardware specs.
             Should call warm_up_accelerator() before evaluation for accuracy.
             Returns fallback scores if evaluation fails rather than raising.
-            
+
         Examples:
             >>> engine = BaseEngine.get_engine()
             >>> engine.warm_up_accelerator(1.5)
@@ -463,11 +458,11 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     @abstractmethod
     def get_flat_hardware_data(cls) -> Dict[str, Any]:
         """Get hardware data in flat format compatible with HardwareProfile entity.
-        
+
         Returns hardware specifications as a flat dictionary ready for direct
         insertion into the HardwareProfile database entity. Combines and flattens
         data from get_hardware_info() and get_performance_evaluation().
-        
+
         Returns:
             Dict with keys matching HardwareProfile columns:
             {
@@ -489,7 +484,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 "memory_bandwidth_gbs": Optional[float],
                 "cpu_performance_units": Optional[float],
                 "performance_breakdown": dict,
-                
+
                 # MLX-specific fields
                 "mlx_chip_model": Optional[str],
                 "mlx_gpu_cores": Optional[int],
@@ -497,7 +492,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 "neural_engine_tops": Optional[float],
                 "unified_memory": Optional[bool],
                 "gpu_name": Optional[str],
-                
+
                 # CUDA-specific fields
                 "cuda_cores": Optional[int],
                 "cuda_version": Optional[str],
@@ -505,15 +500,15 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 "vram_total_gb": Optional[float],
                 "vram_available_gb": Optional[float],
             }
-            
+
         Raises:
             EngineException: If hardware data collection fails.
-            
+
         Note:
             This method provides a single point of access for hardware data
             in the format expected by the database layer, eliminating the need
             for manual flattening in service layers.
-            
+
         Examples:
             >>> engine = BaseEngine.get_engine()
             >>> data = engine.get_flat_hardware_data()
@@ -527,19 +522,19 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     @classmethod
     def get_engine(cls) -> Type["BaseEngine"]:
         """Select and return appropriate engine class for current platform.
-        
+
         Automatically detects OS and hardware to choose the optimal backend:
         - macOS ARM (M1/M2/M3): MLX_Engine
         - macOS Intel: CPU_Engine
         - Linux/Windows with CUDA: CUDA_Engine
         - Linux/Windows without CUDA: CPU_Engine
-        
+
         Returns:
             The engine class (not an instance) appropriate for this system.
-            
+
         Raises:
             EngineException: If no suitable engine can be determined.
-            
+
         Examples:
             from src.engines.base_engine import BaseEngine
             engine_class = BaseEngine.get_engine()
@@ -550,8 +545,8 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         from src.engines.cpu_engine import CPU_Engine
         from src.engines.cuda_engine import CUDA_Engine
 
-        system = platform.system().lower()     # mac, linux, windows
-        machine = platform.machine().lower()   # arm64, x86_64, etc.
+        system = platform.system().lower()  # mac, linux, windows
+        machine = platform.machine().lower()  # arm64, x86_64, etc.
         llm_engine = None
 
         try:
@@ -561,7 +556,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 logger.info("[ERUDI_FORCE_CPU] Forcing CPU_Engine - GPU detection skipped.")
                 return CPU_Engine
 
-            if system == "darwin": # MacOS
+            if system == "darwin":  # MacOS
                 if "arm" in machine:
                     llm_engine = MLX_Engine
                 elif "x86" in machine:
@@ -570,6 +565,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                 cuda_present = False
                 try:
                     import pynvml as nv
+
                     nv.nvmlInit()
                     cuda_present = nv.nvmlDeviceGetCount() > 0
                 except Exception:
@@ -653,9 +649,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
                     f"[{cls.__name__}] generation_guard waited {wait_ms:.0f}ms "
                     f"for the generation lock (model={cls._model_id})"
                 )
-            logger.info(
-                f"[{cls.__name__}] generation_guard acquired (model={cls._model_id})"
-            )
+            logger.info(f"[{cls.__name__}] generation_guard acquired (model={cls._model_id})")
             held_start_s = time.perf_counter()
             try:
                 yield
@@ -671,11 +665,11 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     @classmethod
     def cleanup(cls) -> None:
         """Free model and tokenizer from memory, reset state.
-        
+
         Releases GPU/CPU memory occupied by the model and tokenizer,
         resets all cached state. Called automatically after idle timeout
         or manually when switching models.
-        
+
         Note:
             Thread-safe. Can be called explicitly or by cleanup monitor.
             Calls garbage collector to ensure memory is freed.
@@ -683,6 +677,7 @@ class BaseEngine(ABC, metaclass=EngineMeta):
         """
         if cls._model or cls._tokenizer:
             import gc
+
             logger.info(f"Cleaning up model {cls._model_id}")
             cls._model = cls._tokenizer = cls._model_id = cls._last_used = None
             gc.collect()
@@ -702,10 +697,10 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     @classmethod
     async def _cleanup_monitor(cls):
         """Background task monitoring idle time and triggering cleanup.
-        
+
         Runs every 300 seconds, checks if model has been idle longer than
         _max_idle_time, and calls cleanup() if threshold exceeded.
-        
+
         Note:
             Internal method. Do not call directly. Use start_cleanup_task().
 
@@ -717,13 +712,13 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     @classmethod
     def start_cleanup_task(cls):
         """Start the automatic cleanup monitoring task.
-        
+
         Creates an async task that periodically checks for idle models
         and frees memory. Should be called once during application startup.
-        
+
         Note:
             Idempotent - calling multiple times has no effect if task already running.
-            
+
         Examples:
             from src.engines.base_engine import BaseEngine
             engine = BaseEngine.get_engine()
@@ -737,13 +732,13 @@ class BaseEngine(ABC, metaclass=EngineMeta):
     @classmethod
     def stop_cleanup_task(cls):
         """Stop the automatic cleanup monitoring task.
-        
+
         Cancels the cleanup monitor task. Should be called during application
         shutdown to gracefully stop background tasks.
-        
+
         Note:
             Idempotent - calling when no task is running has no effect.
-            
+
         Examples:
             from src.engines.base_engine import BaseEngine
             engine = BaseEngine.get_engine()

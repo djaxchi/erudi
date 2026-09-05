@@ -19,6 +19,7 @@ Architecture:
                      ↓
             src.ingestion (DocumentReader → chunking → vector store)
 """
+
 import hashlib
 import time
 from pathlib import Path
@@ -44,11 +45,7 @@ class KB_Service:
         self.repo = KB_Repository()
         self.reader = DocumentReader()
 
-    def get_kb_job_status(
-        self,
-        db: Session,
-        llm_id: int
-    ) -> Dict[str, Any]:
+    def get_kb_job_status(self, db: Session, llm_id: int) -> Dict[str, Any]:
         """Get KB job status with automatic cleanup for failed jobs.
 
         Args:
@@ -78,15 +75,10 @@ class KB_Service:
         return {
             "status": kb_job.status,
             "status_updated_at": kb_job.updated_at,
-            "error_message": kb_job.error_message if kb_job.status == "failed" else None
+            "error_message": kb_job.error_message if kb_job.status == "failed" else None,
         }
 
-    def _cleanup_failed_job(
-        self,
-        db: Session,
-        llm_id: int,
-        kb_job: KBJobModel
-    ) -> None:
+    def _cleanup_failed_job(self, db: Session, llm_id: int, kb_job: KBJobModel) -> None:
         """Clean up database state after a failed KB job.
 
         Deletes the specialized LLM and its KnowledgeBase; KnowledgeDocument
@@ -117,7 +109,7 @@ class KB_Service:
         base_llm_id: int,
         model_name: str,
         description: str,
-        file_paths: List[str]
+        file_paths: List[str],
     ) -> Tuple[int, int]:  # Returns (llm_id, kb_job_id)
         """Create new Knowledge Base assistant (database setup only).
 
@@ -147,11 +139,7 @@ class KB_Service:
 
         # Create specialized LLM
         specialized_llm = self.repo.create_specialized_llm(
-            db=db,
-            name=model_name,
-            description=description,
-            base_llm=base_llm,
-            kb_id=kb.id
+            db=db, name=model_name, description=description, base_llm=base_llm, kb_id=kb.id
         )
 
         # Create KBJob
@@ -160,22 +148,18 @@ class KB_Service:
             base_model_id=base_llm.id,
             new_model_id=specialized_llm.id,
             kb_id=kb.id,
-            status="pending"
+            status="pending",
         )
 
         db.commit()
         logger.info(
-            f"Created KB assistant setup: LLM={specialized_llm.id}, "
-            f"KB={kb.id}, Job={kb_job.id}"
+            f"Created KB assistant setup: LLM={specialized_llm.id}, " f"KB={kb.id}, Job={kb_job.id}"
         )
 
         return specialized_llm.id, kb_job.id
 
     def update_existing_kb(
-        self,
-        db: Session,
-        base_llm_id: int,
-        file_paths: List[str]
+        self, db: Session, base_llm_id: int, file_paths: List[str]
     ) -> Tuple[int, int]:  # Returns (llm_id, kb_job_id)
         """Queue update for existing KB with new documents (database setup only).
 
@@ -210,7 +194,7 @@ class KB_Service:
             base_model_id=base_llm.id,
             new_model_id=base_llm.id,  # Same LLM for updates
             kb_id=kb.id,
-            status="pending"
+            status="pending",
         )
 
         db.commit()
@@ -219,11 +203,7 @@ class KB_Service:
         return base_llm.id, kb_job.id
 
     def process_and_index_documents(
-        self,
-        db: Session,
-        kb_job_id: int,
-        file_paths: List[str],
-        is_update: bool = False
+        self, db: Session, kb_job_id: int, file_paths: List[str], is_update: bool = False
     ) -> None:
         """Ingest documents into the KB's vector store (background task).
 
@@ -351,12 +331,7 @@ class KB_Service:
             self.repo.update_document_status(db, document, "failed")
             return "failed"
 
-    def _handle_indexing_error(
-        self,
-        db: Session,
-        kb_job_id: int,
-        error_message: str
-    ) -> None:
+    def _handle_indexing_error(self, db: Session, kb_job_id: int, error_message: str) -> None:
         """Handle errors during indexing by marking the job as failed.
 
         Args:
@@ -370,12 +345,7 @@ class KB_Service:
                 return
 
             # Mark as failed
-            self.repo.update_kb_job_status(
-                db,
-                kb_job,
-                "failed",
-                error_message=error_message
-            )
+            self.repo.update_kb_job_status(db, kb_job, "failed", error_message=error_message)
 
             # Don't auto-cleanup here - let the status endpoint handle it
             # This way users can see the error message before cleanup

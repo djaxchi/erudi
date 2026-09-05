@@ -12,6 +12,7 @@ Three layers, following the startup-domain pattern:
    ``plan_turn`` on every turn (conversation: per-conversation flag; arena:
    the global setting — arena panels have no conversation row).
 """
+
 import pytest
 
 from src.agents.kb_mode import TurnPlan
@@ -125,9 +126,7 @@ class TestUserSettingsEndpoints:
         }
 
     def test_put_updates_and_persists(self, client):
-        response = client.put(
-            "/erudi/user_settings/", json={"web_search_enabled": True}
-        )
+        response = client.put("/erudi/user_settings/", json={"web_search_enabled": True})
         assert response.status_code == 200
         assert response.json() == {
             "web_search_enabled": True,
@@ -142,9 +141,7 @@ class TestUserSettingsEndpoints:
 
     def test_put_back_to_false(self, client):
         client.put("/erudi/user_settings/", json={"web_search_enabled": True})
-        response = client.put(
-            "/erudi/user_settings/", json={"web_search_enabled": False}
-        )
+        response = client.put("/erudi/user_settings/", json={"web_search_enabled": False})
         assert response.json()["web_search_enabled"] is False
 
     def test_put_rejects_missing_field(self, client):
@@ -312,15 +309,11 @@ class TestConversationTurnThreadsTheFlag:
         from src.domains.conversations.services import ConversationService
 
         service = ConversationService(test_db_session)
-        conversation = service.create_conversation(
-            llm_id=mock_llm.id, web_search_enabled=True
-        )
+        conversation = service.create_conversation(llm_id=mock_llm.id, web_search_enabled=True)
         test_db_session.commit()
 
         captured = {}
-        monkeypatch.setattr(
-            "src.domains.conversations.services.plan_turn", _plan_spy(captured)
-        )
+        monkeypatch.setattr("src.domains.conversations.services.plan_turn", _plan_spy(captured))
         monkeypatch.setattr(
             "src.domains.conversations.services.detect_supports_vision",
             lambda link: False,
@@ -333,9 +326,7 @@ class TestConversationTurnThreadsTheFlag:
 
         assert captured["web_search_enabled"] is True
 
-    async def test_create_without_explicit_value_copies_global(
-        self, test_db_session, mock_llm
-    ):
+    async def test_create_without_explicit_value_copies_global(self, test_db_session, mock_llm):
         from src.domains.conversations.services import ConversationService
 
         repo = User_Settings_Repository(test_db_session)
@@ -348,9 +339,7 @@ class TestConversationTurnThreadsTheFlag:
 
 
 class TestArenaFollowsTheGlobalSetting:
-    async def test_arena_passes_the_global_flag(
-        self, test_db_session, mock_llm, monkeypatch
-    ):
+    async def test_arena_passes_the_global_flag(self, test_db_session, mock_llm, monkeypatch):
         from src.domains.arena.schemas import ArenaQueryPayload
         from src.domains.arena.services import ArenaService
 
@@ -359,12 +348,8 @@ class TestArenaFollowsTheGlobalSetting:
         test_db_session.commit()
 
         captured = {}
-        monkeypatch.setattr(
-            "src.domains.arena.services.plan_turn", _plan_spy(captured)
-        )
-        monkeypatch.setattr(
-            "src.domains.arena.services.detect_supports_vision", lambda link: False
-        )
+        monkeypatch.setattr("src.domains.arena.services.plan_turn", _plan_spy(captured))
+        monkeypatch.setattr("src.domains.arena.services.detect_supports_vision", lambda link: False)
         service = ArenaService(test_db_session)
         monkeypatch.setattr(service.runner, "astream_text", _stub_stream)
 
@@ -379,12 +364,8 @@ class TestArenaFollowsTheGlobalSetting:
         from src.domains.arena.services import ArenaService
 
         captured = {}
-        monkeypatch.setattr(
-            "src.domains.arena.services.plan_turn", _plan_spy(captured)
-        )
-        monkeypatch.setattr(
-            "src.domains.arena.services.detect_supports_vision", lambda link: False
-        )
+        monkeypatch.setattr("src.domains.arena.services.plan_turn", _plan_spy(captured))
+        monkeypatch.setattr("src.domains.arena.services.detect_supports_vision", lambda link: False)
         service = ArenaService(test_db_session)
         monkeypatch.setattr(service.runner, "astream_text", _stub_stream)
 

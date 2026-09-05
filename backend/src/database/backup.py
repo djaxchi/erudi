@@ -57,8 +57,10 @@ def backup_database(psycopg_url: str, data_dir: Path | str, label: str) -> Path:
         [
             str(_pg_dump_bin()),
             "--format=custom",
-            "--dbname", psycopg_url,
-            "--file", str(dump_path),
+            "--dbname",
+            psycopg_url,
+            "--file",
+            str(dump_path),
         ],
         check=True,
         capture_output=True,

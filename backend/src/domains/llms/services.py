@@ -84,9 +84,7 @@ FILES_TO_EXCLUDE = ["consolidated.safetensors"]
 # (ingestion/embedding_model.OFFLINE_ERROR_MESSAGE) so a connectivity blip
 # reads as "offline" instead of the raw hf_hub "Cannot reach https://..."
 # string (#109). Kept ASCII (no em dash) for log-safety on cp1252 consoles.
-OFFLINE_DOWNLOAD_MESSAGE = (
-    "you appear to be offline - check your connection and retry"
-)
+OFFLINE_DOWNLOAD_MESSAGE = "you appear to be offline - check your connection and retry"
 
 # Lowercased substrings marking a no-network failure anywhere in the exception
 # chain. hf_hub/transformers re-wrap connection errors, so matching by message
@@ -122,6 +120,7 @@ def _is_offline_download_error(exc: BaseException) -> bool:
             return True
         current = current.__cause__ or current.__context__
     return False
+
 
 # Registry of active download trackers keyed by job_id for cancellation support
 _active_trackers: dict = {}
@@ -161,8 +160,7 @@ def pick_best_gguf(filenames: list[str]) -> str | None:
     # Exclude multimodal projection files (mmproj-*.gguf) — these are vision
     # encoder weights, not the main text model, and must not be loaded as LLM.
     ggufs = [
-        f for f in filenames
-        if f.lower().endswith(".gguf") and not f.lower().startswith("mmproj")
+        f for f in filenames if f.lower().endswith(".gguf") and not f.lower().startswith("mmproj")
     ]
     if not ggufs:
         return None
@@ -180,7 +178,9 @@ def pick_best_gguf(filenames: list[str]) -> str | None:
 # llama.cpp's standard split-GGUF naming convention: <name>-NNNNN-of-MMMMM.gguf.
 # The loader auto-stitches sibling parts together when pointed at part 1, but
 # only if every part is actually present on disk next to it.
-_GGUF_SPLIT_RE = re.compile(r"^(?P<prefix>.+)-(?P<part>\d{5})-of-(?P<total>\d{5})\.gguf$", re.IGNORECASE)
+_GGUF_SPLIT_RE = re.compile(
+    r"^(?P<prefix>.+)-(?P<part>\d{5})-of-(?P<total>\d{5})\.gguf$", re.IGNORECASE
+)
 
 
 def gguf_split_siblings(chosen: str, all_repo_files: List[str]) -> List[str]:
@@ -206,7 +206,11 @@ def gguf_split_siblings(chosen: str, all_repo_files: List[str]) -> List[str]:
     siblings = []
     for name in all_repo_files:
         sibling_match = _GGUF_SPLIT_RE.match(name)
-        if sibling_match and sibling_match.group("prefix") == prefix and sibling_match.group("total") == total:
+        if (
+            sibling_match
+            and sibling_match.group("prefix") == prefix
+            and sibling_match.group("total") == total
+        ):
             siblings.append((int(sibling_match.group("part")), name))
     if not siblings:
         return [chosen]
@@ -293,13 +297,15 @@ def _select_download_files(
     gguf_parts = gguf_split_siblings(best_gguf, all_repo_files)
     _assert_split_is_complete(best_gguf, gguf_parts)
     if len(gguf_parts) > 1:
-        logger.info(f"Split GGUF detected for {best_gguf!r}: downloading all {len(gguf_parts)} parts")
+        logger.info(
+            f"Split GGUF detected for {best_gguf!r}: downloading all {len(gguf_parts)} parts"
+        )
     mmproj_files = [
-        f for f in all_repo_files
-        if "mmproj" in f.lower() and f.lower().endswith(".gguf")
+        f for f in all_repo_files if "mmproj" in f.lower() and f.lower().endswith(".gguf")
     ]
     small_aux = [
-        f for f in all_repo_files
+        f
+        for f in all_repo_files
         if not f.lower().endswith(".gguf")
         and f in file_sizes
         and file_sizes.get(f, 0) < 10 * 1024 * 1024  # < 10 MB
@@ -527,7 +533,6 @@ def resolve_member_path(root: Union[str, Path], member: str) -> Path:
     return root / member
 
 
-
 async def download_files_concurrent(
     fs: HfFileSystem,
     callback: Callback,
@@ -632,7 +637,7 @@ async def download_llm(
     model_id: int,
     temp_save_dir: str,
     final_save_dir: str,
-    job_id: Optional[int] = None
+    job_id: Optional[int] = None,
 ) -> str:
     """Download a pre-built HuggingFace quant with progress tracking.
 
@@ -674,7 +679,7 @@ async def download_llm(
     # Everything we download is a pre-built quant → no local conversion. GGUF repos
     # additionally need only the single best quant picked (pick_best_gguf), plus
     # every sibling part if that quant ships split (gguf_split_siblings).
-    _uses_gguf = getattr(config.LLM_Engine, 'USES_GGUF', False)
+    _uses_gguf = getattr(config.LLM_Engine, "USES_GGUF", False)
 
     # Prepare local path
     os.makedirs(temp_save_dir, exist_ok=True)
@@ -732,9 +737,7 @@ async def download_llm(
         # Start DB updater if requested
         if job_id is not None:
             threading.Thread(
-                target=update_db_with_progress,
-                args=(job, job_id, model_id),
-                daemon=True
+                target=update_db_with_progress, args=(job, job_id, model_id), daemon=True
             ).start()
 
         # Start ETA monitoring
@@ -750,7 +753,9 @@ async def download_llm(
                     raise DownloadCancelled(f"download cancelled before {path} started")
                 dest = resolve_member_path(temp_save_dir, path)
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                await asyncio.to_thread(fs.get_file, f"{actual_download_link}/{path}", str(dest), callback)
+                await asyncio.to_thread(
+                    fs.get_file, f"{actual_download_link}/{path}", str(dest), callback
+                )
                 logger.info(f"Downloaded {path}")
 
             # Download shards concurrently
@@ -762,13 +767,17 @@ async def download_llm(
             # The cancel endpoint already marked the job and cleaned the temp dir;
             # there is nothing to finalize and nothing to report as an error.
             eta_task.cancel()
-            logger.info(f"Download job {job_id} was cancelled during transfer, skipping finalization")
+            logger.info(
+                f"Download job {job_id} was cancelled during transfer, skipping finalization"
+            )
             return temp_save_dir
 
         # Cancel landed between the last chunk and here: same outcome, no finalization.
         if not job.should_continue():
             eta_task.cancel()
-            logger.info(f"Download job {job_id} was cancelled during transfer, skipping finalization")
+            logger.info(
+                f"Download job {job_id} was cancelled during transfer, skipping finalization"
+            )
             return temp_save_dir
 
         # Everything is a pre-built quant: move files straight to the final dir
@@ -837,9 +846,7 @@ def cancel_download_job(job_id: int, job_repo, llm_repo, db) -> dict:
     if not llm:
         raise ModelNotFoundException(f"LLM {job.local_model_id}")
     if llm.local != 2:
-        raise InvalidInputException(
-            "Download ended - cannot be cancelled, please delete the model"
-        )
+        raise InvalidInputException("Download ended - cannot be cancelled, please delete the model")
 
     # Signal running download thread to stop
     tracker = get_active_download_tracker(job_id)

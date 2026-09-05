@@ -39,9 +39,9 @@ def test_spec_ships_the_gguf_package_metadata():
     # version.parse() raises — same product symptom as the missing module:
     # tool-calling detection dead, agentic KB mode never activates (#206).
     text = SPEC.read_text(encoding="utf-8")
-    assert 'copy_metadata("gguf")' in text, (
-        "backend.spec must ship gguf's dist-info via copy_metadata (#206)"
-    )
+    assert (
+        'copy_metadata("gguf")' in text
+    ), "backend.spec must ship gguf's dist-info via copy_metadata (#206)"
 
 
 @pytest.mark.unit

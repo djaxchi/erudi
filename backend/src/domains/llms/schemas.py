@@ -27,6 +27,7 @@ Example:
     def create_llm(llm: LLMCreate):
         return db.create(llm)
 """
+
 from pydantic import BaseModel, Field, computed_field
 from typing import Any, Dict, List, Optional
 from datetime import datetime
@@ -46,6 +47,7 @@ class SamplingDefaultsResponse(BaseModel):
     the backend puts them on the wire). ``max_tokens_cap`` is the UI ceiling for
     the max-tokens field: min(model context window, engine context window).
     """
+
     temperature: float
     top_p: float
     max_tokens: int
@@ -68,9 +70,13 @@ class LLMBase(BaseModel):
         local: Download state - 0=remote, 1=local/ready, 2=downloading.
         link: HuggingFace model ID or local filesystem path.
     """
+
     name: str = Field(..., min_length=1, description="Model name must not be empty")
-    local: int = Field(..., ge=0, le=2, description="Must be 0 (remote), 1 (ready), or 2 (downloading)")
+    local: int = Field(
+        ..., ge=0, le=2, description="Must be 0 (remote), 1 (ready), or 2 (downloading)"
+    )
     link: str
+
 
 class LLMCreate(LLMBase):
     """Request schema for creating a new LLM catalog entry.
@@ -82,7 +88,9 @@ class LLMCreate(LLMBase):
         >>> llm_data = LLMCreate(name="Qwen2.5-7B", local=0, link="Qwen/Qwen2.5-7B-Instruct")
         >>> response = requests.post("/llms", json=llm_data.model_dump())
     """
+
     pass
+
 
 class LLMResponse(LLMBase):
     """Response schema with full LLM metadata including database ID.
@@ -98,30 +106,57 @@ class LLMResponse(LLMBase):
         quantized: Boolean - False=not quantized, True=pre-quantized (already in 4-bit/8-bit format).
         param_size: Model size in billions of parameters (positive), or None if unmeasured (#201).
     """
+
     id: int
     type: Optional[str] = None
     description: Optional[str] = None
     model_metadata: Optional[str] = None
     quantized: Optional[bool] = False
     supports_tools: Optional[bool] = None
-    supports_tools_wire: Optional[bool] = Field(default=None, description="True=tool calls verified to parse into structured calls on the active engine's wire (#298); False=verified unreliable; None=unverified (routes systematic)")
-    param_size: Optional[float] = Field(default=None, gt=0, description="Parameter size in billions; None when unmeasured (#201)")
-    is_base: bool = Field(default=False, description="True=curated foundation/base model, False=derived/community quant")
-    conversational: Optional[bool] = Field(default=None, description="True=instruction-tuned/chat model; drives IT-first recommendations and list order (#182). None=unknown")
-    category: Optional[str] = Field(default="general", description="Capability category: general/code/reasoning/math/vision/medical/function/safety (#122)")
+    supports_tools_wire: Optional[bool] = Field(
+        default=None,
+        description="True=tool calls verified to parse into structured calls on the active engine's wire (#298); False=verified unreliable; None=unverified (routes systematic)",
+    )
+    param_size: Optional[float] = Field(
+        default=None, gt=0, description="Parameter size in billions; None when unmeasured (#201)"
+    )
+    is_base: bool = Field(
+        default=False,
+        description="True=curated foundation/base model, False=derived/community quant",
+    )
+    conversational: Optional[bool] = Field(
+        default=None,
+        description="True=instruction-tuned/chat model; drives IT-first recommendations and list order (#182). None=unknown",
+    )
+    category: Optional[str] = Field(
+        default="general",
+        description="Capability category: general/code/reasoning/math/vision/medical/function/safety (#122)",
+    )
     # KB-assistant identity (#225/#208): the cards need to tell assistants apart
     # from regular models to show the weights-of-<base> wording, the orphan badge
     # and the rebind affordance. Plain column pass-throughs from the entity.
-    is_attached_to_kb: Optional[bool] = Field(default=None, description="True when this row is a KB assistant (specialized copy bound to a Knowledge Base)")
-    kb_id: Optional[int] = Field(default=None, description="The assistant's KnowledgeBase id (None for regular models)")
+    is_attached_to_kb: Optional[bool] = Field(
+        default=None,
+        description="True when this row is a KB assistant (specialized copy bound to a Knowledge Base)",
+    )
+    kb_id: Optional[int] = Field(
+        default=None, description="The assistant's KnowledgeBase id (None for regular models)"
+    )
     # Captured sampling facts (#388): raw column pass-through, mostly for
     # debugging; the UI reads the resolved ``sampling_defaults`` below.
-    generation_hints: Optional[Dict[str, Any]] = Field(default=None, description="Captured base-repo generation facts (generation_config subset, context_length, supports_thinking); None = no hints")
+    generation_hints: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Captured base-repo generation facts (generation_config subset, context_length, supports_thinking); None = no hints",
+    )
     # Real artifact size: the bytes the downloader fetches (catalog rows, from
     # the snapshot) or the measured on-disk footprint (installed rows). The UI
     # reads it before its per-parameter estimate, which misses e.g. a VLM's
     # vision tower by 25-35 %. None = unknown -> the estimate stands.
-    artifact_size_bytes: Optional[int] = Field(default=None, gt=0, description="Real download / on-disk size in bytes; None when unknown (the UI falls back to its estimate)")
+    artifact_size_bytes: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="Real download / on-disk size in bytes; None when unknown (the UI falls back to its estimate)",
+    )
 
     @computed_field
     @property
@@ -148,6 +183,7 @@ class LLMResponse(LLMBase):
         if self.local != 0:
             return True
         from src.core import config
+
         engine = getattr(config, "LLM_Engine", None)
         if engine is None:
             return True
@@ -208,7 +244,9 @@ class LLMResponse(LLMBase):
 
         Enables ORM mode to directly convert SQLAlchemy Llm entities to Pydantic models.
         """
+
         from_attributes = True
+
 
 class HFSearchResult(BaseModel):
     """A live HuggingFace search hit (not a persisted catalog row).
@@ -217,9 +255,12 @@ class HFSearchResult(BaseModel):
     chosen one to POST /download/huggingface (by link), so results never pollute the
     curated catalog.
     """
+
     link: str = Field(..., description="HuggingFace repo id, e.g. mlx-community/Foo-4bit")
     name: str
-    param_size: Optional[float] = Field(default=None, gt=0, description="Billions of params; None when unmeasured (#201)")
+    param_size: Optional[float] = Field(
+        default=None, gt=0, description="Billions of params; None when unmeasured (#201)"
+    )
     category: str = "general"
     downloads: int = 0
     likes: int = 0
@@ -231,10 +272,13 @@ class HFSearchResult(BaseModel):
 class HFDownloadRequest(BaseModel):
     """Body for POST /download/huggingface — download a model picked from HF search
     by its repo id, without it having to exist in the catalog first."""
+
     link: str = Field(..., min_length=1, description="HuggingFace repo id to download")
     name: Optional[str] = None
     type: Optional[str] = None
-    param_size: Optional[float] = Field(default=None, gt=0, description="Billions of params; None when unmeasured (#201)")
+    param_size: Optional[float] = Field(
+        default=None, gt=0, description="Billions of params; None when unmeasured (#201)"
+    )
     quantized: bool = True
     category: str = "general"
 
@@ -245,6 +289,7 @@ class DependentAssistant(BaseModel):
     Deleting the base would leave this assistant's link dangling (orphaned),
     hence it is surfaced before the delete so the user can decide.
     """
+
     id: int
     name: str
     kb_id: int
@@ -260,6 +305,7 @@ class DependentsResponse(BaseModel):
         own_conversation_count: Conversations bound to the model itself.
         total_conversation_count: own + every dependent assistant's count.
     """
+
     assistants: List[DependentAssistant]
     own_conversation_count: int = Field(..., ge=0)
     total_conversation_count: int = Field(..., ge=0)
@@ -268,6 +314,7 @@ class DependentsResponse(BaseModel):
 class RebindRequest(BaseModel):
     """Body for POST /llms/{assistant_id}/rebind -- re-point an orphaned KB
     assistant at a new base model whose weights exist."""
+
     new_base_llm_id: int = Field(..., description="Id of the local base model to rebind onto")
 
 
@@ -301,6 +348,7 @@ class DownloadJobResponse(BaseModel):
         ... )
         >>> print(job.job_id)  # 42 (aliased from 'id')
     """
+
     job_id: int = Field(..., alias="id")
     remote_model_id: str = Field(..., min_length=1)
     local_model_id: Optional[int] = None
@@ -317,8 +365,9 @@ class DownloadJobResponse(BaseModel):
 
     class Config:
         """Pydantic configuration for DownloadJobResponse model.
-        
+
         Enables ORM mode and validates field names by alias (job_id aliased from id).
         """
+
         from_attributes = True
         validate_by_name = True

@@ -5,19 +5,35 @@ These guard the signals that keep the Base catalog clean: derivative detection v
 'medium' != 'medical' boundary bug pinned), and real param sizing from safetensors
 with a slug sanity-check. No network, no DB.
 """
+
 import pytest
 
 from src.database.catalog_classify import (
-    categorize, is_conversational, is_derivative, is_instruct, is_nonchat_task,
-    param_size_billions, relation_targets, CAT_GENERAL, CAT_CODE, CAT_REASONING,
-    CAT_MATH, CAT_VISION, CAT_MEDICAL, CAT_FUNCTION, CAT_SAFETY,
+    categorize,
+    is_conversational,
+    is_derivative,
+    is_instruct,
+    is_nonchat_task,
+    param_size_billions,
+    relation_targets,
+    CAT_GENERAL,
+    CAT_CODE,
+    CAT_REASONING,
+    CAT_MATH,
+    CAT_VISION,
+    CAT_MEDICAL,
+    CAT_FUNCTION,
+    CAT_SAFETY,
 )
 
 
 class TestRelationTags:
     def test_parses_relations(self):
-        tags = ["base_model:quantized:mlx-community/foo-bf16",
-                "base_model:finetune:Qwen/Qwen2.5-7B", "license:apache-2.0"]
+        tags = [
+            "base_model:quantized:mlx-community/foo-bf16",
+            "base_model:finetune:Qwen/Qwen2.5-7B",
+            "license:apache-2.0",
+        ]
         rel = relation_targets(tags)
         assert rel["quantized"] == ["mlx-community/foo-bf16"]
         assert rel["finetune"] == ["Qwen/Qwen2.5-7B"]
@@ -43,34 +59,40 @@ class TestIsDerivative:
 
 
 class TestIsInstruct:
-    @pytest.mark.parametrize("name,expected", [
-        ("Qwen2.5-7B-Instruct", True),
-        ("gemma-3-4b-it", True),
-        ("DeepSeek-V3", True),            # suffix-less modern chat model kept
-        ("gpt-oss-20b", True),
-        ("Llama-3.1-8B", True),           # bare; family dedup (not this fn) prunes it
-        ("gemma-2-9b-pt", False),         # pretrain marker
-        ("Falcon3-7B-Base", False),
-    ])
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("Qwen2.5-7B-Instruct", True),
+            ("gemma-3-4b-it", True),
+            ("DeepSeek-V3", True),  # suffix-less modern chat model kept
+            ("gpt-oss-20b", True),
+            ("Llama-3.1-8B", True),  # bare; family dedup (not this fn) prunes it
+            ("gemma-2-9b-pt", False),  # pretrain marker
+            ("Falcon3-7B-Base", False),
+        ],
+    )
     def test_is_instruct(self, name, expected):
         assert is_instruct(name) is expected
 
 
 class TestCategorize:
-    @pytest.mark.parametrize("name,pipeline,expected", [
-        ("Qwen2.5-7B-Instruct", "text-generation", CAT_GENERAL),
-        ("Qwen2.5-Coder-7B-Instruct", "text-generation", CAT_CODE),
-        ("DeepSeek-R1-Distill-Qwen-7B", "text-generation", CAT_REASONING),
-        ("Phi-4-reasoning", "text-generation", CAT_REASONING),
-        ("OpenReasoning-Nemotron-32B", "text-generation", CAT_REASONING),
-        ("mathstral-7B-v0.1", "text-generation", CAT_MATH),
-        ("Qwen2.5-VL-7B-Instruct", "image-text-to-text", CAT_VISION),
-        ("gemma-4-31B-it", "any-to-any", CAT_VISION),
-        ("medgemma-27b-text-it", "text-generation", CAT_MEDICAL),
-        ("functiongemma-270m-it", "text-generation", CAT_FUNCTION),
-        ("Llama-Guard-3-8B", "text-generation", CAT_SAFETY),
-        ("gpt-oss-safeguard-20b", "text-generation", CAT_SAFETY),
-    ])
+    @pytest.mark.parametrize(
+        "name,pipeline,expected",
+        [
+            ("Qwen2.5-7B-Instruct", "text-generation", CAT_GENERAL),
+            ("Qwen2.5-Coder-7B-Instruct", "text-generation", CAT_CODE),
+            ("DeepSeek-R1-Distill-Qwen-7B", "text-generation", CAT_REASONING),
+            ("Phi-4-reasoning", "text-generation", CAT_REASONING),
+            ("OpenReasoning-Nemotron-32B", "text-generation", CAT_REASONING),
+            ("mathstral-7B-v0.1", "text-generation", CAT_MATH),
+            ("Qwen2.5-VL-7B-Instruct", "image-text-to-text", CAT_VISION),
+            ("gemma-4-31B-it", "any-to-any", CAT_VISION),
+            ("medgemma-27b-text-it", "text-generation", CAT_MEDICAL),
+            ("functiongemma-270m-it", "text-generation", CAT_FUNCTION),
+            ("Llama-Guard-3-8B", "text-generation", CAT_SAFETY),
+            ("gpt-oss-safeguard-20b", "text-generation", CAT_SAFETY),
+        ],
+    )
     def test_categorize(self, name, pipeline, expected):
         assert categorize(name, [], pipeline) == expected
 

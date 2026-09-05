@@ -57,8 +57,12 @@ async def test_astream_yields_raw_token_text(monkeypatch):
     out = [
         t
         async for t in runner.astream_text(
-            llm=_Llm(), user_message="hi", system_prompt="sys",
-            params=_PARAMS, thread_id="c1", summarize=False,
+            llm=_Llm(),
+            user_message="hi",
+            system_prompt="sys",
+            params=_PARAMS,
+            thread_id="c1",
+            summarize=False,
         )
     ]
     # raw concatenation of token text (the text/plain wire contract)
@@ -96,8 +100,12 @@ async def test_arena_mode_runs_without_checkpointer(monkeypatch):
     out = [
         t
         async for t in runner.astream_text(
-            llm=_Llm(), user_message="hi", system_prompt="s",
-            params=_PARAMS, thread_id=None, summarize=False,
+            llm=_Llm(),
+            user_message="hi",
+            system_prompt="s",
+            params=_PARAMS,
+            thread_id=None,
+            summarize=False,
         )
     ]
     assert "".join(out) == "duel answer"
@@ -114,8 +122,12 @@ async def test_tools_none_builds_zero_tool_agent(monkeypatch, caplog):
 
     with caplog.at_level(logging.INFO, logger="erudi"):
         async for _ in runner.astream_text(
-            llm=_Llm(), user_message="hi", system_prompt="s",
-            params=_PARAMS, thread_id=None, summarize=False,
+            llm=_Llm(),
+            user_message="hi",
+            system_prompt="s",
+            params=_PARAMS,
+            thread_id=None,
+            summarize=False,
         ):
             pass
 
@@ -164,8 +176,12 @@ async def test_recursion_limit_loop_falls_back_to_last_tool_result(monkeypatch):
     out = [
         t
         async for t in runner.astream_text(
-            llm=_Llm(), user_message="loop please", system_prompt="s",
-            params=_PARAMS, thread_id="c1", tools=[loop_tool],
+            llm=_Llm(),
+            user_message="loop please",
+            system_prompt="s",
+            params=_PARAMS,
+            thread_id="c1",
+            tools=[loop_tool],
         )
     ]
     joined = "".join(out)
@@ -198,8 +214,12 @@ async def test_recursion_limit_loop_no_result_yields_loop_message(monkeypatch, c
         out = [
             t
             async for t in runner.astream_text(
-                llm=_Llm(), user_message="loop please", system_prompt="s",
-                params=_PARAMS, thread_id="c1", tools=[blank_tool],
+                llm=_Llm(),
+                user_message="loop please",
+                system_prompt="s",
+                params=_PARAMS,
+                thread_id="c1",
+                tools=[blank_tool],
             )
         ]
     joined = "".join(out)
@@ -251,8 +271,12 @@ async def test_summarization_compacts_checkpointer_state(monkeypatch):
     runner = AgentRunner(checkpointer=cp)
     for turn in range(5):
         async for _ in runner.astream_text(
-            llm=_Llm(), user_message=f"q{turn}", system_prompt="s",
-            params=_PARAMS, thread_id="c1", summarize=True,
+            llm=_Llm(),
+            user_message=f"q{turn}",
+            system_prompt="s",
+            params=_PARAMS,
+            thread_id="c1",
+            summarize=True,
         ):
             pass
 
@@ -486,7 +510,9 @@ async def test_astream_holds_generation_lock_across_whole_stream(monkeypatch):
     monkeypatch.setattr(
         runner_module,
         "build_chat_model",
-        lambda llm, **kw: ToolableFakeChatModel(messages=iter([AIMessage(content="one two three")])),
+        lambda llm, **kw: ToolableFakeChatModel(
+            messages=iter([AIMessage(content="one two three")])
+        ),
     )
     runner = AgentRunner(checkpointer=InMemorySaver())
 
@@ -534,8 +560,12 @@ async def test_kb_block_is_merged_into_the_model_request(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message="Quel est le préavis ?", system_prompt="sys",
-        params=_PARAMS, thread_id="c-kb", kb_context_block=_BLOCK_1,
+        llm=_Llm(),
+        user_message="Quel est le préavis ?",
+        system_prompt="sys",
+        params=_PARAMS,
+        thread_id="c-kb",
+        kb_context_block=_BLOCK_1,
         kb_language_line="Réponds en français.",
     ):
         pass
@@ -556,20 +586,26 @@ async def test_kb_block_is_ephemeral_history_stays_clean(monkeypatch):
     """The merge happens in the model REQUEST only: the checkpointer keeps
     the clean question, so turn 2's history must show turn 1's question
     WITHOUT its excerpts (no context pollution, no parroting fuel)."""
-    fake = _RecordingModel(
-        messages=iter([AIMessage(content="r1"), AIMessage(content="r2")])
-    )
+    fake = _RecordingModel(messages=iter([AIMessage(content="r1"), AIMessage(content="r2")]))
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message="q1", system_prompt="s",
-        params=_PARAMS, thread_id="c-kb2", kb_context_block=_BLOCK_1,
+        llm=_Llm(),
+        user_message="q1",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="c-kb2",
+        kb_context_block=_BLOCK_1,
     ):
         pass
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message="q2", system_prompt="s",
-        params=_PARAMS, thread_id="c-kb2", kb_context_block=_BLOCK_2,
+        llm=_Llm(),
+        user_message="q2",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="c-kb2",
+        kb_context_block=_BLOCK_2,
     ):
         pass
 
@@ -589,8 +625,11 @@ async def test_no_kb_block_leaves_messages_untouched(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message="hi", system_prompt="sys",
-        params=_PARAMS, thread_id="c-plain",
+        llm=_Llm(),
+        user_message="hi",
+        system_prompt="sys",
+        params=_PARAMS,
+        thread_id="c-plain",
     ):
         pass
 
@@ -610,11 +649,13 @@ async def test_tool_call_round_trip_streams_only_final_text(monkeypatch):
     since #129 there is no implicit default-tools fallback."""
     tool_call_msg = AIMessage(
         content="",
-        tool_calls=[{
-            "name": "calculator",
-            "args": {"expression": "1240 + 1378 + 1456 + 1689"},
-            "id": "call-1",
-        }],
+        tool_calls=[
+            {
+                "name": "calculator",
+                "args": {"expression": "1240 + 1378 + 1456 + 1689"},
+                "id": "call-1",
+            }
+        ],
     )
     fake = _RecordingModel(
         messages=iter([tool_call_msg, AIMessage(content="Le total est 5763 k€.")])
@@ -625,8 +666,11 @@ async def test_tool_call_round_trip_streams_only_final_text(monkeypatch):
     out = [
         t
         async for t in runner.astream_text(
-            llm=_Llm(), user_message="Additionne les quatre trimestres.",
-            system_prompt="sys", params=_PARAMS, thread_id="c-calc",
+            llm=_Llm(),
+            user_message="Additionne les quatre trimestres.",
+            system_prompt="sys",
+            params=_PARAMS,
+            thread_id="c-calc",
             tools=[calculator],
         )
     ]
@@ -647,11 +691,13 @@ async def test_empty_final_answer_falls_back_to_last_tool_result(monkeypatch):
     instead of yielding nothing (which would crash the empty-content guard)."""
     tool_call_msg = AIMessage(
         content="",
-        tool_calls=[{
-            "name": "calculator",
-            "args": {"expression": "1240 + 1378 + 1456"},
-            "id": "call-1",
-        }],
+        tool_calls=[
+            {
+                "name": "calculator",
+                "args": {"expression": "1240 + 1378 + 1456"},
+                "id": "call-1",
+            }
+        ],
     )
     # Second model turn is EMPTY -> the fallback must kick in.
     fake = _RecordingModel(messages=iter([tool_call_msg, AIMessage(content="")]))
@@ -661,8 +707,11 @@ async def test_empty_final_answer_falls_back_to_last_tool_result(monkeypatch):
     out = [
         t
         async for t in runner.astream_text(
-            llm=_Llm(), user_message="1240 + 1378 + 1456 ?",
-            system_prompt="sys", params=_PARAMS, thread_id="c-empty-final",
+            llm=_Llm(),
+            user_message="1240 + 1378 + 1456 ?",
+            system_prompt="sys",
+            params=_PARAMS,
+            thread_id="c-empty-final",
             tools=[calculator],
         )
     ]
@@ -684,8 +733,12 @@ async def test_empty_final_answer_no_tool_yields_nothing(monkeypatch):
     out = [
         t
         async for t in runner.astream_text(
-            llm=_Llm(), user_message="hi", system_prompt="s",
-            params=_PARAMS, thread_id="c-empty-notool", tools=[],
+            llm=_Llm(),
+            user_message="hi",
+            system_prompt="s",
+            params=_PARAMS,
+            thread_id="c-empty-notool",
+            tools=[],
         )
     ]
 
@@ -701,19 +754,23 @@ async def test_non_empty_final_with_tool_does_not_append_tool_result(monkeypatch
         content="",
         tool_calls=[{"name": "calculator", "args": {"expression": "2 + 2"}, "id": "c1"}],
     )
-    fake = _RecordingModel(
-        messages=iter([tool_call_msg, AIMessage(content="The answer is four.")])
-    )
+    fake = _RecordingModel(messages=iter([tool_call_msg, AIMessage(content="The answer is four.")]))
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=InMemorySaver())
 
-    out = "".join([
-        t
-        async for t in runner.astream_text(
-            llm=_Llm(), user_message="2 + 2 ?", system_prompt="s",
-            params=_PARAMS, thread_id="c-nonempty", tools=[calculator],
-        )
-    ])
+    out = "".join(
+        [
+            t
+            async for t in runner.astream_text(
+                llm=_Llm(),
+                user_message="2 + 2 ?",
+                system_prompt="s",
+                params=_PARAMS,
+                thread_id="c-nonempty",
+                tools=[calculator],
+            )
+        ]
+    )
 
     assert out == "The answer is four."
     # calculator("2 + 2") == "4"; if the fallback wrongly fired it would be
@@ -735,8 +792,12 @@ async def test_astream_accepts_multimodal_user_message(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message=[{"type": "text", "text": "what is this?"}, _IMG],
-        system_prompt="sys", params=_PARAMS, thread_id="c-img", summarize=False,
+        llm=_Llm(),
+        user_message=[{"type": "text", "text": "what is this?"}, _IMG],
+        system_prompt="sys",
+        params=_PARAMS,
+        thread_id="c-img",
+        summarize=False,
         supports_vision=True,
     ):
         pass
@@ -755,9 +816,13 @@ async def test_kb_merge_preserves_image_parts(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message=[{"type": "text", "text": "Quel préavis ?"}, _IMG],
-        system_prompt="sys", params=_PARAMS, thread_id="c-kb-img",
-        kb_context_block=_BLOCK_1, kb_language_line="Réponds en français.",
+        llm=_Llm(),
+        user_message=[{"type": "text", "text": "Quel préavis ?"}, _IMG],
+        system_prompt="sys",
+        params=_PARAMS,
+        thread_id="c-kb-img",
+        kb_context_block=_BLOCK_1,
+        kb_language_line="Réponds en français.",
         supports_vision=True,
     ):
         pass
@@ -775,23 +840,29 @@ async def test_latest_image_carried_forward_on_followup(monkeypatch):
     carries turn 1's image (the most recent one), so a user can ask follow-ups
     about it without re-attaching — while context stays bounded to one turn's
     images (option B)."""
-    fake = _RecordingModel(
-        messages=iter([AIMessage(content="r1"), AIMessage(content="r2")])
-    )
+    fake = _RecordingModel(messages=iter([AIMessage(content="r1"), AIMessage(content="r2")]))
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     # supports_vision=True so ONLY the stale-image middleware is exercised
     # (anything else would add _StripImagesForTextModel too since #212).
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message=[{"type": "text", "text": "see this"}, _IMG],
-        system_prompt="s", params=_PARAMS, thread_id="c-carry", summarize=True,
+        llm=_Llm(),
+        user_message=[{"type": "text", "text": "see this"}, _IMG],
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="c-carry",
+        summarize=True,
         supports_vision=True,
     ):
         pass
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message="and now?", system_prompt="s",
-        params=_PARAMS, thread_id="c-carry", summarize=True,
+        llm=_Llm(),
+        user_message="and now?",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="c-carry",
+        summarize=True,
         supports_vision=True,
     ):
         pass
@@ -802,8 +873,7 @@ async def test_latest_image_carried_forward_on_followup(monkeypatch):
     assert isinstance(past_human.content, list)
     assert any(p.get("type") == "image_url" for p in past_human.content)
     assert any(
-        p.get("type") == "text" and "see this" in p.get("text", "")
-        for p in past_human.content
+        p.get("type") == "text" and "see this" in p.get("text", "") for p in past_human.content
     )
 
 
@@ -811,21 +881,27 @@ async def test_only_latest_image_kept_across_two_image_turns(monkeypatch):
     """Two image-bearing turns: only the MOST RECENT image survives; the older one
     collapses to an [image] marker, so context never accrues more than one turn's
     images (option B, bounded)."""
-    fake = _RecordingModel(
-        messages=iter([AIMessage(content="r1"), AIMessage(content="r2")])
-    )
+    fake = _RecordingModel(messages=iter([AIMessage(content="r1"), AIMessage(content="r2")]))
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message=[{"type": "text", "text": "first pic"}, _IMG],
-        system_prompt="s", params=_PARAMS, thread_id="c-two", summarize=True,
+        llm=_Llm(),
+        user_message=[{"type": "text", "text": "first pic"}, _IMG],
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="c-two",
+        summarize=True,
         supports_vision=True,
     ):
         pass
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message=[{"type": "text", "text": "second pic"}, _IMG],
-        system_prompt="s", params=_PARAMS, thread_id="c-two", summarize=True,
+        llm=_Llm(),
+        user_message=[{"type": "text", "text": "second pic"}, _IMG],
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="c-two",
+        summarize=True,
         supports_vision=True,
     ):
         pass
@@ -851,8 +927,11 @@ async def test_images_stripped_for_non_vision_model(monkeypatch):
     runner = AgentRunner(checkpointer=None)
 
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message=[{"type": "text", "text": "what is this"}, _IMG],
-        system_prompt="s", params=_PARAMS, supports_vision=False,
+        llm=_Llm(),
+        user_message=[{"type": "text", "text": "what is this"}, _IMG],
+        system_prompt="s",
+        params=_PARAMS,
+        supports_vision=False,
     ):
         pass
 
@@ -873,8 +952,11 @@ async def test_images_kept_for_vision_model(monkeypatch):
     runner = AgentRunner(checkpointer=None)
 
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message=[{"type": "text", "text": "what is this"}, _IMG],
-        system_prompt="s", params=_PARAMS, supports_vision=True,
+        llm=_Llm(),
+        user_message=[{"type": "text", "text": "what is this"}, _IMG],
+        system_prompt="s",
+        params=_PARAMS,
+        supports_vision=True,
     ):
         pass
 
@@ -892,8 +974,11 @@ async def test_images_stripped_when_vision_capability_unknown(monkeypatch):
     runner = AgentRunner(checkpointer=None)
 
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message=[{"type": "text", "text": "what is this"}, _IMG],
-        system_prompt="s", params=_PARAMS, supports_vision=None,
+        llm=_Llm(),
+        user_message=[{"type": "text", "text": "what is this"}, _IMG],
+        system_prompt="s",
+        params=_PARAMS,
+        supports_vision=None,
     ):
         pass
 
@@ -932,11 +1017,13 @@ async def test_kb_tool_round_trip_searches_with_runtime_context(monkeypatch):
 
     tool_call = AIMessage(
         content="",
-        tool_calls=[{
-            "name": "search_knowledge_base",
-            "args": {"query": "préavis de résiliation"},
-            "id": "k1",
-        }],
+        tool_calls=[
+            {
+                "name": "search_knowledge_base",
+                "args": {"query": "préavis de résiliation"},
+                "id": "k1",
+            }
+        ],
     )
     fake = _RecordingModel(messages=iter([tool_call, AIMessage(content="90 jours.")]))
     _patch_model(monkeypatch, fake)
@@ -945,8 +1032,11 @@ async def test_kb_tool_round_trip_searches_with_runtime_context(monkeypatch):
     out = [
         t
         async for t in runner.astream_text(
-            llm=_Llm(), user_message="Quel est le préavis ?", system_prompt="sys",
-            params=_PARAMS, thread_id="c-kbtool",
+            llm=_Llm(),
+            user_message="Quel est le préavis ?",
+            system_prompt="sys",
+            params=_PARAMS,
+            thread_id="c-kbtool",
             tools=[search_knowledge_base],
             context=TurnToolContext(kb_id=7, kb_token_budget=1000),
         )
@@ -974,8 +1064,13 @@ async def test_kb_tool_returns_not_found_message_on_empty_pool(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     async for _ in runner.astream_text(
-        llm=_Llm(), user_message="?", system_prompt="s", params=_PARAMS, thread_id="c-empty",
-        tools=[search_knowledge_base], context=TurnToolContext(kb_id=7, kb_token_budget=1000),
+        llm=_Llm(),
+        user_message="?",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="c-empty",
+        tools=[search_knowledge_base],
+        context=TurnToolContext(kb_id=7, kb_token_budget=1000),
     ):
         pass
 
@@ -995,9 +1090,7 @@ async def test_stale_kb_tool_results_placeholdered_on_followup(monkeypatch):
     AIMessage(tool_calls) -> ToolMessage pairing valid."""
     ex1 = [KbExcerpt(source_file="d1.pdf", text="Le préavis est de 90 jours.")]
     ex2 = [KbExcerpt(source_file="d2.pdf", text="Le SLA est de 99,7 pourcent.")]
-    monkeypatch.setattr(
-        "src.agents.tools.retrieve_kb_excerpts", MagicMock(side_effect=[ex1, ex2])
-    )
+    monkeypatch.setattr("src.agents.tools.retrieve_kb_excerpts", MagicMock(side_effect=[ex1, ex2]))
 
     tc1 = AIMessage(
         content="",
@@ -1016,9 +1109,14 @@ async def test_stale_kb_tool_results_placeholdered_on_followup(monkeypatch):
 
     for q in ("q1", "q2"):
         async for _ in runner.astream_text(
-            llm=_Llm(), user_message=q, system_prompt="s", params=_PARAMS,
-            thread_id="c-kbstrip", summarize=True,
-            tools=[search_knowledge_base], context=ctx,
+            llm=_Llm(),
+            user_message=q,
+            system_prompt="s",
+            params=_PARAMS,
+            thread_id="c-kbstrip",
+            summarize=True,
+            tools=[search_knowledge_base],
+            context=ctx,
         ):
             pass
 
@@ -1064,8 +1162,13 @@ async def test_events_answer_only_stream(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     events = await _events(
-        runner, llm=_Llm(), user_message="hi", system_prompt="s",
-        params=_PARAMS, thread_id="e1", summarize=False,
+        runner,
+        llm=_Llm(),
+        user_message="hi",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="e1",
+        summarize=False,
     )
 
     assert _answers(events) == "Python is awesome"
@@ -1082,8 +1185,13 @@ async def test_events_split_thinking_from_answer(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     events = await _events(
-        runner, llm=_Llm(), user_message="hi", system_prompt="s",
-        params=_PARAMS, thread_id="e2", summarize=False,
+        runner,
+        llm=_Llm(),
+        user_message="hi",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="e2",
+        summarize=False,
     )
 
     assert _answers(events) == "Answer text"
@@ -1103,8 +1211,12 @@ async def test_str_mode_drops_thinking_keeps_answer(monkeypatch):
     out = [
         t
         async for t in runner.astream_text(
-            llm=_Llm(), user_message="hi", system_prompt="s",
-            params=_PARAMS, thread_id="e3", summarize=False,
+            llm=_Llm(),
+            user_message="hi",
+            system_prompt="s",
+            params=_PARAMS,
+            thread_id="e3",
+            summarize=False,
         )
     ]
 
@@ -1117,11 +1229,13 @@ async def test_events_tool_call_then_result_then_answer(monkeypatch):
     parsed dict, never raw fragments), one ``tool_result``, then ``answer``."""
     tool_call_msg = AIMessage(
         content="",
-        tool_calls=[{
-            "name": "calculator",
-            "args": {"expression": "1240 + 1378 + 1456 + 1689"},
-            "id": "call-1",
-        }],
+        tool_calls=[
+            {
+                "name": "calculator",
+                "args": {"expression": "1240 + 1378 + 1456 + 1689"},
+                "id": "call-1",
+            }
+        ],
     )
     fake = _RecordingModel(
         messages=iter([tool_call_msg, AIMessage(content="Le total est 5763 k€.")])
@@ -1130,8 +1244,13 @@ async def test_events_tool_call_then_result_then_answer(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     events = await _events(
-        runner, llm=_Llm(), user_message="Additionne.", system_prompt="s",
-        params=_PARAMS, thread_id="e4", tools=[calculator],
+        runner,
+        llm=_Llm(),
+        user_message="Additionne.",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="e4",
+        tools=[calculator],
     )
 
     tool_calls = [e for e in events if e["t"] == "tool_call"]
@@ -1153,19 +1272,26 @@ async def test_events_empty_final_fallback_arrives_as_answer(monkeypatch):
     ``answer`` event -- not a raw string, never an error."""
     tool_call_msg = AIMessage(
         content="",
-        tool_calls=[{
-            "name": "calculator",
-            "args": {"expression": "1240 + 1378 + 1456"},
-            "id": "call-1",
-        }],
+        tool_calls=[
+            {
+                "name": "calculator",
+                "args": {"expression": "1240 + 1378 + 1456"},
+                "id": "call-1",
+            }
+        ],
     )
     fake = _RecordingModel(messages=iter([tool_call_msg, AIMessage(content="")]))
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     events = await _events(
-        runner, llm=_Llm(), user_message="1240 + 1378 + 1456 ?", system_prompt="s",
-        params=_PARAMS, thread_id="e5", tools=[calculator],
+        runner,
+        llm=_Llm(),
+        user_message="1240 + 1378 + 1456 ?",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="e5",
+        tools=[calculator],
     )
 
     assert _answers(events).strip() == "4074"
@@ -1176,6 +1302,7 @@ async def test_events_empty_final_fallback_arrives_as_answer(monkeypatch):
 async def test_events_construction_error_is_sentinel_answer(monkeypatch):
     """#252: a construction failure yields a single ``answer`` event carrying the
     curated sentinel (services later maps it to an ``error`` wire event)."""
+
     def _boom(llm, **kw):
         raise RuntimeError("model load failed: /secret/path")
 
@@ -1183,8 +1310,12 @@ async def test_events_construction_error_is_sentinel_answer(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     events = await _events(
-        runner, llm=_Llm(), user_message="hi", system_prompt="s",
-        params=_PARAMS, thread_id="e6",
+        runner,
+        llm=_Llm(),
+        user_message="hi",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="e6",
     )
 
     assert len(events) == 1
@@ -1220,8 +1351,13 @@ async def test_narration_before_tool_call_becomes_thinking(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     events = await _events(
-        runner, llm=_Llm(), user_message="4 + 5 ?", system_prompt="s",
-        params=_PARAMS, thread_id="n-a", tools=[calculator],
+        runner,
+        llm=_Llm(),
+        user_message="4 + 5 ?",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="n-a",
+        tools=[calculator],
     )
 
     assert _answers(events) == "The result is 9."
@@ -1248,8 +1384,13 @@ async def test_tools_bound_no_tool_call_flushes_buffer_as_answer(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     events = await _events(
-        runner, llm=_Llm(), user_message="hi", system_prompt="s",
-        params=_PARAMS, thread_id="n-b", tools=[calculator],
+        runner,
+        llm=_Llm(),
+        user_message="hi",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="n-b",
+        tools=[calculator],
     )
 
     assert _answers(events) == "Direct answer, no tool needed."
@@ -1263,19 +1404,26 @@ async def test_narration_does_not_defeat_empty_final_fallback(monkeypatch):
     fallback still delivers the tool result as the answer."""
     narrating_call = AIMessage(
         content="Maybe around one thousand kilograms.",
-        tool_calls=[{
-            "name": "calculator",
-            "args": {"expression": "1240 + 1378 + 1456"},
-            "id": "n2",
-        }],
+        tool_calls=[
+            {
+                "name": "calculator",
+                "args": {"expression": "1240 + 1378 + 1456"},
+                "id": "n2",
+            }
+        ],
     )
     fake = ToolableFakeChatModel(messages=iter([narrating_call, AIMessage(content="")]))
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     events = await _events(
-        runner, llm=_Llm(), user_message="total ?", system_prompt="s",
-        params=_PARAMS, thread_id="n-c", tools=[calculator],
+        runner,
+        llm=_Llm(),
+        user_message="total ?",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="n-c",
+        tools=[calculator],
     )
 
     assert _answers(events).strip() == "4074"
@@ -1291,15 +1439,18 @@ async def test_think_tags_inside_narration_no_double_wrapping(monkeypatch):
         content="<think>internal reasoning</think>guessing before the call",
         tool_calls=[{"name": "calculator", "args": {"expression": "4 + 5"}, "id": "n3"}],
     )
-    fake = ToolableFakeChatModel(
-        messages=iter([narrating_call, AIMessage(content="Nine.")])
-    )
+    fake = ToolableFakeChatModel(messages=iter([narrating_call, AIMessage(content="Nine.")]))
     _patch_model(monkeypatch, fake)
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     events = await _events(
-        runner, llm=_Llm(), user_message="4 + 5 ?", system_prompt="s",
-        params=_PARAMS, thread_id="n-d", tools=[calculator],
+        runner,
+        llm=_Llm(),
+        user_message="4 + 5 ?",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="n-d",
+        tools=[calculator],
     )
 
     thinking = _thinking(events)
@@ -1319,8 +1470,13 @@ async def test_zero_tool_turn_event_stream_unchanged(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     events = await _events(
-        runner, llm=_Llm(), user_message="hi", system_prompt="s",
-        params=_PARAMS, thread_id="n-e", tools=[],
+        runner,
+        llm=_Llm(),
+        user_message="hi",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="n-e",
+        tools=[],
     )
 
     assert events == [
@@ -1350,8 +1506,13 @@ async def test_multi_hop_narration_reclassified_each_hop(monkeypatch):
     runner = AgentRunner(checkpointer=InMemorySaver())
 
     events = await _events(
-        runner, llm=_Llm(), user_message="sum things", system_prompt="s",
-        params=_PARAMS, thread_id="n-f", tools=[calculator],
+        runner,
+        llm=_Llm(),
+        user_message="sum things",
+        system_prompt="s",
+        params=_PARAMS,
+        thread_id="n-f",
+        tools=[calculator],
     )
 
     assert _answers(events) == "Final answer."
@@ -1387,8 +1548,12 @@ async def test_str_mode_drops_narration_keeps_final_answer(monkeypatch):
     out = [
         t
         async for t in runner.astream_text(
-            llm=_Llm(), user_message="4 + 5 ?", system_prompt="s",
-            params=_PARAMS, thread_id=None, tools=[calculator],
+            llm=_Llm(),
+            user_message="4 + 5 ?",
+            system_prompt="s",
+            params=_PARAMS,
+            thread_id=None,
+            tools=[calculator],
         )
     ]
 
@@ -1484,37 +1649,60 @@ from src.database.generation_hints import resolve_sampling_defaults  # noqa: E40
 class _HintedLlm(_Llm):
     def __init__(self, **generation_config):
         self.generation_hints = {
-            "base_repo": "Qwen/Qwen3-0.6B", "generation_config": generation_config,
-            "supports_thinking": True, "context_length": 40960, "captured_at": "d",
+            "base_repo": "Qwen/Qwen3-0.6B",
+            "generation_config": generation_config,
+            "supports_thinking": True,
+            "context_length": 40960,
+            "captured_at": "d",
         }
 
 
 def test_build_chat_model_zero_diff_for_a_row_without_hints(monkeypatch):
     monkeypatch.setattr(config, "LLM_Engine", _IdentityEngine)
     today = build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55)
-    resolved = build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55,
-                                sampling=resolve_sampling_defaults(_Llm()))
-    assert resolved.extra_body == today.extra_body == {
-        "repetition_penalty": 1.1, "repetition_context_size": 64}
-    assert (resolved.temperature, resolved.top_p, resolved.max_tokens) == (
-        today.temperature, today.top_p, today.max_tokens) == (0.3, 0.8, 55)
+    resolved = build_chat_model(
+        _Llm(),
+        temperature=0.3,
+        top_p=0.8,
+        max_tokens=55,
+        sampling=resolve_sampling_defaults(_Llm()),
+    )
+    assert (
+        resolved.extra_body
+        == today.extra_body
+        == {"repetition_penalty": 1.1, "repetition_context_size": 64}
+    )
+    assert (
+        (resolved.temperature, resolved.top_p, resolved.max_tokens)
+        == (today.temperature, today.top_p, today.max_tokens)
+        == (0.3, 0.8, 55)
+    )
     assert resolved.model_kwargs == today.model_kwargs
 
 
 def test_build_chat_model_sends_optional_keys_only_when_the_profile_defines_them(monkeypatch):
     monkeypatch.setattr(config, "LLM_Engine", _IdentityEngine)
     llm = _HintedLlm(temperature=0.6, top_p=0.95, top_k=20, min_p=0.0)
-    chat = build_chat_model(llm, temperature=0.6, top_p=0.95, max_tokens=55,
-                            sampling=resolve_sampling_defaults(llm))
+    chat = build_chat_model(
+        llm, temperature=0.6, top_p=0.95, max_tokens=55, sampling=resolve_sampling_defaults(llm)
+    )
     assert chat.extra_body == {
-        "repetition_penalty": 1.1, "repetition_context_size": 64, "top_k": 20, "min_p": 0.0}
+        "repetition_penalty": 1.1,
+        "repetition_context_size": 64,
+        "top_k": 20,
+        "min_p": 0.0,
+    }
 
     # presence_penalty / repetition_penalty from the profile; no top_k -> absent.
     llm = _HintedLlm(temperature=0.7, presence_penalty=1.5, repetition_penalty=1.05)
-    chat = build_chat_model(llm, temperature=0.7, top_p=0.95, max_tokens=55,
-                            sampling=resolve_sampling_defaults(llm))
+    chat = build_chat_model(
+        llm, temperature=0.7, top_p=0.95, max_tokens=55, sampling=resolve_sampling_defaults(llm)
+    )
     assert chat.extra_body == {
-        "repetition_penalty": 1.05, "repetition_context_size": 64, "presence_penalty": 1.5}
+        "repetition_penalty": 1.05,
+        "repetition_context_size": 64,
+        "presence_penalty": 1.5,
+    }
 
 
 def test_build_chat_model_logs_the_resolved_extra_body(monkeypatch, caplog):
@@ -1526,8 +1714,9 @@ def test_build_chat_model_logs_the_resolved_extra_body(monkeypatch, caplog):
     monkeypatch.setattr(config, "LLM_Engine", _IdentityEngine)
     llm = _HintedLlm(temperature=0.6, top_p=0.95, top_k=20, min_p=0.0)
     with caplog.at_level(logging.INFO, logger="erudi"):
-        build_chat_model(llm, temperature=0.6, top_p=0.95, max_tokens=55,
-                         sampling=resolve_sampling_defaults(llm))
+        build_chat_model(
+            llm, temperature=0.6, top_p=0.95, max_tokens=55, sampling=resolve_sampling_defaults(llm)
+        )
     (line,) = [r.message for r in caplog.records if r.message.startswith("ChatOpenAI built:")]
     assert "temperature=0.6" in line and "max_tokens=55" in line
     assert "extra_body=" in line
@@ -1577,11 +1766,16 @@ def test_build_chat_model_llama_cpp_leaves_optional_names_untouched(monkeypatch)
 
     monkeypatch.setattr(config, "LLM_Engine", _LlamaEngine)
     llm = _HintedLlm(temperature=0.6, top_k=20, min_p=0.0, presence_penalty=1.5)
-    chat = build_chat_model(llm, temperature=0.6, top_p=0.95, max_tokens=55,
-                            sampling=resolve_sampling_defaults(llm))
+    chat = build_chat_model(
+        llm, temperature=0.6, top_p=0.95, max_tokens=55, sampling=resolve_sampling_defaults(llm)
+    )
     assert chat.extra_body == {
-        "repeat_penalty": 1.1, "repeat_last_n": 64, "top_k": 20, "min_p": 0.0,
-        "presence_penalty": 1.5}
+        "repeat_penalty": 1.1,
+        "repeat_last_n": 64,
+        "top_k": 20,
+        "min_p": 0.0,
+        "presence_penalty": 1.5,
+    }
 
 
 async def test_runner_passes_the_resolved_sampling_to_the_factory(monkeypatch):
@@ -1594,8 +1788,9 @@ async def test_runner_passes_the_resolved_sampling_to_the_factory(monkeypatch):
     monkeypatch.setattr(runner_module, "build_chat_model", _capture)
     llm = _HintedLlm(temperature=0.6, top_k=20)
     runner = AgentRunner(checkpointer=None)
-    async for _ in runner.astream_text(llm=llm, user_message="q", system_prompt="s",
-                                       params=_PARAMS):
+    async for _ in runner.astream_text(
+        llm=llm, user_message="q", system_prompt="s", params=_PARAMS
+    ):
         pass
     assert captured["sampling"].top_k == 20
     assert captured["sampling"].source == "base_generation_config"
@@ -1634,21 +1829,23 @@ class _MlxLikeEngine(_IdentityEngine):
 
 def test_build_chat_model_mlx_extra_body_carries_a_fresh_seed(monkeypatch):
     monkeypatch.setattr(config, "LLM_Engine", _MlxLikeEngine)
-    chats = [build_chat_model(_Llm(), temperature=0.6, top_p=0.95, max_tokens=55)
-             for _ in range(8)]
+    chats = [build_chat_model(_Llm(), temperature=0.6, top_p=0.95, max_tokens=55) for _ in range(8)]
     assert all(isinstance(chat.extra_body["seed"], int) for chat in chats)
     assert len({chat.extra_body["seed"] for chat in chats}) > 1
     # The repetition controls still ride next to it, untouched.
     assert {k: v for k, v in chats[0].extra_body.items() if k != "seed"} == {
-        "repetition_penalty": 1.1, "repetition_context_size": 64}
+        "repetition_penalty": 1.1,
+        "repetition_context_size": 64,
+    }
 
 
 def test_build_chat_model_oneshot_on_mlx_also_gets_a_seed(monkeypatch):
     # Titles run at temperature 1.0 with enable_thinking=False; a random seed
     # there is fine and the body shape stays identical apart from the seed.
     monkeypatch.setattr(config, "LLM_Engine", _MlxLikeEngine)
-    chat = build_chat_model(_Llm(), temperature=1.0, top_p=0.95, max_tokens=12,
-                            disable_thinking=True)
+    chat = build_chat_model(
+        _Llm(), temperature=1.0, top_p=0.95, max_tokens=12, disable_thinking=True
+    )
     assert chat.extra_body["enable_thinking"] is False
     assert isinstance(chat.extra_body["seed"], int)
 

@@ -118,11 +118,13 @@ def test_generation_hints_column_is_nullable_and_backfills_null(fresh_cluster):
     try:
         assert "generation_hints" not in {c["name"] for c in inspect(engine).get_columns("llms")}
         with engine.begin() as conn:
-            conn.execute(text(
-                "INSERT INTO llms (name, local, link, type, quantized, is_base, category, "
-                "is_attached_to_kb) VALUES ('Old', 0, 'org/old', 'qwen', true, false, "
-                "'general', false)"
-            ))
+            conn.execute(
+                text(
+                    "INSERT INTO llms (name, local, link, type, quantized, is_base, category, "
+                    "is_attached_to_kb) VALUES ('Old', 0, 'org/old', 'qwen', true, false, "
+                    "'general', false)"
+                )
+            )
     finally:
         engine.dispose()
 
@@ -134,7 +136,8 @@ def test_generation_hints_column_is_nullable_and_backfills_null(fresh_cluster):
         assert columns["generation_hints"]["nullable"] is True
         with engine.connect() as conn:
             stored = conn.execute(
-                text("SELECT generation_hints FROM llms WHERE link='org/old'")).scalar()
+                text("SELECT generation_hints FROM llms WHERE link='org/old'")
+            ).scalar()
         assert stored is None
     finally:
         engine.dispose()
@@ -156,11 +159,13 @@ def test_artifact_size_bytes_column_is_nullable_bigint_and_backfills_null(fresh_
     try:
         assert "artifact_size_bytes" not in {c["name"] for c in inspect(engine).get_columns("llms")}
         with engine.begin() as conn:
-            conn.execute(text(
-                "INSERT INTO llms (name, local, link, type, quantized, is_base, category, "
-                "is_attached_to_kb) VALUES ('Old', 0, 'org/old', 'qwen', true, false, "
-                "'general', false)"
-            ))
+            conn.execute(
+                text(
+                    "INSERT INTO llms (name, local, link, type, quantized, is_base, category, "
+                    "is_attached_to_kb) VALUES ('Old', 0, 'org/old', 'qwen', true, false, "
+                    "'general', false)"
+                )
+            )
     finally:
         engine.dispose()
 
@@ -173,13 +178,18 @@ def test_artifact_size_bytes_column_is_nullable_bigint_and_backfills_null(fresh_
         assert "BIGINT" in str(columns["artifact_size_bytes"]["type"]).upper()
         with engine.begin() as conn:
             stored = conn.execute(
-                text("SELECT artifact_size_bytes FROM llms WHERE link='org/old'")).scalar()
-            assert stored is None
-            conn.execute(text(
-                "UPDATE llms SET artifact_size_bytes = 3090000000 WHERE link='org/old'"))
-            assert conn.execute(
                 text("SELECT artifact_size_bytes FROM llms WHERE link='org/old'")
-            ).scalar() == 3_090_000_000
+            ).scalar()
+            assert stored is None
+            conn.execute(
+                text("UPDATE llms SET artifact_size_bytes = 3090000000 WHERE link='org/old'")
+            )
+            assert (
+                conn.execute(
+                    text("SELECT artifact_size_bytes FROM llms WHERE link='org/old'")
+                ).scalar()
+                == 3_090_000_000
+            )
     finally:
         engine.dispose()
     assert _alembic_version(url) == _head_revision(cfg)
@@ -196,9 +206,7 @@ def test_language_column_backfills_existing_settings_row(fresh_cluster):
     engine = create_engine(url)
     try:
         with engine.begin() as conn:
-            conn.execute(
-                text("INSERT INTO user_settings (web_search_enabled) VALUES (true)")
-            )
+            conn.execute(text("INSERT INTO user_settings (web_search_enabled) VALUES (true)"))
     finally:
         engine.dispose()
 
@@ -207,9 +215,7 @@ def test_language_column_backfills_existing_settings_row(fresh_cluster):
     engine = create_engine(url)
     try:
         with engine.connect() as conn:
-            row = conn.execute(
-                text("SELECT web_search_enabled, language FROM user_settings")
-            ).one()
+            row = conn.execute(text("SELECT web_search_enabled, language FROM user_settings")).one()
             columns = {c["name"]: c for c in inspect(conn).get_columns("user_settings")}
     finally:
         engine.dispose()

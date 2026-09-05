@@ -63,7 +63,7 @@ class Startup_Variables_Repository:
         """
         logger.debug("Retrieving or creating StartupVariables singleton")
         vars = self.db.query(StartupVariables).first()
-        
+
         if not vars:
             logger.info("StartupVariables not found, creating new record")
             vars = StartupVariables(welcome_popup_has_already_displayed=False)
@@ -71,7 +71,7 @@ class Startup_Variables_Repository:
             self.db.flush()
             self.db.refresh(vars)
             logger.info(f"Created StartupVariables {vars.id}")
-        
+
         return vars
 
     def get_welcome_popup_status(self) -> bool:
@@ -116,7 +116,7 @@ class Startup_Variables_Repository:
         logger.info(f"Updating StartupVariables field: {field} = {value}")
         if not hasattr(vars, field):
             raise AttributeError(f"StartupVariables has no field '{field}'")
-        
+
         setattr(vars, field, value)
         self.db.flush()
         self.db.refresh(vars)

@@ -5,20 +5,20 @@ singleton pattern enforcement and provides clean data access API.
 
 Architecture:
     Endpoints → Service → Repository → Entity → Database
-    
+
 Singleton Pattern:
     - Hardware profile is singleton (one row, id=1)
     - get_profile() returns existing or None
     - create_profile() creates new profile
     - update_profile() modifies existing
-    
+
 Example:
     from src.domains.hardware.repository import Hardware_Repository
     from src.database.core import SessionLocal
-    
+
     db = SessionLocal()
     repo = Hardware_Repository(db)
-    
+
     profile = repo.get_profile()
     if not profile:
         profile = repo.create_profile({
@@ -28,6 +28,7 @@ Example:
         })
     db.commit()
 """
+
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 
@@ -92,30 +93,29 @@ class Hardware_Repository:
                 .order_by(
                     HardwareProfile.updated_at.desc(),
                     HardwareProfile.created_at.desc(),
-                    HardwareProfile.id.desc()
+                    HardwareProfile.id.desc(),
                 )
                 .all()
             )
             profile = profiles[0] if profiles else None
 
             if len(profiles) > 1:
-                logger.warning(f"Multiple hardware profiles detected ({len(profiles)}); pruning older entries")
+                logger.warning(
+                    f"Multiple hardware profiles detected ({len(profiles)}); pruning older entries"
+                )
                 for stale_profile in profiles[1:]:
                     self.delete_profile(stale_profile)
-            
+
             if profile:
                 logger.debug(f"Found existing hardware profile: backend={profile.backend_type}")
             else:
                 logger.debug("No hardware profile found in database")
-            
+
             return profile
-            
+
         except Exception as e:
             logger.exception(f"Failed to query hardware profile: {e}")
-            raise DatabaseException(
-                "Failed to retrieve hardware profile",
-                trace=str(e)
-            )
+            raise DatabaseException("Failed to retrieve hardware profile", trace=str(e))
 
     def create_profile(self, hardware_data: Dict[str, Any]) -> HardwareProfile:
         """Create new hardware profile from engine data.
@@ -145,28 +145,21 @@ class Hardware_Repository:
         """
         try:
             logger.info(f"Creating hardware profile: backend={hardware_data.get('backend_type')}")
-            
+
             # Create entity from engine data
             profile = HardwareProfile(**hardware_data)
-            
+
             self.db.add(profile)
             self.db.flush()  # Make visible in transaction, but don't commit
-            
+
             logger.info(f"Hardware profile created successfully: id={profile.id}")
             return profile
-            
+
         except Exception as e:
             logger.exception(f"Failed to create hardware profile: {e}")
-            raise DatabaseException(
-                "Failed to create hardware profile",
-                trace=str(e)
-            )
+            raise DatabaseException("Failed to create hardware profile", trace=str(e))
 
-    def update_profile(
-        self,
-        profile: HardwareProfile,
-        updates: Dict[str, Any]
-    ) -> HardwareProfile:
+    def update_profile(self, profile: HardwareProfile, updates: Dict[str, Any]) -> HardwareProfile:
         """Update existing hardware profile with new data.
 
         Updates profile fields from dictionary. Useful for refreshing hardware
@@ -195,24 +188,21 @@ class Hardware_Repository:
         """
         try:
             logger.debug(f"Updating hardware profile id={profile.id}")
-            
+
             for key, value in updates.items():
                 if hasattr(profile, key):
                     setattr(profile, key, value)
                 else:
                     logger.warning(f"Ignoring unknown field: {key}")
-            
+
             self.db.flush()  # Make visible in transaction
-            
+
             logger.debug(f"Hardware profile updated successfully: id={profile.id}")
             return profile
-            
+
         except Exception as e:
             logger.exception(f"Failed to update hardware profile: {e}")
-            raise DatabaseException(
-                "Failed to update hardware profile",
-                trace=str(e)
-            )
+            raise DatabaseException("Failed to update hardware profile", trace=str(e))
 
     def delete_profile(self, profile: HardwareProfile) -> None:
         """Delete hardware profile from database.
@@ -236,15 +226,12 @@ class Hardware_Repository:
         """
         try:
             logger.info(f"Deleting hardware profile id={profile.id}")
-            
+
             self.db.delete(profile)
             self.db.flush()
-            
+
             logger.info("Hardware profile deleted successfully")
-            
+
         except Exception as e:
             logger.exception(f"Failed to delete hardware profile: {e}")
-            raise DatabaseException(
-                "Failed to delete hardware profile",
-                trace=str(e)
-            )
+            raise DatabaseException("Failed to delete hardware profile", trace=str(e))

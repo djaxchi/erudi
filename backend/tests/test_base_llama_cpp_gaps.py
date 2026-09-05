@@ -6,6 +6,7 @@ cases (single file, unknown quants, mmproj exclusion), vision detection via
 mmproj presence (#130), the Popen terminate/alive helpers, the spawn-child
 handle assembly with the vision projector argv, and the default spawn env.
 """
+
 from __future__ import annotations
 
 import logging
@@ -30,9 +31,9 @@ def _touch(path, size=16):
 # UNIT - llama-server binary resolution
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestFindLlamaServer:
-
     def test_primary_flavour_wins(self, tmp_path):
         exe = "llama-server.exe" if os.name == "nt" else "llama-server"
         install = tmp_path / "cpu" / "bin"
@@ -59,9 +60,9 @@ class TestFindLlamaServer:
 # UNIT - GGUF selection edge cases
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestSelectGgufEdgeCases:
-
     def test_missing_path_raises(self, tmp_path):
         with pytest.raises(EngineException, match="not found"):
             CPU_Engine._select_gguf(tmp_path / "missing")
@@ -85,9 +86,9 @@ class TestSelectGgufEdgeCases:
 # UNIT - vision detection via mmproj (#130)
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestVisionDetection:
-
     def test_find_mmproj_none(self, tmp_path):
         model = _touch(tmp_path / "model-q4_k_m.gguf")
         assert CPU_Engine._find_mmproj(model) is None
@@ -117,9 +118,9 @@ class TestVisionDetection:
 # UNIT - Popen lifecycle helpers
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestProcessHelpers:
-
     def test_terminate_none_is_noop(self):
         CPU_Engine._terminate_process(None)
 
@@ -178,15 +179,14 @@ class TestProcessHelpers:
 # UNIT - spawn-child handle assembly
 # =====================================================================
 
+
 def _spawn_cpu_child(tmp_path, monkeypatch, *, with_mmproj):
     """Run `CPU_Engine._spawn_child` against a fake Popen, capturing the argv."""
     model = _touch(tmp_path / "model-q4_k_m.gguf")
     if with_mmproj:
         _touch(tmp_path / "mmproj-model.gguf")
     server = _touch(tmp_path / "bin" / "llama-server")
-    monkeypatch.setattr(
-        CPU_Engine, "_find_llama_server", classmethod(lambda cls, d=None: server)
-    )
+    monkeypatch.setattr(CPU_Engine, "_find_llama_server", classmethod(lambda cls, d=None: server))
     captured = {}
 
     def fake_popen(argv, **kwargs):
@@ -200,7 +200,9 @@ def _spawn_cpu_child(tmp_path, monkeypatch, *, with_mmproj):
 
     monkeypatch.setattr(base_mod.subprocess, "Popen", fake_popen)
     handle = CPU_Engine._spawn_child(
-        model_path=model, alias="erudi-1", port=27201,
+        model_path=model,
+        alias="erudi-1",
+        port=27201,
         **CPU_Engine._prepare_spawn_context(),
     )
     return handle, captured
@@ -208,7 +210,6 @@ def _spawn_cpu_child(tmp_path, monkeypatch, *, with_mmproj):
 
 @pytest.mark.unit
 class TestSpawnChild:
-
     def _spawn(self, tmp_path, monkeypatch, *, with_mmproj):
         return _spawn_cpu_child(tmp_path, monkeypatch, with_mmproj=with_mmproj)
 
@@ -236,6 +237,7 @@ class TestSpawnChild:
 # =====================================================================
 # UNIT - local-only hardening of the spawned llama-server
 # =====================================================================
+
 
 @pytest.mark.unit
 class TestSpawnHardeningFlags:
@@ -288,9 +290,7 @@ class TestSpawnHardeningFlags:
         second_key = second_argv[second_argv.index("--api-key") + 1]
         assert first_key != second_key
 
-    def test_handle_exposes_the_key_to_the_callers_that_need_it(
-        self, tmp_path, monkeypatch
-    ):
+    def test_handle_exposes_the_key_to_the_callers_that_need_it(self, tmp_path, monkeypatch):
         """The readiness probe and the inference client both authenticate now.
 
         Both reach the child only through the spawn handle, so a key kept

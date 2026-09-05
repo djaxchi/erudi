@@ -2,6 +2,7 @@
 Repository layer for conversation domain.
 Handles all database operations.
 """
+
 from datetime import datetime
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -26,7 +27,7 @@ from src.core.exceptions import (
 
 class ConversationRepository:
     """Repository for managing conversation database operations."""
-    
+
     def __init__(self, db: Session):
         """Initialize the repository with a database session."""
         logger.debug("Initializing ConversationRepository")
@@ -35,10 +36,10 @@ class ConversationRepository:
     def get_all_conversations(self) -> List[Conversation]:
         """
         Retrieve all conversations.
-        
+
         Returns:
             List of all Conversation objects
-            
+
         Raises:
             DatabaseException: If database query fails
         """
@@ -49,62 +50,54 @@ class ConversationRepository:
             return conversations
         except SQLAlchemyError as e:
             logger.error(f"Error retrieving all conversations: {str(e)}")
-            raise DatabaseException(
-                "Could not retrieve conversations",
-                trace=str(e)
-            )
+            raise DatabaseException("Could not retrieve conversations", trace=str(e))
 
     def get_conversation_by_id(self, conversation_id: int) -> Conversation:
         """
         Retrieve a specific conversation by ID.
-        
+
         Args:
             conversation_id: ID of the conversation to retrieve
-            
+
         Returns:
             The Conversation object if found
-            
+
         Raises:
             ConversationNotFoundException: If conversation not found
             DatabaseException: If database query fails
         """
         try:
             logger.debug(f"Retrieving conversation {conversation_id}")
-            conversation = self.db.query(Conversation).filter(
-                Conversation.id == conversation_id
-            ).first()
-            
+            conversation = (
+                self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
+            )
+
             if not conversation:
                 logger.warning(f"Conversation {conversation_id} not found")
                 raise ConversationNotFoundException(conversation_id)
-                
+
             logger.debug(
                 f"Retrieved conversation {conversation_id} "
                 f"with {len(conversation.messages)} messages"
             )
             return conversation
-            
+
         except ConversationNotFoundException:
             raise
         except SQLAlchemyError as e:
-            logger.error(
-                f"Database error retrieving conversation {conversation_id}: {str(e)}"
-            )
-            raise DatabaseException(
-                "Could not retrieve conversation",
-                trace=str(e)
-            )
+            logger.error(f"Database error retrieving conversation {conversation_id}: {str(e)}")
+            raise DatabaseException("Could not retrieve conversation", trace=str(e))
 
     def get_llm_by_id(self, llm_id: int) -> Llm:
         """
         Retrieve an LLM by ID.
-        
+
         Args:
             llm_id: ID of the LLM to retrieve
-            
+
         Returns:
             The Llm object if found
-            
+
         Raises:
             ModelNotFoundException: If LLM not found
             DatabaseException: If database error occurs
@@ -118,10 +111,7 @@ class ConversationRepository:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Error retrieving LLM {llm_id}: {str(e)}")
-            raise DatabaseException(
-                "Could not retrieve LLM",
-                trace=str(e)
-            )
+            raise DatabaseException("Could not retrieve LLM", trace=str(e))
 
     def create_conversation(
         self,
@@ -131,7 +121,7 @@ class ConversationRepository:
         top_p: float = FALLBACK_TOP_P,
         max_tokens: int = FALLBACK_MAX_TOKENS,
         custom_prompt: str = "",
-        web_search_enabled: bool = False
+        web_search_enabled: bool = False,
     ) -> Conversation:
         """
         Create a new conversation.
@@ -161,19 +151,16 @@ class ConversationRepository:
                 top_p=top_p,
                 max_tokens=max_tokens,
                 custom_prompt=custom_prompt,
-                web_search_enabled=web_search_enabled
+                web_search_enabled=web_search_enabled,
             )
             self.db.add(conversation)
             self.db.flush()  # Flush to get ID, no commit
             logger.info(f"Created conversation {conversation.id}")
             return conversation
-            
+
         except SQLAlchemyError as e:
             logger.error(f"Error creating conversation: {str(e)}")
-            raise DatabaseException(
-                "Could not create conversation",
-                trace=str(e)
-            )
+            raise DatabaseException("Could not create conversation", trace=str(e))
 
     def update_conversation(
         self,
@@ -184,7 +171,7 @@ class ConversationRepository:
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
         custom_prompt: Optional[str] = None,
-        web_search_enabled: Optional[bool] = None
+        web_search_enabled: Optional[bool] = None,
     ) -> Conversation:
         """
         Update an existing conversation.
@@ -198,39 +185,39 @@ class ConversationRepository:
             max_tokens: New max_tokens
             custom_prompt: New custom prompt
             web_search_enabled: New per-conversation web-search toggle (#310)
-            
+
         Returns:
             Updated Conversation object
-            
+
         Raises:
             ConversationNotFoundException: If conversation not found
             DatabaseException: If update fails
         """
         try:
             conversation = self.get_conversation_by_id(conversation_id)
-            
+
             updated = False
-            
+
             if name is not None and name != conversation.name:
                 conversation.name = name
                 updated = True
-            
+
             if llm_id is not None and llm_id != conversation.llm_id:
                 conversation.llm_id = llm_id
                 updated = True
-            
+
             if temperature is not None and temperature != conversation.temperature:
                 conversation.temperature = temperature
                 updated = True
-            
+
             if top_p is not None and top_p != conversation.top_p:
                 conversation.top_p = top_p
                 updated = True
-            
+
             if max_tokens is not None and max_tokens != conversation.max_tokens:
                 conversation.max_tokens = max_tokens
                 updated = True
-            
+
             if custom_prompt is not None and custom_prompt != conversation.custom_prompt:
                 conversation.custom_prompt = custom_prompt
                 updated = True
@@ -245,25 +232,22 @@ class ConversationRepository:
             if updated:
                 self.db.flush()  # Flush changes, no commit
                 logger.info(f"Updated conversation {conversation_id}")
-            
+
             return conversation
-            
+
         except ConversationNotFoundException:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Error updating conversation {conversation_id}: {str(e)}")
-            raise DatabaseException(
-                "Could not update conversation",
-                trace=str(e)
-            )
+            raise DatabaseException("Could not update conversation", trace=str(e))
 
     def delete_conversation(self, conversation_id: int) -> None:
         """
         Delete a conversation and its messages.
-        
+
         Args:
             conversation_id: ID of the conversation to delete
-            
+
         Raises:
             ConversationNotFoundException: If conversation not found
             DatabaseException: If deletion fails
@@ -277,16 +261,12 @@ class ConversationRepository:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Error deleting conversation {conversation_id}: {str(e)}")
-            raise DatabaseException(
-                "Could not delete conversation",
-                trace=str(e)
-            )
-
+            raise DatabaseException("Could not delete conversation", trace=str(e))
 
     def update_last_message_time(self, conversation_id: int) -> None:
         """
         Update the last_message_time of a conversation.
-        
+
         Args:
             conversation_id: ID of the conversation
         """
@@ -298,29 +278,24 @@ class ConversationRepository:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Error updating last message time: {str(e)}")
-            raise DatabaseException(
-                "Could not update conversation timestamp",
-                trace=str(e)
-            )
+            raise DatabaseException("Could not update conversation timestamp", trace=str(e))
 
 
 class MessageRepository:
     """Repository for managing message database operations."""
-    
+
     def __init__(self, db: Session):
         """Initialize the repository with a database session."""
         logger.debug("Initializing MessageRepository")
         self.db = db
 
-    def get_messages_by_conversation(
-        self, conversation_id: int
-    ) -> List[Message]:
+    def get_messages_by_conversation(self, conversation_id: int) -> List[Message]:
         """
         Retrieve all messages for a specific conversation.
-        
+
         Args:
             conversation_id: ID of the conversation
-            
+
         Returns:
             List of Message objects
         """
@@ -335,19 +310,15 @@ class MessageRepository:
             return messages
         except SQLAlchemyError as e:
             logger.error(f"Error retrieving messages: {str(e)}")
-            raise DatabaseException(
-                "Could not retrieve messages",
-                trace=str(e)
-            )
-
+            raise DatabaseException("Could not retrieve messages", trace=str(e))
 
     def get_starred_messages(self, conversation_id: int) -> List[str]:
         """
         Get all starred messages in a conversation.
-        
+
         Args:
             conversation_id: ID of the conversation
-            
+
         Returns:
             List of starred message contents
         """
@@ -356,7 +327,7 @@ class MessageRepository:
                 self.db.query(Message.content)
                 .filter(
                     Message.conversation_id == conversation_id,
-                    Message.starred == True  # noqa: E712
+                    Message.starred == True,  # noqa: E712
                 )
                 .all()
             )
@@ -401,27 +372,21 @@ class MessageRepository:
             return message
         except SQLAlchemyError as e:
             logger.error(f"Error creating message: {str(e)}")
-            raise DatabaseException(
-                "Could not create message",
-                trace=str(e)
-            )
-
+            raise DatabaseException("Could not create message", trace=str(e))
 
     def star_message(self, message_id: int) -> None:
         """
         Star a message by its ID.
-        
+
         Args:
             message_id: ID of the message to star
-            
+
         Raises:
             MessageNotFoundException: If message not found
             DatabaseException: If update fails
         """
         try:
-            message = self.db.query(Message).filter(
-                Message.id == message_id
-            ).first()
+            message = self.db.query(Message).filter(Message.id == message_id).first()
             if not message:
                 raise MessageNotFoundException(message_id)
             message.starred = True
@@ -431,26 +396,21 @@ class MessageRepository:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Failed to star message {message_id}")
-            raise DatabaseException(
-                "Failed to star message",
-                trace=str(e)
-            )
+            raise DatabaseException("Failed to star message", trace=str(e))
 
     def unstar_message(self, message_id: int) -> None:
         """
         Unstar a message by its ID.
-        
+
         Args:
             message_id: ID of the message to unstar
-            
+
         Raises:
             MessageNotFoundException: If message not found
             DatabaseException: If update fails
         """
         try:
-            message = self.db.query(Message).filter(
-                Message.id == message_id
-            ).first()
+            message = self.db.query(Message).filter(Message.id == message_id).first()
             if not message:
                 raise MessageNotFoundException(message_id)
             message.starred = False
@@ -460,7 +420,4 @@ class MessageRepository:
             raise
         except SQLAlchemyError as e:
             logger.error(f"Failed to unstar message {message_id}")
-            raise DatabaseException(
-                "Failed to unstar message",
-                trace=str(e)
-            )
+            raise DatabaseException("Failed to unstar message", trace=str(e))

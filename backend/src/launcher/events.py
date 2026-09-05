@@ -28,9 +28,7 @@ from datetime import datetime, timezone
 
 def _utc_timestamp() -> str:
     """UTC ISO-8601 with milliseconds and Z suffix (matches the backend log)."""
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace(
-        "+00:00", "Z"
-    )
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def emit_event(payload: dict) -> None:

@@ -11,6 +11,7 @@ long-term summary) is gone: conversation history and the rolling summary now
 live in the LangGraph checkpointer (SummarizationMiddleware), so the only
 retrieval left here is the Knowledge Base top-k.
 """
+
 from typing import List, Optional
 
 
@@ -112,7 +113,7 @@ def build_system_prompt(
         # xlarge (16B+) shares this prompt: untestable on the project's
         # reference hardware, so it aligns on the evaluated doctrine (one
         # voice across every tier) instead of keeping its own bullet sheet.
-    
+
     # Add starred messages if there are any
     if starred_messages and len(starred_messages) > 0:
         starred_summary = "\n".join(f"- {msg}" for msg in starred_messages)
@@ -145,12 +146,32 @@ def get_prompting_strategy(param_size: float) -> dict:
     # choice keeps the system prompt and KB budget modest rather than assuming a
     # large context a tiny model could not honor.
     if param_size is None or param_size <= 2:
-        return {"system_prompt_size_category": "tiny", "use_kb_context": True, "kb_token_budget": 400}
+        return {
+            "system_prompt_size_category": "tiny",
+            "use_kb_context": True,
+            "kb_token_budget": 400,
+        }
     elif param_size <= 4:
-        return {"system_prompt_size_category": "small", "use_kb_context": True, "kb_token_budget": 700}
+        return {
+            "system_prompt_size_category": "small",
+            "use_kb_context": True,
+            "kb_token_budget": 700,
+        }
     elif param_size < 8:
-        return {"system_prompt_size_category": "medium", "use_kb_context": True, "kb_token_budget": 1000}
+        return {
+            "system_prompt_size_category": "medium",
+            "use_kb_context": True,
+            "kb_token_budget": 1000,
+        }
     elif param_size <= 16:
-        return {"system_prompt_size_category": "large", "use_kb_context": True, "kb_token_budget": 1400}
+        return {
+            "system_prompt_size_category": "large",
+            "use_kb_context": True,
+            "kb_token_budget": 1400,
+        }
     else:
-        return {"system_prompt_size_category": "xlarge", "use_kb_context": True, "kb_token_budget": 2000}
+        return {
+            "system_prompt_size_category": "xlarge",
+            "use_kb_context": True,
+            "kb_token_budget": 2000,
+        }

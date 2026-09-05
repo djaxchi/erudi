@@ -14,7 +14,10 @@ from typing import Any, Dict, List
 from src.core import config
 from src.core.logging import logger
 from src.database.catalog_classify import (
-    categorize, is_derivative, param_size_billions, VISION_PIPELINES,
+    categorize,
+    is_derivative,
+    param_size_billions,
+    VISION_PIPELINES,
 )
 from src.engines.model_resolver import base_key
 from src.utils.hf_model_metadata import humanize_model_name
@@ -61,11 +64,17 @@ def search_huggingface(query: str, limit: int = 30) -> List[Dict[str, Any]]:
         return []
 
     try:
-        models = list(config.get_hf_api().list_models(
-            filter=tag, search=query, sort="downloads", limit=max(limit * 3, 60),
-            expand=["safetensors", "tags", "pipeline_tag", "gated", "downloads", "likes"],
-            _max_retries=_SEARCH_MAX_RETRIES, _max_backoff=_SEARCH_MAX_BACKOFF,
-        ))
+        models = list(
+            config.get_hf_api().list_models(
+                filter=tag,
+                search=query,
+                sort="downloads",
+                limit=max(limit * 3, 60),
+                expand=["safetensors", "tags", "pipeline_tag", "gated", "downloads", "likes"],
+                _max_retries=_SEARCH_MAX_RETRIES,
+                _max_backoff=_SEARCH_MAX_BACKOFF,
+            )
+        )
     except Exception as e:
         logger.warning(f"HF search '{query}' failed: {e}")
         return []
@@ -91,17 +100,19 @@ def search_huggingface(query: str, limit: int = 30) -> List[Dict[str, Any]]:
             pass
         seen.add(key)
         slug = m.id.split("/")[-1]
-        results.append({
-            "link": m.id,
-            "name": humanize_model_name(m.id),
-            "param_size": param_size_billions(_safetensors_total(m), slug),
-            "category": categorize(slug, tags, getattr(m, "pipeline_tag", None)),
-            "downloads": getattr(m, "downloads", 0) or 0,
-            "likes": getattr(m, "likes", 0) or 0,
-            "gated": bool(getattr(m, "gated", None)),
-            "pipeline_tag": getattr(m, "pipeline_tag", None),
-            "quantized": True,
-        })
+        results.append(
+            {
+                "link": m.id,
+                "name": humanize_model_name(m.id),
+                "param_size": param_size_billions(_safetensors_total(m), slug),
+                "category": categorize(slug, tags, getattr(m, "pipeline_tag", None)),
+                "downloads": getattr(m, "downloads", 0) or 0,
+                "likes": getattr(m, "likes", 0) or 0,
+                "gated": bool(getattr(m, "gated", None)),
+                "pipeline_tag": getattr(m, "pipeline_tag", None),
+                "quantized": True,
+            }
+        )
         if len(results) >= limit:
             break
     return results

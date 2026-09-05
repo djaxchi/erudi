@@ -37,10 +37,7 @@ class DocxExtractor:
 
         for item in document.iter_inner_content():
             if isinstance(item, Table):
-                rows = [
-                    [cell.text for cell in row.cells]
-                    for row in item.rows
-                ]
+                rows = [[cell.text for cell in row.cells] for row in item.rows]
                 table = rows_to_markdown_table(rows)
                 if table:
                     parts.append(table)
@@ -53,8 +50,7 @@ class DocxExtractor:
 
         markdown = clean_extracted_text("\n\n".join(parts))
         logger.debug(
-            f"DOCX extracted: {path.name} ({len(parts)} blocks, "
-            f"{len(markdown)} chars)"
+            f"DOCX extracted: {path.name} ({len(parts)} blocks, " f"{len(markdown)} chars)"
         )
         return ExtractedDocument(
             markdown=markdown,

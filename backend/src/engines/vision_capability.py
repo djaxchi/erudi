@@ -5,6 +5,7 @@ Mirror of ``tool_capability`` but for image input: given a model's parsed
 ``MLX_Engine.model_supports_vision``; the llama.cpp engines key off the presence
 of an ``mmproj-*.gguf`` projector instead (see ``BaseLlamaCppEngine``).
 """
+
 from __future__ import annotations
 
 # Config fields a multimodal checkpoint carries. ``vision_config`` is the

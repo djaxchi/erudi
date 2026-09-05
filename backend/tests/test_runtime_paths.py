@@ -6,6 +6,7 @@ every branch on a throwaway HOME: the module-level singleton contract, the
 dev layout, the per-OS prod directory selection, the packaged-payload copy
 semantics, and the macOS symlink swap.
 """
+
 from __future__ import annotations
 
 import os
@@ -33,9 +34,9 @@ def _isolated_module_state(monkeypatch, tmp_path):
 # UNIT - singleton contract
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestSingletonContract:
-
     def test_get_before_init_raises(self):
         with pytest.raises(RuntimeError, match="not initialized"):
             rp.get_runtime_paths()
@@ -88,9 +89,9 @@ class TestSingletonContract:
 # UNIT - dev layout
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestDevPaths:
-
     def test_replaces_stale_data_symlink_with_real_dir(self, tmp_path):
         root = tmp_path / "backend"
         root.mkdir()
@@ -109,9 +110,9 @@ class TestDevPaths:
 # UNIT - prod directory selection per OS
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestDetermineProdDirectories:
-
     def test_darwin_layout(self, monkeypatch, tmp_path):
         monkeypatch.setattr(rp.platform, "system", lambda: "Darwin")
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
@@ -160,9 +161,9 @@ class TestDetermineProdDirectories:
 # UNIT - packaged payload copy
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestCopyPackagedPayload:
-
     def test_missing_source_is_noop(self, tmp_path):
         dest = tmp_path / "dest"
         rp._copy_packaged_payload(tmp_path / "missing", dest)
@@ -205,9 +206,9 @@ class TestCopyPackagedPayload:
 # UNIT - macOS symlink swap
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestEnsureMacosSymlink:
-
     def test_missing_packaged_path_is_noop(self, tmp_path):
         target = tmp_path / "writable"
         target.mkdir()
@@ -262,6 +263,7 @@ class TestEnsureMacosSymlink:
 # =====================================================================
 # UNIT - explicit instance root (ERUDI_DATA_ROOT)
 # =====================================================================
+
 
 @pytest.mark.unit
 class TestDataRootOverride:
@@ -322,9 +324,9 @@ class TestDataRootOverride:
 # UNIT - full prod path assembly
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestProdMode:
-
     def _init_prod(self, monkeypatch, tmp_path, system: str):
         monkeypatch.setattr(rp.platform, "system", lambda: system)
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))

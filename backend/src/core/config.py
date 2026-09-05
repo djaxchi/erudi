@@ -183,9 +183,10 @@ def _call_with_429_retry(fn, *args, _max_retries: int = 5, _max_backoff: float =
             if status == 429 and attempt < _max_retries:
                 delay = _retry_after_seconds(err)
                 if delay is None:
-                    delay = 2 ** attempt
+                    delay = 2**attempt
                 delay = min(delay, _max_backoff)
                 from src.core.logging import logger
+
                 logger.warning(
                     f"HF rate-limited (429); backing off {delay:.0f}s "
                     f"(attempt {attempt + 1}/{_max_retries})"
@@ -210,7 +211,8 @@ class _RetryingHfApi(HfApi):
         _super_list_models = super().list_models
         return _call_with_429_retry(
             lambda: list(_super_list_models(*args, **kwargs)),
-            _max_retries=_max_retries, _max_backoff=_max_backoff,
+            _max_retries=_max_retries,
+            _max_backoff=_max_backoff,
         )
 
     def model_info(self, *args, **kwargs):

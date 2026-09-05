@@ -1,6 +1,7 @@
 """Build-time catalog snapshot (#112): serialize/load round-trip + first-boot
 loading. The snapshot is the instant, zero-HF first-boot catalog; offline JSON is
 the fallback. Offline unit tests — no network, no real DB."""
+
 import json
 import types
 from unittest.mock import MagicMock
@@ -14,8 +15,13 @@ from src.database import seed as seed_mod
 from src.database.seed import Model_Seeder
 from src.entities.Llm import Llm
 
-_HINTS = {"base_repo": "Qwen/Qwen3-8B", "generation_config": {"temperature": 0.6, "top_k": 20},
-          "supports_thinking": True, "context_length": 40960, "captured_at": "2026-08-28"}
+_HINTS = {
+    "base_repo": "Qwen/Qwen3-8B",
+    "generation_config": {"temperature": 0.6, "top_k": 20},
+    "supports_thinking": True,
+    "context_length": 40960,
+    "captured_at": "2026-08-28",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -26,20 +32,44 @@ def _no_capture_cache():
 
 
 def test_llm_dict_roundtrip():
-    llm = Llm(local=0, name="Qwen3 8B", link="lmstudio/Qwen3-8B-MLX-4bit", type="qwen",
-              quantized=True, model_metadata="meta", param_size=8.0, supports_tools=None,
-              is_base=True, conversational=True, category="general", generation_hints=_HINTS,
-              artifact_size_bytes=4_620_000_000)
+    llm = Llm(
+        local=0,
+        name="Qwen3 8B",
+        link="lmstudio/Qwen3-8B-MLX-4bit",
+        type="qwen",
+        quantized=True,
+        model_metadata="meta",
+        param_size=8.0,
+        supports_tools=None,
+        is_base=True,
+        conversational=True,
+        category="general",
+        generation_hints=_HINTS,
+        artifact_size_bytes=4_620_000_000,
+    )
     d = snap.llm_to_dict(llm)
     assert d == {
-        "name": "Qwen3 8B", "link": "lmstudio/Qwen3-8B-MLX-4bit", "type": "qwen",
-        "quantized": True, "model_metadata": "meta", "param_size": 8.0, "supports_tools": None,
-        "is_base": True, "conversational": True, "category": "general",
-        "generation_hints": _HINTS, "artifact_size_bytes": 4_620_000_000,
+        "name": "Qwen3 8B",
+        "link": "lmstudio/Qwen3-8B-MLX-4bit",
+        "type": "qwen",
+        "quantized": True,
+        "model_metadata": "meta",
+        "param_size": 8.0,
+        "supports_tools": None,
+        "is_base": True,
+        "conversational": True,
+        "category": "general",
+        "generation_hints": _HINTS,
+        "artifact_size_bytes": 4_620_000_000,
     }
     back = snap.dict_to_llm(d)
     assert (back.local, back.name, back.link, back.type, back.param_size) == (
-        0, "Qwen3 8B", "lmstudio/Qwen3-8B-MLX-4bit", "qwen", 8.0)
+        0,
+        "Qwen3 8B",
+        "lmstudio/Qwen3-8B-MLX-4bit",
+        "qwen",
+        8.0,
+    )
     assert back.is_base is True
     assert back.category == "general"
     assert back.generation_hints == _HINTS
@@ -48,18 +78,26 @@ def test_llm_dict_roundtrip():
 
 def test_dict_to_llm_tolerates_absent_artifact_size_bytes():
     # The bundled snapshots predate the column: absent key or null = size unknown.
-    assert snap.dict_to_llm({"name": "X", "link": "y/z", "type": "qwen"}).artifact_size_bytes is None
-    assert snap.dict_to_llm(
-        {"name": "X", "link": "y/z", "type": "qwen", "artifact_size_bytes": None}
-    ).artifact_size_bytes is None
+    assert (
+        snap.dict_to_llm({"name": "X", "link": "y/z", "type": "qwen"}).artifact_size_bytes is None
+    )
+    assert (
+        snap.dict_to_llm(
+            {"name": "X", "link": "y/z", "type": "qwen", "artifact_size_bytes": None}
+        ).artifact_size_bytes
+        is None
+    )
 
 
 def test_dict_to_llm_tolerates_absent_generation_hints():
     # Pre-#388 snapshots carry no hints: None = "no hints" = the fallback sampling.
     assert snap.dict_to_llm({"name": "X", "link": "y/z", "type": "qwen"}).generation_hints is None
-    assert snap.dict_to_llm(
-        {"name": "X", "link": "y/z", "type": "qwen", "generation_hints": None}
-    ).generation_hints is None
+    assert (
+        snap.dict_to_llm(
+            {"name": "X", "link": "y/z", "type": "qwen", "generation_hints": None}
+        ).generation_hints
+        is None
+    )
 
 
 def test_dict_to_llm_defaults_is_base_false_when_missing():
@@ -74,9 +112,10 @@ def test_dict_to_llm_keeps_unclassified_category_none():
     the boot reconcile keep the existing row's classification. Plain inserts still
     land on the Llm column default ("general")."""
     assert snap.dict_to_llm({"name": "X", "link": "y/z", "type": "qwen"}).category is None
-    assert snap.dict_to_llm(
-        {"name": "X", "link": "y/z", "type": "qwen", "category": None}
-    ).category is None
+    assert (
+        snap.dict_to_llm({"name": "X", "link": "y/z", "type": "qwen", "category": None}).category
+        is None
+    )
 
 
 def test_build_path_emits_classified_snapshot_entries(monkeypatch):
@@ -105,9 +144,9 @@ def test_build_path_emits_classified_snapshot_entries(monkeypatch):
 
     api = MagicMock()
     api.list_models.side_effect = lambda **kw: (
-        [types.SimpleNamespace(id="Qwen/Qwen3-Coder-8B", downloads=100000,
-                               tags=["conversational"])]
-        if kw.get("pipeline_tag") == "text-generation" else []
+        [types.SimpleNamespace(id="Qwen/Qwen3-Coder-8B", downloads=100000, tags=["conversational"])]
+        if kw.get("pipeline_tag") == "text-generation"
+        else []
     )
     api.model_info.return_value = object()
     seeder = Model_Seeder(db=None, hf_api=api)
@@ -118,13 +157,14 @@ def test_build_path_emits_classified_snapshot_entries(monkeypatch):
     assert base_entry["category"] == "code"
 
     # Derived path: _create_derived_llm classifies from the community slug/tags.
-    model_info = types.SimpleNamespace(id="community/foo-r1-GGUF", tags=[],
-                                       pipeline_tag="text-generation")
+    model_info = types.SimpleNamespace(
+        id="community/foo-r1-GGUF", tags=[], pipeline_tag="text-generation"
+    )
     search_config = types.SimpleNamespace(model_type="x", default_param_size=7.0)
     derived_entry = snap.llm_to_dict(seeder._create_derived_llm(model_info, search_config))
     assert derived_entry["category"] == "reasoning"
 
-    assert calls["n"] >= 2                        # the classifier was actually consulted
+    assert calls["n"] >= 2  # the classifier was actually consulted
 
 
 def _seeder_with_capture_spy(monkeypatch):
@@ -161,8 +201,7 @@ def test_base_creators_capture_hints_from_the_base_repo_with_the_quant_as_second
     assert entry["generation_hints"]["base_repo"] == "Qwen/Qwen3-8B"
     assert entry["generation_hints"]["generation_config"] == {"temperature": 0.6, "top_k": 20}
 
-    fallback = snap.llm_to_dict(
-        seeder._create_base_llm_fallback(cfg, "lmstudio/Qwen3-8B-MLX-4bit"))
+    fallback = snap.llm_to_dict(seeder._create_base_llm_fallback(cfg, "lmstudio/Qwen3-8B-MLX-4bit"))
     assert fallback["generation_hints"]["base_repo"] == "Qwen/Qwen3-8B"
     assert captured == [("Qwen/Qwen3-8B", "lmstudio/Qwen3-8B-MLX-4bit")] * 2
 
@@ -172,17 +211,22 @@ def test_derived_creator_captures_from_the_base_model_tag_else_itself(monkeypatc
     search_config = types.SimpleNamespace(model_type="qwen", default_param_size=7.0)
 
     tagged = types.SimpleNamespace(
-        id="mlx-community/Qwen3-8B-4bit", pipeline_tag="text-generation",
-        tags=["mlx", "base_model:quantized:Qwen/Qwen3-8B"])
+        id="mlx-community/Qwen3-8B-4bit",
+        pipeline_tag="text-generation",
+        tags=["mlx", "base_model:quantized:Qwen/Qwen3-8B"],
+    )
     entry = snap.llm_to_dict(seeder._create_derived_llm(tagged, search_config))
     assert entry["generation_hints"]["base_repo"] == "Qwen/Qwen3-8B"
 
-    untagged = types.SimpleNamespace(id="community/foo-GGUF", pipeline_tag="text-generation",
-                                     tags=[])
+    untagged = types.SimpleNamespace(
+        id="community/foo-GGUF", pipeline_tag="text-generation", tags=[]
+    )
     entry = snap.llm_to_dict(seeder._create_derived_llm(untagged, search_config))
     assert entry["generation_hints"]["base_repo"] == "community/foo-GGUF"
-    assert captured == [("Qwen/Qwen3-8B", "mlx-community/Qwen3-8B-4bit"),
-                        ("community/foo-GGUF", "community/foo-GGUF")]
+    assert captured == [
+        ("Qwen/Qwen3-8B", "mlx-community/Qwen3-8B-4bit"),
+        ("community/foo-GGUF", "community/foo-GGUF"),
+    ]
 
 
 def test_capture_failure_leaves_hints_none(monkeypatch):
@@ -198,8 +242,10 @@ def test_capture_failure_leaves_hints_none(monkeypatch):
 # downloaded), so the catalog carries the bytes the downloader would fetch.
 # ---------------------------------------------------------------------------
 
+
 class _ApiSize:
     """What get_disk_size_after_quant returns on an API hit."""
+
     size_bytes = 3_090_000_000
 
     def to_string(self):
@@ -235,15 +281,18 @@ def test_base_creators_record_the_real_artifact_size_of_the_resolved_quant(monke
     same selection the downloader applies. Zero extra requests: this is the
     repo_info(files_metadata=True) call the Size line already paid for."""
     seeder, sized, api = _seeder_with_size_spy(monkeypatch, _ApiSize())
-    cfg = seed_mod.Model_Config(name="Qwen2.5-VL-3B", link="Qwen/Qwen2.5-VL-3B-Instruct",
-                                model_type="qwen")
+    cfg = seed_mod.Model_Config(
+        name="Qwen2.5-VL-3B", link="Qwen/Qwen2.5-VL-3B-Instruct", model_type="qwen"
+    )
 
     entry = snap.llm_to_dict(
-        seeder._create_base_llm(cfg, "mlx-community/Qwen2.5-VL-3B-Instruct-4bit"))
+        seeder._create_base_llm(cfg, "mlx-community/Qwen2.5-VL-3B-Instruct-4bit")
+    )
     assert entry["artifact_size_bytes"] == 3_090_000_000
 
     fallback = snap.llm_to_dict(
-        seeder._create_base_llm_fallback(cfg, "mlx-community/Qwen2.5-VL-3B-Instruct-4bit"))
+        seeder._create_base_llm_fallback(cfg, "mlx-community/Qwen2.5-VL-3B-Instruct-4bit")
+    )
     assert fallback["artifact_size_bytes"] == 3_090_000_000
     assert sized == [("mlx-community/Qwen2.5-VL-3B-Instruct-4bit", api)] * 2
 
@@ -253,8 +302,9 @@ def test_derived_creator_records_the_real_artifact_size_of_the_community_repo(mo
     the same one repo_info call as a base row and record the exact bytes."""
     seeder, sized, api = _seeder_with_size_spy(monkeypatch, _ApiSize())
     search_config = types.SimpleNamespace(model_type="qwen", default_param_size=7.0)
-    hit = types.SimpleNamespace(id="bartowski/Qwen3-8B-GGUF", pipeline_tag="text-generation",
-                                tags=["gguf"])
+    hit = types.SimpleNamespace(
+        id="bartowski/Qwen3-8B-GGUF", pipeline_tag="text-generation", tags=["gguf"]
+    )
 
     entry = snap.llm_to_dict(seeder._create_derived_llm(hit, search_config))
     assert entry["artifact_size_bytes"] == 3_090_000_000
@@ -270,8 +320,10 @@ def test_estimated_size_leaves_artifact_size_unknown(monkeypatch):
     assert snap.llm_to_dict(seeder._create_base_llm(cfg, "q/X-GGUF"))["artifact_size_bytes"] is None
     hit = types.SimpleNamespace(id="community/foo-GGUF", pipeline_tag="text-generation", tags=[])
     search_config = types.SimpleNamespace(model_type="x", default_param_size=7.0)
-    assert snap.llm_to_dict(
-        seeder._create_derived_llm(hit, search_config))["artifact_size_bytes"] is None
+    assert (
+        snap.llm_to_dict(seeder._create_derived_llm(hit, search_config))["artifact_size_bytes"]
+        is None
+    )
 
 
 def test_load_missing_snapshot_returns_empty(tmp_path, monkeypatch):
@@ -290,10 +342,16 @@ def test_load_existing_snapshot(tmp_path, monkeypatch):
 def test_seed_from_snapshot_inserts_local0_rows(monkeypatch):
     class _Eng:
         FORMAT_TAG = "mlx"
+
     monkeypatch.setattr(config, "LLM_Engine", _Eng)
-    monkeypatch.setattr(snap, "load_catalog_snapshot",
-                        lambda tag: [{"name": "A", "link": "a/A", "type": "qwen"},
-                                     {"name": "B", "link": "b/B", "type": "llama"}])
+    monkeypatch.setattr(
+        snap,
+        "load_catalog_snapshot",
+        lambda tag: [
+            {"name": "A", "link": "a/A", "type": "qwen"},
+            {"name": "B", "link": "b/B", "type": "llama"},
+        ],
+    )
     db = MagicMock()
     n = Model_Seeder(db=db, hf_api=None).seed_from_snapshot()
     assert n == 2
@@ -305,6 +363,7 @@ def test_seed_from_snapshot_inserts_local0_rows(monkeypatch):
 def test_seed_from_snapshot_no_tag_returns_zero(monkeypatch):
     class _Eng:
         FORMAT_TAG = None
+
     monkeypatch.setattr(config, "LLM_Engine", _Eng)
     assert Model_Seeder(db=MagicMock(), hf_api=None).seed_from_snapshot() == 0
 
@@ -317,9 +376,10 @@ def test_seed_initial_catalog_prefers_snapshot(monkeypatch):
     def _offline():
         tried_offline["v"] = True
         return 7
+
     monkeypatch.setattr(seeder, "seed_base_models_offline", _offline)
     assert seeder.seed_initial_catalog() == 42
-    assert tried_offline["v"] is False           # snapshot won → offline never tried
+    assert tried_offline["v"] is False  # snapshot won → offline never tried
 
 
 def test_seed_initial_catalog_falls_back_to_offline(monkeypatch):
@@ -333,6 +393,7 @@ def test_seed_initial_catalog_never_raises_when_both_fail(monkeypatch):
     # Boot must not crash if neither a snapshot nor the fallback JSON is available.
     def _boom():
         raise RuntimeError("missing")
+
     seeder = Model_Seeder(db=MagicMock(), hf_api=None)
     monkeypatch.setattr(seeder, "seed_from_snapshot", _boom)
     monkeypatch.setattr(seeder, "seed_base_models_offline", _boom)

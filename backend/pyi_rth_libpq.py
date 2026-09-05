@@ -22,8 +22,8 @@ if getattr(sys, "frozen", False):
     base = sys._MEIPASS  # the unpacked _internal dir
     patterns = [
         os.path.join(base, "psycopg_binary", ".dylibs", "libpq*.dylib"),  # macOS
-        os.path.join(base, "psycopg_binary.libs", "libpq*.so*"),          # Linux
-        os.path.join(base, "psycopg_binary", "libpq*.so*"),               # Linux (alt)
+        os.path.join(base, "psycopg_binary.libs", "libpq*.so*"),  # Linux
+        os.path.join(base, "psycopg_binary", "libpq*.so*"),  # Linux (alt)
     ]
     mode = getattr(ctypes, "RTLD_GLOBAL", 0)
     for pattern in patterns:

@@ -14,6 +14,7 @@ them end to end:
 
 No network, no subprocess spawn: every artifact is a handful of bytes on disk.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -55,8 +56,8 @@ def _write_snapshot(tmp_path, *, config_json=True, tokenizer=True, weights=True)
 # UNIT -- pure GGUF file validator
 # =====================================================================
 
-class TestValidateGgufFile:
 
+class TestValidateGgufFile:
     def test_valid_magic_passes(self, tmp_path):
         f = tmp_path / "ok.gguf"
         f.write_bytes(_VALID_GGUF)
@@ -90,8 +91,8 @@ class TestValidateGgufFile:
 # UNIT -- pure HF/MLX snapshot validator
 # =====================================================================
 
-class TestValidateHfSnapshot:
 
+class TestValidateHfSnapshot:
     def test_complete_snapshot_passes(self, tmp_path):
         integrity.validate_hf_snapshot(_write_snapshot(tmp_path))
 
@@ -127,8 +128,8 @@ class TestValidateHfSnapshot:
 # UNIT -- incomplete-artifact message policy
 # =====================================================================
 
-class TestIncompleteMessage:
 
+class TestIncompleteMessage:
     def test_message_is_ascii_and_actionable(self):
         msg = integrity.incomplete_message("missing tokenizer")
         assert msg.isascii()
@@ -144,8 +145,8 @@ class TestIncompleteMessage:
 # UNIT -- CPU_Engine.validate_local_artifact (GGUF gate, CI CPU path)
 # =====================================================================
 
-class TestCpuEngineValidateArtifact:
 
+class TestCpuEngineValidateArtifact:
     def _engine(self):
         from src.engines.cpu_engine import CPU_Engine
 
@@ -192,8 +193,8 @@ class TestCpuEngineValidateArtifact:
 # UNIT -- download-completion gate cleans up and never lets local=1
 # =====================================================================
 
-class TestDownloadCompletionGate:
 
+class TestDownloadCompletionGate:
     def _use_cpu_engine(self, monkeypatch):
         from src.engines.cpu_engine import CPU_Engine
 
@@ -247,6 +248,7 @@ class TestDownloadCompletionGate:
 # UNIT -- download completion rewrites the displayed size from disk (#220)
 # =====================================================================
 
+
 class TestDownloadCompletionSize:
     """After a (fake) download passes the #88 gate, the model's displayed size is
     the REAL on-disk footprint, not the catalog-time guess. Drives the actual
@@ -271,12 +273,16 @@ class TestDownloadCompletionSize:
         temp_dir.mkdir()
 
         llm = Llm(
-            name="Model", local=2, type="qwen", param_size=7.0,
+            name="Model",
+            local=2,
+            type="qwen",
+            param_size=7.0,
             link=str(final_dir),
             model_metadata="Model ID: org/model\nSize: ~40.2 GB\nParameters: 7B",
         )
         job = DownloadJobModel(
-            remote_model_id="org/model", local_model_id=1,
+            remote_model_id="org/model",
+            local_model_id=1,
             remote_model_link="org/model",
             temp_local_model_link=str(temp_dir),
             final_local_model_link=str(final_dir),
@@ -312,9 +318,9 @@ class TestDownloadCompletionSize:
         # Finalized ready, with the catalog guess replaced by the measured size.
         assert llm.local == 1
         assert job.status == "completed"
-        assert "40.2" not in llm.model_metadata          # catalog guess gone
-        assert "Disk Size GB:" in llm.model_metadata      # numeric field added
-        assert "Parameters: 7B" in llm.model_metadata     # other lines preserved
+        assert "40.2" not in llm.model_metadata  # catalog guess gone
+        assert "Disk Size GB:" in llm.model_metadata  # numeric field added
+        assert "Parameters: 7B" in llm.model_metadata  # other lines preserved
         measured = measure_dir_size_gb(final_dir)
         assert f"Disk Size GB: {measured:.2f}" in llm.model_metadata
 
@@ -348,12 +354,16 @@ class TestDownloadCompletionSize:
         temp_dir.mkdir()
 
         llm = Llm(
-            name="Model", local=2, type="qwen", param_size=7.0,
+            name="Model",
+            local=2,
+            type="qwen",
+            param_size=7.0,
             link=str(final_dir),
             model_metadata="Model ID: org/model\nSize: ~40.2 GB\nParameters: 7B",
         )
         job = DownloadJobModel(
-            remote_model_id="org/model", local_model_id=1,
+            remote_model_id="org/model",
+            local_model_id=1,
             remote_model_link="org/model",
             temp_local_model_link=str(temp_dir),
             final_local_model_link=str(final_dir),
@@ -407,12 +417,14 @@ class TestDownloadCompletionSize:
 # UNIT -- runner surfaces the specific engine load error to the user
 # =====================================================================
 
-class TestConstructionErrorMessage:
 
+class TestConstructionErrorMessage:
     def test_engine_exception_carries_specific_message(self):
         from src.agents.runner import ERROR_SENTINEL, _construction_error_message
 
-        exc = EngineException(message=integrity.incomplete_message("the GGUF weights file is corrupted"))
+        exc = EngineException(
+            message=integrity.incomplete_message("the GGUF weights file is corrupted")
+        )
         out = _construction_error_message(exc)
 
         assert out.startswith(ERROR_SENTINEL)

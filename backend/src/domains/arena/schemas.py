@@ -14,6 +14,7 @@ Example:
         custom_prompt="Use simple language"
     )
 """
+
 from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional
 
@@ -43,11 +44,8 @@ class ArenaQueryPayload(BaseModel):
         ...     custom_prompt="Use analogies"
         ... )
     """
-    
-    question: str = Field(
-        ...,
-        description="The question to ask the model"
-    )
+
+    question: str = Field(..., description="The question to ask the model")
     images: Optional[List[str]] = Field(
         default=None,
         description="Optional base64 data-URL images attached to the question (vision models)",
@@ -59,26 +57,25 @@ class ArenaQueryPayload(BaseModel):
         default=None,
         ge=0.0,
         le=2.0,
-        description="Sampling temperature (0.0-2.0); None resolves the model's default (#388)"
+        description="Sampling temperature (0.0-2.0); None resolves the model's default (#388)",
     )
     top_p: Optional[float] = Field(
         default=None,
         ge=0.0,
         le=1.0,
-        description="Nucleus sampling threshold (0.0-1.0); None resolves the model's default (#388)"
+        description="Nucleus sampling threshold (0.0-1.0); None resolves the model's default (#388)",
     )
     max_new_tokens: Optional[int] = Field(
         default=None,
         ge=1,
         le=32768,
-        description="Maximum number of tokens to generate; None resolves the model's default (#388)"
+        description="Maximum number of tokens to generate; None resolves the model's default (#388)",
     )
     custom_prompt: Optional[str] = Field(
-        default=None,
-        description="Optional additional instructions for the model"
+        default=None, description="Optional additional instructions for the model"
     )
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_question_or_images(self):
         """Ensure the turn carries text or at least one image.
 
@@ -103,6 +100,6 @@ class ArenaQueryPayload(BaseModel):
                 "temperature": 0.7,
                 "top_p": 0.9,
                 "max_new_tokens": 512,
-                "custom_prompt": "Please answer concisely."
+                "custom_prompt": "Please answer concisely.",
             }
         }

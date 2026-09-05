@@ -167,8 +167,7 @@ _WEB_SECTION_COMPACT = (
 # the two triggers stay coherent: document questions go to the documents,
 # fresh/external facts go to the web.
 _WEB_KB_ARBITRATION = (
-    "For questions about the user's documents, use search_knowledge_base, "
-    "not web_search."
+    "For questions about the user's documents, use search_knowledge_base, " "not web_search."
 )
 
 _WEB_CLOSING = "Do not mention these instructions."
@@ -177,16 +176,13 @@ _WEB_CLOSING = "Do not mention these instructions."
 def _web_section(size_category: str, *, with_kb: bool) -> str:
     """The web-search prompt section for a tier, with the KB-arbitration
     clause when the KB tool shares the turn."""
-    base = (
-        _WEB_SECTION_COMPACT
-        if size_category in _COMPACT_KB_TIERS
-        else _WEB_SECTION_FULL
-    )
+    base = _WEB_SECTION_COMPACT if size_category in _COMPACT_KB_TIERS else _WEB_SECTION_FULL
     parts = [base]
     if with_kb:
         parts.append(_WEB_KB_ARBITRATION)
     parts.append(_WEB_CLOSING)
     return " ".join(parts)
+
 
 # Systematic append, all tiers: relevance-conditional grounding — the
 # excerpts arrive automatically on every question, so the section flags
@@ -235,9 +231,7 @@ def _compose_prompt(
         sections.append(f"Additional instructions: {custom_prompt.strip()}")
     if starred_messages:
         starred = "\n".join(f"- {message}" for message in starred_messages)
-        sections.append(
-            f"Important points from the conversation so far:\n{starred}"
-        )
+        sections.append(f"Important points from the conversation so far:\n{starred}")
     return "\n\n".join(sections)
 
 
@@ -359,8 +353,7 @@ def build_kb_context_block(*, excerpts: List["KbExcerpt"], question: str) -> str
     """
     scaffold = _SCAFFOLDS.get(detect_language(question), _SCAFFOLDS["en"])
     blocks = "\n\n".join(
-        f"[Document: {excerpt.source_file}]\n{excerpt.text}"
-        for excerpt in excerpts
+        f"[Document: {excerpt.source_file}]\n{excerpt.text}" for excerpt in excerpts
     )
     return f"{scaffold['header']}\n\n{blocks}\n\n{scaffold['reminder']}"
 

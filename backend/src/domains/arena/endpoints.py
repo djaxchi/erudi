@@ -47,6 +47,7 @@ Example:
     }
     Response: StreamingResponse(text/plain) → "Imagine two magic coins..."
 """
+
 from fastapi import Depends, APIRouter
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -73,9 +74,7 @@ def get_arena_service(db: Session = Depends(get_db)) -> ArenaService:
 
 @router.post("/{llm_id}/query")
 async def query_arena(
-    llm_id: int,
-    payload: ArenaQueryPayload,
-    service: ArenaService = Depends(get_arena_service)
+    llm_id: int, payload: ArenaQueryPayload, service: ArenaService = Depends(get_arena_service)
 ):
     """Stream stateless LLM response without conversation history.
 
@@ -106,11 +105,11 @@ async def query_arena(
         Response: StreamingResponse → "Imagine you have a tiny ball..."
     """
     logger.info(f"Arena query request for LLM {llm_id}")
-    
+
     # Validate LLM exists BEFORE starting StreamingResponse
     # (StreamingResponse returns 200 immediately, exceptions inside async generator are lost)
     service._get_llm(llm_id)
-    
+
     return StreamingResponse(
         service.query_llm_stream(llm_id, payload),
         media_type="text/plain",

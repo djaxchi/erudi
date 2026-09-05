@@ -13,6 +13,7 @@ Architecture:
     Note: PostgreSQL sequences are non-transactional — ids keep growing
     across tests. Never assert on absolute primary-key values.
 """
+
 # Force the multiprocessing start method to "spawn" BEFORE any heavy import
 # below loads modules that would interact with multiprocessing internals.
 # This mirrors `backend/run.py:force_mp_spawn()` and is required because:
@@ -60,6 +61,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from src.database.core import Base
+
 # Side-effect import: pulls the whole application tree so every entity is
 # registered on Base.metadata BEFORE the session-scoped create_all runs.
 from src.main import app  # noqa: F401
@@ -69,6 +71,7 @@ from tests._helpers import is_mlx_platform
 
 
 # ============ Database Fixtures ============
+
 
 @pytest.fixture(scope="session")
 def pg_test_cluster(tmp_path_factory):
@@ -114,35 +117,31 @@ def test_db_engine(_session_db_engine):
 @pytest.fixture(scope="function")
 def test_db_session(test_db_engine) -> Generator[Session, None, None]:
     """Create test database session with savepoint-based nested transactions.
-    
+
     Uses SAVEPOINT to allow code under test to call commit() without affecting
     the outer test transaction. All changes are rolled back at test completion.
-    
+
     Args:
         test_db_engine: SQLAlchemy engine fixture.
-        
+
     Yields:
         Database session that supports nested transactions via savepoints.
     """
     connection = test_db_engine.connect()
     transaction = connection.begin()  # Outer transaction
-    TestingSessionLocal = sessionmaker(
-        autocommit=False,
-        autoflush=False,
-        bind=connection
-    )
+    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=connection)
     session = TestingSessionLocal(bind=connection)
-    
+
     # Begin nested transaction (savepoint)
     nested = connection.begin_nested()
-    
+
     @event.listens_for(session, "after_transaction_end")
     def restart_savepoint(session, transaction):
         """Automatically restart savepoint after each commit."""
         if transaction.nested and not transaction._parent.nested:
             # Re-establish savepoint after inner transaction ends
             session.begin_nested()
-    
+
     try:
         yield session
     finally:
@@ -154,13 +153,13 @@ def test_db_session(test_db_engine) -> Generator[Session, None, None]:
 @pytest.fixture(scope="function")
 def client(test_db_session):
     """Create FastAPI test client with dependency injection.
-    
+
     Overrides get_db dependency to use test database session.
     Creates app without lifespan to avoid production DB interactions.
-    
+
     Args:
         test_db_session: Test database session fixture.
-        
+
     Yields:
         FastAPI TestClient instance.
     """
@@ -168,28 +167,29 @@ def client(test_db_session):
     from src.core.api import register_routers, add_exception_handlers, add_middleware
     from src.engines.base_engine import BaseEngine
     from src.core import config
-    
+
     # Create app WITHOUT lifespan
     test_app = FastAPI(title="Erudi Test", version="0.1.0")
     add_middleware(app=test_app)
     add_exception_handlers(app=test_app)
     register_routers(app=test_app)
-    
+
     # Override get_db to use test session
     def override_get_db():
         try:
             yield test_db_session
         finally:
             pass
-    
+
     test_app.dependency_overrides[get_db] = override_get_db
-    
+
     # Initialize engine for tests
     if not config.LLM_Engine:
         config.LLM_Engine = BaseEngine.get_engine()
 
     # Provide an in-memory checkpointer (production lifespan is bypassed here).
     from langgraph.checkpoint.memory import InMemorySaver
+
     test_app.state.checkpointer = InMemorySaver()
 
     # base_url pins the Host header to a local name: TrustedHostMiddleware
@@ -198,24 +198,25 @@ def client(test_db_session):
         test_app, raise_server_exceptions=False, base_url="http://127.0.0.1"
     ) as test_client:
         yield test_client
-    
+
     test_app.dependency_overrides.clear()
 
 
 # ============ Mock Data Fixtures ============
 
+
 @pytest.fixture
 def mock_llm(test_db_session):
     """Create mock base LLM for testing KB attachment.
-    
+
     Args:
         test_db_session: Test database session.
-        
+
     Returns:
         Llm entity with local=1, ready for KB attachment.
     """
     from src.entities.Llm import Llm
-    
+
     llm = Llm(
         name="Test Base Model",
         description="Base model for testing",
@@ -224,7 +225,7 @@ def mock_llm(test_db_session):
         type="test",
         is_attached_to_kb=False,  # Boolean
         param_size=7.0,
-        quantized=True  # Boolean
+        quantized=True,  # Boolean
     )
     test_db_session.add(llm)
     test_db_session.commit()
@@ -269,7 +270,7 @@ def mock_llm_with_kb(test_db_session):
         is_attached_to_kb=True,  # Boolean
         kb_id=kb.id,
         param_size=7.0,
-        quantized=True  # Boolean
+        quantized=True,  # Boolean
     )
     test_db_session.add(llm)
     test_db_session.commit()

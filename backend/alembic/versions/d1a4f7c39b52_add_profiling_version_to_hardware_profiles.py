@@ -15,24 +15,25 @@ Revises: a7c5e2d9f4b1
 Create Date: 2026-08-26
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = 'd1a4f7c39b52'
-down_revision: Union[str, Sequence[str], None] = 'a7c5e2d9f4b1'
+revision: str = "d1a4f7c39b52"
+down_revision: Union[str, Sequence[str], None] = "a7c5e2d9f4b1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
     op.add_column(
-        'hardware_profiles',
-        sa.Column('profiling_version', sa.Integer(), nullable=True),
+        "hardware_profiles",
+        sa.Column("profiling_version", sa.Integer(), nullable=True),
     )
 
 
 def downgrade() -> None:
-    op.drop_column('hardware_profiles', 'profiling_version')
+    op.drop_column("hardware_profiles", "profiling_version")

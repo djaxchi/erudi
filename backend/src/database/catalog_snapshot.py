@@ -15,6 +15,7 @@ CLI (run at build time, once per engine format):
   python -m src.database.catalog_snapshot              # active engine (mlx on mac)
   ERUDI_FORCE_CPU=1 python -m src.database.catalog_snapshot   # gguf
 """
+
 import json
 from pathlib import Path
 from typing import Any, Dict, List
@@ -25,8 +26,18 @@ from src.entities.Llm import Llm
 
 # Fields persisted per entry. ``local`` is always 0 (a remote suggestion).
 _SNAPSHOT_FIELDS = (
-    "name", "link", "type", "quantized", "model_metadata", "param_size", "supports_tools",
-    "is_base", "conversational", "category", "generation_hints", "artifact_size_bytes",
+    "name",
+    "link",
+    "type",
+    "quantized",
+    "model_metadata",
+    "param_size",
+    "supports_tools",
+    "is_base",
+    "conversational",
+    "category",
+    "generation_hints",
+    "artifact_size_bytes",
 )
 
 
@@ -108,13 +119,16 @@ def generate_snapshot() -> Path:
     path = snapshot_path(tag)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(entries, f, ensure_ascii=False, indent=1)
-    logger.info(f"Wrote {len(entries)} catalog entries ({len(base)} base + {len(derived)} derived) to {path}")
+    logger.info(
+        f"Wrote {len(entries)} catalog entries ({len(base)} base + {len(derived)} derived) to {path}"
+    )
     return path
 
 
 def main() -> None:
     if getattr(config, "LLM_Engine", None) is None:
         from src.engines.base_engine import BaseEngine
+
         config.LLM_Engine = BaseEngine.get_engine()
     path = generate_snapshot()
     print(f"snapshot: {path}")

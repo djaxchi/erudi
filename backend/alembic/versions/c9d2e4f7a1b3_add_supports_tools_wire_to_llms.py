@@ -13,6 +13,7 @@ swallowed, #295). Detected at download finalization and backfilled post-ready
 for models downloaded before this change. Nullable: existing rows backfill to
 NULL (unverified); KB routing goes agentic only on an explicit True.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -20,8 +21,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'c9d2e4f7a1b3'
-down_revision: Union[str, Sequence[str], None] = 'b3f8c1e6a927'
+revision: str = "c9d2e4f7a1b3"
+down_revision: Union[str, Sequence[str], None] = "b3f8c1e6a927"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

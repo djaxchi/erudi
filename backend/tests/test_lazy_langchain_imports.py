@@ -57,7 +57,7 @@ def _boot_modules() -> list[str]:
     assert proc.returncode == 0, f"import src.main failed:\n{proc.stderr}"
     payload = [ln for ln in proc.stdout.splitlines() if ln.startswith(_MARKER)]
     assert payload, f"probe marker line missing in stdout:\n{proc.stdout}"
-    return json.loads(payload[-1][len(_MARKER):])
+    return json.loads(payload[-1][len(_MARKER) :])
 
 
 def _offenders(modules: list[str], packages: tuple[str, ...]) -> list[str]:
@@ -67,8 +67,7 @@ def _offenders(modules: list[str], packages: tuple[str, ...]) -> list[str]:
 def test_import_src_main_does_not_load_agent_langchain_stack():
     offenders = _offenders(_boot_modules(), ("langchain", "langchain_openai"))
     assert offenders == [], (
-        "boot (import src.main) must not load the agent LangChain stack; "
-        f"loaded: {offenders}"
+        "boot (import src.main) must not load the agent LangChain stack; " f"loaded: {offenders}"
     )
 
 

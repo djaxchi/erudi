@@ -6,6 +6,7 @@ helper are importable in the installed surface. ``mlx-vlm`` is a macOS-only
 pin, so the file is excluded from the Linux CI via ``mlx_only`` and also
 guarded by ``is_mlx_platform`` for non-Apple local runs.
 """
+
 import pytest
 
 from tests._helpers import is_mlx_platform

@@ -12,21 +12,22 @@ Revises: e8b4d2f6a193
 Create Date: 2026-08-28
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = 'f3b7a9c2d5e1'
-down_revision: Union[str, Sequence[str], None] = 'e8b4d2f6a193'
+revision: str = "f3b7a9c2d5e1"
+down_revision: Union[str, Sequence[str], None] = "e8b4d2f6a193"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('llms', sa.Column('generation_hints', sa.JSON(), nullable=True))
+    op.add_column("llms", sa.Column("generation_hints", sa.JSON(), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column('llms', 'generation_hints')
+    op.drop_column("llms", "generation_hints")

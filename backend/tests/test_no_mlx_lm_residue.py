@@ -5,6 +5,7 @@ and no engine module imports `mlx_lm` functionally. Comparative comments (e.g.
 "no mlx_lm.server EOS-flush drop") are intentional and allowed — this guard
 only polices real imports, the deleted runner, and the dropped sentinel.
 """
+
 import ast
 import importlib.util
 import pathlib

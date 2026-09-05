@@ -79,9 +79,7 @@ class TestTruncateForLog:
 class TestConversationEndpointLogging:
     def test_create_conversation_logs_info(self, client, mock_llm, caplog):
         with caplog.at_level(logging.INFO, logger="erudi"):
-            response = client.post(
-                "/erudi/conversations/", json={"llm_id": mock_llm.id}
-            )
+            response = client.post("/erudi/conversations/", json={"llm_id": mock_llm.id})
         assert response.status_code == 201
         conversation_id = response.json()["id"]
         messages = [r.message for r in caplog.records]
@@ -101,8 +99,7 @@ class TestConversationEndpointLogging:
         assert response.status_code == 200
         messages = [r.message for r in caplog.records]
         assert any(
-            "Conversation deleted" in m and f"id={conversation_id}" in m
-            for m in messages
+            "Conversation deleted" in m and f"id={conversation_id}" in m for m in messages
         ), f"no delete log found in: {messages}"
 
     def test_fetch_endpoints_log_debug(self, client, mock_llm, caplog):
@@ -128,9 +125,7 @@ class TestInitDatabaseSanitization:
         try:
             with caplog.at_level(logging.INFO, logger="erudi"):
                 created_engine = core.init_database(url)  # lazy: no connection
-            bound_lines = [
-                r.message for r in caplog.records if "Database bound" in r.message
-            ]
+            bound_lines = [r.message for r in caplog.records if "Database bound" in r.message]
             assert bound_lines, "init_database emitted no 'Database bound' log"
             assert "S3cretPassw0rd" not in bound_lines[0]
             assert "***" in bound_lines[0]  # SQLAlchemy masks the password
@@ -173,8 +168,7 @@ class TestChunkingLogging:
         assert chunks
         messages = [r.message for r in caplog.records]
         assert any(
-            "Document chunked" in m and f"{len(chunks)} chunks" in m
-            and "tokens/chunk" in m
+            "Document chunked" in m and f"{len(chunks)} chunks" in m and "tokens/chunk" in m
             for m in messages
         ), f"no chunking log found in: {messages}"
 
@@ -185,9 +179,7 @@ class TestChunkingLogging:
         document = ExtractedDocument(markdown="", status="pending_vision")
         with caplog.at_level(logging.INFO, logger="erudi"):
             assert chunk_document(document) == []
-        assert not [
-            r for r in caplog.records if "Document chunked" in r.message
-        ]
+        assert not [r for r in caplog.records if "Document chunked" in r.message]
 
 
 # ============ Engine generation_guard bracket ============
@@ -206,9 +198,7 @@ class TestGenerationGuardLogging:
                 pass
         messages = [r.message for r in caplog.records]
         assert any("generation_guard acquired" in m for m in messages)
-        assert any(
-            "generation_guard released" in m and "held" in m for m in messages
-        )
+        assert any("generation_guard released" in m and "held" in m for m in messages)
 
 
 # ============ KB mode decision (per-turn) ============
@@ -248,6 +238,5 @@ class TestKbModeLogging:
         with caplog.at_level(logging.INFO, logger="erudi"):
             plan_turn(llm, question="hi", retrieve=lambda: [])
         assert any(
-            "Turn mode: agentic KB" in r.message and "kb_id=7" in r.message
-            for r in caplog.records
+            "Turn mode: agentic KB" in r.message and "kb_id=7" in r.message for r in caplog.records
         )

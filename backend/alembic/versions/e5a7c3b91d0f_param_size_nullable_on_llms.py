@@ -11,6 +11,7 @@ measurable size rated as a comfortable 7B fit. Existing rows keep their current
 value (possibly a stale default); the fix only stops new discoveries from
 laundering an unknown size, and the next catalog resync re-measures remote rows.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -18,8 +19,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'e5a7c3b91d0f'
-down_revision: Union[str, Sequence[str], None] = 'd4f9a2c6e1b7'
+revision: str = "e5a7c3b91d0f"
+down_revision: Union[str, Sequence[str], None] = "d4f9a2c6e1b7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

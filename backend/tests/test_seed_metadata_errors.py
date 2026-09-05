@@ -65,12 +65,14 @@ def _seeder(monkeypatch, hf_api) -> Model_Seeder:
     monkeypatch.setattr(seed_mod, "get_disk_size_after_quant", lambda *a, **k: _Size())
     monkeypatch.setattr(seed_mod, "capture_generation_hints", lambda *a, **k: None)
     monkeypatch.setattr(
-        seed_mod, "resolve_quant",
+        seed_mod,
+        "resolve_quant",
         lambda link, tag, api: f"quanter/{link.split('/')[-1]}-GGUF",
     )
     seeder = Model_Seeder(db=None, hf_api=hf_api)
     monkeypatch.setattr(
-        seeder, "discover_instruct_models",
+        seeder,
+        "discover_instruct_models",
         lambda org, model_type: [Model_Config("Test-7B", "org/test-7b", model_type)],
     )
     return seeder
@@ -79,6 +81,7 @@ def _seeder(monkeypatch, hf_api) -> Model_Seeder:
 # =====================================================================
 # UNIT - the formatter no longer launders its own failure into a string
 # =====================================================================
+
 
 @pytest.mark.unit
 def test_formatter_propagates_instead_of_returning_an_error_string():
@@ -98,9 +101,9 @@ def test_formatter_healthy_payload_is_unchanged():
 # UNIT - base catalog: broken model skipped and logged, healthy one seeded
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestBaseCatalog:
-
     def test_broken_metadata_skips_the_model_and_logs_the_repo(self, monkeypatch, caplog):
         seeder = _seeder(
             monkeypatch,
@@ -133,6 +136,7 @@ class TestBaseCatalog:
 # UNIT - derived catalog: same contract on the community path
 # =====================================================================
 
+
 def _hit(model_id: str, cls=ModelInfo) -> ModelInfo:
     return cls(
         id=model_id,
@@ -145,7 +149,6 @@ def _hit(model_id: str, cls=ModelInfo) -> ModelInfo:
 
 @pytest.mark.unit
 class TestDerivedCatalog:
-
     def _seeder(self, monkeypatch, hits):
         monkeypatch.setattr(seed_mod.config, "LLM_Engine", CPU_Engine)
         monkeypatch.setattr(seed_mod, "get_disk_size_after_quant", lambda *a, **k: _Size())

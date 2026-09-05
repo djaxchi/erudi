@@ -59,7 +59,6 @@ class TestUndrainedPipeIsTheBug:
 
 
 class TestDrainerUnblocksTheChild:
-
     def test_child_writing_past_the_pipe_buffer_runs_to_completion(self):
         proc = _spawn_writer()
         try:
@@ -87,7 +86,6 @@ class TestDrainerUnblocksTheChild:
 
 
 class TestTailShape:
-
     def test_tail_is_capped_in_characters(self):
         proc = _spawn_writer()
         try:
@@ -128,7 +126,11 @@ class TestTailShape:
     def test_tail_is_readable_before_the_child_exits(self):
         """The crash report must not have to wait for EOF to say something."""
         proc = subprocess.Popen(
-            [sys.executable, "-c", "import sys,time;sys.stdout.write('hello\\n');sys.stdout.flush();time.sleep(30)"],
+            [
+                sys.executable,
+                "-c",
+                "import sys,time;sys.stdout.write('hello\\n');sys.stdout.flush();time.sleep(30)",
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,

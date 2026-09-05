@@ -34,15 +34,15 @@ Functions:
 Examples:
     >>> # Get actual size of MLX quantized model
     >>> from src.utils.hf_model_metadata import get_disk_size_after_quant
-    >>> 
+    >>>
     >>> size = get_disk_size_after_quant("mlx-community/Mistral-7B-v0.3-4bit")
     >>> print(size.to_string())  # "~3.2 GB"
-    >>> 
+    >>>
     >>> # Extract parameter count
     >>> from src.utils.hf_model_metadata import extract_parameter_pattern
-    >>> 
+    >>>
     >>> params = extract_parameter_pattern(
-    ...     "Qwen 2.5 7B", 
+    ...     "Qwen 2.5 7B",
     ...     "Qwen/Qwen2.5-7B-Instruct"
     ... )
     >>> print(params.to_string() if params else "Unknown")  # "7B"
@@ -61,6 +61,7 @@ Notes:
     - Size estimates based on fp16/bf16 precision assumptions
     - Comprehensive logging for debugging and monitoring
 """
+
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -74,9 +75,10 @@ from src.core.config import get_hf_api
 
 # ============ Enumerations ============
 
+
 class QuantizationType(Enum):
     """Quantization methods for neural network models.
-    
+
     Attributes:
         FP16: 16-bit floating point (full precision for most use cases).
         BF16: Brain float 16-bit (better range than FP16).
@@ -85,6 +87,7 @@ class QuantizationType(Enum):
         GGUF: GGUF format (CPU-optimized, variable precision).
         UNKNOWN: Unknown or mixed precision quantization.
     """
+
     FP16 = "fp16"
     BF16 = "bf16"
     INT8 = "8bit"
@@ -95,11 +98,12 @@ class QuantizationType(Enum):
 
 class ParameterScale(Enum):
     """Scale for parameter counts (billions or millions).
-    
+
     Attributes:
         BILLION: Parameters in billions (e.g., 7B, 13B).
         MILLION: Parameters in millions (e.g., 350M, 125M).
     """
+
     BILLION = "B"
     MILLION = "M"
 
@@ -119,10 +123,11 @@ BYTES_PER_GB = 1_000_000_000
 
 # ============ Data Structures ============
 
+
 @dataclass(frozen=True)
 class ModelSize:
     """Structured representation of model size with uncertainty.
-    
+
     Attributes:
         size_gb: Size in gigabytes (central estimate).
         min_gb: Minimum size in GB (lower bound of estimate).
@@ -142,16 +147,17 @@ class ModelSize:
         >>> estimate = ModelSize(size_gb=13.5, min_gb=13.0, max_gb=14.0, is_estimate=True, source="estimate")
         >>> print(estimate.to_string())  # "~13.5 GB"
     """
+
     size_gb: float
     min_gb: Optional[float] = None
     max_gb: Optional[float] = None
     is_estimate: bool = True
     source: str = "estimate"
     size_bytes: Optional[int] = None
-    
+
     def to_string(self) -> str:
         """Format size as human-readable string.
-        
+
         Returns:
             String like "~3.2 GB" (precise) or "~3-4 GB" (range estimate).
         """
@@ -163,7 +169,7 @@ class ModelSize:
         else:
             # Precise or single estimate
             return f"~{self.size_gb:.1f} GB"
-    
+
     def __str__(self) -> str:
         return self.to_string()
 
@@ -171,26 +177,27 @@ class ModelSize:
 @dataclass(frozen=True)
 class ParameterCount:
     """Structured representation of model parameter count.
-    
+
     Attributes:
         count: Numeric parameter count (e.g., 7.0 for 7B).
         scale: Scale of parameters (BILLION or MILLION).
         is_estimate: True if count is estimated, False if from metadata.
-    
+
     Example:
         >>> params = ParameterCount(count=7.0, scale=ParameterScale.BILLION, is_estimate=False)
         >>> print(params.to_string())  # "7B"
-        >>> 
+        >>>
         >>> small = ParameterCount(count=350, scale=ParameterScale.MILLION, is_estimate=True)
         >>> print(small.to_string())  # "350M"
     """
+
     count: float
     scale: ParameterScale
     is_estimate: bool = True
-    
+
     def to_string(self) -> str:
         """Format parameter count as human-readable string.
-        
+
         Returns:
             String like "7B", "13B", "1.5B", "350M".
         """
@@ -202,14 +209,14 @@ class ParameterCount:
         else:
             # Millions are always integers
             return f"{int(self.count)}{self.scale.value}"
-    
+
     def __str__(self) -> str:
         return self.to_string()
-    
+
     @property
     def total_billions(self) -> float:
         """Get total parameter count in billions for comparison.
-        
+
         Returns:
             Parameter count converted to billions (for sorting/comparison).
         """
@@ -235,22 +242,27 @@ SIZE_MULTIPLIERS: Dict[QuantizationType, float] = {
 
 # ============ Exception Classes ============
 
+
 class HFMetadataError(Exception):
     """Base exception for HuggingFace metadata operations."""
+
     pass
 
 
 class HFAPIError(HFMetadataError):
     """Exception raised when HuggingFace API calls fail."""
+
     pass
 
 
 class ParameterExtractionError(HFMetadataError):
     """Exception raised when parameter count cannot be extracted."""
+
     pass
 
 
 # ============ Helper Functions ============
+
 
 def humanize_model_name(link: str) -> str:
     """Turn a HuggingFace repo id into an unambiguous, readable display name.
@@ -272,38 +284,38 @@ def humanize_model_name(link: str) -> str:
         low = tok.lower()
         if low in ("it", "instruct"):
             out.append("Instruct")
-        elif re.fullmatch(r"\d+(?:\.\d+)?[bm]", low):       # 270m, 2b, 7b, 12b
+        elif re.fullmatch(r"\d+(?:\.\d+)?[bm]", low):  # 270m, 2b, 7b, 12b
             out.append(low[:-1].upper() + low[-1].upper())  # -> 270M, 2B, 12B
-        elif re.fullmatch(r"[ea]\d+b", low):                # e2b, e4b, a4b
-            out.append(low.upper())                         # -> E2B, A4B
-        elif re.fullmatch(r"v\d+(?:\.\d+)?", low):          # v0.3
+        elif re.fullmatch(r"[ea]\d+b", low):  # e2b, e4b, a4b
+            out.append(low.upper())  # -> E2B, A4B
+        elif re.fullmatch(r"v\d+(?:\.\d+)?", low):  # v0.3
             out.append(low)
-        elif re.fullmatch(r"\d{4}", low):                   # 2410, 2407 (date codes)
+        elif re.fullmatch(r"\d{4}", low):  # 2410, 2407 (date codes)
             out.append(low)
-        elif re.fullmatch(r"\d+(?:\.\d+)?", low):           # 2, 3, 3.1, 2.5
+        elif re.fullmatch(r"\d+(?:\.\d+)?", low):  # 2, 3, 3.1, 2.5
             out.append(low)
         elif low == "vl":
             out.append("VL")
-        else:                                               # family + misc tokens
+        else:  # family + misc tokens
             out.append(tok[:1].upper() + tok[1:])
     return " ".join(out)
 
 
 def parse_quantization_type(repo_id: str) -> QuantizationType:
     """Detect quantization type from repository ID.
-    
+
     Args:
         repo_id: HuggingFace repository ID (e.g., "mlx-community/Model-4bit").
-    
+
     Returns:
         Detected QuantizationType enum value.
-    
+
     Example:
         >>> quant = parse_quantization_type("mlx-community/Mistral-7B-v0.3-4bit")
         >>> print(quant)  # QuantizationType.INT4
     """
     repo_lower = repo_id.lower()
-    
+
     if "4bit" in repo_lower or "4-bit" in repo_lower:
         return QuantizationType.INT4
     elif "8bit" in repo_lower or "8-bit" in repo_lower:
@@ -319,18 +331,17 @@ def parse_quantization_type(repo_id: str) -> QuantizationType:
 
 
 def calculate_size_from_parameters(
-    param_count: ParameterCount,
-    quant_type: QuantizationType = QuantizationType.FP16
+    param_count: ParameterCount, quant_type: QuantizationType = QuantizationType.FP16
 ) -> ModelSize:
     """Estimate model size from parameter count and quantization type.
-    
+
     Args:
         param_count: Structured parameter count.
         quant_type: Quantization type (default FP16).
-    
+
     Returns:
         Estimated ModelSize with uncertainty bounds.
-    
+
     Example:
         >>> params = ParameterCount(count=7.0, scale=ParameterScale.BILLION, is_estimate=False)
         >>> size = calculate_size_from_parameters(params, QuantizationType.FP16)
@@ -338,73 +349,62 @@ def calculate_size_from_parameters(
     """
     # Convert to total parameters in billions
     total_params_billions = param_count.total_billions
-    
+
     # Get multiplier for quantization type
     bytes_per_param = SIZE_MULTIPLIERS[quant_type]
-    
+
     # Calculate base size (params * bytes/param)
     base_size_gb = total_params_billions * bytes_per_param
-    
+
     # Add overhead for embeddings, configs, tokenizer (10-15%)
     overhead_factor = 1.0 + 0.125  # 12.5% overhead
     size_gb = base_size_gb * overhead_factor
-    
+
     # Calculate uncertainty bounds (±10%)
     min_gb = size_gb * 0.9
     max_gb = size_gb * 1.1
-    
+
     return ModelSize(
-        size_gb=size_gb,
-        min_gb=min_gb,
-        max_gb=max_gb,
-        is_estimate=True,
-        source="calculated"
+        size_gb=size_gb, min_gb=min_gb, max_gb=max_gb, is_estimate=True, source="calculated"
     )
 
 
 def extract_parameter_pattern(text: str) -> Optional[ParameterCount]:
     """Extract parameter count from text using regex patterns.
-    
+
     Args:
         text: Text to search (model name or repo ID).
-    
+
     Returns:
         ParameterCount if pattern found, None otherwise.
-    
+
     Example:
         >>> params = extract_parameter_pattern("Qwen2.5-7B-Instruct")
         >>> print(params.to_string())  # "7B"
     """
     text_lower = text.lower()
-    
+
     # Pattern for billions: 7b, 7.5b, 70b, etc.
-    billion_pattern = r'(\d+\.?\d*)b(?:illion)?'
+    billion_pattern = r"(\d+\.?\d*)b(?:illion)?"
     billion_matches = re.findall(billion_pattern, text_lower)
-    
+
     if billion_matches:
         count = float(billion_matches[0])
-        return ParameterCount(
-            count=count,
-            scale=ParameterScale.BILLION,
-            is_estimate=True
-        )
-    
+        return ParameterCount(count=count, scale=ParameterScale.BILLION, is_estimate=True)
+
     # Pattern for millions: 350m, 125m, etc.
-    million_pattern = r'(\d+)m(?:illion)?'
+    million_pattern = r"(\d+)m(?:illion)?"
     million_matches = re.findall(million_pattern, text_lower)
-    
+
     if million_matches:
         count = float(million_matches[0])
-        return ParameterCount(
-            count=count,
-            scale=ParameterScale.MILLION,
-            is_estimate=True
-        )
-    
+        return ParameterCount(count=count, scale=ParameterScale.MILLION, is_estimate=True)
+
     return None
 
 
 # ============ Public API Functions ============
+
 
 def get_disk_size_after_quant(link_hf_quant_repo: str, hf_api=None) -> ModelSize:
     """Get actual disk size of quantized model from HuggingFace Hub API.
@@ -431,7 +431,7 @@ def get_disk_size_after_quant(link_hf_quant_repo: str, hf_api=None) -> ModelSize
         >>> # Get actual size via API
         >>> size = get_disk_size_after_quant("mlx-community/Mistral-7B-v0.3-4bit")
         >>> print(size.to_string())  # "~3.2 GB" (actual from API)
-        >>> 
+        >>>
         >>> # Fallback to estimate on error
         >>> size = get_disk_size_after_quant("mlx-community/Model-4bit")
         >>> print(size.to_string())  # "~3.0-4.0 GB" (estimated for 4-bit ~7B)
@@ -471,46 +471,60 @@ def get_disk_size_after_quant(link_hf_quant_repo: str, hf_api=None) -> ModelSize
             # measured empty artifact.
             size_bytes=int(total_size_bytes) if total_size_bytes > 0 else None,
         )
-        
+
     except Exception as e:
         logger.warning(f"Failed to fetch size from HF API for {link_hf_quant_repo}: {e}")
         logger.debug("Falling back to estimate based on quantization type")
-        
+
         # Fallback: Estimate based on quantization type and parameter count
         quant_type = parse_quantization_type(link_hf_quant_repo)
         param_count = get_parameter_count_from_name("", link_hf_quant_repo)
-        
+
         if param_count != "Unknown":
             # Have parameter count, calculate based on that
             try:
                 params = extract_parameter_pattern(link_hf_quant_repo)
                 if params:
                     estimated_size = calculate_size_from_parameters(params, quant_type)
-                    logger.info(f"Estimated size for {link_hf_quant_repo}: {estimated_size.to_string()}")
+                    logger.info(
+                        f"Estimated size for {link_hf_quant_repo}: {estimated_size.to_string()}"
+                    )
                     return estimated_size
             except Exception as calc_error:
                 logger.debug(f"Failed to calculate from parameters: {calc_error}")
-        
+
         # Rough fallback estimates based on common patterns
         if quant_type == QuantizationType.INT4:
             # 4-bit quantization, assume ~7B model
-            return ModelSize(size_gb=3.5, min_gb=3.0, max_gb=4.0, is_estimate=True, source="fallback")
+            return ModelSize(
+                size_gb=3.5, min_gb=3.0, max_gb=4.0, is_estimate=True, source="fallback"
+            )
         elif quant_type == QuantizationType.INT8:
             # 8-bit quantization, check for size hints
             repo_lower = link_hf_quant_repo.lower()
             if "1b" in repo_lower:
-                return ModelSize(size_gb=1.5, min_gb=1.0, max_gb=2.0, is_estimate=True, source="fallback")
+                return ModelSize(
+                    size_gb=1.5, min_gb=1.0, max_gb=2.0, is_estimate=True, source="fallback"
+                )
             elif "2b" in repo_lower:
-                return ModelSize(size_gb=2.5, min_gb=2.0, max_gb=3.0, is_estimate=True, source="fallback")
+                return ModelSize(
+                    size_gb=2.5, min_gb=2.0, max_gb=3.0, is_estimate=True, source="fallback"
+                )
             elif "4b" in repo_lower:
-                return ModelSize(size_gb=4.5, min_gb=4.0, max_gb=5.0, is_estimate=True, source="fallback")
+                return ModelSize(
+                    size_gb=4.5, min_gb=4.0, max_gb=5.0, is_estimate=True, source="fallback"
+                )
             else:
                 # Default to ~7B 8-bit
-                return ModelSize(size_gb=7.0, min_gb=6.0, max_gb=8.0, is_estimate=True, source="fallback")
+                return ModelSize(
+                    size_gb=7.0, min_gb=6.0, max_gb=8.0, is_estimate=True, source="fallback"
+                )
         else:
             # Unknown quantization, very rough estimate
             logger.warning(f"Could not determine size for {link_hf_quant_repo}, returning unknown")
-            return ModelSize(size_gb=0.0, min_gb=0.0, max_gb=0.0, is_estimate=True, source="unknown")
+            return ModelSize(
+                size_gb=0.0, min_gb=0.0, max_gb=0.0, is_estimate=True, source="unknown"
+            )
 
 
 def get_parameter_count_from_name(model_name: str, link: str) -> str:
@@ -540,14 +554,14 @@ def get_parameter_count_from_name(model_name: str, link: str) -> str:
     Examples:
         >>> # Standard cases
         >>> params = get_parameter_count_from_name(
-        ...     "Qwen 2.5 7B Instruct", 
+        ...     "Qwen 2.5 7B Instruct",
         ...     "Qwen/Qwen2.5-7B-Instruct"
         ... )
         >>> print(params)  # "7B"
-        >>> 
+        >>>
         >>> # Decimal parameters
         >>> params = get_parameter_count_from_name(
-        ...     "Phi 3.5 1.5B", 
+        ...     "Phi 3.5 1.5B",
         ...     "microsoft/phi-3.5-mini-1.5b"
         ... )
         >>> print(params)  # "1.5B"
@@ -560,7 +574,7 @@ def get_parameter_count_from_name(model_name: str, link: str) -> str:
     """
     combined_text = f"{model_name} {link}"
     param_count = extract_parameter_pattern(combined_text)
-    
+
     if param_count:
         return param_count.to_string()
     else:
@@ -568,9 +582,7 @@ def get_parameter_count_from_name(model_name: str, link: str) -> str:
 
 
 def format_model_info_metadata(
-    model_info: ModelInfo,
-    size_estimate: Optional[ModelSize] = None,
-    quantized: bool = False
+    model_info: ModelInfo, size_estimate: Optional[ModelSize] = None, quantized: bool = False
 ) -> str:
     """Format HuggingFace ModelInfo object into structured string for storage.
 
@@ -606,12 +618,12 @@ def format_model_info_metadata(
     Examples:
         >>> from src.utils.hf_model_metadata import format_model_info_metadata
         >>> from huggingface_hub import HfApi
-        >>> 
+        >>>
         >>> # Fetch model info and format
         >>> api = HfApi()
         >>> model_info = api.model_info("mistralai/Mistral-7B-Instruct-v0.3")
         >>> size = get_disk_size_after_quant(model_info.id)
-        >>> 
+        >>>
         >>> metadata_str = format_model_info_metadata(
         ...     model_info,
         ...     size_estimate=size,
@@ -639,10 +651,10 @@ def format_model_info_metadata(
     # Extract parameter count from model ID
     param_count = extract_parameter_pattern(model_info.id)
     param_str = param_count.to_string() if param_count else "Unknown"
-    
+
     # Format size estimate
     size_str = size_estimate.to_string() if size_estimate else "Unknown"
-    
+
     metadata_str = f"""Model ID: {model_info.id}
 Author: {model_info.author or 'Unknown'}
 Created: {model_info.created_at or 'Unknown'}
@@ -658,12 +670,13 @@ Gated: {model_info.gated}
 Tags: {', '.join(model_info.tags[:10]) if model_info.tags else 'None'}{'...' if model_info.tags and len(model_info.tags) > 10 else ''}
 SHA: {model_info.sha or 'Unknown'}
 Last Modified: {model_info.last_modified or 'Unknown'}"""
-    
+
     logger.debug(f"Formatted metadata for {model_info.id}")
     return metadata_str
 
 
 # ============ On-disk size (measured reality, #220) ============
+
 
 def _chosen_artifact_bytes(repo_info) -> int:
     """Total bytes of the files the downloader would actually fetch from a repo.
@@ -819,4 +832,3 @@ __all__ = [
     "HFAPIError",
     "ParameterExtractionError",
 ]
-

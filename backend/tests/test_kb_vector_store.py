@@ -117,9 +117,7 @@ class TestWiring:
             }
             assert "idx_kb_chunks_embedding_hnsw" in indexes
 
-    def test_init_is_idempotent_and_preserves_data(
-        self, kb_store, kb_rows, pg_test_cluster
-    ):
+    def test_init_is_idempotent_and_preserves_data(self, kb_store, kb_rows, pg_test_cluster):
         from src.ingestion import vector_store
 
         kb_id, doc_id = kb_rows["a"]
@@ -213,9 +211,7 @@ class TestSearch:
         off_topic = next(s for text, s in sims.items() if "pommes" in text)
         assert on_topic > off_topic
 
-    def test_stored_content_is_clean_for_generation(
-        self, kb_store, kb_rows, pg_test_cluster
-    ):
+    def test_stored_content_is_clean_for_generation(self, kb_store, kb_rows, pg_test_cluster):
         """The [document_name:…] prefix is EMBEDDING-time text only: stored
         content must be the clean chunk (it goes verbatim into the LLM's
         prompt — tiny models loop on the bracketed prefix), and the sparse
@@ -224,17 +220,14 @@ class TestSearch:
         _add(kb_id, doc_id, ["Contenu du chunk."], "rapport.pdf")
         with psycopg.connect(pg_test_cluster.psycopg_url) as conn:
             content, tsv_filled = conn.execute(
-                "SELECT content, content_tsv IS NOT NULL FROM rag.kb_chunks"
-                " WHERE kb_id = %s",
+                "SELECT content, content_tsv IS NOT NULL FROM rag.kb_chunks" " WHERE kb_id = %s",
                 (kb_id,),
             ).fetchone()
         assert content == "Contenu du chunk."
         assert "[document_name:" not in content
         assert tsv_filled
 
-    def test_document_name_contributes_to_the_embedding(
-        self, kb_store, kb_rows, pg_test_cluster
-    ):
+    def test_document_name_contributes_to_the_embedding(self, kb_store, kb_rows, pg_test_cluster):
         """Same chunk text under two different file names → different vectors:
         proof the document name is part of the embedded text (retrieval
         benefit kept) even though the stored content is clean."""
@@ -243,17 +236,14 @@ class TestSearch:
         _add(kb_id, doc_id, ["Texte identique."], "beta.pdf")
         with psycopg.connect(pg_test_cluster.psycopg_url) as conn:
             distinct = conn.execute(
-                "SELECT COUNT(DISTINCT embedding::text) FROM rag.kb_chunks"
-                " WHERE kb_id = %s",
+                "SELECT COUNT(DISTINCT embedding::text) FROM rag.kb_chunks" " WHERE kb_id = %s",
                 (kb_id,),
             ).fetchone()[0]
         assert distinct == 2
 
 
 class TestCascade:
-    def test_delete_kb_cascades_cross_schema_to_chunks(
-        self, kb_store, kb_rows, pg_test_cluster
-    ):
+    def test_delete_kb_cascades_cross_schema_to_chunks(self, kb_store, kb_rows, pg_test_cluster):
         kb_id, doc_id = kb_rows["a"]
         _add(kb_id, doc_id, ["Chunk voué à disparaître avec sa KB."])
 
@@ -320,8 +310,7 @@ class TestKbUtilsAdaptiveSelection:
         # The three pricing chunks ride together: with kb_top_k=1 this
         # question answered 1 plan out of 3 (baseline T1 failure).
         plans_found = sum(
-            1 for plan in ("Starter", "Business", "Enterprise")
-            if any(plan in t for t in texts)
+            1 for plan in ("Starter", "Business", "Enterprise") if any(plan in t for t in texts)
         )
         assert plans_found >= 2
 

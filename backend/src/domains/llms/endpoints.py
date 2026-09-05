@@ -107,15 +107,23 @@ from src.database.core import get_db, SessionLocal
 from src.entities.DownloadJob import DownloadJobModel
 from src.entities.Llm import Llm
 from src.domains.llms.schemas import (
-    LLMCreate, LLMResponse, DownloadJobResponse, HFSearchResult, HFDownloadRequest,
-    DependentsResponse, RebindRequest,
+    LLMCreate,
+    LLMResponse,
+    DownloadJobResponse,
+    HFSearchResult,
+    HFDownloadRequest,
+    DependentsResponse,
+    RebindRequest,
 )
 from src.domains.llms.services import download_llm, cancel_download_job
 from src.domains.llms.hf_search import search_huggingface
 from src.domains.llms.repository import Llm_Repository, Download_Job_Repository
 from src.domains.knowledge_base.repository import COPIED_FIELDS
 from src.utils.hf_model_metadata import (
-    BYTES_PER_GB, humanize_model_name, measure_dir_size_bytes, rewrite_size_in_metadata,
+    BYTES_PER_GB,
+    humanize_model_name,
+    measure_dir_size_bytes,
+    rewrite_size_in_metadata,
 )
 
 from src.core.logging import logger
@@ -138,6 +146,7 @@ router = APIRouter(prefix="/llms", tags=["llms"])
 
 
 # ============ Dependency Injection ============
+
 
 def get_llm_repository(db: Session = Depends(get_db)) -> Llm_Repository:
     """Dependency injection for Llm_Repository.
@@ -165,6 +174,7 @@ def get_download_job_repository(db: Session = Depends(get_db)) -> Download_Job_R
 
 # ============ Download Helpers (shared by id-based and link-based downloads) ============
 
+
 def _assert_downloaded_artifact_ok(final_save_dir, temp_save_dir) -> None:
     """Integrity gate at download completion (#88).
 
@@ -191,8 +201,9 @@ def _assert_downloaded_artifact_ok(final_save_dir, temp_save_dir) -> None:
         raise
 
 
-def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save_dir,
-                       job_id: int) -> None:
+def _run_download_task(
+    model_link: str, model_id: int, temp_save_dir, final_save_dir, job_id: int
+) -> None:
     """Background body of a download: flip the job to running, run the download
     (which spawns its own progress updater), and mark failed on error. Module-level
     so both the by-id and by-link download routes share one implementation."""
@@ -201,6 +212,7 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
         detect_supports_vision,
         detect_wire_tools,
     )
+
     session = SessionLocal()
     try:
         job_obj = session.query(DownloadJobModel).get(job_id)
@@ -208,10 +220,15 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
         job_obj.updated_at = datetime.utcnow()
         session.commit()
         logger.info(f"Started download job {job_id}")
-        asyncio.run(download_llm(
-            model_link=model_link, model_id=model_id,
-            temp_save_dir=temp_save_dir, final_save_dir=final_save_dir, job_id=job_id,
-        ))
+        asyncio.run(
+            download_llm(
+                model_link=model_link,
+                model_id=model_id,
+                temp_save_dir=temp_save_dir,
+                final_save_dir=final_save_dir,
+                job_id=job_id,
+            )
+        )
         job_obj = session.query(DownloadJobModel).get(job_id)
         if job_obj is None:
             logger.warning(f"Download job {job_id} row vanished before finalization")
@@ -253,7 +270,8 @@ def _run_download_task(model_link: str, model_id: int, temp_save_dir, final_save
                     if measured_bytes > 0:
                         llm_obj.artifact_size_bytes = measured_bytes
                         llm_obj.model_metadata = rewrite_size_in_metadata(
-                            llm_obj.model_metadata, measured_bytes / BYTES_PER_GB)
+                            llm_obj.model_metadata, measured_bytes / BYTES_PER_GB
+                        )
                 except Exception as e:
                     logger.warning(
                         f"Could not measure the on-disk size of LLM {model_id}; "
@@ -340,13 +358,24 @@ def _capture_hints_for_download(model_link: str, final_save_dir) -> Optional[dic
     return hints
 
 
-def _start_download(*, remote_model_id: str, remote_link: str, name: str, type: str,
-                    description, model_metadata, quantized: bool, param_size: Optional[float],
-                    category: str, llm_repo: Llm_Repository,
-                    job_repo: Download_Job_Repository, db: Session,
-                    background_tasks: BackgroundTasks,
-                    generation_hints: Optional[dict] = None,
-                    artifact_size_bytes: Optional[int] = None) -> DownloadJobModel:
+def _start_download(
+    *,
+    remote_model_id: str,
+    remote_link: str,
+    name: str,
+    type: str,
+    description,
+    model_metadata,
+    quantized: bool,
+    param_size: Optional[float],
+    category: str,
+    llm_repo: Llm_Repository,
+    job_repo: Download_Job_Repository,
+    db: Session,
+    background_tasks: BackgroundTasks,
+    generation_hints: Optional[dict] = None,
+    artifact_size_bytes: Optional[int] = None,
+) -> DownloadJobModel:
     """Create the local=2 placeholder + DownloadJob and enqueue the download.
 
     Shared by the catalog (by-id) and HF-search (by-link) download routes so the
@@ -355,8 +384,13 @@ def _start_download(*, remote_model_id: str, remote_link: str, name: str, type: 
     repo id (by-link), for traceability on the job.
     """
     local_llm = llm_repo.create(
-        name=name, local=2, type=type, description=description,
-        model_metadata=model_metadata, quantized=quantized, param_size=param_size,
+        name=name,
+        local=2,
+        type=type,
+        description=description,
+        model_metadata=model_metadata,
+        quantized=quantized,
+        param_size=param_size,
         category=category,
         # Sampling facts ride along from the catalog row (#388); a by-link
         # download has none yet and gets them post-download, best-effort.
@@ -376,18 +410,23 @@ def _start_download(*, remote_model_id: str, remote_link: str, name: str, type: 
     logger.info(f"Created local LLM entry {local_llm.id}: {local_llm.name} -> {final_path}")
 
     job = job_repo.create(
-        remote_model_id=remote_model_id, local_model_id=local_llm.id,
-        remote_model_link=remote_link, temp_local_model_link=str(temp_path),
-        final_local_model_link=str(final_path), status="pending",
+        remote_model_id=remote_model_id,
+        local_model_id=local_llm.id,
+        remote_model_link=remote_link,
+        temp_local_model_link=str(temp_path),
+        final_local_model_link=str(final_path),
+        status="pending",
     )
     db.commit()
     logger.info(f"Created download job {job.id} for model {local_llm.name}")
-    background_tasks.add_task(_run_download_task, remote_link, local_llm.id,
-                             temp_path, final_path, job.id)
+    background_tasks.add_task(
+        _run_download_task, remote_link, local_llm.id, temp_path, final_path, job.id
+    )
     return job
 
 
 # ============ Dependents Helper ============
+
 
 def _dependents_payload(llm_repo: Llm_Repository, base_llm: Llm) -> dict:
     """Build the dependents payload for a model (assistants + conversation counts).
@@ -417,6 +456,7 @@ def _dependents_payload(llm_repo: Llm_Repository, base_llm: Llm) -> dict:
 
 
 # ============ LLM CRUD Endpoints ============
+
 
 @router.get("/", response_model=List[LLMResponse])
 async def get_all_llms(llm_repo: Llm_Repository = Depends(get_llm_repository)):
@@ -499,10 +539,7 @@ async def search_huggingface_route(q: str, limit: int = 30):
 
 
 @router.get("/{llm_id}", response_model=LLMResponse)
-async def get_llm_by_id(
-    llm_id: int,
-    llm_repo: Llm_Repository = Depends(get_llm_repository)
-):
+async def get_llm_by_id(llm_id: int, llm_repo: Llm_Repository = Depends(get_llm_repository)):
     """Get LLM details by ID.
 
     Args:
@@ -589,7 +626,7 @@ async def update_llm(
         llm = llm_repo.get_by_id(llm_id)
         if not llm:
             raise ModelNotFoundException(f"LLM {llm_id}")
-        
+
         # Update fields from request
         updated_llm = llm_repo.update(llm, **llm_data.dict())
         db.commit()
@@ -599,10 +636,8 @@ async def update_llm(
     except Exception as e:
         db.rollback()
         logger.exception(f"Failed to update LLM {llm_id}: {e}")
-        raise DatabaseException(
-            "Failed to update LLM",
-            trace=str(e)
-        )
+        raise DatabaseException("Failed to update LLM", trace=str(e))
+
 
 @router.delete("/{llm_id}")
 async def delete_llm(
@@ -708,10 +743,7 @@ async def delete_llm(
     except Exception as e:
         db.rollback()
         logger.exception(f"Failed to delete LLM {llm_id}: {e}")
-        raise DatabaseException(
-            "Failed to delete LLM",
-            trace=str(e)
-        )
+        raise DatabaseException("Failed to delete LLM", trace=str(e))
 
 
 @router.post("/{assistant_id}/rebind", response_model=LLMResponse)
@@ -797,6 +829,7 @@ async def rebind_assistant(
 
 # ============ Download Management Endpoints ============
 
+
 @router.post(
     "/{llm_id}/download",
     response_model=DownloadJobResponse,
@@ -839,11 +872,19 @@ async def download_llm_route(
             raise ModelNotFoundException(f"LLM {llm_id}")
 
         return _start_download(
-            remote_model_id=str(llm_id), remote_link=remote_llm.link,
-            name=remote_llm.name, type=remote_llm.type, description=remote_llm.description,
-            model_metadata=remote_llm.model_metadata, quantized=remote_llm.quantized,
-            param_size=remote_llm.param_size, category=getattr(remote_llm, "category", "general"),
-            llm_repo=llm_repo, job_repo=job_repo, db=db, background_tasks=background_tasks,
+            remote_model_id=str(llm_id),
+            remote_link=remote_llm.link,
+            name=remote_llm.name,
+            type=remote_llm.type,
+            description=remote_llm.description,
+            model_metadata=remote_llm.model_metadata,
+            quantized=remote_llm.quantized,
+            param_size=remote_llm.param_size,
+            category=getattr(remote_llm, "category", "general"),
+            llm_repo=llm_repo,
+            job_repo=job_repo,
+            db=db,
+            background_tasks=background_tasks,
             generation_hints=getattr(remote_llm, "generation_hints", None),
             artifact_size_bytes=remote_llm.artifact_size_bytes,
         )
@@ -853,10 +894,7 @@ async def download_llm_route(
     except Exception as e:
         db.rollback()
         logger.exception(f"Failed to initiate download for LLM {llm_id}: {e}")
-        raise DatabaseException(
-            "Failed to start download",
-            trace=str(e)
-        )
+        raise DatabaseException("Failed to start download", trace=str(e))
 
 
 @router.post(
@@ -888,11 +926,19 @@ async def download_huggingface_route(
         # Family type is metadata-only for a local row; fall back to the category.
         type_ = payload.type or payload.category or "community"
         return _start_download(
-            remote_model_id=payload.link, remote_link=payload.link,
-            name=name, type=type_, description=None, model_metadata=None,
-            quantized=payload.quantized, param_size=payload.param_size,
-            category=payload.category, llm_repo=llm_repo, job_repo=job_repo,
-            db=db, background_tasks=background_tasks,
+            remote_model_id=payload.link,
+            remote_link=payload.link,
+            name=name,
+            type=type_,
+            description=None,
+            model_metadata=None,
+            quantized=payload.quantized,
+            param_size=payload.param_size,
+            category=payload.category,
+            llm_repo=llm_repo,
+            job_repo=job_repo,
+            db=db,
+            background_tasks=background_tasks,
         )
     except (FileSystemException, InvalidInputException):
         raise
@@ -915,7 +961,12 @@ def cancel_download(
     """Cancel an active download job and cleanup partial files."""
     try:
         return cancel_download_job(job_id, job_repo, llm_repo, db)
-    except (DownloadJobNotFoundException, ModelNotFoundException, InvalidInputException, StateConflictException):
+    except (
+        DownloadJobNotFoundException,
+        ModelNotFoundException,
+        InvalidInputException,
+        StateConflictException,
+    ):
         raise
     except Exception as e:
         db.rollback()
@@ -962,23 +1013,23 @@ def get_download_status_by_jobId(
         job = job_repo.get_by_id(job_id)
         if not job:
             raise DownloadJobNotFoundException(job_id)
-        
+
         # Handle failed/cancelled jobs: cleanup temp files and LLM entry
         if job.status in ["failed", "cancelled"]:
             llm = llm_repo.get_by_id(job.local_model_id)
             if not llm:
                 raise ModelNotFoundException(f"LLM {job.local_model_id}")
-            
+
             # Delete temp LLM entry
             llm_repo.delete(llm)
-            
+
             # Clean up temp files using repository method
             job_repo.cleanup_job_files(job)
-            
+
             db.commit()
             db.refresh(job)
             logger.info(f"Cleaned up {job.status} download job {job_id}")
-        
+
         # Handle completed jobs: mark LLM as ready, ONCE.
         #
         # The frontend polls this endpoint every 2s while a download is in
@@ -997,18 +1048,15 @@ def get_download_status_by_jobId(
                 db.commit()
                 db.refresh(llm)
                 logger.info(f"Marked LLM {llm.id} as ready (download job {job_id} completed)")
-        
+
         return job
-    
+
     except (DownloadJobNotFoundException, ModelNotFoundException):
         raise
     except Exception as e:
         db.rollback()
         logger.exception(f"Failed to get download status for job {job_id}: {e}")
-        raise DatabaseException(
-            "Failed to get download status",
-            trace=str(e)
-        )
+        raise DatabaseException("Failed to get download status", trace=str(e))
 
 
 @router.get(
@@ -1049,23 +1097,23 @@ def get_download_status_without_jobId(
         job = job_repo.get_most_recent_active()
         if not job:
             raise DownloadJobNotFoundException("recent active")
-        
+
         # Handle failed jobs: cleanup temp files and LLM entry
         if job.status == "failed":
             llm = llm_repo.get_by_id(job.local_model_id)
             if not llm:
                 raise ModelNotFoundException(f"LLM {job.local_model_id}")
-            
+
             # Delete temp LLM entry
             llm_repo.delete(llm)
-            
+
             # Clean up temp files using repository method
             job_repo.cleanup_job_files(job)
-            
+
             db.commit()
             db.refresh(job)
             logger.info(f"Cleaned up failed download job {job.id}")
-        
+
         # Handle completed jobs: mark LLM as ready
         elif job.status == "completed":
             llm = llm_repo.get_by_id(job.local_model_id)
@@ -1075,15 +1123,12 @@ def get_download_status_without_jobId(
             db.commit()
             db.refresh(llm)
             logger.info(f"Marked LLM {llm.id} as ready (download job {job.id} completed)")
-        
+
         return job
-    
+
     except (DownloadJobNotFoundException, ModelNotFoundException):
         raise
     except Exception as e:
         db.rollback()
         logger.exception(f"Failed to get recent download status: {e}")
-        raise DatabaseException(
-            "Failed to get download status",
-            trace=str(e)
-        )
+        raise DatabaseException("Failed to get download status", trace=str(e))

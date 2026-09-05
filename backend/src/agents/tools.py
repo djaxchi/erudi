@@ -107,9 +107,7 @@ def calculator(expression: str) -> str:
         expression: A pure arithmetic expression, e.g. "1240 + 1378 + 1456"
             or "(290 - 89) * 12". Numbers and + - * / // % ** ( ) only.
     """
-    logger.info(
-        f"Tool invoked: calculator(expression={truncate_for_log(expression, 200)})"
-    )
+    logger.info(f"Tool invoked: calculator(expression={truncate_for_log(expression, 200)})")
     try:
         return evaluate_arithmetic(expression)
     except ValueError as exc:
@@ -194,8 +192,7 @@ async def search_knowledge_base(query: str, runtime: ToolRuntime[TurnToolContext
         logger.exception("search_knowledge_base tool failed (degrading gracefully)")
         return "The knowledge base could not be searched right now."
     logger.info(
-        f"Tool search_knowledge_base returned {len(excerpts)} excerpt(s) "
-        f"(kb_id={ctx.kb_id})"
+        f"Tool search_knowledge_base returned {len(excerpts)} excerpt(s) " f"(kb_id={ctx.kb_id})"
     )
     return format_kb_tool_result(excerpts, query)
 
@@ -212,9 +209,7 @@ def _run_ddgs_text(query: str, max_results: int) -> list:
     """
     from ddgs import DDGS
 
-    return DDGS(timeout=WEB_SEARCH_TIMEOUT_S).text(
-        query, max_results=max_results, backend="auto"
-    )
+    return DDGS(timeout=WEB_SEARCH_TIMEOUT_S).text(query, max_results=max_results, backend="auto")
 
 
 def _chain_has_network_error(exc: BaseException) -> bool:
@@ -313,8 +308,7 @@ async def web_search(query: str, runtime: ToolRuntime[TurnToolContext]) -> str:
         # Locked contract (#310): NEVER raise — return deterministic text the
         # model can read and react to (offline, rate-limits, timeouts...).
         logger.warning(
-            f"web_search tool failed: {type(exc).__name__}: "
-            f"{truncate_for_log(str(exc), 300)}"
+            f"web_search tool failed: {type(exc).__name__}: " f"{truncate_for_log(str(exc), 300)}"
         )
         return map_web_search_error(exc)
     logger.info(f"Tool web_search returned {len(results)} result(s)")

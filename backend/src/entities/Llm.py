@@ -22,9 +22,11 @@ Example:
         quantized=False
     )
 """
+
 from sqlalchemy import Column, Integer, BigInteger, String, ForeignKey, Float, Boolean, JSON
 from src.database.core import Base
 from sqlalchemy.orm import relationship, validates
+
 
 class Llm(Base):
     """SQLAlchemy model for LLM catalog entries with download state and KB attachment.
@@ -58,6 +60,7 @@ class Llm(Base):
         >>> db.add(llm)
         >>> db.commit()
     """
+
     __tablename__ = "llms"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -127,44 +130,46 @@ class Llm(Base):
     # PostgreSQL null the FK server-side instead of the ORM loading and
     # rewriting every child row.
     conversations = relationship("Conversation", back_populates="llm", passive_deletes=True)
-    
-    @validates('name')
+
+    @validates("name")
     def validate_name(self, key, value):
         """Ensure name is not empty.
-        
+
         Args:
             key: Column name being validated ('name').
             value: Proposed value for the name field.
-            
+
         Returns:
             str: Stripped name value if valid.
-            
+
         Raises:
             ValueError: If name is empty or whitespace-only.
         """
         if not value or not value.strip():
             raise ValueError("LLM name cannot be empty")
         return value.strip()
-    
-    @validates('local')
+
+    @validates("local")
     def validate_local(self, key, value):
         """Ensure local is 0 (remote), 1 (ready), or 2 (downloading).
-        
+
         Args:
             key: Column name being validated ('local').
             value: Proposed integer value for download state.
-            
+
         Returns:
             int: The validated local state value.
-            
+
         Raises:
             ValueError: If value is not 0, 1, or 2.
         """
         if value not in [0, 1, 2]:
-            raise ValueError(f"Invalid local state: {value}. Must be 0 (remote), 1 (ready), or 2 (downloading)")
+            raise ValueError(
+                f"Invalid local state: {value}. Must be 0 (remote), 1 (ready), or 2 (downloading)"
+            )
         return value
-    
-    @validates('artifact_size_bytes')
+
+    @validates("artifact_size_bytes")
     def validate_artifact_size_bytes(self, key, value):
         """A known artifact size is a positive byte count; None means unknown.
 
@@ -178,7 +183,7 @@ class Llm(Base):
             raise ValueError(f"artifact_size_bytes must be positive, got {value}")
         return int(value)
 
-    @validates('param_size')
+    @validates("param_size")
     def validate_param_size(self, key, value):
         """Ensure a known param_size is positive; allow None for unknown (#201).
 
@@ -198,18 +203,18 @@ class Llm(Base):
         if value <= 0:
             raise ValueError(f"param_size must be positive, got {value}")
         return value
-    
-    @validates('type')
+
+    @validates("type")
     def validate_type(self, key, value):
         """Ensure type is not empty.
-        
+
         Args:
             key: Column name being validated ('type').
             value: Proposed string value for model family type.
-            
+
         Returns:
             str: Stripped type value if valid.
-            
+
         Raises:
             ValueError: If type is empty or whitespace-only.
         """

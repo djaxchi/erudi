@@ -52,21 +52,24 @@ from src.core.subprocess_flags import hidden_console_creationflags
 # Non-ASCII markers (DeepSeek R1's fullwidth bars U+FF5C and low lines U+2581)
 # are written as escapes to keep this source file byte-ASCII.
 LLAMA_NATIVE_TOOL_FORMATS = (
-    ("deepseek_v3_1", ("message['prefix'] is defined and message['prefix'] and thinking",)),  # chat.cpp:2706-2708
-    ("deepseek_r1", ("<\uff5ctool\u2581calls\u2581begin\uff5c>",)),                           # chat.cpp:2712-2713
-    ("command_r7b", ("<|END_THINKING|><|START_ACTION|>",)),                                   # chat.cpp:2717-2718
-    ("granite", ("elif thinking", "<|tool_call|>")),                                          # chat.cpp:2722-2723
-    ("hermes_2_pro", ("<tool_call>",)),                                                       # chat.cpp:2727-2728
-    ("gpt_oss", ("<|channel|>",)),                                                            # chat.cpp:2732-2733
-    ("seed_oss", ("<seed:think>",)),                                                          # chat.cpp:2737-2738
-    ("nemotron_v2", ("<SPECIAL_10>",)),                                                       # chat.cpp:2742-2743
-    ("apertus", ("<|system_start|>", "<|tools_prefix|>")),                                    # chat.cpp:2747-2748
-    ("functionary_v3_2", (">>>all",)),                                                        # chat.cpp:2758-2759
-    ("firefunction_v2", (" functools[",)),                                                    # chat.cpp:2763-2764
-    ("functionary_v3_1_llama_3_1", ("<|start_header_id|>", "<function=")),                    # chat.cpp:2768-2770
-    ("llama_3_x", ("<|start_header_id|>ipython<|end_header_id|>",)),                          # chat.cpp:2774-2776
-    ("magistral", ("[THINK]", "[/THINK]")),                                                   # chat.cpp:2779-2780
-    ("mistral_nemo", ("[TOOL_CALLS]",)),                                                      # chat.cpp:2789-2790
+    (
+        "deepseek_v3_1",
+        ("message['prefix'] is defined and message['prefix'] and thinking",),
+    ),  # chat.cpp:2706-2708
+    ("deepseek_r1", ("<\uff5ctool\u2581calls\u2581begin\uff5c>",)),  # chat.cpp:2712-2713
+    ("command_r7b", ("<|END_THINKING|><|START_ACTION|>",)),  # chat.cpp:2717-2718
+    ("granite", ("elif thinking", "<|tool_call|>")),  # chat.cpp:2722-2723
+    ("hermes_2_pro", ("<tool_call>",)),  # chat.cpp:2727-2728
+    ("gpt_oss", ("<|channel|>",)),  # chat.cpp:2732-2733
+    ("seed_oss", ("<seed:think>",)),  # chat.cpp:2737-2738
+    ("nemotron_v2", ("<SPECIAL_10>",)),  # chat.cpp:2742-2743
+    ("apertus", ("<|system_start|>", "<|tools_prefix|>")),  # chat.cpp:2747-2748
+    ("functionary_v3_2", (">>>all",)),  # chat.cpp:2758-2759
+    ("firefunction_v2", (" functools[",)),  # chat.cpp:2763-2764
+    ("functionary_v3_1_llama_3_1", ("<|start_header_id|>", "<function=")),  # chat.cpp:2768-2770
+    ("llama_3_x", ("<|start_header_id|>ipython<|end_header_id|>",)),  # chat.cpp:2774-2776
+    ("magistral", ("[THINK]", "[/THINK]")),  # chat.cpp:2779-2780
+    ("mistral_nemo", ("[TOOL_CALLS]",)),  # chat.cpp:2789-2790
 )
 
 
@@ -172,14 +175,10 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         for quant in QUANT_PRIORITY:
             for gguf in ggufs:
                 if quant in gguf.stem.lower():
-                    logger.info(
-                        f"[{cls.__name__}] Selected {gguf.name} (quant: {quant})"
-                    )
+                    logger.info(f"[{cls.__name__}] Selected {gguf.name} (quant: {quant})")
                     return gguf
         smallest = min(ggufs, key=lambda x: x.stat().st_size)
-        logger.warning(
-            f"[{cls.__name__}] No known quant pattern; using smallest: {smallest.name}"
-        )
+        logger.warning(f"[{cls.__name__}] No known quant pattern; using smallest: {smallest.name}")
         return smallest
 
     @classmethod
@@ -189,7 +188,9 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         if not candidates:
             return None
         if len(candidates) > 1:
-            logger.warning(f"[{cls.__name__}] Multiple mmproj files found, using {candidates[0].name}")
+            logger.warning(
+                f"[{cls.__name__}] Multiple mmproj files found, using {candidates[0].name}"
+            )
         return candidates[0]
 
     @classmethod
@@ -218,10 +219,7 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         if path.is_file():
             chosen = path
         else:
-            ggufs = [
-                g for g in path.glob("*.gguf")
-                if not g.name.lower().startswith("mmproj")
-            ]
+            ggufs = [g for g in path.glob("*.gguf") if not g.name.lower().startswith("mmproj")]
             if not ggufs:
                 raise EngineException(
                     message=integrity.incomplete_message("no GGUF weights file was found")
@@ -300,9 +298,7 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
             gguf_path = cls._select_gguf(llm_local_path)
             return cls._find_mmproj(gguf_path) is not None
         except Exception:
-            logger.warning(
-                f"[{cls.__name__}] vision detection failed for {llm_local_path}"
-            )
+            logger.warning(f"[{cls.__name__}] vision detection failed for {llm_local_path}")
             return None
 
     @classmethod

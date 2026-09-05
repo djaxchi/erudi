@@ -6,6 +6,7 @@ Covers the CUDA-specific hooks (`_build_spawn_argv`, `_prepare_spawn_context`,
 GGUF picker / kwarg translation by `test_cpu_engine_server.py` (same
 implementation, inherited from `BaseLlamaCppEngine`).
 """
+
 from __future__ import annotations
 
 import os
@@ -21,9 +22,9 @@ from src.engines.cuda_engine import CUDA_Engine
 # UNIT — hierarchy & config
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestCudaEngineHierarchy:
-
     def test_mro_includes_base_llama_cpp_and_chat_server(self):
         names = [c.__name__ for c in CUDA_Engine.__mro__]
         assert "BaseLlamaCppEngine" in names
@@ -47,9 +48,9 @@ class TestCudaEngineHierarchy:
 # UNIT — spawn context / argv (NVML mocked)
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestSpawnContextAndArgv:
-
     def test_prepare_spawn_context_invokes_compute_gpu_layers(self):
         with patch.object(CUDA_Engine, "_compute_gpu_layers", return_value=42):
             ctx = CUDA_Engine._prepare_spawn_context()
@@ -92,9 +93,9 @@ class TestSpawnContextAndArgv:
 # UNIT — _build_spawn_env (CUDA toolkit on PATH)
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestBuildSpawnEnv:
-
     def test_no_cuda_bin_leaves_path_unchanged(self):
         with patch.object(CUDA_Engine, "_resolve_cuda_bin_dir", return_value=None):
             env = CUDA_Engine._build_spawn_env()

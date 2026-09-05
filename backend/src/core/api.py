@@ -91,6 +91,7 @@ from src.domains.startup.endpoints import router as startup_router
 from src.domains.user_settings.endpoints import router as user_settings_router
 from src.core.health import router as health_router
 
+
 def _is_polling_path(path: str) -> bool:
     """True for endpoints the frontend polls — their access log goes to DEBUG."""
     return "/health" in path or path.endswith("/status")
@@ -190,9 +191,7 @@ class RequestLoggingMiddleware:
         # so the total is still discoverable without skewing the access line.
         total_ms = (time.perf_counter() - start) * 1000
         if total_ms - body_complete_ms > 1000:
-            logger.debug(
-                f"HTTP {method} {path} background work finished in {total_ms:.1f}ms"
-            )
+            logger.debug(f"HTTP {method} {path} background work finished in {total_ms:.1f}ms")
 
     @staticmethod
     def _incoming_request_id(scope) -> str | None:
@@ -205,7 +204,7 @@ class RequestLoggingMiddleware:
         return None
 
 
-def register_routers(app: FastAPI) -> None :
+def register_routers(app: FastAPI) -> None:
     """Register all domain routers to the FastAPI application.
 
     Attaches endpoint routers from each domain module with the /erudi prefix.
@@ -228,7 +227,7 @@ def register_routers(app: FastAPI) -> None :
             register_routers(app)
             # All domain endpoints now accessible under /erudi/*
     """
-    
+
     app.include_router(llms_router, prefix="/erudi")
     app.include_router(hardware_router, prefix="/erudi")
     app.include_router(arena_router, prefix="/erudi")
@@ -238,7 +237,8 @@ def register_routers(app: FastAPI) -> None :
     app.include_router(startup_router, prefix="/erudi")
     app.include_router(user_settings_router, prefix="/erudi")
 
-def add_exception_handlers(app: FastAPI) -> None :
+
+def add_exception_handlers(app: FastAPI) -> None:
     """Attach application-level exception handlers to FastAPI.
 
     Registers custom exception handlers for application-level errors:
@@ -269,6 +269,7 @@ def add_exception_handlers(app: FastAPI) -> None :
     """
     app.add_exception_handler(AppBaseException, app_base_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
+
 
 # The only two origins the renderer ever runs under (#89): the webpack dev
 # server, and the packaged app's ``file://`` page — which browsers serialize
@@ -317,6 +318,7 @@ def add_middleware(app: FastAPI) -> None:
     )
     # Added last -> outermost: every request gets an id and one access line.
     app.add_middleware(RequestLoggingMiddleware)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

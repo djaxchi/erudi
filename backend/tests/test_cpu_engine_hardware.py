@@ -5,6 +5,7 @@ translation) by pinning the hardware-info structure and the performance scoring
 pipeline with its fallbacks. No subprocess or model download happens anywhere
 in this file.
 """
+
 from __future__ import annotations
 
 import sys
@@ -16,14 +17,13 @@ from src.engines import cpu_engine as cpu_mod
 from src.engines.cpu_engine import CPU_Engine
 
 
-
 # =====================================================================
 # UNIT - get_hardware_info
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestGetHardwareInfo:
-
     def test_structure_and_cpu_only_gpu_block(self):
         info = CPU_Engine.get_hardware_info()
         assert info["backend_type"] == "cpu"
@@ -64,9 +64,9 @@ class TestGetHardwareInfo:
 # UNIT - warm_up_accelerator
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestWarmUp:
-
     def test_completes_quickly_and_returns_true(self):
         assert CPU_Engine.warm_up_accelerator(0.06) is True
 
@@ -88,9 +88,9 @@ class TestWarmUp:
 # UNIT - get_performance_evaluation / get_flat_hardware_data
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestPerformanceEvaluation:
-
     def test_scores_derived_from_hardware_info(self):
         fake_info = {
             "cpu": {"model": "Erudium X1", "total_cores": 16, "architecture": "arm64"},
@@ -117,10 +117,13 @@ class TestPerformanceEvaluation:
         assert result["gpu_score"] == 0.0
         assert result["unified_memory"] is False
 
-    @pytest.mark.parametrize("cores,expected_label", [
-        (64, "Excellent"),  # 100*.4 + 50*.3 + 96*.2 + 100*.1 = 84.2 -> >= 70
-        (1, "Medium"),      # 1.56*.4 + 50*.3 + 1.5*.2 + 100*.1 = 25.9 -> >= 25
-    ])
+    @pytest.mark.parametrize(
+        "cores,expected_label",
+        [
+            (64, "Excellent"),  # 100*.4 + 50*.3 + 96*.2 + 100*.1 = 84.2 -> >= 70
+            (1, "Medium"),  # 1.56*.4 + 50*.3 + 1.5*.2 + 100*.1 = 25.9 -> >= 25
+        ],
+    )
     def test_labels_track_core_count(self, cores, expected_label):
         fake_info = {
             "cpu": {"model": "X", "total_cores": cores, "architecture": "x86_64"},
@@ -146,9 +149,7 @@ class TestPerformanceEvaluation:
         assert result["performance_breakdown"]["disk_score"] == 0.0
 
     def test_failure_returns_core_based_fallback(self):
-        with patch.object(
-            CPU_Engine, "get_hardware_info", side_effect=RuntimeError("boom")
-        ):
+        with patch.object(CPU_Engine, "get_hardware_info", side_effect=RuntimeError("boom")):
             result = CPU_Engine.get_performance_evaluation()
         assert result["backend_type"] == "cpu"
         assert result["global_inference_label"] == "Poor"
@@ -158,7 +159,5 @@ class TestPerformanceEvaluation:
 
     def test_flat_hardware_data_delegates_to_evaluation(self):
         sentinel = {"backend_type": "cpu", "cpu_score": 12.0}
-        with patch.object(
-            CPU_Engine, "get_performance_evaluation", return_value=sentinel
-        ):
+        with patch.object(CPU_Engine, "get_performance_evaluation", return_value=sentinel):
             assert CPU_Engine.get_flat_hardware_data() is sentinel

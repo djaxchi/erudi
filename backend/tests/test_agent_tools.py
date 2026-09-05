@@ -40,10 +40,10 @@ class TestEvaluateArithmetic:
         [
             "__import__('os').system('rm -rf /')",
             "open('/etc/passwd')",
-            "a + 1",                      # names rejected
-            "(1).__class__",              # attributes rejected
-            "[1, 2][0]",                  # subscripts rejected
-            "1 if True else 2",           # conditionals rejected
+            "a + 1",  # names rejected
+            "(1).__class__",  # attributes rejected
+            "[1, 2][0]",  # subscripts rejected
+            "1 if True else 2",  # conditionals rejected
             "lambda: 1",
             "1; 2",
             "",

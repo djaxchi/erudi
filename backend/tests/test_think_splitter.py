@@ -6,6 +6,7 @@ under test: text inside ``<think>...</think>`` becomes ``thinking`` events,
 everything else becomes ``answer`` events, and reasoning NEVER leaks into answer
 text regardless of how the stream is chopped.
 """
+
 import pytest
 
 from src.agents.think_splitter import ThinkSplitter, _partial_suffix_len
@@ -128,10 +129,10 @@ def test_thinking_precedes_answer_in_order():
 @pytest.mark.parametrize(
     "buf,tag,expected",
     [
-        ("hello<thi", "<think>", 4),      # "<thi" is a 4-char prefix of "<think>"
+        ("hello<thi", "<think>", 4),  # "<thi" is a 4-char prefix of "<think>"
         ("hello", "<think>", 0),
         ("<", "<think>", 1),
-        ("done</think", "</think>", 7),   # "</think" is a 7-char prefix of "</think>"
+        ("done</think", "</think>", 7),  # "</think" is a 7-char prefix of "</think>"
         ("x", "<think>", 0),
     ],
 )

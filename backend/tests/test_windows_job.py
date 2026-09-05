@@ -6,6 +6,7 @@ watchdog or the stdin-EOF watcher get a chance to run, so Postgres and
 llama-server need their lifetime tied to this process at the kernel level
 instead of relying on Python code reacting in time.
 """
+
 from __future__ import annotations
 
 import json

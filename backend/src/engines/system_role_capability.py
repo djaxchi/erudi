@@ -13,6 +13,7 @@ Mirrors ``engines.tool_capability``: it reuses the engine's
 object exposing ``apply_chat_template``. Differential by design — a template
 that cannot render *at all* is not blamed on the system role.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -40,16 +41,12 @@ def tokenizer_supports_system_role(tokenizer: Any) -> bool:
     otherwise-renderable template.
     """
     try:
-        tokenizer.apply_chat_template(
-            _USER_ONLY, add_generation_prompt=True, tokenize=False
-        )
+        tokenizer.apply_chat_template(_USER_ONLY, add_generation_prompt=True, tokenize=False)
     except Exception:
         # Template can't render even the trivial case: not a system-role signal.
         return True
     try:
-        tokenizer.apply_chat_template(
-            _SYSTEM_THEN_USER, add_generation_prompt=True, tokenize=False
-        )
+        tokenizer.apply_chat_template(_SYSTEM_THEN_USER, add_generation_prompt=True, tokenize=False)
     except Exception:
         return False
     return True

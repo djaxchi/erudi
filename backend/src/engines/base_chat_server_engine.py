@@ -211,9 +211,7 @@ class BaseChatServerEngine(BaseEngine):
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     s.bind(("127.0.0.1", port))
-                logger.info(
-                    f"[{cls.__name__}] Picked free port {port} for {cls._server_name}"
-                )
+                logger.info(f"[{cls.__name__}] Picked free port {port} for {cls._server_name}")
                 return port
             except OSError:
                 continue
@@ -340,9 +338,7 @@ class BaseChatServerEngine(BaseEngine):
                 ),
             )
         ping_ms = (time.monotonic() - ping_start) * 1000
-        logger.info(
-            f"[{cls.__name__}] {cls._server_name} chat-ping ok after {ping_ms:.0f}ms"
-        )
+        logger.info(f"[{cls.__name__}] {cls._server_name} chat-ping ok after {ping_ms:.0f}ms")
 
     @classmethod
     def _stop_server_if_running(cls) -> None:
@@ -468,7 +464,5 @@ class BaseChatServerEngine(BaseEngine):
         cls._tokenizer = {"type": "remote", "provider": cls._tokenizer_provider}
         cls._model_id = llm_id
         cls._last_used = datetime.now()
-        logger.info(
-            f"[{cls.__name__}] Model loaded on {handle['base_url']} alias={alias}"
-        )
+        logger.info(f"[{cls.__name__}] Model loaded on {handle['base_url']} alias={alias}")
         return cls._model, cls._tokenizer

@@ -5,6 +5,7 @@ cluster: CRUD roundtrips, the no-op update fast path, cascade deletion,
 star/unstar, and the SQLAlchemyError -> DatabaseException wrapping that the
 endpoint layer relies on for structured error responses.
 """
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -48,9 +49,9 @@ def _broken_query(*args, **kwargs):
 # INTEGRATION - ConversationRepository
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestConversationRepository:
-
     def test_create_and_get_roundtrip(self, conv_repo, mock_llm):
         created = conv_repo.create_conversation(
             llm_id=mock_llm.id,
@@ -99,9 +100,7 @@ class TestConversationRepository:
 
     def test_update_with_identical_values_is_noop(self, conv_repo, conversation):
         with patch.object(conv_repo.db, "flush") as flush:
-            result = conv_repo.update_conversation(
-                conversation.id, name=conversation.name
-            )
+            result = conv_repo.update_conversation(conversation.id, name=conversation.name)
         assert result.id == conversation.id
         flush.assert_not_called()
 
@@ -123,9 +122,7 @@ class TestConversationRepository:
         with pytest.raises(ConversationNotFoundException):
             conv_repo.delete_conversation(987654321)
 
-    def test_update_last_message_time_touches_updated_at(
-        self, conv_repo, conversation
-    ):
+    def test_update_last_message_time_touches_updated_at(self, conv_repo, conversation):
         before = conversation.updated_at
         conv_repo.update_last_message_time(conversation.id)
         # The touch writes datetime.utcnow() (naive UTC) while the column
@@ -156,30 +153,22 @@ class TestConversationRepository:
                 conv_repo.get_llm_by_id(1)
 
     def test_create_wraps_database_error(self, conv_repo, mock_llm):
-        with patch.object(
-            conv_repo.db, "flush", side_effect=SQLAlchemyError("boom")
-        ):
+        with patch.object(conv_repo.db, "flush", side_effect=SQLAlchemyError("boom")):
             with pytest.raises(DatabaseException):
                 conv_repo.create_conversation(llm_id=mock_llm.id)
 
     def test_update_wraps_database_error(self, conv_repo, conversation):
-        with patch.object(
-            conv_repo.db, "flush", side_effect=SQLAlchemyError("boom")
-        ):
+        with patch.object(conv_repo.db, "flush", side_effect=SQLAlchemyError("boom")):
             with pytest.raises(DatabaseException):
                 conv_repo.update_conversation(conversation.id, name="Другое")
 
     def test_delete_wraps_database_error(self, conv_repo, conversation):
-        with patch.object(
-            conv_repo.db, "delete", side_effect=SQLAlchemyError("boom")
-        ):
+        with patch.object(conv_repo.db, "delete", side_effect=SQLAlchemyError("boom")):
             with pytest.raises(DatabaseException):
                 conv_repo.delete_conversation(conversation.id)
 
     def test_touch_wraps_database_error(self, conv_repo, conversation):
-        with patch.object(
-            conv_repo.db, "flush", side_effect=SQLAlchemyError("boom")
-        ):
+        with patch.object(conv_repo.db, "flush", side_effect=SQLAlchemyError("boom")):
             with pytest.raises(DatabaseException):
                 conv_repo.update_last_message_time(conversation.id)
 
@@ -188,9 +177,9 @@ class TestConversationRepository:
 # INTEGRATION - MessageRepository
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestMessageRepository:
-
     def test_create_and_list_ordered(self, msg_repo, conversation):
         msg_repo.create_message(conversation.id, "hello", "user")
         msg_repo.create_message(conversation.id, "hi there", "llm")
@@ -200,9 +189,7 @@ class TestMessageRepository:
 
     def test_create_message_persists_trace(self, msg_repo, conversation):
         trace = [{"type": "thinking", "content": "hmm"}]
-        message = msg_repo.create_message(
-            conversation.id, "answer", "llm", trace=trace
-        )
+        message = msg_repo.create_message(conversation.id, "answer", "llm", trace=trace)
         assert message.trace == trace
 
     def test_star_and_unstar_roundtrip(self, msg_repo, conversation, test_db_session):
@@ -236,24 +223,18 @@ class TestMessageRepository:
             assert msg_repo.get_starred_messages(1) == []
 
     def test_create_wraps_database_error(self, msg_repo, conversation):
-        with patch.object(
-            msg_repo.db, "flush", side_effect=SQLAlchemyError("boom")
-        ):
+        with patch.object(msg_repo.db, "flush", side_effect=SQLAlchemyError("boom")):
             with pytest.raises(DatabaseException):
                 msg_repo.create_message(conversation.id, "x", "user")
 
     def test_star_wraps_database_error(self, msg_repo, conversation):
         message = msg_repo.create_message(conversation.id, "x", "user")
-        with patch.object(
-            msg_repo.db, "flush", side_effect=SQLAlchemyError("boom")
-        ):
+        with patch.object(msg_repo.db, "flush", side_effect=SQLAlchemyError("boom")):
             with pytest.raises(DatabaseException):
                 msg_repo.star_message(message.id)
 
     def test_unstar_wraps_database_error(self, msg_repo, conversation):
         message = msg_repo.create_message(conversation.id, "x", "user")
-        with patch.object(
-            msg_repo.db, "flush", side_effect=SQLAlchemyError("boom")
-        ):
+        with patch.object(msg_repo.db, "flush", side_effect=SQLAlchemyError("boom")):
             with pytest.raises(DatabaseException):
                 msg_repo.unstar_message(message.id)

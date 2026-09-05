@@ -14,21 +14,22 @@ Revises: f3b7a9c2d5e1
 Create Date: 2026-08-29
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = 'b6e1a4d8c2f7'
-down_revision: Union[str, Sequence[str], None] = 'f3b7a9c2d5e1'
+revision: str = "b6e1a4d8c2f7"
+down_revision: Union[str, Sequence[str], None] = "f3b7a9c2d5e1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('llms', sa.Column('artifact_size_bytes', sa.BigInteger(), nullable=True))
+    op.add_column("llms", sa.Column("artifact_size_bytes", sa.BigInteger(), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column('llms', 'artifact_size_bytes')
+    op.drop_column("llms", "artifact_size_bytes")

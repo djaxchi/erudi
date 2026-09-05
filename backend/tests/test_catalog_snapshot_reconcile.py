@@ -7,6 +7,7 @@ in-progress (local=2) rows never touched. The catalog follows app releases,
 needs zero network, and never mutates mid-session. Runs against the real
 pgserver test cluster (savepoint rollback per test).
 """
+
 import asyncio
 
 import pytest
@@ -82,16 +83,19 @@ class TestReconcileCatalogFromSnapshot:
 
     def test_empty_catalog_inserts_all_snapshot_entries(self, test_db_session, monkeypatch):
         db = test_db_session
-        _use_snapshot(monkeypatch, [
-            _entry("org/base-GGUF", is_base=True),
-            _entry("org/derived-GGUF", is_base=False),
-        ])
+        _use_snapshot(
+            monkeypatch,
+            [
+                _entry("org/base-GGUF", is_base=True),
+                _entry("org/derived-GGUF", is_base=False),
+            ],
+        )
 
         res = Database_Seeder().reconcile_catalog_from_snapshot(db)
 
         assert res["resynced"] is True
-        assert res["base_models_added"] == 2      # 2 inserted
-        assert res["derived_models_added"] == 0   # 0 updated
+        assert res["base_models_added"] == 2  # 2 inserted
+        assert res["derived_models_added"] == 0  # 0 updated
         rows = {r.link: r for r in db.query(Llm).filter(Llm.local == 0).all()}
         assert set(rows) == {"org/base-GGUF", "org/derived-GGUF"}
         assert rows["org/base-GGUF"].is_base is True
@@ -107,16 +111,18 @@ class TestReconcileCatalogFromSnapshot:
         Database_Seeder().reconcile_catalog_from_snapshot(db)
 
         row = db.query(Llm).filter(Llm.link == "org/base-GGUF").one()
-        assert row.id == old_id                   # in-place update → pk preserved
+        assert row.id == old_id  # in-place update → pk preserved
         assert row.name == "New Name"
         assert row.param_size == 1.5
 
     def test_local0_row_absent_from_snapshot_is_deleted(self, test_db_session, monkeypatch):
         db = test_db_session
-        db.add_all([
-            _llm(name="Stays", local=0, link="org/base-GGUF"),
-            _llm(name="Vanished", local=0, link="stale/gone-GGUF"),
-        ])
+        db.add_all(
+            [
+                _llm(name="Stays", local=0, link="org/base-GGUF"),
+                _llm(name="Vanished", local=0, link="stale/gone-GGUF"),
+            ]
+        )
         db.commit()
 
         _use_snapshot(monkeypatch, [_entry("org/base-GGUF")])
@@ -132,11 +138,13 @@ class TestReconcileCatalogFromSnapshot:
         # -- and only that one: a user's installed copy of the same model (local=1)
         # is theirs and stays.
         db = test_db_session
-        db.add_all([
-            _llm(name="Gemma 2B Instruct", local=0, link="google/gemma-2b-it", is_base=True),
-            _llm(name="Gemma 2B Instruct", local=1, link="/data/models/gemma-2b-it"),
-            _llm(name="Qwen", local=0, link="org/base-GGUF"),
-        ])
+        db.add_all(
+            [
+                _llm(name="Gemma 2B Instruct", local=0, link="google/gemma-2b-it", is_base=True),
+                _llm(name="Gemma 2B Instruct", local=1, link="/data/models/gemma-2b-it"),
+                _llm(name="Qwen", local=0, link="org/base-GGUF"),
+            ]
+        )
         db.commit()
 
         _use_snapshot(monkeypatch, [_entry("org/base-GGUF")])
@@ -148,18 +156,20 @@ class TestReconcileCatalogFromSnapshot:
 
     def test_downloaded_and_in_progress_rows_never_touched(self, test_db_session, monkeypatch):
         db = test_db_session
-        db.add_all([
-            _llm(name="Mine", local=1, link="/data/models/9"),
-            _llm(name="WIP", local=2, link="repo/wip-GGUF"),
-        ])
+        db.add_all(
+            [
+                _llm(name="Mine", local=1, link="/data/models/9"),
+                _llm(name="WIP", local=2, link="repo/wip-GGUF"),
+            ]
+        )
         db.commit()
 
         _use_snapshot(monkeypatch, [_entry("org/base-GGUF")])
         Database_Seeder().reconcile_catalog_from_snapshot(db)
 
         rows = {r.link: r.local for r in db.query(Llm).all()}
-        assert rows["/data/models/9"] == 1        # local=1 untouched
-        assert rows["repo/wip-GGUF"] == 2         # local=2 untouched
+        assert rows["/data/models/9"] == 1  # local=1 untouched
+        assert rows["repo/wip-GGUF"] == 2  # local=2 untouched
         assert rows["org/base-GGUF"] == 0
 
     def test_supports_tools_survives_reconcile_update(self, test_db_session, monkeypatch):
@@ -174,7 +184,7 @@ class TestReconcileCatalogFromSnapshot:
 
         row = db.query(Llm).filter(Llm.link == "org/base-GGUF").one()
         assert row.supports_tools is True
-        assert row.name == "Refreshed"            # but mutable fields did refresh
+        assert row.name == "Refreshed"  # but mutable fields did refresh
 
     def test_no_snapshot_is_a_noop(self, test_db_session, monkeypatch):
         db = test_db_session
@@ -200,7 +210,7 @@ class TestReconcileCatalogFromSnapshot:
 
         assert res["resynced"] is True
         sv = db.query(StartupVariables).first()
-        assert sv.offline_mode is False           # cleared with the other stamps
+        assert sv.offline_mode is False  # cleared with the other stamps
 
     def test_successful_reconcile_without_startup_vars_row_does_not_crash(
         self, test_db_session, monkeypatch
@@ -211,7 +221,7 @@ class TestReconcileCatalogFromSnapshot:
         _use_snapshot(monkeypatch, [_entry("org/base-GGUF")])
         res = Database_Seeder().reconcile_catalog_from_snapshot(db)
 
-        assert res["resynced"] is True            # stamping is guarded, no crash
+        assert res["resynced"] is True  # stamping is guarded, no crash
 
     def test_reconcile_makes_zero_network_calls(self, test_db_session, monkeypatch):
         """ZERO NETWORK guarantee: the reconcile path must never construct an HF
@@ -248,21 +258,26 @@ class TestCategoryReconcileFromSnapshot:
         db.commit()
 
         entry = _entry("org/coder-GGUF", name="Coder refreshed")
-        del entry["category"]                     # shape of the bundled #192 snapshots
+        del entry["category"]  # shape of the bundled #192 snapshots
         _use_snapshot(monkeypatch, [entry])
         Database_Seeder().reconcile_catalog_from_snapshot(db)
 
         row = db.query(Llm).filter(Llm.link == "org/coder-GGUF").one()
-        assert row.category == "code"             # classification survives the boot
-        assert row.name == "Coder refreshed"      # other mutable fields did refresh
+        assert row.category == "code"  # classification survives the boot
+        assert row.name == "Coder refreshed"  # other mutable fields did refresh
 
     def test_fresh_generation_hints_propagate_in_place(self, test_db_session, monkeypatch):
         """#388: a snapshot entry carrying hints refreshes the row's hints."""
         db = test_db_session
         db.add(_llm(name="Q", local=0, link="org/q-GGUF", generation_hints=None))
         db.commit()
-        hints = {"base_repo": "org/q", "generation_config": {"temperature": 0.6},
-                 "supports_thinking": False, "context_length": 8192, "captured_at": "d"}
+        hints = {
+            "base_repo": "org/q",
+            "generation_config": {"temperature": 0.6},
+            "supports_thinking": False,
+            "context_length": 8192,
+            "captured_at": "d",
+        }
 
         _use_snapshot(monkeypatch, [_entry("org/q-GGUF", generation_hints=hints)])
         Database_Seeder().reconcile_catalog_from_snapshot(db)
@@ -270,13 +285,20 @@ class TestCategoryReconcileFromSnapshot:
         row = db.query(Llm).filter(Llm.link == "org/q-GGUF").one()
         assert row.generation_hints == hints
 
-    def test_entry_without_generation_hints_keeps_existing_hints(self, test_db_session, monkeypatch):
+    def test_entry_without_generation_hints_keeps_existing_hints(
+        self, test_db_session, monkeypatch
+    ):
         """#388, same shape as #192: an old snapshot (no key, or null) must never
         wipe the hints a row already carries -- otherwise the first boot on a
         stale snapshot would reset every model to the fallback sampling."""
         db = test_db_session
-        hints = {"base_repo": "org/q", "generation_config": {"temperature": 0.6},
-                 "supports_thinking": False, "context_length": 8192, "captured_at": "d"}
+        hints = {
+            "base_repo": "org/q",
+            "generation_config": {"temperature": 0.6},
+            "supports_thinking": False,
+            "context_length": 8192,
+            "captured_at": "d",
+        }
         db.add(_llm(name="Q", local=0, link="org/q-GGUF", generation_hints=hints))
         db.commit()
 
@@ -322,8 +344,13 @@ class TestCategoryReconcileFromSnapshot:
 
     def test_downloaded_row_hints_never_touched_by_snapshot(self, test_db_session, monkeypatch):
         db = test_db_session
-        hints = {"base_repo": "org/q", "generation_config": {"temperature": 0.6},
-                 "supports_thinking": False, "context_length": 8192, "captured_at": "d"}
+        hints = {
+            "base_repo": "org/q",
+            "generation_config": {"temperature": 0.6},
+            "supports_thinking": False,
+            "context_length": 8192,
+            "captured_at": "d",
+        }
         db.add(_llm(name="Local Q", local=1, link="/models/7", generation_hints=hints))
         db.commit()
 
@@ -390,7 +417,9 @@ class TestPopulateStartupData:
     """populate_startup_data reconciles from the snapshot at every boot — no
     background-refresh flag, StartupVariables stamped on success."""
 
-    def test_no_background_refresh_key_and_stamps_last_seeded_at(self, test_db_session, monkeypatch):
+    def test_no_background_refresh_key_and_stamps_last_seeded_at(
+        self, test_db_session, monkeypatch
+    ):
         db = test_db_session
         _use_snapshot(monkeypatch, [_entry("org/base-GGUF")])
         _stub_side_steps(monkeypatch)
@@ -403,9 +432,11 @@ class TestPopulateStartupData:
         sv = db.query(StartupVariables).first()
         assert sv is not None
         assert sv.models_seeded is True
-        assert sv.last_seeded_at is not None      # stamped by the reconcile
+        assert sv.last_seeded_at is not None  # stamped by the reconcile
 
-    def test_empty_catalog_no_snapshot_falls_back_to_initial_seed(self, test_db_session, monkeypatch):
+    def test_empty_catalog_no_snapshot_falls_back_to_initial_seed(
+        self, test_db_session, monkeypatch
+    ):
         db = test_db_session
         _use_snapshot(monkeypatch, [])
 
@@ -422,4 +453,4 @@ class TestPopulateStartupData:
         res = asyncio.run(Database_Seeder().populate_startup_data(db=db))
 
         assert "needs_background_refresh" not in res
-        assert res["base_models_added"] == 7      # minimal offline fallback used
+        assert res["base_models_added"] == 7  # minimal offline fallback used

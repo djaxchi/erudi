@@ -11,24 +11,25 @@ Revises: b6e1a4d8c2f7
 Create Date: 2026-09-05
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = 'a9f4c1b7e206'
-down_revision: Union[str, Sequence[str], None] = 'b6e1a4d8c2f7'
+revision: str = "a9f4c1b7e206"
+down_revision: Union[str, Sequence[str], None] = "b6e1a4d8c2f7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
     op.add_column(
-        'user_settings',
-        sa.Column('auto_update_enabled', sa.Boolean(), nullable=False, server_default=sa.true()),
+        "user_settings",
+        sa.Column("auto_update_enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
     )
 
 
 def downgrade() -> None:
-    op.drop_column('user_settings', 'auto_update_enabled')
+    op.drop_column("user_settings", "auto_update_enabled")

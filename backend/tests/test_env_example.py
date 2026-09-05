@@ -104,8 +104,12 @@ def test_every_env_read_is_documented():
     assert read, "the scan found no environment reads at all -- is the AST matcher broken?"
     assert {"HF_TOKEN", "ERUDI_FORCE_CPU", "ERUDI_LOG_LEVEL"} <= read.keys()
 
-    missing = {name: sorted(files) for name, files in read.items() if name not in _documented_names()}
-    assert not missing, f"environment variables read but absent from backend/.env.example: {missing}"
+    missing = {
+        name: sorted(files) for name, files in read.items() if name not in _documented_names()
+    }
+    assert (
+        not missing
+    ), f"environment variables read but absent from backend/.env.example: {missing}"
 
 
 @pytest.mark.unit

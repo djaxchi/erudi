@@ -7,6 +7,7 @@ load-failure degradation (error event instead of a 500 mid-stream), the
 stale-llm auto-repair (#), the checkpointer purge tolerance, title-gen
 fallbacks, and the welcome-popup endpoint.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -31,18 +32,24 @@ def _conversation(db, llm_id, **overrides):
 # INTEGRATION - conversations endpoints
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestConversationEndpointGaps:
-
     def test_create_with_unknown_llm_rolls_back(self, client):
         # FK violation surfaces as a wrapped DatabaseException (500), and the
         # endpoint's rollback branch must leave the session usable afterwards.
         # Explicit sampling values keep the request off the model lookup (#388:
         # omitted values resolve from the Llm row first, which is a clean 404 --
         # see test_sampling_contracts) so the FK path itself stays exercised.
-        resp = client.post("/erudi/conversations/", json={
-            "llm_id": 987654, "temperature": 0.2, "top_p": 0.95, "max_tokens": 64,
-        })
+        resp = client.post(
+            "/erudi/conversations/",
+            json={
+                "llm_id": 987654,
+                "temperature": 0.2,
+                "top_p": 0.95,
+                "max_tokens": 64,
+            },
+        )
         assert resp.status_code == 500
         assert client.get("/erudi/conversations/").status_code == 200
         assert client.post("/erudi/conversations/", json={"llm_id": 987654}).status_code == 404
@@ -54,9 +61,7 @@ class TestConversationEndpointGaps:
         resp = client.patch("/erudi/conversations/987654", json={"name": "X"})
         assert resp.status_code == 404
 
-    def test_store_error_message_persists_fallback_row(
-        self, client, test_db_session, mock_llm
-    ):
+    def test_store_error_message_persists_fallback_row(self, client, test_db_session, mock_llm):
         conv = _conversation(test_db_session, mock_llm.id)
         resp = client.post(f"/erudi/conversations/{conv.id}/store_error_message")
         assert resp.status_code == 200
@@ -77,31 +82,23 @@ class TestConversationEndpointGaps:
         test_db_session.add(message)
         test_db_session.commit()
 
-        resp = client.post(
-            "/erudi/conversations/star_message", json={"message_id": message.id}
-        )
+        resp = client.post("/erudi/conversations/star_message", json={"message_id": message.id})
         assert resp.status_code == 200
         assert resp.json()["state"] == "success"
         test_db_session.refresh(message)
         assert message.starred is True
 
-        resp = client.post(
-            "/erudi/conversations/unstar_message", json={"message_id": message.id}
-        )
+        resp = client.post("/erudi/conversations/unstar_message", json={"message_id": message.id})
         assert resp.status_code == 200
         test_db_session.refresh(message)
         assert message.starred is False
 
     def test_star_unknown_message_rolls_back(self, client):
-        resp = client.post(
-            "/erudi/conversations/star_message", json={"message_id": 987654}
-        )
+        resp = client.post("/erudi/conversations/star_message", json={"message_id": 987654})
         assert resp.status_code == 404
 
     def test_unstar_unknown_message_rolls_back(self, client):
-        resp = client.post(
-            "/erudi/conversations/unstar_message", json={"message_id": 987654}
-        )
+        resp = client.post("/erudi/conversations/unstar_message", json={"message_id": 987654})
         assert resp.status_code == 404
 
 
@@ -109,9 +106,9 @@ class TestConversationEndpointGaps:
 # INTEGRATION - service fallbacks
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestConversationServiceGaps:
-
     async def test_purge_thread_without_checkpointer_is_noop(self, test_db_session):
         service = ConversationService(test_db_session, checkpointer=None)
         await service._purge_thread(1)
@@ -126,32 +123,21 @@ class TestConversationServiceGaps:
         service = ConversationService(test_db_session, checkpointer=checkpointer)
         await service._purge_thread(1)  # must not raise
 
-    async def test_query_stream_degrades_when_conversation_missing(
-        self, test_db_session
-    ):
+    async def test_query_stream_degrades_when_conversation_missing(self, test_db_session):
         service = ConversationService(test_db_session)
         payload = SimpleNamespace(question="hello", images=None)
-        events = [
-            chunk
-            async for chunk in service.query_and_respond_stream(987654, payload)
-        ]
+        events = [chunk async for chunk in service.query_and_respond_stream(987654, payload)]
         assert any('"error"' in e and ERROR_MESSAGE in e for e in events)
         assert '"done"' in events[-1]
 
-    async def test_title_stream_saves_default_when_conversation_missing(
-        self, test_db_session
-    ):
+    async def test_title_stream_saves_default_when_conversation_missing(self, test_db_session):
         service = ConversationService(test_db_session)
         with patch.object(service, "_save_title") as save:
-            chunks = [
-                c async for c in service.generate_title_stream(987654, "any question")
-            ]
+            chunks = [c async for c in service.generate_title_stream(987654, "any question")]
         assert chunks == []
         save.assert_called_once_with(987654, "New Conversation")
 
-    async def test_title_stream_saves_default_on_empty_question(
-        self, test_db_session, mock_llm
-    ):
+    async def test_title_stream_saves_default_on_empty_question(self, test_db_session, mock_llm):
         conv = _conversation(test_db_session, mock_llm.id)
         service = ConversationService(test_db_session)
         with patch.object(service, "_save_title") as save:
@@ -202,9 +188,9 @@ class TestConversationServiceGaps:
 # INTEGRATION - startup endpoints
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestStartupEndpoints:
-
     def test_welcome_popup_flips_on_first_call(self, client):
         first = client.get("/erudi/startup/welcome-popup")
         assert first.status_code == 200
@@ -224,4 +210,3 @@ class TestStartupEndpoints:
         ):
             resp = client.get("/erudi/startup/welcome-popup")
         assert resp.status_code == 500
-

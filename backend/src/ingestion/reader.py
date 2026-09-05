@@ -75,8 +75,7 @@ class DocumentReader:
         if extractor is None:
             supported = ", ".join(sorted(self.supported_extensions))
             raise InvalidInputException(
-                f"Unsupported document type '{extension}' ({path.name}). "
-                f"Supported: {supported}"
+                f"Unsupported document type '{extension}' ({path.name}). " f"Supported: {supported}"
             )
 
         document = extractor.extract(path)

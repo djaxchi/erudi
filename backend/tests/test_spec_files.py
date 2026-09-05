@@ -5,6 +5,7 @@ server, with no `mlx_lm.server` / `_mlx_server_runner` left behind. These
 specs are only exercised at build time, so this text guard is the only
 automated check that the swap reached them.
 """
+
 import pathlib
 
 import pytest
@@ -130,9 +131,7 @@ def test_backend_spec_fails_the_build_when_the_inference_binary_is_missing():
     "the app does nothing" on a user's machine. The spec must raise instead.
     """
     spec = _read("backend.spec")
-    assert "warnings.warn" not in spec, (
-        "a missing inference binary must fail the build, not warn"
-    )
+    assert "warnings.warn" not in spec, "a missing inference binary must fail the build, not warn"
     assert "RuntimeError" in spec
     # The boot-only smoke build legitimately has no llama-server, so there is
     # one explicit, named opt-out - and it has to be spelled out in the

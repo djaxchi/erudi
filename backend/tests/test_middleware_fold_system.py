@@ -6,6 +6,7 @@ system-role-capable (Gemma 2). ``create_agent`` carries the prompt as
 it and merges its text into the first human message so the chat template never
 sees a system role.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -47,8 +48,8 @@ class TestFoldSystemIntoUser:
         ]
         out = _fold(msgs, "SYS")
         assert out.system_message is None
-        assert out.messages[0].content == "SYS\n\nfirst"       # first human only
-        assert out.messages[2].content == "second"             # later turns untouched
+        assert out.messages[0].content == "SYS\n\nfirst"  # first human only
+        assert out.messages[2].content == "second"  # later turns untouched
 
     def test_no_system_message_is_passthrough(self):
         msgs = [HumanMessage(content="hello")]
@@ -58,7 +59,7 @@ class TestFoldSystemIntoUser:
     def test_empty_system_message_just_cleared(self):
         out = _fold([HumanMessage(content="hi")], "   ")
         assert out.system_message is None
-        assert out.messages[0].content == "hi"                 # nothing prepended
+        assert out.messages[0].content == "hi"  # nothing prepended
 
     def test_no_human_message_becomes_user_message(self):
         out = _fold([AIMessage(content="orphan")], "SYS")
@@ -75,4 +76,4 @@ class TestFoldSystemIntoUser:
         assert out.system_message is None
         parts = out.messages[0].content
         assert parts[0] == {"type": "text", "text": "SYS\n\nlook"}
-        assert parts[1]["type"] == "image_url"                 # image kept for the VLM
+        assert parts[1]["type"] == "image_url"  # image kept for the VLM

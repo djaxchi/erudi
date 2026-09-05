@@ -5,6 +5,7 @@ viable at catalog scale (~150 downloads dominating the catalog build). It is dro
 remote catalog entries keep ``supports_tools = null`` and detection happens
 post-download (where the tokenizer is already on disk). No network here.
 """
+
 import pytest
 
 from src.database import seed as seed_mod

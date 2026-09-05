@@ -28,24 +28,85 @@ from src.core.logging import logger
 # Trailing tokens that are purely quantization / precision / format markers — they
 # are stripped from the tail. Deliberately NOT here: tokens that are part of real
 # model slugs (it, instruct, chat, mini, qat, preview, base, pt, vision, …).
-FORMAT_TOKENS: frozenset = frozenset({
-    "4bit", "8bit", "6bit", "5bit", "3bit", "2bit", "4bits", "8bits", "16bit",
-    "bf16", "fp16", "fp32", "f16", "f32", "fp8", "fp4",
-    "mxfp4", "mxfp8", "nvfp4",
-    "q2", "q3", "q4", "q5", "q6", "q8",
-    "q2_k", "q3_k_m", "q4_k_m", "q4_k", "q4_0", "q4_1", "q5_k_m", "q5_k", "q6_k", "q8_0",
-    "int2", "int4", "int8",
-    "mlx", "gguf", "ggml", "gptq", "awq", "safetensors",
-    "dwq", "imatrix", "imat", "i1", "mx", "aq4_1",
-})
+FORMAT_TOKENS: frozenset = frozenset(
+    {
+        "4bit",
+        "8bit",
+        "6bit",
+        "5bit",
+        "3bit",
+        "2bit",
+        "4bits",
+        "8bits",
+        "16bit",
+        "bf16",
+        "fp16",
+        "fp32",
+        "f16",
+        "f32",
+        "fp8",
+        "fp4",
+        "mxfp4",
+        "mxfp8",
+        "nvfp4",
+        "q2",
+        "q3",
+        "q4",
+        "q5",
+        "q6",
+        "q8",
+        "q2_k",
+        "q3_k_m",
+        "q4_k_m",
+        "q4_k",
+        "q4_0",
+        "q4_1",
+        "q5_k_m",
+        "q5_k",
+        "q6_k",
+        "q8_0",
+        "int2",
+        "int4",
+        "int8",
+        "mlx",
+        "gguf",
+        "ggml",
+        "gptq",
+        "awq",
+        "safetensors",
+        "dwq",
+        "imatrix",
+        "imat",
+        "i1",
+        "mx",
+        "aq4_1",
+    }
+)
 
 # Vendor prefixes some quanters bake into the repo *name* (owner_model). Matched
 # against the base owner first, then this known set (covers cross-org quanters).
-ALIAS_OWNERS: frozenset = frozenset({
-    "google", "qwen", "mistralai", "nvidia", "microsoft", "ibm-granite",
-    "thudm", "cohereforai", "coherelabs", "meta-llama", "deepseek-ai", "openai",
-    "allenai", "huggingfacetb", "openbmb", "lgai-exaone", "nousresearch", "tiiuae",
-})
+ALIAS_OWNERS: frozenset = frozenset(
+    {
+        "google",
+        "qwen",
+        "mistralai",
+        "nvidia",
+        "microsoft",
+        "ibm-granite",
+        "thudm",
+        "cohereforai",
+        "coherelabs",
+        "meta-llama",
+        "deepseek-ai",
+        "openai",
+        "allenai",
+        "huggingfacetb",
+        "openbmb",
+        "lgai-exaone",
+        "nousresearch",
+        "tiiuae",
+    }
+)
 
 _VENDOR_RE = re.compile(r"^([a-z0-9.\-]+)_(.+)$")
 
@@ -126,8 +187,9 @@ def is_gated(model_info) -> bool:
 _RESOLVE_EXPAND = ("gated", "downloads")
 
 
-def resolve_quant(base_id: str, format_tag: str, hf_api, *, limit: int = 40,
-                  trace: bool = False) -> Optional[str]:
+def resolve_quant(
+    base_id: str, format_tag: str, hf_api, *, limit: int = 40, trace: bool = False
+) -> Optional[str]:
     """Return the canonical ``format_tag`` quant repo id for ``base_id``, or None.
 
     Searches ``list_models(filter=format_tag, search=<slug>)`` and keeps only
@@ -141,10 +203,15 @@ def resolve_quant(base_id: str, format_tag: str, hf_api, *, limit: int = 40,
     owner, _, slug = base_id.partition("/")
     key = base_key(base_id)
     try:
-        cands = list(hf_api.list_models(
-            filter=format_tag, search=slug, sort="downloads", limit=limit,
-            expand=list(_RESOLVE_EXPAND),
-        ))
+        cands = list(
+            hf_api.list_models(
+                filter=format_tag,
+                search=slug,
+                sort="downloads",
+                limit=limit,
+                expand=list(_RESOLVE_EXPAND),
+            )
+        )
     except Exception as e:  # network/HF hiccup → treat as "not found", never crash seed
         logger.warning(f"resolve_quant({base_id}, {format_tag}) search failed: {e}")
         return None
@@ -152,14 +219,24 @@ def resolve_quant(base_id: str, format_tag: str, hf_api, *, limit: int = 40,
     exact = [m for m in cands if normalize(m.id.split("/")[-1], owner) == key]
     gated = [m for m in exact if is_gated(m)]
     if gated:
-        logger.info(f"[resolve {format_tag}] {base_id}: skipping gated "
-                    f"{', '.join(m.id for m in gated)} (no token in the app)")
+        logger.info(
+            f"[resolve {format_tag}] {base_id}: skipping gated "
+            f"{', '.join(m.id for m in gated)} (no token in the app)"
+        )
         exact = [m for m in exact if not is_gated(m)]
     if trace:
-        logger.info(f"[resolve {format_tag}] {base_id} key='{key}' "
-                    f"{len(cands)} cands, {len(exact)} exact, {len(gated)} gated")
+        logger.info(
+            f"[resolve {format_tag}] {base_id} key='{key}' "
+            f"{len(cands)} cands, {len(exact)} exact, {len(gated)} gated"
+        )
     if not exact:
         return None
-    best = min(exact, key=lambda m: (_trust_rank(m.id, owner), _quant_rank(m.id),
-                                     -(getattr(m, "downloads", 0) or 0)))
+    best = min(
+        exact,
+        key=lambda m: (
+            _trust_rank(m.id, owner),
+            _quant_rank(m.id),
+            -(getattr(m, "downloads", 0) or 0),
+        ),
+    )
     return best.id

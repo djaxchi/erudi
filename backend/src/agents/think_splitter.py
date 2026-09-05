@@ -65,7 +65,7 @@ class ThinkSplitter:
                 if before:
                     events.append({"t": self._label(), "text": before})
                 # Consume the tag and flip mode; keep scanning the remainder.
-                self._buf = self._buf[idx + len(target):]
+                self._buf = self._buf[idx + len(target) :]
                 self._inside = not self._inside
                 continue
             # No complete tag: emit everything except a trailing partial tag that

@@ -6,6 +6,7 @@ base = curated foundation model (discovered from a FOUNDATION_ORG, built via
 base on this flag — replacing a hand-maintained name list in the frontend.
 No network here.
 """
+
 import types
 
 import pytest
@@ -84,8 +85,13 @@ def test_offline_json_creator_sets_is_base_true():
     # The offline fallback seeds base models only — they must be marked base.
     seeder = Model_Seeder(db=None, hf_api=None)
     llm = seeder._create_base_llm_from_json(
-        {"name": "Gemma 1B", "link": "google/gemma-3-1b-it", "type": "gemma",
-         "param_size": 1.0, "model_metadata": "meta"}
+        {
+            "name": "Gemma 1B",
+            "link": "google/gemma-3-1b-it",
+            "type": "gemma",
+            "param_size": 1.0,
+            "model_metadata": "meta",
+        }
     )
     assert llm.is_base is True
 
@@ -93,8 +99,9 @@ def test_offline_json_creator_sets_is_base_true():
 @pytest.mark.unit
 def test_llm_response_exposes_is_base():
     # from_attributes surfaces the new column to the /remote endpoint automatically.
-    llm = Llm(id=1, name="Test 7B", local=0, link="org/test-7b", type="test",
-              param_size=7.0, is_base=True)
+    llm = Llm(
+        id=1, name="Test 7B", local=0, link="org/test-7b", type="test", param_size=7.0, is_base=True
+    )
     resp = LLMResponse.model_validate(llm)
     assert resp.is_base is True
     assert "is_base" in resp.model_dump()
@@ -103,8 +110,16 @@ def test_llm_response_exposes_is_base():
 @pytest.mark.unit
 def test_llm_response_exposes_conversational():
     # The IT-vs-base flag reaches the frontend so it can recommend chat models first (#182).
-    llm = Llm(id=1, name="Test", local=0, link="org/test-it", type="test",
-              param_size=7.0, is_base=True, conversational=True)
+    llm = Llm(
+        id=1,
+        name="Test",
+        local=0,
+        link="org/test-it",
+        type="test",
+        param_size=7.0,
+        is_base=True,
+        conversational=True,
+    )
     resp = LLMResponse.model_validate(llm)
     assert resp.conversational is True
     assert "conversational" in resp.model_dump()
@@ -115,14 +130,15 @@ def test_derived_creator_sets_conversational_from_signal(monkeypatch):
     # Community rows carry the chat flag so the UI can rank IT ones first (#182).
     _stub_metadata_helpers(monkeypatch)
     seeder = Model_Seeder(db=None, hf_api=_FakeHF())
-    it = types.SimpleNamespace(id="cmty/Some-Model-Instruct-GGUF", tags=[],
-                               pipeline_tag="text-generation")
-    plain = types.SimpleNamespace(id="cmty/Some-Merge-GGUF",
-                                  tags=["conversational"], pipeline_tag="text-generation")
-    bare = types.SimpleNamespace(id="cmty/Some-Merge-GGUF", tags=[],
-                                 pipeline_tag="text-generation")
+    it = types.SimpleNamespace(
+        id="cmty/Some-Model-Instruct-GGUF", tags=[], pipeline_tag="text-generation"
+    )
+    plain = types.SimpleNamespace(
+        id="cmty/Some-Merge-GGUF", tags=["conversational"], pipeline_tag="text-generation"
+    )
+    bare = types.SimpleNamespace(id="cmty/Some-Merge-GGUF", tags=[], pipeline_tag="text-generation")
     sc = types.SimpleNamespace(model_type="x", default_param_size=7.0)
-    assert seeder._create_derived_llm(it, sc).conversational is True     # via suffix
+    assert seeder._create_derived_llm(it, sc).conversational is True  # via suffix
     assert seeder._create_derived_llm(plain, sc).conversational is True  # via tag
     assert seeder._create_derived_llm(bare, sc).conversational is False  # neither
 
@@ -150,24 +166,29 @@ def test_build_derived_models_drops_nonchat_task_repos(monkeypatch):
     monkeypatch.setattr(seed_mod.config, "LLM_Engine", _CommunityEngine)
 
     def mk(mid, pt):
-        return types.SimpleNamespace(id=mid, downloads=100000, likes=50,
-                                     tags=[], pipeline_tag=pt)
+        return types.SimpleNamespace(id=mid, downloads=100000, likes=50, tags=[], pipeline_tag=pt)
 
     hits = [
-        mk("bartowski/Qwen3-8B-GGUF", "text-generation"),          # keep: chat
-        mk("unsloth/gemma-4-12b-it-GGUF", "image-text-to-text"),   # keep: VLM chat (#122)
-        mk("Qwen/Qwen3-Embedding-0.6B-GGUF", None),                # drop: embedding (name)
+        mk("bartowski/Qwen3-8B-GGUF", "text-generation"),  # keep: chat
+        mk("unsloth/gemma-4-12b-it-GGUF", "image-text-to-text"),  # keep: VLM chat (#122)
+        mk("Qwen/Qwen3-Embedding-0.6B-GGUF", None),  # drop: embedding (name)
         mk("handy-computer/whisper-large-v3-gguf", "automatic-speech-recognition"),  # drop: ASR
-        mk("mixedbread-ai/mxbai-embed-large-v1", "feature-extraction"),  # drop: embedding (pipeline)
-        mk("ggml-org/DeepSeek-OCR-GGUF", None),                    # drop: OCR (name)
+        mk(
+            "mixedbread-ai/mxbai-embed-large-v1", "feature-extraction"
+        ),  # drop: embedding (pipeline)
+        mk("ggml-org/DeepSeek-OCR-GGUF", None),  # drop: OCR (name)
     ]
     api = types.SimpleNamespace(
         list_models=lambda **kw: list(hits),
         model_info=lambda link: object(),
     )
     seeder = Model_Seeder(db=None, hf_api=api)
-    links = [m.link for m in
-             seeder.build_derived_models([types.SimpleNamespace(search_term="", model_type="community")])]
+    links = [
+        m.link
+        for m in seeder.build_derived_models(
+            [types.SimpleNamespace(search_term="", model_type="community")]
+        )
+    ]
     assert "bartowski/Qwen3-8B-GGUF" in links
     assert "unsloth/gemma-4-12b-it-GGUF" in links
     assert not any(x in " ".join(links).lower() for x in ("embed", "whisper", "ocr"))

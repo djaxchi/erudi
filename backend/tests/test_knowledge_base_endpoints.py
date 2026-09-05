@@ -5,6 +5,7 @@ pins the HTTP layer: request validation, the create-vs-update decision tree,
 error mapping to the structured exception responses, the embedding-model
 gate endpoints (#146), and the background-task wrappers' session handling.
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -30,9 +31,9 @@ def _payload(**overrides) -> dict:
 # INTEGRATION - embedding-model gate endpoints (#146)
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestEmbeddingModelEndpoints:
-
     def test_status_returns_download_state(self, client, monkeypatch):
         monkeypatch.setattr(
             kb_endpoints, "download_state", lambda: {"present": True, "status": "idle"}
@@ -42,9 +43,7 @@ class TestEmbeddingModelEndpoints:
         assert resp.json() == {"present": True, "status": "idle"}
 
     def test_download_kicks_off_background_download(self, client, monkeypatch):
-        monkeypatch.setattr(
-            kb_endpoints, "start_download", lambda: {"status": "downloading"}
-        )
+        monkeypatch.setattr(kb_endpoints, "start_download", lambda: {"status": "downloading"})
         resp = client.post("/erudi/knowledge_base/embedding-model/download")
         assert resp.status_code == 200
         assert resp.json() == {"status": "downloading"}
@@ -60,9 +59,9 @@ class TestEmbeddingModelEndpoints:
 # INTEGRATION - GET /{llm_id}/status
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestKbJobStatus:
-
     def test_returns_service_payload(self, client):
         status = {"status": "processing", "status_updated_at": None, "error_message": None}
         with patch.object(KB_Service, "get_kb_job_status", return_value=status):
@@ -71,16 +70,12 @@ class TestKbJobStatus:
         assert resp.json()["status"] == "processing"
 
     def test_unknown_job_maps_to_404(self, client):
-        with patch.object(
-            KB_Service, "get_kb_job_status", side_effect=ValueError("no job")
-        ):
+        with patch.object(KB_Service, "get_kb_job_status", side_effect=ValueError("no job")):
             resp = client.get("/erudi/knowledge_base/999/status")
         assert resp.status_code == 404
 
     def test_unexpected_error_maps_to_500(self, client):
-        with patch.object(
-            KB_Service, "get_kb_job_status", side_effect=RuntimeError("db down")
-        ):
+        with patch.object(KB_Service, "get_kb_job_status", side_effect=RuntimeError("db down")):
             resp = client.get("/erudi/knowledge_base/7/status")
         assert resp.status_code == 500
 
@@ -89,9 +84,9 @@ class TestKbJobStatus:
 # INTEGRATION - POST /create
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestCreateKnowledgeBase:
-
     @pytest.fixture(autouse=True)
     def _no_background_ingestion(self, monkeypatch):
         """Replace the queued background tasks so no real ingestion runs."""
@@ -109,27 +104,19 @@ class TestCreateKnowledgeBase:
         )
 
     def test_empty_paths_rejected(self, client):
-        resp = client.post(
-            "/erudi/knowledge_base/create", json=_payload(paths=[])
-        )
+        resp = client.post("/erudi/knowledge_base/create", json=_payload(paths=[]))
         assert resp.status_code == 422
 
     def test_empty_model_name_rejected(self, client):
-        resp = client.post(
-            "/erudi/knowledge_base/create", json=_payload(modelName="")
-        )
+        resp = client.post("/erudi/knowledge_base/create", json=_payload(modelName=""))
         assert resp.status_code == 422
 
     def test_missing_base_llm_maps_to_404(self, client):
-        resp = client.post(
-            "/erudi/knowledge_base/create", json=_payload(selectedModel=987654)
-        )
+        resp = client.post("/erudi/knowledge_base/create", json=_payload(selectedModel=987654))
         assert resp.status_code == 404
 
     def test_creates_new_assistant_for_unattached_base(self, client, mock_llm):
-        with patch.object(
-            KB_Service, "create_kb_assistant", return_value=(41, 9)
-        ) as create:
+        with patch.object(KB_Service, "create_kb_assistant", return_value=(41, 9)) as create:
             resp = client.post(
                 "/erudi/knowledge_base/create",
                 json=_payload(selectedModel=mock_llm.id),
@@ -139,32 +126,22 @@ class TestCreateKnowledgeBase:
         assert body["model_id"] == 41
         assert "created" in body["msg"]
         create.assert_called_once()
-        assert self.creation_calls == [
-            {"kb_job_id": 9, "file_paths": ["/tmp/doc1.pdf"]}
-        ]
+        assert self.creation_calls == [{"kb_job_id": 9, "file_paths": ["/tmp/doc1.pdf"]}]
         assert self.update_calls == []
 
     def test_updates_existing_kb_for_attached_base(self, client, mock_llm_with_kb):
         llm, _kb = mock_llm_with_kb
-        with patch.object(
-            KB_Service, "update_existing_kb", return_value=(llm.id, 12)
-        ) as update:
-            resp = client.post(
-                "/erudi/knowledge_base/create", json=_payload(selectedModel=llm.id)
-            )
+        with patch.object(KB_Service, "update_existing_kb", return_value=(llm.id, 12)) as update:
+            resp = client.post("/erudi/knowledge_base/create", json=_payload(selectedModel=llm.id))
         assert resp.status_code == 200
         body = resp.json()
         assert body["model_id"] == llm.id
         assert "updated" in body["msg"]
         update.assert_called_once()
-        assert self.update_calls == [
-            {"kb_job_id": 12, "file_paths": ["/tmp/doc1.pdf"]}
-        ]
+        assert self.update_calls == [{"kb_job_id": 12, "file_paths": ["/tmp/doc1.pdf"]}]
         assert self.creation_calls == []
 
-    def test_duplicate_assistant_name_rejected_with_409(
-        self, client, mock_llm, test_db_session
-    ):
+    def test_duplicate_assistant_name_rejected_with_409(self, client, mock_llm, test_db_session):
         """#317: two assistants with the same name are indistinguishable in
         every picker. The create path must refuse a modelName that collides
         with an existing local model's name."""
@@ -187,9 +164,7 @@ class TestCreateKnowledgeBase:
         assert self.creation_calls == []
         assert self.update_calls == []
 
-    def test_duplicate_name_check_is_case_insensitive(
-        self, client, mock_llm, test_db_session
-    ):
+    def test_duplicate_name_check_is_case_insensitive(self, client, mock_llm, test_db_session):
         from src.entities.Llm import Llm
 
         test_db_session.add(
@@ -216,9 +191,7 @@ class TestCreateKnowledgeBase:
         """Updating an assistant's KB routes by the selected assistant, not the
         name: its own (necessarily existing) name must not be rejected."""
         llm, _kb = mock_llm_with_kb
-        with patch.object(
-            KB_Service, "update_existing_kb", return_value=(llm.id, 12)
-        ):
+        with patch.object(KB_Service, "update_existing_kb", return_value=(llm.id, 12)):
             resp = client.post(
                 "/erudi/knowledge_base/create",
                 json=_payload(selectedModel=llm.id, modelName=llm.name),
@@ -227,9 +200,7 @@ class TestCreateKnowledgeBase:
         assert "updated" in resp.json()["msg"]
 
     def test_service_valueerror_maps_to_404(self, client, mock_llm):
-        with patch.object(
-            KB_Service, "create_kb_assistant", side_effect=ValueError("gone")
-        ):
+        with patch.object(KB_Service, "create_kb_assistant", side_effect=ValueError("gone")):
             resp = client.post(
                 "/erudi/knowledge_base/create",
                 json=_payload(selectedModel=mock_llm.id),
@@ -237,9 +208,7 @@ class TestCreateKnowledgeBase:
         assert resp.status_code == 404
 
     def test_unexpected_error_maps_to_500(self, client, mock_llm):
-        with patch.object(
-            KB_Service, "create_kb_assistant", side_effect=RuntimeError("io error")
-        ):
+        with patch.object(KB_Service, "create_kb_assistant", side_effect=RuntimeError("io error")):
             resp = client.post(
                 "/erudi/knowledge_base/create",
                 json=_payload(selectedModel=mock_llm.id),
@@ -251,9 +220,9 @@ class TestCreateKnowledgeBase:
 # UNIT - background task wrappers
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestBackgroundTaskWrappers:
-
     def _fake_session(self, monkeypatch):
         session = MagicMock()
         monkeypatch.setattr(kb_endpoints, "SessionLocal", lambda: session)

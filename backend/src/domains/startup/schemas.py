@@ -16,6 +16,7 @@ Example:
     def check_welcome_popup():
         return {"has_already_displayed": True}
 """
+
 from pydantic import BaseModel, Field
 
 
@@ -33,9 +34,9 @@ class WelcomePopupResponse(BaseModel):
         >>> print(response.has_already_displayed)
         False
     """
+
     has_already_displayed: bool = Field(
-        ...,
-        description="True if welcome popup already shown, False if first time"
+        ..., description="True if welcome popup already shown, False if first time"
     )
 
     class Config:
@@ -43,8 +44,5 @@ class WelcomePopupResponse(BaseModel):
 
         Enables JSON schema generation for OpenAPI documentation.
         """
-        json_schema_extra = {
-            "example": {
-                "has_already_displayed": False
-            }
-        }
+
+        json_schema_extra = {"example": {"has_already_displayed": False}}

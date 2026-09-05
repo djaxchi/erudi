@@ -9,6 +9,7 @@ FOUNDATION_ORG), False = derived/community quant. Drives the Base vs Community
 split and "Models For You" recommendations in the UI (#86). Existing rows
 backfill to False; the next catalog resync re-marks remote (local=0) rows.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -16,8 +17,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'f2107afc82f6'
-down_revision: Union[str, Sequence[str], None] = '7bc061d58b4e'
+revision: str = "f2107afc82f6"
+down_revision: Union[str, Sequence[str], None] = "7bc061d58b4e"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

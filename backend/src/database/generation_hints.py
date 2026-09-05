@@ -30,6 +30,7 @@ Two halves, deliberately separated:
 There is deliberately no hand-curated table: what the publisher says is what
 we seed, and when the publisher says nothing the UI says so.
 """
+
 from __future__ import annotations
 
 import copy
@@ -68,14 +69,21 @@ STAGE_BASE_GENERATION_CONFIG = "base_generation_config"
 STAGE_QUANT_GENERATION_CONFIG = "quant_generation_config"
 STAGE_MODEL_CARD = "model_card"
 CAPTURE_STAGES: Tuple[str, ...] = (
-    STAGE_BASE_GENERATION_CONFIG, STAGE_QUANT_GENERATION_CONFIG, STAGE_MODEL_CARD,
+    STAGE_BASE_GENERATION_CONFIG,
+    STAGE_QUANT_GENERATION_CONFIG,
+    STAGE_MODEL_CARD,
 )
 SOURCE_NONE = "none"
 
 # Keys copied from generation_config.json. Everything else (token ids,
 # transformers_version, ...) is noise for sampling.
 GENERATION_CONFIG_KEYS: Tuple[str, ...] = (
-    "temperature", "top_p", "top_k", "min_p", "repetition_penalty", "presence_penalty",
+    "temperature",
+    "top_p",
+    "top_k",
+    "min_p",
+    "repetition_penalty",
+    "presence_penalty",
     "do_sample",
 )
 # Sampling keys that are user-facing / always on the wire.
@@ -195,6 +203,7 @@ def max_tokens_cap(context_length: Any, engine: Any = None) -> int:
     """
     if engine is None:
         from src.core import config
+
         engine = getattr(config, "LLM_Engine", None)
     engine_ctx = None
     probe = getattr(engine, "max_context_tokens", None) if engine is not None else None
@@ -282,8 +291,12 @@ _PAIR_RE = re.compile(
     re.IGNORECASE,
 )
 _KEY_BY_COMPACT = {
-    "temperature": "temperature", "topp": "top_p", "topk": "top_k", "minp": "min_p",
-    "presencepenalty": "presence_penalty", "repetitionpenalty": "repetition_penalty",
+    "temperature": "temperature",
+    "topp": "top_p",
+    "topk": "top_k",
+    "minp": "min_p",
+    "presencepenalty": "presence_penalty",
+    "repetitionpenalty": "repetition_penalty",
 }
 _THINKING_RE = re.compile(r"\bthinking\b", re.IGNORECASE)
 _NON_THINKING_RE = re.compile(r"\bnon[\s-]?thinking\b|\binstruct\b", re.IGNORECASE)
@@ -351,9 +364,9 @@ def extract_card_recommendations(markdown: str) -> List[Dict[str, Any]]:
         if values and (has_cue or current["cue"]):
             candidates.append({"line": text[:_EVIDENCE_MAX_CHARS], "values": values})
         if current["indent"] < 0:
-            intro_cue = has_cue                     # a paragraph resets the scope
+            intro_cue = has_cue  # a paragraph resets the scope
         elif has_cue:
-            intro_cue = True                        # "- We suggest ...:" then nested items
+            intro_cue = True  # "- We suggest ...:" then nested items
         current = None
 
     for raw in _prose_lines(markdown):
@@ -370,8 +383,11 @@ def extract_card_recommendations(markdown: str) -> List[Dict[str, Any]]:
         bullet = _BULLET_RE.match(line)
         if bullet:
             flush()
-            current = {"text": bullet.group(2).strip(), "indent": len(bullet.group(1)),
-                       "cue": heading_cue or intro_cue}
+            current = {
+                "text": bullet.group(2).strip(),
+                "indent": len(bullet.group(1)),
+                "cue": heading_cue or intro_cue,
+            }
             continue
         indent = len(line) - len(line.lstrip())
         if current is not None and indent > current["indent"]:
@@ -383,19 +399,23 @@ def extract_card_recommendations(markdown: str) -> List[Dict[str, Any]]:
     return candidates
 
 
-def select_card_recommendation(candidates: List[Dict[str, Any]],
-                               supports_thinking: Optional[bool]) -> Optional[Dict[str, Any]]:
+def select_card_recommendation(
+    candidates: List[Dict[str, Any]], supports_thinking: Optional[bool]
+) -> Optional[Dict[str, Any]]:
     """The candidate matching the model's mode: a thinking model takes the line
     mentioning "thinking" (not "non-thinking"); otherwise the line mentioning
     "non-thinking" / "instruct"; else the first candidate."""
     if not candidates:
         return None
     if supports_thinking is True:
+
         def wanted(line: str) -> bool:
             return bool(_THINKING_RE.search(line)) and not _NON_THINKING_RE.search(line)
     else:
+
         def wanted(line: str) -> bool:
             return bool(_NON_THINKING_RE.search(line))
+
     for candidate in candidates:
         if wanted(candidate["line"]):
             return candidate
@@ -494,8 +514,9 @@ def _load_json(path: Path) -> Optional[Dict[str, Any]]:
     return data if isinstance(data, dict) else None
 
 
-def _facts_from_readers(read_json: Callable[[str], Optional[Dict[str, Any]]],
-                        read_text: Callable[[str], Optional[str]]) -> Tuple[Optional[Dict[str, Any]], Any]:
+def _facts_from_readers(
+    read_json: Callable[[str], Optional[Dict[str, Any]]], read_text: Callable[[str], Optional[str]]
+) -> Tuple[Optional[Dict[str, Any]], Any]:
     """``(config, chat_template)`` of one repo. ``read_json(name)`` /
     ``read_text(name)`` return ``None`` for a missing file and raise on a
     broken one (the caller decides whether that aborts the capture)."""
@@ -524,7 +545,9 @@ class _Hub_Reader:
 
     def _fetch(self, repo: str, filename: str) -> Optional[Path]:
         from huggingface_hub.errors import (
-            EntryNotFoundError, GatedRepoError, RepositoryNotFoundError,
+            EntryNotFoundError,
+            GatedRepoError,
+            RepositoryNotFoundError,
         )
 
         if repo in _MISSING_REPOS or (repo in _GATED_REPOS and filename != _README_FILE):
@@ -564,7 +587,9 @@ def _usable(block: Any) -> Optional[Dict[str, Any]]:
     return subset if subset and guarded_generation_config(subset) else None
 
 
-def _capture_uncached(base_repo: str, quant_repo: Optional[str], hf_api: Any) -> Optional[Dict[str, Any]]:
+def _capture_uncached(
+    base_repo: str, quant_repo: Optional[str], hf_api: Any
+) -> Optional[Dict[str, Any]]:
     reader = _Hub_Reader(hf_api)
     stage: Optional[str] = None
     block: Optional[Dict[str, Any]] = None
@@ -594,18 +619,25 @@ def _capture_uncached(base_repo: str, quant_repo: Optional[str], hf_api: Any) ->
         if card:
             template_text = _chat_template_text(chat_template)
             supports_thinking = ("enable_thinking" in template_text) if template_text else None
-            chosen = select_card_recommendation(extract_card_recommendations(card), supports_thinking)
+            chosen = select_card_recommendation(
+                extract_card_recommendations(card), supports_thinking
+            )
             if chosen:
                 block, evidence, stage = chosen["values"], chosen["line"], STAGE_MODEL_CARD
 
     return build_generation_hints(
-        base_repo=base_repo, generation_config=block if stage else None, config=config,
-        chat_template=chat_template, source_stage=stage, evidence=evidence,
+        base_repo=base_repo,
+        generation_config=block if stage else None,
+        config=config,
+        chat_template=chat_template,
+        source_stage=stage,
+        evidence=evidence,
     )
 
 
-def capture_generation_hints(base_repo: Optional[str], hf_api: Any, *,
-                             quant_repo: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def capture_generation_hints(
+    base_repo: Optional[str], hf_api: Any, *, quant_repo: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
     """Read a model's sampling facts from HuggingFace through the cascade
     (base generation_config > quant generation_config > base model card).
     Best-effort: ``None`` on any failure (network, malformed file, nothing
@@ -628,7 +660,9 @@ def capture_generation_hints(base_repo: Optional[str], hf_api: Any, *,
     return copy.deepcopy(hints)
 
 
-def read_local_generation_hints(model_dir: Path, base_repo: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def read_local_generation_hints(
+    model_dir: Path, base_repo: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
     """Offline variant for a downloaded MLX directory (which ships the same
     files as its quant repo, hence ``quant_generation_config`` when its
     generation_config.json is usable). GGUF artifacts carry none of them ->
@@ -649,7 +683,9 @@ def read_local_generation_hints(model_dir: Path, base_repo: Optional[str] = None
         block = _usable(read_json(_GENERATION_CONFIG_FILE))
         config, chat_template = _facts_from_readers(read_json, read_text)
         return build_generation_hints(
-            base_repo=base_repo, generation_config=block, config=config,
+            base_repo=base_repo,
+            generation_config=block,
+            config=config,
             chat_template=chat_template,
             source_stage=STAGE_QUANT_GENERATION_CONFIG if block else None,
         )

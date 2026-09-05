@@ -158,9 +158,7 @@ class CustomFormatter(logging.Formatter):
     def __init__(self):
         super().__init__(datefmt=LOG_DATEFMT)
         # Pre-build one UTC formatter per level instead of one per record.
-        self._formatters = {
-            level: utc_formatter(fmt) for level, fmt in self.FORMATS.items()
-        }
+        self._formatters = {level: utc_formatter(fmt) for level, fmt in self.FORMATS.items()}
 
     def format(self, record):
         """Format log record with color codes and shortened paths.
@@ -178,9 +176,7 @@ class CustomFormatter(logging.Formatter):
             same record.
         """
         backend_idx = record.pathname.find("backend/")
-        record.short_path = (
-            record.pathname[backend_idx:] if backend_idx != -1 else record.pathname
-        )
+        record.short_path = record.pathname[backend_idx:] if backend_idx != -1 else record.pathname
         formatter = self._formatters.get(record.levelno) or self._formatters[logging.INFO]
         return formatter.format(record)
 

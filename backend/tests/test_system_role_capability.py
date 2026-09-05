@@ -12,6 +12,7 @@ blamed on the system role.
   system-supporting one (Qwen2.5), rendered through a minimal in-memory
   tokenizer. No weights, no network — runs on Linux CI.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

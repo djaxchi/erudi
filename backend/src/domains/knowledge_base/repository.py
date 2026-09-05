@@ -16,6 +16,7 @@ Architecture:
     - Transaction management
     - Database session handling
 """
+
 from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -84,11 +85,7 @@ class KB_Repository:
         logger.info(f"Created KnowledgeBase with ID: {kb.id}")
         return kb
 
-    def get_knowledge_base_by_id(
-        self, 
-        db: Session, 
-        kb_id: int
-    ) -> Optional[KnowledgeBase]:
+    def get_knowledge_base_by_id(self, db: Session, kb_id: int) -> Optional[KnowledgeBase]:
         """Fetch KnowledgeBase by ID.
 
         Args:
@@ -190,10 +187,7 @@ class KB_Repository:
         Returns:
             Llm instance or None if not found or not local.
         """
-        return db.query(Llm).filter(
-            Llm.id == llm_id,
-            Llm.local == 1
-        ).first()
+        return db.query(Llm).filter(Llm.id == llm_id, Llm.local == 1).first()
 
     def get_local_llm_by_name(self, db: Session, name: str) -> Optional[Llm]:
         """Fetch a local Llm whose name matches case-insensitively (trimmed).
@@ -212,18 +206,17 @@ class KB_Repository:
         normalized = (name or "").strip().lower()
         if not normalized:
             return None
-        return db.query(Llm).filter(
-            Llm.local == 1,
-            func.lower(func.trim(Llm.name)) == normalized,
-        ).first()
+        return (
+            db.query(Llm)
+            .filter(
+                Llm.local == 1,
+                func.lower(func.trim(Llm.name)) == normalized,
+            )
+            .first()
+        )
 
     def create_specialized_llm(
-        self,
-        db: Session,
-        name: str,
-        description: str,
-        base_llm: Llm,
-        kb_id: int
+        self, db: Session, name: str, description: str, base_llm: Llm, kb_id: int
     ) -> Llm:
         """Create specialized LLM attached to Knowledge Base.
 
@@ -276,7 +269,7 @@ class KB_Repository:
         base_model_id: int,
         new_model_id: int,
         kb_id: int,
-        status: str = "pending"
+        status: str = "pending",
     ) -> KBJobModel:
         """Create KBJob to track background task.
 
@@ -291,10 +284,7 @@ class KB_Repository:
             Created KBJobModel instance with ID assigned.
         """
         kb_job = KBJobModel(
-            base_model_id=base_model_id,
-            new_model_id=new_model_id,
-            kb_id=kb_id,
-            status=status
+            base_model_id=base_model_id, new_model_id=new_model_id, kb_id=kb_id, status=status
         )
         db.add(kb_job)
         db.flush()
@@ -313,11 +303,7 @@ class KB_Repository:
         """
         return db.query(KBJobModel).filter(KBJobModel.id == job_id).first()
 
-    def get_kb_job_by_model_id(
-        self,
-        db: Session,
-        model_id: int
-    ) -> Optional[KBJobModel]:
+    def get_kb_job_by_model_id(self, db: Session, model_id: int) -> Optional[KBJobModel]:
         """Fetch the MOST RECENT KBJob by new_model_id (specialized LLM).
 
         An assistant accumulates one KBJob per creation/update, all sharing
@@ -336,16 +322,15 @@ class KB_Repository:
         Returns:
             KBJobModel instance or None if not found.
         """
-        return db.query(KBJobModel).filter(
-            KBJobModel.new_model_id == model_id
-        ).order_by(KBJobModel.id.desc()).first()
+        return (
+            db.query(KBJobModel)
+            .filter(KBJobModel.new_model_id == model_id)
+            .order_by(KBJobModel.id.desc())
+            .first()
+        )
 
     def update_kb_job_status(
-        self,
-        db: Session,
-        kb_job: KBJobModel,
-        status: str,
-        error_message: Optional[str] = None
+        self, db: Session, kb_job: KBJobModel, status: str, error_message: Optional[str] = None
     ) -> KBJobModel:
         """Update KBJob status and updated_at timestamp.
 

@@ -4,6 +4,7 @@
   graceful None) and the llama.cpp engine hook (mmproj presence).
 - ``mlx_only``: the MLX engine hook reads ``config.json`` (Apple Silicon only).
 """
+
 from __future__ import annotations
 
 import json
