@@ -105,6 +105,31 @@ GitHub's blame view already skips it without any setup.
 - Don't groom the branch history either — PRs are squash-merged through a merge queue, so the individual commits are discarded anyway
 - Don't commit `.env` files, model files, `venv/`, `node_modules/`, or PyInstaller `dist/`/`build/` directories
 
+### Documentation
+
+**Documentation moves with the code, in the same change.** A pull request that
+alters behaviour and leaves a page describing the old behaviour is incomplete —
+not "to be finished later". Before you open it, search the repository for every
+mention of what you touched (the function name, the endpoint, the file path, the
+behaviour itself) and correct each one:
+
+- `README.md` — what the app is and what it does
+- `docs/` — the published site, `docs/privacy.md` above all
+- Comments and docstrings next to the code you changed
+- `CLAUDE.md` and this file, when a convention or a gate changes
+- `QA-SCENARIOS.md`, when a scenario's expected result changes
+
+This matters most where the documentation *is* the product. Erudi promises that
+nothing leaves your machine, and `docs/privacy.md` is where that promise is
+spelled out request by request. A page that still lists a request the app no
+longer makes is not a stale detail; it is a false statement about the thing
+people install this app for.
+
+**Write in the present tense, describing what is true now.** Documentation is
+not a changelog: no "this used to…", no "we fixed…", no history of how the code
+got here. That story belongs in the commit message and the pull request, where
+reviewers look for it. The page describes the software as it stands today.
+
 ---
 
 ## Backend guide
@@ -311,8 +336,9 @@ catch a bad compile flag before a release tag.
 Then:
 
 1. Test the full dev stack end-to-end on your platform
-2. Write a clear PR description: what changed, why, and how to test it
-3. Reference any related issues (`Closes #123`)
+2. Update every page your change makes inaccurate — see [Documentation](#documentation). No gate enforces this; a reviewer will ask
+3. Write a clear PR description: what changed, why, and how to test it
+4. Reference any related issues (`Closes #123`)
 
 PRs are squash-merged through a merge queue, so keep the PR title in the
 `type(scope): description` form — it becomes the commit on `main`.
