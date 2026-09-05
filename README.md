@@ -7,8 +7,6 @@ Erudi is a desktop app that downloads open-source language models, runs them on 
 **[Download for macOS · Windows · Linux](https://github.com/erudi-app/erudi/releases)**
 
 [![Latest release](https://img.shields.io/github/v/release/erudi-app/erudi?include_prereleases&label=release)](https://github.com/erudi-app/erudi/releases)
-[![Backend CI](https://github.com/erudi-app/erudi/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/erudi-app/erudi/actions/workflows/backend-ci.yml)
-[![App build smoke](https://github.com/erudi-app/erudi/actions/workflows/app-build-smoke.yml/badge.svg)](https://github.com/erudi-app/erudi/actions/workflows/app-build-smoke.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-erudi--app.github.io-1f7a5a)](https://erudi-app.github.io/erudi/)
 
@@ -20,7 +18,7 @@ Erudi is a desktop app that downloads open-source language models, runs them on 
 
 - **Nothing you type.** Prompts, answers and documents are processed by a model running in a child process on this computer, started from a local file and bound to `127.0.0.1`, and stored in an embedded database in your user folder.
 - **No account, no telemetry, no crash reporter.** The backend listens on `127.0.0.1` only; nothing on your network can reach it.
-- **Three requests you did not ask for, none carrying your data**: a reachability check to `huggingface.co`, an update check against this repository's releases, and a fetch of a model's generation defaults after you download it. Everything else — model downloads, Hugging Face search, the optional web search (off by default) — happens when you press the button.
+- **Two requests you did not ask for, neither carrying your data**: an update check against this repository's releases, which you can turn off in Settings, and a fetch of a model's generation defaults after you download it. Everything else — model downloads, Hugging Face search, the optional web search (off by default) — happens when you press the button.
 
 Every request, when it happens and the code behind it: **[What leaves your machine →](https://erudi-app.github.io/erudi/privacy/)**
 
