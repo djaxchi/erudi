@@ -26,7 +26,6 @@ requirements/
 │   ├── linux-specs.txt
 │   ├── mac-silicon-specs.txt # MLX (mlx-vlm + mlx, both pinned)
 │   └── win-specs.txt         # Windows-only (currently none)
-└── freezes/                  # optional pinned freezes
 ```
 
 ## Key design notes

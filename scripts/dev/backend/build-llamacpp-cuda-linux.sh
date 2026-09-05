@@ -52,6 +52,25 @@ fi
 [ -n "$NVCC" ] || die "nvcc (CUDA toolkit) not found. Install CUDA or set CUDA_HOME."
 echo "[cuda] nvcc: $("$NVCC" --version | grep -i release || echo "$NVCC")"
 
+# -------- architectures to compile for --------
+# Suffixes matter and a bare number is NOT what we want: bare "86" emits both
+# PTX and SASS, so the old bare list produced fourteen code objects where seven
+# do the job. This mirrors upstream's own release default -- `-virtual` == PTX
+# only, JIT-compiled by the driver on first run; `-real` == native SASS.
+# Forward compatibility to any architecture newer than what we list comes from
+# the 80-virtual PTX, exactly as upstream intends.
+CUDA_ARCHS="50-virtual;61-virtual;70-virtual;75-virtual;80-virtual;86-real;89-real"
+# sm_120 (Blackwell / RTX 50) only exists from CUDA 12.8: asking an older nvcc
+# for it fails the build outright. Add it when the toolkit can emit it, so those
+# cards get native code instead of a JIT pass, and stay buildable on 12.x below.
+CUDA_VER="$("$NVCC" --version | sed -n 's/.*release \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -1)"
+if [ -n "$CUDA_VER" ] && [ "$(printf '%s\n12.8\n' "$CUDA_VER" | sort -V | head -1)" = "12.8" ]; then
+  CUDA_ARCHS="${CUDA_ARCHS};120-real"
+  echo "[cuda] toolkit ${CUDA_VER}: adding native Blackwell (sm_120) code"
+else
+  echo "[cuda] toolkit ${CUDA_VER:-unknown} is below 12.8: Blackwell will JIT from PTX instead of running native code."
+fi
+
 # -------- toolchain: prefer venv cmake, fall back to PATH --------
 CMAKE="${BACKEND_ROOT}/venv/bin/cmake"
 if [ ! -x "$CMAKE" ]; then
@@ -94,10 +113,9 @@ echo "[build] Configuring llama.cpp (Linux CUDA)..."
   -DLLAMA_BUILD_TOOLS=ON \
   -DLLAMA_BUILD_SERVER=ON \
   -DGGML_CUDA=ON \
-  -DCMAKE_CUDA_ARCHITECTURES="50;61;70;75;80;86;89" \
+  -DCMAKE_CUDA_ARCHITECTURES="$CUDA_ARCHS" \
   -DGGML_CPU=ON \
   -DGGML_NATIVE=OFF \
-  -DGGML_CUDA_F16=ON \
   -DGGML_METAL=OFF \
   -DGGML_VULKAN=OFF \
   -DGGML_HIP=OFF \

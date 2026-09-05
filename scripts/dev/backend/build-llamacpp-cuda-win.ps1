@@ -1,14 +1,16 @@
 # build-llamacpp-cuda-win.ps1
 #
 # Goal:
-# - Build llama.cpp for Windows with NVIDIA CUDA 12.1 GPU backend.
+# - Build llama.cpp for Windows with the NVIDIA CUDA GPU backend.
 # - Enables GPU-accelerated inference via CUDA_Engine.
 # - CPU fallback layers remain active for models larger than VRAM.
 #
 # Prerequisites (must be installed before running this script):
 # - Visual Studio 2019 or 2022 with "Desktop development with C++" workload
-# - NVIDIA CUDA Toolkit 12.1 (sets CUDA_PATH env var automatically)
-# - Python 3.9+ and the Erudi venv already created via setup-win-cuda-121.ps1
+# - An NVIDIA CUDA Toolkit, any 12.x (sets CUDA_PATH automatically). 12.8+ also
+#   emits native code for Blackwell / RTX 50; older toolkits leave those cards
+#   to the driver PTX JIT.
+# - Python 3.12 and the Erudi venv already created via setup-win-cuda.ps1
 # - Git (for the llama-cpp submodule, if not already populated)
 #
 # Usage (run from erudi\ or erudi\backend\):
@@ -65,15 +67,29 @@ if (-not (Test-Path (Join-Path $SrcDir "CMakeLists.txt"))) {
 
 # Python (venv or PATH)
 if (-not $VenvPython) {
-    Write-Fail "Python not found (no backend\venv and none on PATH). Run setup-win-cuda-121.ps1 first, or install Python."
+    Write-Fail "Python not found (no backend\venv and none on PATH). Run setup-win-cuda.ps1 first, or install Python."
 }
 
 # -------- CUDA toolkit detection --------
-Write-Step "Detecting CUDA 12.1 toolkit..."
+# No version is pinned here on purpose. Since torch-CUDA was dropped (#98) the
+# toolkit only compiles llama-server, and any CUDA 12.x can do that. What the
+# toolkit version DOES decide is which GPU architectures nvcc can emit native
+# code for -- 12.8 is the first that knows Blackwell (sm_120), which is why the
+# release installs 12.8 (see .github/workflows/release.yml). Build with an older
+# 12.x and you get a working binary that reaches Blackwell only through the
+# driver's PTX JIT.
+Write-Step "Detecting CUDA toolkit..."
 
-# Prefer version-specific env var set by the CUDA installer
+$CudaRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA"
 $CudaPath = $null
-foreach ($candidate in @($env:CUDA_PATH_V12_1, $env:CUDA_PATH, "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1")) {
+$Candidates = @($env:CUDA_PATH)
+if (Test-Path $CudaRoot) {
+    # Newest install first, so a machine with several toolkits builds with the
+    # one that supports the most architectures.
+    $Candidates += (Get-ChildItem $CudaRoot -Directory -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending | ForEach-Object { $_.FullName })
+}
+foreach ($candidate in $Candidates) {
     if ($candidate -and (Test-Path (Join-Path $candidate "bin\nvcc.exe"))) {
         $CudaPath = $candidate
         break
@@ -82,10 +98,11 @@ foreach ($candidate in @($env:CUDA_PATH_V12_1, $env:CUDA_PATH, "C:\Program Files
 
 if (-not $CudaPath) {
     Write-Fail (
-        "CUDA 12.1 toolkit not found.`n" +
-        "Install CUDA 12.1 from https://developer.nvidia.com/cuda-12-1-0-download-archive`n" +
-        "Expected nvcc.exe at: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1\bin\nvcc.exe`n" +
-        "Or set the CUDA_PATH_V12_1 environment variable manually."
+        "No CUDA toolkit found.`n" +
+        "Install one from https://developer.nvidia.com/cuda-downloads (12.8 or later " +
+        "to match the released binaries; any 12.x will build).`n" +
+        "Expected nvcc.exe under: $CudaRoot\vXX.Y\bin\nvcc.exe`n" +
+        "Or set CUDA_PATH to your toolkit root."
     )
 }
 
@@ -194,7 +211,28 @@ New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
 # -------- cmake configure --------
 Write-Host ""
-Write-Step "Configuring llama.cpp with CUDA 12.1..."
+Write-Step "Configuring llama.cpp with CUDA..."
+
+# Suffixes matter and a bare number is NOT what we want: bare "86" emits both
+# PTX and SASS, so the old bare list produced fourteen code objects where seven
+# do the job. This mirrors upstream's own release default -- `-virtual` == PTX
+# only, JIT-compiled by the driver on first run; `-real` == native SASS.
+# Forward compatibility to any architecture newer than what we list comes from
+# the 80-virtual PTX, exactly as upstream intends.
+$CudaArchs = "50-virtual;61-virtual;70-virtual;75-virtual;80-virtual;86-real;89-real"
+# sm_120 (Blackwell / RTX 50) only exists from CUDA 12.8: asking an older nvcc
+# for it fails the build outright. Add it when the toolkit can emit it, so those
+# cards get native code instead of a JIT pass, and stay buildable on 12.x below.
+$CudaVersion = $null
+if ($NvccVersion -match '([0-9]+)\.([0-9]+)') {
+    $CudaVersion = [version]"$($Matches[1]).$($Matches[2])"
+}
+if ($CudaVersion -and $CudaVersion -ge [version]"12.8") {
+    $CudaArchs += ";120-real"
+    Write-OK "CUDA  can emit native Blackwell (sm_120) code - adding it"
+} else {
+    Write-Host "  CUDA $CudaVersion is below 12.8: Blackwell will JIT from PTX instead of running native code."
+}
 
 $CmakeArgs = @(
     "-G", "Ninja",                       # Ninja avoids CUDA VS toolset registration requirement
@@ -204,15 +242,14 @@ $CmakeArgs = @(
     "-DBUILD_SHARED_LIBS=OFF",          # Static linkage avoids DLL placement issues on Windows
     "-DCMAKE_INSTALL_PREFIX=$InstallDir",
     "-DCMAKE_CUDA_COMPILER=$Nvcc",
-    "-DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler -Xcompiler /D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH -gencode=arch=compute_89,code=compute_89",
+    "-DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler -Xcompiler /D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH",
     "-DCMAKE_CXX_FLAGS=/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH",   # MSVC STL 19.44 requires CUDA 12.4+; bypass its static_assert
     "-DLLAMA_CURL=OFF",                 # No libcurl dependency needed for server-only use
     # ---- backend flags ----
     "-DGGML_CUDA=ON",                   # Enable NVIDIA CUDA backend
-    "-DCMAKE_CUDA_ARCHITECTURES=50;61;70;75;80;86;89",  # Native SASS for SM 50-89 + PTX 89 forward compat (Blackwell JIT-compiles from PTX)
+    "-DCMAKE_CUDA_ARCHITECTURES=$CudaArchs",
     "-DGGML_CPU=ON",                    # Keep CPU layers for overflow beyond VRAM
     "-DGGML_NATIVE=OFF",                # OFF for portable binary across same-gen GPUs
-    "-DGGML_CUDA_F16=ON",               # Enable FP16 operations for faster inference
     "-DGGML_METAL=OFF",
     "-DGGML_VULKAN=OFF",
     "-DGGML_HIP=OFF",

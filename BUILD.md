@@ -24,6 +24,7 @@ PyInstaller cannot cross-compile, so **each platform is built on that platform**
 | Node.js | **20** | matches the CI runners |
 | npm | bundled with Node 20 | |
 | PyInstaller | latest | installed into the backend venv |
+| CUDA toolkit | any **12.x**; releases use **12.8** | only for the Windows/Linux CUDA legs, to compile `llama-server`. 12.8 is the first that emits native code for Blackwell (RTX 50); on an older 12.x the build scripts drop `120-real` and those cards JIT from PTX instead. Not needed for a CPU or macOS build — and never needed to *run* Erudi. |
 
 Backend dependencies are not a single `requirements.txt`. Composed entrypoints
 live under `backend/requirements/entrypoints/`:
@@ -88,7 +89,7 @@ how to obtain the certificate and the app-specific password.
 ### Windows (CUDA)
 
 ```powershell
-.\scripts\build\build-win-cuda-121.ps1
+.\scripts\build\build-win-cuda.ps1
 ```
 
 Same shape: prerequisites, PyInstaller with `backend.spec`, copy to

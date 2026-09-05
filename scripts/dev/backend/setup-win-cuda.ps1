@@ -1,7 +1,8 @@
-# Erudi Backend Setup Script - Windows CUDA 12.1
+# Erudi Backend Setup Script - Windows CUDA
 # Supports both development and production environments
 # Compatible with interactive use and CI/CD pipelines
-# Requires: Python 3.9+, CUDA 12.1
+# Requires: Python 3.12 exactly (pgserver ships cp312 wheels only), and a CUDA
+#           toolkit if you intend to compile llama-server for an NVIDIA GPU.
 
 param(
     [string]$InstallType = ""
@@ -33,7 +34,7 @@ if ($currentDir -eq "backend") {
     $venvPath = ".\backend\venv"
 }
 
-# Check Python version (3.9+)
+# Check Python version (3.12 exactly)
 Write-Status "Checking Python version..."
 
 $pythonCandidates = @("python", "python3", "py")
@@ -59,8 +60,11 @@ if ([string]::IsNullOrEmpty($pythonCmd)) {
 if ($version -match "(\d+)\.(\d+)\.(\d+)") {
     $major = [int]$matches[1]
     $minor = [int]$matches[2]
-    if (($major -lt 3) -or (($major -eq 3) -and ($minor -lt 9))) {
-        Write-Error-Exit "Python 3.9+ required, found: $version"
+    # 3.12 EXACTLY, not a floor: pgserver ships cp312 wheels only (no cp313,
+    # no sdist), so a newer Python gets past this check and then fails to
+    # install the embedded PostgreSQL cluster with an opaque pip error.
+    if (($major -ne 3) -or ($minor -ne 12)) {
+        Write-Error-Exit "Python 3.12 exactly is required (pgserver publishes cp312 wheels only), found: $version"
     } else {
         Write-Status "Using Python: $pythonCmd ($version)"
     }
@@ -177,10 +181,19 @@ Write-Host "Virtual env: $venvPath"
 Write-Host ""
 
 # -------- CUDA Toolkit Verification --------
-Write-Status "Verifying CUDA 12.1 toolkit installation..."
+Write-Status "Looking for a CUDA toolkit..."
 
+# Any CUDA 12.x compiles llama-server; the version only decides which GPU
+# architectures get native code (12.8+ adds Blackwell / RTX 50). So accept
+# whatever is installed, newest first, rather than demanding one version.
+$CudaRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA"
 $CudaBin = $null
-foreach ($candidate in @($env:CUDA_PATH_V12_1, $env:CUDA_PATH, "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1")) {
+$Candidates = @($env:CUDA_PATH)
+if (Test-Path $CudaRoot) {
+    $Candidates += (Get-ChildItem $CudaRoot -Directory -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending | ForEach-Object { $_.FullName })
+}
+foreach ($candidate in $Candidates) {
     if ($candidate -and (Test-Path (Join-Path $candidate "bin\nvcc.exe"))) {
         $CudaBin = Join-Path $candidate "bin"
         break
@@ -189,9 +202,10 @@ foreach ($candidate in @($env:CUDA_PATH_V12_1, $env:CUDA_PATH, "C:\Program Files
 
 if (-not $CudaBin) {
     Write-Host ""
-    Write-Host "[WARNING] CUDA 12.1 toolkit not detected." -ForegroundColor Yellow
-    Write-Host "  Install from: https://developer.nvidia.com/cuda-12-1-0-download-archive" -ForegroundColor Yellow
-    Write-Host "  llama-server will NOT be able to use GPU acceleration without it." -ForegroundColor Yellow
+    Write-Host "[WARNING] No CUDA toolkit detected." -ForegroundColor Yellow
+    Write-Host "  Install from: https://developer.nvidia.com/cuda-downloads" -ForegroundColor Yellow
+    Write-Host "  (12.8 or later matches the released binaries; any 12.x will build.)" -ForegroundColor Yellow
+    Write-Host "  You only need it to COMPILE llama-server. Running Erudi needs a driver only." -ForegroundColor Yellow
     Write-Host ""
 } else {
     Write-OK "CUDA toolkit found: $CudaBin"
