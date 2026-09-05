@@ -10,11 +10,9 @@ pytest-timeout==2.4.0  # a hung test must fail, not eat the whole job (#335)
 httpx==0.28.1  # For FastAPI testing
 
 # Code Quality
-# black 26.3.1 fixes the arbitrary file write through an unsanitized cache file
-# name; stay on the newest stable of the line.
-black==26.5.1
+# ruff is both the linter and the formatter. Keep this pin in step with the
+# `rev` in .pre-commit-config.yaml so the hooks and CI run the same version.
 ruff==0.8.4
-mypy==1.13.0
 
 # Development Tools
 ipython==8.31.0

@@ -56,6 +56,41 @@ cd frontend && npm install && npm start
 - Exceptions: use `EngineException` (from `src.core.exceptions`) for engine errors, `DatabaseException` for DB errors — don't raise generic `Exception` in domain code
 - Keep engine-specific code inside the engine classes (`CUDA_Engine`, `CPU_Engine`, `MLX_Engine`) — `base_engine.py` and `services.py` should stay platform-agnostic
 
+### Formatting
+
+Python is formatted by **`ruff format`**, and by nothing else. Ruff is also the
+linter, so one tool covers both and there is no second formatter to disagree
+with it. The width is 100 columns everywhere: `backend/ruff.toml` sets it for
+`backend/`, and the root `ruff.toml` sets it for the Python outside it. Ruff
+finds the right one per file, so no command here needs a flag. Frontend code is
+formatted by Prettier, unchanged.
+
+Let the hooks do it for you:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+That runs `ruff --fix` and `ruff format` on the Python files in each commit,
+pinned to the same version `backend/requirements/meta/dev.txt` installs and CI
+uses. Or run it by hand, from the repository root:
+
+```bash
+ruff format backend scripts            # apply
+ruff format --check backend scripts    # what CI asks
+```
+
+The tree was reformatted in one pass, so `git blame` on a Python file can land
+on that commit instead of the change you were looking for. This makes git skip
+it:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+GitHub's blame view already skips it without any setup.
+
 ### JavaScript / React
 
 - ESLint config is in `.eslintrc.json` — run `npm run lint` before committing
@@ -240,8 +275,10 @@ Run the same gates CI runs, locally, before you push.
 `ubuntu-latest`, `windows-latest` and `macos-14`):
 
 ```bash
+ruff check backend scripts
+ruff format --check backend scripts
+
 cd backend
-ruff check src
 pytest tests/ -q --ignore=tests/e2e -m "not mlx_only"
 ```
 

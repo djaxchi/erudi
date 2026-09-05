@@ -247,7 +247,8 @@ erudi/
 ```bash
 cd backend && pytest tests/                                       # full suite
 cd backend && pytest tests/ --ignore=tests/e2e -m "not mlx_only"  # what CI runs
-cd backend && ruff check src
+ruff check backend scripts                                        # lint
+ruff format --check backend scripts                               # ruff is also the formatter
 
 cd frontend && npm run lint:check && npm run format:check
 ```

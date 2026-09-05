@@ -19,7 +19,7 @@ requirements/
 ├── meta/
 │   ├── base.txt              # shared core: FastAPI, SQLAlchemy, pgserver,
 │   │                         #   langchain, sentence-transformers, transformers (pinned 5.14.1)
-│   ├── dev.txt               # pytest / ruff / black / mypy
+│   ├── dev.txt               # pytest / ruff (linter + formatter) / mkdocs
 │   ├── cpu.txt               # CPU torch (official CPU index) + gguf — REUSED by the CUDA entrypoints
 │   ├── cuda-specs.txt        # CUDA-only non-torch bits (pynvml). No torch+cuXXX.
 │   ├── cuda-win-specs.txt    # Windows CUDA build tools (cmake)

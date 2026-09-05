@@ -1,3 +1,7 @@
+# Shared by `ruff format` and `ruff check`, so neither needs a CLI flag to agree
+# with the other. 100 is the width the project has always documented.
+line-length = 100
+
 [lint]
 # Rules enforced:
 # F4xx - unused imports

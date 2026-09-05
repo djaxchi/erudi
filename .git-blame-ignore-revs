@@ -1,0 +1,13 @@
+# Commits listed here are pure reformatting: they change whitespace and line
+# breaks, never behaviour. `git blame` skips them and attributes each line to
+# the commit that last changed its meaning.
+#
+# Turn it on once per clone:
+#
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# GitHub reads this file automatically, so its blame view already skips them.
+#
+# The tree-wide `ruff format` pass belongs in this list. Its hash is not
+# here yet: pull requests land as a squash merge, so the commit that ends up on
+# main does not exist until after the merge. A follow-up commit adds it.
