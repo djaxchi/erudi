@@ -60,3 +60,28 @@ in CI; set `INSTALL_TYPE=dev|prod` to force).
 - Shared (all platforms) → `meta/base.txt`
 - Dev tool → `meta/dev.txt`
 - Platform / hardware-specific → the matching `meta/*-specs.txt`
+
+## Changing a version
+
+Every version here is an exact pin, so bumping one can make the whole set
+unsolvable — a library's new release may tighten a range around a sibling that
+nobody thought to touch.
+
+**Installing into your existing venv does not prove the set resolves.** pip
+patches what is already there: it will quietly upgrade a transitive dependency
+to satisfy the package you asked for, leave the pin file describing a state no
+environment ever ran, and report success. CI builds a venv from nothing and
+resolves properly, so it fails where you did not.
+
+Check a bump the way CI will, in a throwaway environment:
+
+```bash
+python3.12 -m venv /tmp/resolvenv
+/tmp/resolvenv/bin/python -m pip install --dry-run \
+    -r requirements/entrypoints/dev/<platform>.txt
+```
+
+`--dry-run` resolves and prints what it *would* install without building
+anything, so it costs metadata rather than gigabytes. Read the resulting
+versions: any package that comes out at something other than its pin is a pin
+that needs updating in the same commit.
