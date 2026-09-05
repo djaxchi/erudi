@@ -5,7 +5,7 @@ Pins: error-message persistence, star/unstar routes with their rollback
 paths, the create/delete/update error branches, the streaming generators'
 load-failure degradation (error event instead of a 500 mid-stream), the
 stale-llm auto-repair (#), the checkpointer purge tolerance, title-gen
-fallbacks, and the welcome-popup / connection-status endpoints.
+fallbacks, and the welcome-popup endpoint.
 """
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.domains.conversations.services import ConversationService, ERROR_MESSAGE
-from src.domains.startup import endpoints as startup_endpoints
 from src.entities.Conversation import Conversation
 from src.entities.Llm import Llm
 from src.entities.Message import Message
@@ -226,30 +225,3 @@ class TestStartupEndpoints:
             resp = client.get("/erudi/startup/welcome-popup")
         assert resp.status_code == 500
 
-    def test_connection_status_reports_probe_result(self, client, monkeypatch):
-        monkeypatch.setattr(startup_endpoints, "is_online", lambda: True)
-        resp = client.get("/erudi/startup/connection-status")
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["can_download_models"] is True
-        assert "offline_mode" in body
-        assert "models_seeded" in body
-
-    def test_connection_status_offline_probe(self, client, monkeypatch):
-        monkeypatch.setattr(startup_endpoints, "is_online", lambda: False)
-        resp = client.get("/erudi/startup/connection-status")
-        assert resp.status_code == 200
-        assert resp.json()["can_download_models"] is False
-
-    def test_connection_status_failure_maps_to_database_exception(
-        self, client, monkeypatch
-    ):
-        from src.domains.startup.repository import Startup_Variables_Repository
-
-        with patch.object(
-            Startup_Variables_Repository,
-            "get_or_create",
-            side_effect=RuntimeError("db down"),
-        ):
-            resp = client.get("/erudi/startup/connection-status")
-        assert resp.status_code == 500

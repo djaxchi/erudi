@@ -15,6 +15,7 @@ import InteractionLogger from "./components/InteractionLogger";
 import { apiClient } from "./services/api/client";
 import { setBackendPort } from "./config/api";
 import { syncLanguageWithBackend } from "./i18n/sync";
+import { syncAutoUpdateWithMain } from "./utils/autoUpdate";
 import {
   describeBackendError,
   isStartupError,
@@ -102,10 +103,13 @@ export default function App() {
   }, [retryNonce]);
 
   // Once the backend answers, reconcile the boot language (local mirror or
-  // OS locale) with the persisted user setting (#385).
+  // OS locale) with the persisted user setting (#385), and hand the persisted
+  // automatic-update preference to the main process, which holds every update
+  // check until it hears one.
   useEffect(() => {
     if (!isBackendReady) return;
     syncLanguageWithBackend(apiClient);
+    syncAutoUpdateWithMain(apiClient);
   }, [isBackendReady]);
 
   const handleRetry = useCallback(() => {

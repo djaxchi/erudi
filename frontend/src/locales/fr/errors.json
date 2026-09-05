@@ -112,12 +112,12 @@
     },
     "offline": {
       "label": "Hors ligne",
-      "title": "Aucune connexion Internet",
-      "tooltip": "Sans Internet : le catalogue et les téléchargements sont indisponibles, mais vous pouvez toujours discuter avec les modèles installés."
+      "title": "Aucune connexion réseau",
+      "tooltip": "Aucun réseau : le catalogue et les téléchargements sont indisponibles, mais vous pouvez toujours discuter avec les modèles installés."
     },
     "connected": {
       "label": "Connecté",
-      "title": "Connecté à Internet",
+      "title": "Connecté à un réseau",
       "tooltip": "Vous pouvez discuter hors ligne avec les modèles installés. En installer de nouveaux nécessite une connexion."
     }
   },

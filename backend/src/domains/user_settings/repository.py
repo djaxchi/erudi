@@ -27,7 +27,8 @@ class User_Settings_Repository:
 
         Returns:
             UserSettings: The singleton settings entity (defaults applied on
-            first creation: web_search_enabled=False, language="en").
+            first creation: web_search_enabled=False, language="en",
+            auto_update_enabled=True).
         """
         settings = self.db.query(UserSettings).first()
         if not settings:
@@ -59,6 +60,22 @@ class User_Settings_Repository:
         """
         logger.info(f"Updating UserSettings.web_search_enabled = {value}")
         settings.web_search_enabled = value
+        self.db.flush()
+        self.db.refresh(settings)
+        return settings
+
+    def set_auto_update_enabled(self, settings: UserSettings, value: bool) -> UserSettings:
+        """Update the automatic-update preference (flushed, not committed).
+
+        Args:
+            settings: The singleton entity to update.
+            value: New Boolean value (False refuses update checks entirely).
+
+        Returns:
+            UserSettings: Updated entity.
+        """
+        logger.info(f"Updating UserSettings.auto_update_enabled = {value}")
+        settings.auto_update_enabled = value
         self.db.flush()
         self.db.refresh(settings)
         return settings

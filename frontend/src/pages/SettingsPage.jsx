@@ -1,12 +1,13 @@
 import React from "react";
 import PropTypes from "prop-types";
-import { Globe, Languages, ShieldCheck } from "lucide-react";
+import { Globe, Languages, RefreshCw, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import Sidebar from "../components/Sidebar";
 import ToggleSwitch from "../components/ToggleSwitch";
 import { useUserSettings } from "../shared/hooks/api";
 import { setAppLanguage } from "../i18n";
 import { LANGUAGE_NAMES, SUPPORTED_LANGUAGES } from "../i18n/languages";
+import { notifyAutoUpdatePreference } from "../utils/autoUpdate";
 import { createLogger } from "../utils/logger";
 
 const log = createLogger("SettingsPage");
@@ -65,23 +66,37 @@ SettingsCard.propTypes = {
 /**
  * App-wide settings page (gear icon in the sidebar rail).
  *
- * Sections: the global Web Search default (#310) and the application
- * language (#385). Enabling web search lets tool-capable models search the
- * web; the searched query is sent to external search engines, so it ships
- * OFF by default and new conversations inherit whatever the user picks here
- * (each conversation then owns its own toggle). The language applies
- * immediately through i18next and is persisted with the other settings.
+ * Sections: the global Web Search default (#310), automatic updates and the
+ * application language (#385). Enabling web search lets tool-capable models
+ * search the web; the searched query is sent to external search engines, so it
+ * ships OFF by default and new conversations inherit whatever the user picks
+ * here (each conversation then owns its own toggle). Automatic updates ship ON
+ * -- refusing them stops the update traffic entirely, and the choice is handed
+ * to the Electron main process, which owns electron-updater. The language
+ * applies immediately through i18next and is persisted with the other settings.
  */
 export default function SettingsPage() {
   const { t, i18n } = useTranslation();
   const { settings, loading, updateSettings } = useUserSettings();
   const webSearchEnabled = settings?.web_search_enabled ?? false;
+  const autoUpdateEnabled = settings?.auto_update_enabled ?? true;
 
   const handleWebSearchToggle = async (next) => {
     try {
       await updateSettings({ web_search_enabled: next });
     } catch (error) {
       log.error("Failed to update the web search setting", error);
+    }
+  };
+
+  const handleAutoUpdateToggle = async (next) => {
+    try {
+      await updateSettings({ auto_update_enabled: next });
+      // Main holds electron-updater and has no database: without this it would
+      // keep checking after the user said no.
+      notifyAutoUpdatePreference(next);
+    } catch (error) {
+      log.error("Failed to update the automatic update setting", error);
     }
   };
 
@@ -119,6 +134,21 @@ export default function SettingsPage() {
                 checked={webSearchEnabled}
                 onChange={handleWebSearchToggle}
                 label={t("settings:webSearch.toggleLabel")}
+                disabled={loading}
+              />
+            }
+          />
+
+          <SettingsCard
+            icon={<RefreshCw className="w-5 h-5 text-[var(--fit-good)]" />}
+            title={t("settings:autoUpdate.title")}
+            description={t("settings:autoUpdate.description")}
+            note={t("settings:autoUpdate.note")}
+            control={
+              <ToggleSwitch
+                checked={autoUpdateEnabled}
+                onChange={handleAutoUpdateToggle}
+                label={t("settings:autoUpdate.toggleLabel")}
                 disabled={loading}
               />
             }

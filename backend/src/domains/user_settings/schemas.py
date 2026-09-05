@@ -1,8 +1,8 @@
 """Pydantic validation schemas for the user-settings domain (issue #310).
 
 One singleton resource: the app-wide user settings. It carries the global
-web-search default (#310) and the interface language (#385); new settings
-slot in as additional fields.
+web-search default (#310), the interface language (#385) and the
+automatic-update preference; new settings slot in as additional fields.
 """
 from typing import Literal, Optional
 
@@ -19,6 +19,8 @@ class UserSettingsResponse(BaseModel):
             New conversations copy this value at creation; the per-conversation
             toggle owns it afterwards.
         language: Interface language code the frontend renders in.
+        auto_update_enabled: Whether the Electron main process may check for,
+            download and install a new version on its own.
     """
     web_search_enabled: bool = Field(
         ...,
@@ -27,6 +29,10 @@ class UserSettingsResponse(BaseModel):
     language: LanguageCode = Field(
         ...,
         description="Interface language code (en, fr, es, zh)",
+    )
+    auto_update_enabled: bool = Field(
+        ...,
+        description="Whether the app may check for and install updates on its own",
     )
 
     class Config:
@@ -47,9 +53,17 @@ class UserSettingsUpdate(BaseModel):
         None,
         description="Interface language code (en, fr, es, zh)",
     )
+    auto_update_enabled: Optional[bool] = Field(
+        None,
+        description="Allow or refuse automatic update checks, downloads and installs",
+    )
 
     @model_validator(mode="after")
     def require_at_least_one_field(self):
-        if self.web_search_enabled is None and self.language is None:
+        if (
+            self.web_search_enabled is None
+            and self.language is None
+            and self.auto_update_enabled is None
+        ):
             raise ValueError("At least one setting must be provided")
         return self

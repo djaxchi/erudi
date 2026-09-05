@@ -1,6 +1,7 @@
 import { createLogger } from "../../utils/logger";
 import { getApiBaseUrl } from "../../config/api";
 import { truncateValue } from "../../utils/interactionLogger";
+import { reportNetworkFailure, reportNetworkSuccess } from "../../utils/networkStatus";
 import i18n from "../../i18n";
 
 const log = createLogger("APIClient");
@@ -25,6 +26,21 @@ function pathForLog(url) {
   } catch {
     return String(url);
   }
+}
+
+/**
+ * Whether a rejected request died at the network layer rather than answering.
+ *
+ * The status pill reads connectivity from the operating system, which reports a
+ * link, not a reachable internet. A request that came back with a status —
+ * however bad — proves the path works; one that came back with nothing is the
+ * evidence that it does not. A caller-side abort (our own timeout, an unmounting
+ * component) says nothing about the network and is excluded.
+ * @param {Error} error - The rejection from a request attempt.
+ * @returns {boolean}
+ */
+function isNetworkLevelError(error) {
+  return error?.name !== "AbortError" && error?.status === undefined;
 }
 
 /**
@@ -95,6 +111,7 @@ export async function tracedFetch(url, options = {}) {
       ...options,
       headers: { ...callerHeaders, "X-Request-ID": rid },
     });
+    reportNetworkSuccess();
     log.info("api.response", {
       rid,
       status: response.status,
@@ -102,6 +119,7 @@ export async function tracedFetch(url, options = {}) {
     });
     return response;
   } catch (error) {
+    if (isNetworkLevelError(error)) reportNetworkFailure();
     log.error("api.failure", {
       rid,
       error: error.message,
@@ -233,6 +251,8 @@ class APIClient {
       });
 
       clearTimeout(timeoutId);
+      // A status came back, so the network path works whatever the status says.
+      reportNetworkSuccess();
 
       // Handle non-OK responses
       if (!response.ok) {
@@ -276,6 +296,10 @@ class APIClient {
         await this.sleep(delay);
         return this.request(endpoint, options, attempt + 1);
       }
+
+      // Only once the request is really over: a retry that succeeds says the
+      // network is fine, and reporting each attempt would flicker the pill.
+      if (isNetworkLevelError(error)) reportNetworkFailure();
 
       log.error("api.failure", {
         rid,

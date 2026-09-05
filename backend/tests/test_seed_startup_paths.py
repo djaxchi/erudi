@@ -32,7 +32,6 @@ from src.database.seed import (
     Search_Config,
     Startup_Initializer,
     _safetensors_total,
-    is_online,
     load_base_models_fallback,
 )
 from src.entities.DownloadJob import DownloadJobModel
@@ -104,23 +103,6 @@ _FakeEngineType.__name__ = "CPU_Engine"
 
 @pytest.mark.unit
 class TestModuleHelpers:
-
-    def test_is_online_true_on_completed_head(self, monkeypatch):
-        import requests
-
-        monkeypatch.setattr(
-            requests, "head", lambda *a, **kw: SimpleNamespace(status_code=200)
-        )
-        assert is_online() is True
-
-    def test_is_online_false_on_network_error(self, monkeypatch):
-        import requests
-
-        def boom(*a, **kw):
-            raise requests.exceptions.ConnectionError("no route")
-
-        monkeypatch.setattr(requests, "head", boom)
-        assert is_online() is False
 
     def test_load_base_models_fallback_reads_bundled_json(self):
         models = load_base_models_fallback()

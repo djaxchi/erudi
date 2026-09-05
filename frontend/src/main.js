@@ -26,8 +26,6 @@ let autoUpdater = null;
 if (app.isPackaged) {
   try {
     autoUpdater = require("electron-updater").autoUpdater;
-    autoUpdater.autoDownload = true; // Download silently in the background
-    autoUpdater.autoInstallOnAppQuit = true; // Install on next natural quit
     autoUpdater.logger = require("electron-log");
     autoUpdater.logger.transports.file.level = "info";
   } catch (e) {
@@ -35,6 +33,15 @@ if (app.isPackaged) {
     autoUpdater = null;
   }
 }
+
+// Automatic updates are refusable in Settings. The preference is persisted with
+// the other user settings, which only the renderer can read, so main starts out
+// not knowing it and does NOT check for updates until the renderer says so:
+// checking early would send a request the user may have declined. Enabled is
+// what the renderer reports when the setting cannot be read, so the shipped
+// behaviour is unchanged for anyone who never opens the setting.
+let autoUpdateEnabled = null;
+let updatePollTimer = null;
 
 // Renderer + preload entry resolution (replaces the @electron-forge/plugin-webpack
 // magic globals). Prod (packaged): load the built files that sit next to this
@@ -684,11 +691,17 @@ const createWindow = () => {
       return;
     }
 
+    // `img-src` deliberately omits `https:`. The window has no use for remote
+    // images (the logo is bundled, attachments are data: URLs), and allowing the
+    // scheme would let a markdown image link written by a model, or carried by a
+    // knowledge-base document, fetch a remote host and reveal the user's IP to
+    // it. Keep the scheme out; webpack.config.js pins the same policy for the
+    // packaged file:// document.
     callback({
       responseHeaders: {
         ...details.responseHeaders,
         "Content-Security-Policy": [
-          "default-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;",
+          "default-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;",
         ],
       },
     });
@@ -964,12 +977,45 @@ function setupAutoUpdater() {
     log(`Updater error (non-fatal): ${err.message}`);
   });
 
-  // Check on launch, then every 4 hours
+  // No check yet: applyAutoUpdatePreference() starts the first one once the
+  // renderer has reported whether the user allows updates at all.
+}
+
+// Renderer -> main: the persisted "automatic updates" preference, sent at boot
+// and on every change. Off means off end to end: no check, no download, no
+// install on quit.
+ipcMain.on("updater:set-enabled", (_event, enabled) => {
+  autoUpdateEnabled = enabled !== false;
+  applyAutoUpdatePreference();
+});
+
+function applyAutoUpdatePreference() {
+  if (!autoUpdater || autoUpdateEnabled === null) {
+    return;
+  }
+
+  autoUpdater.autoDownload = autoUpdateEnabled;
+  autoUpdater.autoInstallOnAppQuit = autoUpdateEnabled;
+
+  if (!autoUpdateEnabled) {
+    if (updatePollTimer) {
+      clearInterval(updatePollTimer);
+      updatePollTimer = null;
+    }
+    log("Updater: automatic updates are turned off; no check will run");
+    return;
+  }
+
+  if (updatePollTimer) {
+    return; // already checking on its cadence
+  }
+
+  log("Updater: automatic updates are on; checking now, then every 4 hours");
   autoUpdater.checkForUpdates().catch((err) => {
     log(`Updater: initial check failed - ${err.message}`);
   });
 
-  setInterval(
+  updatePollTimer = setInterval(
     () => {
       autoUpdater.checkForUpdates().catch((err) => {
         log(`Updater: periodic check failed - ${err.message}`);

@@ -8,6 +8,12 @@
     "note": "Off by default. New conversations inherit this setting; each conversation keeps its own toggle afterwards.",
     "toggleLabel": "Web search"
   },
+  "autoUpdate": {
+    "title": "Automatic updates",
+    "description": "Check for a new version of Erudi in the background, download it and install it the next time you quit. The request goes to this project's GitHub releases and carries nothing but your version and platform.",
+    "note": "On by default. When off, the app makes no update request at all; you can still install a new version yourself from the releases page.",
+    "toggleLabel": "Automatic updates"
+  },
   "language": {
     "title": "Application language",
     "description": "The language of menus, buttons and messages across the whole app. Model answers stay in whatever language you write in.",

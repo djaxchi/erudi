@@ -595,7 +595,7 @@ class TestPlaceholderSeedIsBestEffort:
 
     def test_boot_reconciles_snapshot_with_zero_network(self, test_db_session, monkeypatch):
         """#131/#163 — boot reconciles the catalog from the bundled snapshot with
-        ZERO network: no is_online() probe, no HF client, no background task."""
+        ZERO network: no HTTP request, no HF client, no background task."""
         import asyncio
         from src.database import seed as seed_mod
         from src.database import catalog_snapshot as snap_mod
@@ -608,10 +608,13 @@ class TestPlaceholderSeedIsBestEffort:
         def _boom(*a, **k):
             raise AssertionError("no network call may run on the boot path (#131/#163)")
 
-        # seed.py no longer imports get_hf_api at module level (is_online now does
-        # a bounded requests.head, imported locally - #109); patching the probe
-        # plus the config-level factory keeps the zero-network guarantee.
-        monkeypatch.setattr(seed_mod, "is_online", _boom)
+        # Nothing on the boot path may reach the network: neither an HF client
+        # nor a bare requests call (the connectivity probe that used to live in
+        # seed.py is gone -- #109/#166).
+        import requests
+
+        monkeypatch.setattr(requests, "head", _boom)
+        monkeypatch.setattr(requests, "get", _boom)
         monkeypatch.setattr(config, "get_hf_api", _boom)
 
         monkeypatch.setattr(config, "LLM_Engine", type("_Eng", (), {"FORMAT_TAG": "gguf"}))

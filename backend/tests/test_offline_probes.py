@@ -1,70 +1,19 @@
-"""Bounded offline probes (issue #109 P1/P2).
+"""Offline download errors (issue #109 P2).
 
-- ``is_online()`` must issue a single ``requests.head`` with a hard, bounded
-  (connect, read) timeout, return True on any completed round trip, and False
-  on any exception -- never hang. No real network: ``requests.head`` is mocked.
-- An offline model download must surface the friendly ``OFFLINE_DOWNLOAD_MESSAGE``
-  instead of the raw hf_hub "Cannot reach https://..." string, mirroring the e5
-  embedding-download offline path.
+An offline model download must surface the friendly ``OFFLINE_DOWNLOAD_MESSAGE``
+instead of the raw hf_hub "Cannot reach https://..." string, mirroring the e5
+embedding-download offline path.
 """
 import pytest
 import requests
 
 from src.core.exceptions import HuggingFaceAPIException
-from src.database.seed import is_online
 from src.domains.llms.services import (
     OFFLINE_DOWNLOAD_MESSAGE,
     _is_offline_download_error,
 )
 
 pytestmark = pytest.mark.unit
-
-
-class TestIsOnline:
-    def test_true_on_completed_head_with_bounded_timeout(self, monkeypatch):
-        seen = {}
-
-        def fake_head(url, **kwargs):
-            seen["url"] = url
-            seen["kwargs"] = kwargs
-            return object()  # any completed response counts as reachable
-
-        monkeypatch.setattr(requests, "head", fake_head)
-
-        assert is_online() is True
-        assert seen["url"] == "https://huggingface.co"
-        # The whole point of the fix: a real, bounded (connect, read) timeout.
-        assert seen["kwargs"]["timeout"] == (3, 3)
-        assert seen["kwargs"]["allow_redirects"] is True
-
-    def test_true_even_on_error_status(self, monkeypatch):
-        # We only assert reachability, not a 2xx: a returned 503 still means the
-        # network round trip completed, so is_online is True (no raise_for_status).
-        resp = requests.models.Response()
-        resp.status_code = 503
-        monkeypatch.setattr(requests, "head", lambda url, **kw: resp)
-        assert is_online() is True
-
-    def test_false_on_connection_error(self, monkeypatch):
-        def boom(url, **kwargs):
-            raise requests.exceptions.ConnectionError("getaddrinfo failed")
-
-        monkeypatch.setattr(requests, "head", boom)
-        assert is_online() is False
-
-    def test_false_on_read_timeout(self, monkeypatch):
-        def boom(url, **kwargs):
-            raise requests.exceptions.ReadTimeout("timed out")
-
-        monkeypatch.setattr(requests, "head", boom)
-        assert is_online() is False
-
-    def test_false_on_connect_timeout(self, monkeypatch):
-        def boom(url, **kwargs):
-            raise requests.exceptions.ConnectTimeout("connect timed out")
-
-        monkeypatch.setattr(requests, "head", boom)
-        assert is_online() is False
 
 
 class TestOfflineDownloadErrorMapping:

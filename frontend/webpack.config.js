@@ -110,13 +110,17 @@ const renderer = {
       scriptLoading: "blocking",
       // CSP for the prod (file://) load, where main.js's onHeadersReceived does
       // not apply. Mirrors the policy the forge renderer config used to inject.
+      // `img-src` deliberately omits `https:`, exactly like the header in
+      // src/main.js: the window never needs a remote image, and allowing the
+      // scheme would let an image link written by a model, or carried by a
+      // knowledge-base document, reveal the user's IP to the host it points at.
       meta: {
         "Content-Security-Policy": {
           "http-equiv": "Content-Security-Policy",
           content:
             "default-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:*; " +
             "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
-            "img-src 'self' data: https:; font-src 'self' data:;",
+            "img-src 'self' data:; font-src 'self' data:;",
         },
       },
     }),

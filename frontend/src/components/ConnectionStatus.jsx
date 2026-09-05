@@ -4,40 +4,35 @@ import { useTranslation } from "react-i18next";
 import { HelpCircle, RefreshCw } from "lucide-react";
 import Tooltip from "./Tooltip";
 import { getApiBaseUrl } from "../config/api";
+import { isNetworkOnline, subscribeNetworkStatus } from "../utils/networkStatus";
 
 /**
- * Live status pill for the bottom of the left rail. Erudi is local-first, so this
- * reads the two REAL signals the backend exposes rather than the browser's
- * `navigator.onLine` (unreliable in Electron -- it stays "online" when the machine
- * is actually offline):
+ * Live status pill for the bottom of the left rail.
  *
- *   - GET /health/                    -> {status, db: "ok"|"recovering"|"failed"}
- *       Local and cheap; polled often (~15s). Drives the backend-reachable check
+ * Two signals, neither of which costs a request to anyone else:
+ *
+ *   - GET /health/ -> {status, db: "ok"|"recovering"|"failed"}
+ *       Local and cheap; polled every ~15s. Drives the backend-reachable check
  *       and surfaces the DB watchdog state added in #162/#270.
- *   - GET /startup/connection-status  -> {can_download_models: bool, ...}
- *       A real internet round-trip; polled rarely (~45s).
+ *   - Connectivity, from `navigator.onLine` plus the `online` / `offline`
+ *       events, corrected by the requests the app already makes (see
+ *       utils/networkStatus). The OS answers instantly and for free; a request
+ *       that dies at the network layer overrides it, because a link is not the
+ *       same thing as a reachable internet.
  *
  * Display priority (offline is NOT an error -- local chat keeps working):
  *   1. backend unreachable (health poll fails/times out) -> red + Restart
  *   2. db === "recovering"                                -> amber "Restoring the database..."
  *   3. db === "failed"                                    -> red "Database error" + Restart
- *   4. internet offline (connection-status false)         -> gray "Offline" (informative)
+ *   4. no network                                         -> gray "Offline" (informative)
  *   5. all good                                           -> green "Connected"
- *
- * The internet signal is tri-state (true | false | null): a failed or slow
- * connectivity probe becomes `null` (unknown) and NEVER asserts "Offline", so a
- * flaky probe can only ever fall back to the health/db truth, never alarm.
  */
 
-// Poll cadences and per-request client timeouts. Exposed as props so tests can
-// drive the state machine on short intervals; production uses the defaults.
+// Poll cadence and per-request client timeout for the local health check.
+// Exposed as props so tests can drive the state machine on short intervals;
+// production uses the defaults.
 const HEALTH_POLL_MS = 15000;
-const CONNECTION_POLL_MS = 45000;
 const HEALTH_TIMEOUT_MS = 8000;
-// Longer than the health timeout: this probe does a real network round-trip. The
-// bound exists so a pathologically slow offline probe (captive portal / dropped
-// packets) can never wedge the pill -- it aborts and the internet state goes unknown.
-const CONNECTION_TIMEOUT_MS = 10000;
 
 /**
  * Map the raw signals to a single visual descriptor, honoring the priority
@@ -88,51 +83,41 @@ function resolveDisplay({ backendReachable, dbState, online }) {
 
 export default function ConnectionStatus({
   healthPollMs = HEALTH_POLL_MS,
-  connectionPollMs = CONNECTION_POLL_MS,
   healthTimeoutMs = HEALTH_TIMEOUT_MS,
-  connectionTimeoutMs = CONNECTION_TIMEOUT_MS,
 }) {
   const { t } = useTranslation();
-  // Optimistic defaults so mounting never flashes an alarming state before the
-  // first poll resolves; `online: null` means "internet state not yet known".
+  // Optimistic backend defaults so mounting never flashes an alarming state
+  // before the first health poll resolves. Connectivity needs no such guess:
+  // the operating system already knows the answer.
   const [status, setStatus] = useState({
     backendReachable: true,
     dbState: "ok",
-    online: null,
+    online: isNetworkOnline(),
   });
 
-  // Kept in a ref so the interval callbacks always see the latest timeouts
+  // Kept in a ref so the interval callback always sees the latest timeout
   // without re-subscribing the effect on every prop identity change.
-  const timeoutsRef = useRef({ healthTimeoutMs, connectionTimeoutMs });
-  timeoutsRef.current = { healthTimeoutMs, connectionTimeoutMs };
+  const healthTimeoutRef = useRef(healthTimeoutMs);
+  healthTimeoutRef.current = healthTimeoutMs;
 
   useEffect(() => {
     let cancelled = false;
     const controllers = new Set();
-    // Guards against overlapping requests per signal (a slow poll must not stack
-    // on top of the next interval tick).
-    const inFlight = { health: false, connection: false };
+    // Guards against overlapping requests (a slow poll must not stack on top of
+    // the next interval tick).
+    let inFlight = false;
 
-    async function fetchWithTimeout(path, timeoutMs) {
+    async function pollHealth() {
+      if (cancelled || inFlight) return;
+      inFlight = true;
       const controller = new AbortController();
       controllers.add(controller);
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const timer = setTimeout(() => controller.abort(), healthTimeoutRef.current);
       try {
-        return await fetch(`${getApiBaseUrl()}${path}`, {
+        const res = await fetch(`${getApiBaseUrl()}/health/`, {
           signal: controller.signal,
           cache: "no-store",
         });
-      } finally {
-        clearTimeout(timer);
-        controllers.delete(controller);
-      }
-    }
-
-    async function pollHealth() {
-      if (cancelled || inFlight.health) return;
-      inFlight.health = true;
-      try {
-        const res = await fetchWithTimeout("/health/", timeoutsRef.current.healthTimeoutMs);
         if (!res.ok) throw new Error(`health ${res.status}`);
         const data = await res.json();
         if (cancelled) return;
@@ -143,54 +128,28 @@ export default function ConnectionStatus({
         // poll is a state change, never a crash.
         if (!cancelled) setStatus((s) => ({ ...s, backendReachable: false }));
       } finally {
-        inFlight.health = false;
+        clearTimeout(timer);
+        controllers.delete(controller);
+        inFlight = false;
       }
     }
 
-    async function pollConnection() {
-      if (cancelled || inFlight.connection) return;
-      inFlight.connection = true;
-      try {
-        const res = await fetchWithTimeout(
-          "/startup/connection-status",
-          timeoutsRef.current.connectionTimeoutMs
-        );
-        if (!res.ok) throw new Error(`connection ${res.status}`);
-        const data = await res.json();
-        if (cancelled) return;
-        setStatus((s) => ({ ...s, online: Boolean(data.can_download_models) }));
-      } catch {
-        // Unknown, not offline: never assert "Offline" off a failed/slow probe.
-        if (!cancelled) setStatus((s) => ({ ...s, online: null }));
-      } finally {
-        inFlight.connection = false;
-      }
-    }
-
-    // Prime both signals immediately, then settle into their cadences.
     pollHealth();
-    pollConnection();
     const healthTimer = setInterval(pollHealth, healthPollMs);
-    const connectionTimer = setInterval(pollConnection, connectionPollMs);
-
-    // Browser online/offline events are only an OPTIMISTIC fast-path re-poll
-    // trigger -- never the source of truth (they lie in Electron).
-    const onNetworkChange = () => {
-      pollConnection();
-      pollHealth();
-    };
-    window.addEventListener("online", onNetworkChange);
-    window.addEventListener("offline", onNetworkChange);
 
     return () => {
       cancelled = true;
       clearInterval(healthTimer);
-      clearInterval(connectionTimer);
-      window.removeEventListener("online", onNetworkChange);
-      window.removeEventListener("offline", onNetworkChange);
       controllers.forEach((c) => c.abort());
     };
-  }, [healthPollMs, connectionPollMs]);
+  }, [healthPollMs]);
+
+  // Connectivity: no request of our own, ever. The OS reports link changes as
+  // they happen and the API client reports requests that died on the wire.
+  useEffect(() => {
+    setStatus((s) => ({ ...s, online: isNetworkOnline() }));
+    return subscribeNetworkStatus((online) => setStatus((s) => ({ ...s, online })));
+  }, []);
 
   const handleRestart = useCallback(() => {
     const pending = window.backendAPI?.restartBackend?.();
@@ -233,7 +192,5 @@ export default function ConnectionStatus({
 
 ConnectionStatus.propTypes = {
   healthPollMs: PropTypes.number,
-  connectionPollMs: PropTypes.number,
   healthTimeoutMs: PropTypes.number,
-  connectionTimeoutMs: PropTypes.number,
 };
