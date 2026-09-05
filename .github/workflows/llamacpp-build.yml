@@ -1,0 +1,121 @@
+name: llama.cpp build
+
+# Compile the inference binary when, and only when, a pull request touches the
+# code that produces it.
+#
+# Why this exists: nothing else in CI compiles llama.cpp. `release.yml` is
+# triggered by a tag, and `app-build-smoke` deliberately skips the inference
+# binary because it only proves the backend boots. So the CUDA compile flags --
+# the architecture list, the toolkit version, the ggml options -- could be
+# changed and merged with no verification at all, and the mistake would only
+# surface when someone pushed a release tag. That happened: a `GGML_CUDA_F16`
+# flag sat in both scripts long after upstream deleted the option, silently
+# swallowed by CMake as an unused cache variable.
+#
+# This is NOT a required check. It is path-filtered, and a required check that
+# a path filter skips never reports and would block every unrelated pull
+# request. It runs on the handful of pull requests that touch these files.
+on:
+  pull_request:
+    paths:
+      - "scripts/dev/backend/build-llamacpp-*"
+      - "backend/forks/llama-cpp"
+      - ".github/workflows/llamacpp-build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: llamacpp-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    name: llamacpp (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Same runners as release.yml: windows-latest drifted to a VS/MSVC
+          # pair nvcc cannot parse, so the CUDA legs pin windows-2022.
+          - os: ubuntu-22.04
+            label: linux-cuda
+            script: bash scripts/dev/backend/build-llamacpp-cuda-linux.sh
+            binary: backend/artifacts/llama-cpp/cuda/bin/llama-server
+            cuda: true
+          - os: windows-2022
+            label: win-cuda
+            script: ./scripts/dev/backend/build-llamacpp-cuda-win.ps1
+            binary: backend/artifacts/llama-cpp/cuda/bin/llama-server.exe
+            cuda: true
+          - os: ubuntu-22.04
+            label: linux-cpu
+            script: bash scripts/dev/backend/build-llamacpp-cpu-linux.sh
+            binary: backend/artifacts/llama-cpp/cpu/bin/llama-server
+            cuda: false
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive # the llama.cpp source itself
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Compiling needs the toolkit but NOT a GPU, so a GPU-less runner is fine.
+      # Kept in step with release.yml: 12.8 is the first toolkit whose nvcc can
+      # emit native code for Blackwell (sm_120), which the build scripts add
+      # only when they detect >= 12.8.
+      - name: Install CUDA Toolkit (Windows)
+        if: matrix.cuda && runner.os == 'Windows'
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: "12.8.1"
+          method: network
+      - name: Install CUDA Toolkit (Linux — toolkit only, no driver)
+        if: matrix.cuda && runner.os == 'Linux'
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: "12.8.1"
+          method: network
+          sub-packages: '["nvcc", "cudart-dev", "cccl", "nvtx", "nvrtc-dev"]'
+          non-cuda-sub-packages: '["libcublas-dev"]'
+
+      # The CUDA compile links a large static library per binary and has filled
+      # a thin runner mid-build before; drop preinstalled bloat we never use.
+      - name: Free disk space
+        if: matrix.cuda && runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install cmake
+        run: python -m pip install --upgrade pip cmake
+
+      - name: Compile llama-server (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ${{ matrix.script }}
+
+      - name: Compile llama-server (Linux)
+        if: runner.os == 'Linux'
+        run: ${{ matrix.script }}
+
+      # The scripts check this themselves, but assert it here too: this job
+      # exists to prove the binary comes out, so say so explicitly rather than
+      # trusting the script's own exit code.
+      - name: Assert the binary exists and reports a version
+        env:
+          BINARY: ${{ matrix.binary }}
+        run: |
+          set -euo pipefail
+          test -f "$BINARY" || { echo "::error::$BINARY was not produced"; exit 1; }
+          ls -la "$BINARY"
+          # --version exits non-zero on some builds; the point is that it loads.
+          "$BINARY" --version 2>&1 | head -20 || true
