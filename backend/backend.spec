@@ -127,24 +127,41 @@ if IS_WIN or IS_LINUX:
     _os_tag = "win" if IS_WIN else "linux"
     _exe_suffix = ".exe" if IS_WIN else ""
     llama_bin = spec_root / "artifacts" / "llama-cpp" / _llama_flavour / "bin"
-    if llama_bin.exists():
+    _server = llama_bin / f"llama-server{_exe_suffix}"
+    if _server.exists():
         _dest = f"artifacts/llama-cpp/{_llama_flavour}/bin"
         # Only the inference server ships. The HF -> GGUF conversion toolchain
         # (convert_hf_to_gguf.py, llama.cpp's Python gguf tree, the quantizer
         # binary) was removed with #408: the app downloads pre-built quants only.
-        _server = llama_bin / f"llama-server{_exe_suffix}"
-        if _server.exists():
-            datas.append((str(_server), _dest))
-        # Ship any runtime DLLs placed beside the server (the Windows CPU build
+        datas.append((str(_server), _dest))
+        # Ship any runtime DLLs placed beside the server: the Windows CPU build
         # copies the MSVC C++ runtime here so llama-server.exe loads on machines
-        # without the VC++ redistributable — #144). No-op on Linux (.so, not .dll).
+        # without the VC++ redistributable (#144), and the CUDA build adds
+        # cudart/cublas so the user needs only a driver. No-op on Linux (.so).
         for _f in llama_bin.glob("*.dll"):
             datas.append((str(_f), _dest))
+    elif os.environ.get("ERUDI_ALLOW_MISSING_INFERENCE_BINARY"):
+        # The boot-only merge gate builds the app to prove the backend reaches
+        # `ready`; it never compiles llama.cpp, and inference is out of its
+        # scope. That build opts out explicitly, in the workflow.
+        print(
+            f"[backend.spec] llama-server absent from {llama_bin} - continuing "
+            f"because ERUDI_ALLOW_MISSING_INFERENCE_BINARY is set. The bundle "
+            f"produced here CANNOT run inference and must not be released."
+        )
     else:
-        import warnings
-        warnings.warn(
-            f"llama-cpp {_llama_flavour} binaries not found at {llama_bin}. "
-            f"Run scripts/dev/backend/build-llamacpp-{_llama_flavour}-{_os_tag}.sh first."
+        # A bundle without this binary is an app that loads a model and then
+        # fails at the first message, and nothing downstream would have caught
+        # it: electron-builder packages whatever it is given, and the release
+        # publishes whatever it packaged. Fail here, where the cause is still
+        # legible.
+        raise RuntimeError(
+            f"llama-server not found at {_server}. The frozen backend would "
+            f"ship without an inference engine. Compile it first:\n"
+            f"    scripts/dev/backend/build-llamacpp-{_llama_flavour}-{_os_tag}"
+            f"{'.ps1' if IS_WIN else '.sh'}\n"
+            f"Set ERUDI_ALLOW_MISSING_INFERENCE_BINARY=1 only for a build that "
+            f"is never released (the boot-only smoke gate)."
         )
 
 # ── Analysis ──────────────────────────────────────────────────────────────────
