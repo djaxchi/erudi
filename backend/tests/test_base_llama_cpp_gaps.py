@@ -8,6 +8,7 @@ handle assembly with the vision projector argv, and the default spawn env.
 """
 from __future__ import annotations
 
+import logging
 import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -177,34 +178,39 @@ class TestProcessHelpers:
 # UNIT - spawn-child handle assembly
 # =====================================================================
 
+def _spawn_cpu_child(tmp_path, monkeypatch, *, with_mmproj):
+    """Run `CPU_Engine._spawn_child` against a fake Popen, capturing the argv."""
+    model = _touch(tmp_path / "model-q4_k_m.gguf")
+    if with_mmproj:
+        _touch(tmp_path / "mmproj-model.gguf")
+    server = _touch(tmp_path / "bin" / "llama-server")
+    monkeypatch.setattr(
+        CPU_Engine, "_find_llama_server", classmethod(lambda cls, d=None: server)
+    )
+    captured = {}
+
+    def fake_popen(argv, **kwargs):
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+        # `stdout` is part of the Popen contract `_spawn_child` relies on:
+        # it creates the child with stdout=PIPE and hands the stream to the
+        # output drainer (#361). None here means "this test captures no
+        # output", which the drainer accepts as a no-op.
+        return SimpleNamespace(pid=4242, stdout=None)
+
+    monkeypatch.setattr(base_mod.subprocess, "Popen", fake_popen)
+    handle = CPU_Engine._spawn_child(
+        model_path=model, alias="erudi-1", port=27201,
+        **CPU_Engine._prepare_spawn_context(),
+    )
+    return handle, captured
+
+
 @pytest.mark.unit
 class TestSpawnChild:
 
     def _spawn(self, tmp_path, monkeypatch, *, with_mmproj):
-        model = _touch(tmp_path / "model-q4_k_m.gguf")
-        if with_mmproj:
-            _touch(tmp_path / "mmproj-model.gguf")
-        server = _touch(tmp_path / "bin" / "llama-server")
-        monkeypatch.setattr(
-            CPU_Engine, "_find_llama_server", classmethod(lambda cls, d=None: server)
-        )
-        captured = {}
-
-        def fake_popen(argv, **kwargs):
-            captured["argv"] = argv
-            captured["kwargs"] = kwargs
-            # `stdout` is part of the Popen contract `_spawn_child` relies on:
-            # it creates the child with stdout=PIPE and hands the stream to the
-            # output drainer (#361). None here means "this test captures no
-            # output", which the drainer accepts as a no-op.
-            return SimpleNamespace(pid=4242, stdout=None)
-
-        monkeypatch.setattr(base_mod.subprocess, "Popen", fake_popen)
-        handle = CPU_Engine._spawn_child(
-            model_path=model, alias="erudi-1", port=27201,
-            **CPU_Engine._prepare_spawn_context(),
-        )
-        return handle, captured
+        return _spawn_cpu_child(tmp_path, monkeypatch, with_mmproj=with_mmproj)
 
     def test_handle_carries_context_and_base_url(self, tmp_path, monkeypatch):
         handle, captured = self._spawn(tmp_path, monkeypatch, with_mmproj=False)
@@ -225,3 +231,83 @@ class TestSpawnChild:
     def test_default_spawn_env_inherits_parent(self):
         env = CPU_Engine._build_spawn_env()
         assert env == os.environ.copy()
+
+
+# =====================================================================
+# UNIT - local-only hardening of the spawned llama-server
+# =====================================================================
+
+@pytest.mark.unit
+class TestSpawnHardeningFlags:
+    """llama-server must not be left open to everything on the loopback.
+
+    Spawned without `--api-key`, llama-server authenticates NOTHING: every
+    endpoint answers any caller that can reach 127.0.0.1. That includes
+    `/slots`, enabled by default, which dumps the prompt of every in-flight
+    request. So any other local process -- and any web page the user has open,
+    since a browser can POST across origins to a loopback port -- can read what
+    the user is currently asking the model and submit prompts of its own.
+    These tests pin the three flags that close that surface.
+    """
+
+    def test_slots_and_webui_endpoints_are_disabled(self, tmp_path, monkeypatch):
+        """`/slots` leaks in-flight prompts and the web UI is a second way in.
+
+        Neither is used by Erudi (the backend only ever calls
+        `/health` and `/v1/chat/completions`), so both are switched off rather
+        than merely guarded by the key.
+        """
+        _handle, captured = _spawn_cpu_child(tmp_path, monkeypatch, with_mmproj=False)
+        argv = captured["argv"]
+        assert "--no-slots" in argv
+        assert "--no-webui" in argv
+
+    def test_api_key_flag_carries_a_non_empty_secret(self, tmp_path, monkeypatch):
+        """`--api-key` is what turns on authentication at all in llama-server.
+
+        An empty value would be accepted by the CLI and leave the server
+        unauthenticated, so the value itself is asserted, not just the flag.
+        """
+        _handle, captured = _spawn_cpu_child(tmp_path, monkeypatch, with_mmproj=False)
+        argv = captured["argv"]
+        assert "--api-key" in argv
+        key = argv[argv.index("--api-key") + 1]
+        assert isinstance(key, str) and len(key) >= 32
+
+    def test_each_spawn_gets_a_different_key(self, tmp_path, monkeypatch):
+        """A key reused across spawns would stay valid after it leaked once.
+
+        Per-spawn generation is what bounds the damage of a disclosure to the
+        life of a single child process: swapping models (or a crash-respawn)
+        invalidates whatever an attacker scraped.
+        """
+        _h1, first = _spawn_cpu_child(tmp_path, monkeypatch, with_mmproj=False)
+        _h2, second = _spawn_cpu_child(tmp_path, monkeypatch, with_mmproj=False)
+        first_argv, second_argv = first["argv"], second["argv"]
+        first_key = first_argv[first_argv.index("--api-key") + 1]
+        second_key = second_argv[second_argv.index("--api-key") + 1]
+        assert first_key != second_key
+
+    def test_handle_exposes_the_key_to_the_callers_that_need_it(
+        self, tmp_path, monkeypatch
+    ):
+        """The readiness probe and the inference client both authenticate now.
+
+        Both reach the child only through the spawn handle, so a key kept
+        local to `_spawn_child` would lock Erudi out of its own server.
+        """
+        handle, captured = _spawn_cpu_child(tmp_path, monkeypatch, with_mmproj=False)
+        argv = captured["argv"]
+        assert handle["api_key"] == argv[argv.index("--api-key") + 1]
+
+    def test_the_key_never_reaches_the_logs(self, tmp_path, monkeypatch, caplog):
+        """Backend logs are written to a world-readable temp file and shipped
+        in bug reports; a key printed there outlives the process that used it
+        and re-opens the very hole `--api-key` closes.
+        """
+        with caplog.at_level(logging.DEBUG):
+            handle, _captured = _spawn_cpu_child(tmp_path, monkeypatch, with_mmproj=True)
+        key = handle["api_key"]
+        assert key
+        for record in caplog.records:
+            assert key not in record.getMessage()

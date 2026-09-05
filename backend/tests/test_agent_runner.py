@@ -339,6 +339,67 @@ def test_build_chat_model_disable_thinking_sets_enable_thinking_false(monkeypatc
     }
 
 
+def test_build_chat_model_authenticates_with_the_handles_key(monkeypatch):
+    # llama-server is spawned with a per-spawn `--api-key` so that nothing else
+    # on the loopback interface can drive it. Inference goes through this
+    # ChatOpenAI, so it has to present that key or every turn would 401 against
+    # our own child server.
+    class _KeyedEngine:
+        @staticmethod
+        def get_model_and_tokenizer(llm_id, link):
+            return (
+                {
+                    "base_url": "http://127.0.0.1:27201",
+                    "alias": f"erudi-{llm_id}",
+                    "api_key": "per-spawn-secret",
+                },
+                {},
+            )
+
+        @staticmethod
+        def _payload_model_value(handle):
+            return handle["alias"]
+
+    monkeypatch.setattr(config, "LLM_Engine", _KeyedEngine)
+    chat = build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55)
+    assert chat.openai_api_key.get_secret_value() == "per-spawn-secret"
+
+
+def test_build_chat_model_keeps_the_placeholder_key_without_one(monkeypatch):
+    # MLX spawns mlx_vlm.server, which has no API-key option: its handle carries
+    # no key. The literal must stay, because an empty api_key makes the OpenAI
+    # client fall back to reading OPENAI_API_KEY from the environment.
+    monkeypatch.setattr(config, "LLM_Engine", _IdentityEngine)
+    chat = build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55)
+    assert chat.openai_api_key.get_secret_value() == "not-needed"
+
+
+def test_build_chat_model_never_logs_the_api_key(monkeypatch, caplog):
+    # The factory logs the whole ChatOpenAI construction at INFO, and backend
+    # logs are shipped in bug reports; the key must not ride along.
+    class _KeyedEngine:
+        @staticmethod
+        def get_model_and_tokenizer(llm_id, link):
+            return (
+                {
+                    "base_url": "http://127.0.0.1:27201",
+                    "alias": f"erudi-{llm_id}",
+                    "api_key": "per-spawn-secret",
+                },
+                {},
+            )
+
+        @staticmethod
+        def _payload_model_value(handle):
+            return handle["alias"]
+
+    monkeypatch.setattr(config, "LLM_Engine", _KeyedEngine)
+    with caplog.at_level(logging.DEBUG):
+        build_chat_model(_Llm(), temperature=0.3, top_p=0.8, max_tokens=55)
+    for record in caplog.records:
+        assert "per-spawn-secret" not in record.getMessage()
+
+
 def test_build_chat_model_default_omits_enable_thinking(monkeypatch):
     # Regression guard (#266): chat paths never pass disable_thinking, so their
     # request body must stay byte-identical to before (no enable_thinking key).
