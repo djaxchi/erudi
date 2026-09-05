@@ -83,4 +83,8 @@ contextBridge.exposeInMainWorld("updaterAPI", {
   },
   // Trigger immediate quit-and-install
   installNow: () => ipcRenderer.invoke("updater:install-now"),
+  // The renderer owns the persisted "automatic updates" preference (the
+  // user_settings API); main owns electron-updater and holds every check until
+  // this arrives. Fire-and-forget, sent at boot and whenever the user changes it.
+  setAutoUpdateEnabled: (enabled) => ipcRenderer.send("updater:set-enabled", enabled),
 });

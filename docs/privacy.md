@@ -7,7 +7,7 @@ If you find this page to be wrong, that is a valid security report: see [SECURIT
 ## The short version
 
 - **Nothing you type is sent anywhere.** Inference runs in a child process on this computer, started with a local file path and bound to `127.0.0.1`. There is no account, no telemetry, no crash reporter.
-- **The application makes network requests in exactly three situations you did not ask for:** a reachability check to `huggingface.co` (an empty request, no data), an update check against this repository's GitHub releases, and — after a model download you started — a small fetch of that model's generation defaults. Everything else happens only when you press a button that says so.
+- **The application makes network requests in exactly two situations you did not ask for:** an update check against this repository's GitHub releases, which you can turn off in Settings, and — after a model download you started — a small fetch of that model's generation defaults. Everything else happens only when you press a button that says so.
 - **The one path by which the substance of a question leaves the machine is web search**, which is off by default and, when on, sends the search query the model formulates to public search engines.
 
 ## What never leaves
@@ -20,24 +20,27 @@ Documents you attach to a knowledge base are read in place and never copied; onl
 
 Hugging Face's own client telemetry is disabled by the launcher before anything is imported: `HF_HUB_DISABLE_TELEMETRY=1` ([run.py](https://github.com/erudi-app/erudi/blob/main/backend/run.py#L132)). No analytics or crash-reporting library is present in the code; the list of what we searched for is at the end of this page.
 
+The connection indicator in the corner of the window costs nothing to anybody. It reads whether this machine is on a network from the operating system — `navigator.onLine` and the `online` / `offline` events — and corrects that with the requests the app already makes on your behalf: one that dies on the wire says more than a link light does ([networkStatus.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/utils/networkStatus.js#L1-L35), [client.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/services/api/client.js#L31-L44)). Nothing is sent to find out, so no one learns when your machine is running Erudi.
+
+The window loads no remote images. Its Content-Security-Policy allows `img-src 'self' data:` and no scheme beyond that, both for the header the main process sets and for the packaged document ([main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L704), [webpack.config.js](https://github.com/erudi-app/erudi/blob/main/frontend/webpack.config.js#L110-L125)). An image link written by a model, or carried by a document you attached, is simply not fetched — so no host learns your IP address from an answer on screen.
+
+Automatic updates can be turned off. The preference lives with your other settings ([UserSettings.py](https://github.com/erudi-app/erudi/blob/main/backend/src/entities/UserSettings.py#L52)) and is handed to the process that owns the updater, which makes no check at all until it has been told what you chose ([main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L987-L1026)). Off means off end to end: no check, no download, no install on quit.
+
 ## Every network request
 
 | When | Where to | What is sent | Can you turn it off |
 |---|---|---|---|
-| **While the app is open**, every 45 seconds | `https://huggingface.co` | An empty `HEAD` request, to colour the connection indicator. No token, no model name, no content. [seed.py](https://github.com/erudi-app/erudi/blob/main/backend/src/database/seed.py#L138-L145) · [ConnectionStatus.jsx](https://github.com/erudi-app/erudi/blob/main/frontend/src/components/ConnectionStatus.jsx#L35) | No — see [known gaps](#known-gaps) |
-| **At launch, then every 4 hours** | GitHub releases of `erudi-app/erudi` | A request for the update feed and, when a newer version exists, the installer download. No identifier beyond the client's version and platform. [main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L26-L33) · [electron-builder.yml](https://github.com/erudi-app/erudi/blob/main/frontend/electron-builder.yml#L52-L56) | No — updates download automatically and install when you quit; see [known gaps](#known-gaps) |
+| **At launch, then every 4 hours**, unless you turned updates off | GitHub releases of `erudi-app/erudi` | A request for the update feed and, when a newer version exists, the installer download. No identifier beyond the client's version and platform. [main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L987-L1026) · [electron-builder.yml](https://github.com/erudi-app/erudi/blob/main/frontend/electron-builder.yml#L52-L56) | **Yes**, in Settings. Off means no check, no download, no install. [UserSettings.py](https://github.com/erudi-app/erudi/blob/main/backend/src/entities/UserSettings.py#L52) |
 | **When you press Download** on a model | `huggingface.co` and its file CDN | The repository id of the model you chose; your `HF_TOKEN` if you set one. [services.py](https://github.com/erudi-app/erudi/blob/main/backend/src/domains/llms/services.py#L686-L704) | It only happens when you ask |
 | **Right after a download finishes**, if the files did not include generation defaults | `huggingface.co` | The same repository id, to fetch the model's `generation_config`. [endpoints.py](https://github.com/erudi-app/erudi/blob/main/backend/src/domains/llms/endpoints.py#L315-L333) | Follows your download |
 | **When you search Hugging Face** from the catalog | `huggingface.co` | The text you typed in the search box, plus the format filter (`mlx` or `gguf`); your `HF_TOKEN` if set. [hf_search.py](https://github.com/erudi-app/erudi/blob/main/backend/src/domains/llms/hf_search.py#L64-L68) | It only happens when you ask |
 | **When you accept the embedding-model download** for the knowledge base | `huggingface.co` | The repository id `intfloat/multilingual-e5-small`. [embedding_model.py](https://github.com/erudi-app/erudi/blob/main/backend/src/ingestion/embedding_model.py#L42) | Once; declining leaves the knowledge base unavailable |
-| **Web search**, when you have turned it on and a tool-capable model decides to search | Public search engines — see below | The search query the model formulated from your question. [tools.py](https://github.com/erudi-app/erudi/blob/main/backend/src/agents/tools.py#L213-L217) | **Off by default**, per conversation and globally in Settings. [UserSettings.py](https://github.com/erudi-app/erudi/blob/main/backend/src/entities/UserSettings.py#L44) |
-| **When you click a link** in the About menu, the bug button, or this page's link in Settings | GitHub, `erudi.app`, this documentation | Nothing beyond the URL; the page opens in your system browser. [main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L656-L661) | It only happens when you click |
+| **Web search**, when you have turned it on and a tool-capable model decides to search | Public search engines — see below | The search query the model formulated from your question. [tools.py](https://github.com/erudi-app/erudi/blob/main/backend/src/agents/tools.py#L213-L217) | **Off by default**, per conversation and globally in Settings. [UserSettings.py](https://github.com/erudi-app/erudi/blob/main/backend/src/entities/UserSettings.py#L50) |
+| **When you click a link** in the About menu, the bug button, or this page's link in Settings | GitHub, `erudi.app`, this documentation | Nothing beyond the URL; the page opens in your system browser. [main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L658-L663) | It only happens when you click |
 
 **About web search.** The search tool uses the `ddgs` library with its `auto` backend. Despite the name, that is not only DuckDuckGo: the library queries a shuffled selection of public engines — Wikipedia and Grokipedia first, then any of DuckDuckGo, Google, Bing, Brave, Startpage, Mojeek, Yahoo and Yandex — two at a time until it has enough results, and it presents itself to them with a randomised browser fingerprint. No API key is involved and nothing identifies you beyond your IP address, but you cannot know in advance which engine will see a given query. That is why the toggle ships off, and why the Settings screen says so. We intend to pin the engine — see [known gaps](#known-gaps).
 
 **About LangChain's tracing client.** The agent runs on LangChain, which ships with a cloud tracing client called LangSmith. That client uploads the entire exchange — system prompt, knowledge-base excerpts, your question, the model's answer — and it is switched on by an environment variable alone. Erudi holds it shut in two places. The launcher assigns `LANGSMITH_TRACING` and `LANGCHAIN_TRACING_V2` to `false` on every start, overwriting whatever the process inherited ([run.py](https://github.com/erudi-app/erudi/blob/main/backend/run.py#L126-L162)), and the Electron process strips every `LANGCHAIN_*` and `LANGSMITH_*` variable out of the environment before the backend is started at all ([backendSpawn.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/utils/backendSpawn.js#L14-L23)). Both are covered by tests. The single exception is the escape hatch described below.
-
-**About images in answers.** The app window may load images over `https:` ([main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L696)). If a model writes an image link into an answer, or a web search result contains one, the window will fetch that image from its host, which reveals your IP address to that host. Models do not do this on their own; it needs web search on, or a document that contains such a link.
 
 ## What is exposed on this computer
 
@@ -49,7 +52,7 @@ On Windows and Linux, `llama-server` is started with a random key that exists on
 
 The embedded PostgreSQL database is reachable through a Unix socket only on macOS and Linux ([postgres_runtime.py](https://github.com/erudi-app/erudi/blob/main/backend/src/launcher/postgres_runtime.py#L50-L76)). On Windows, where Unix sockets are not available, it listens on a loopback TCP port without a password.
 
-The app window runs with Chromium's sandbox, context isolation and no Node integration ([main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L637-L643)); the packaged build cannot be started with remote debugging or Node inspection flags ([electron-builder.yml](https://github.com/erudi-app/erudi/blob/main/frontend/electron-builder.yml#L29-L35)).
+The app window runs with Chromium's sandbox, context isolation and no Node integration ([main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L641-L647)); the packaged build cannot be started with remote debugging or Node inspection flags ([electron-builder.yml](https://github.com/erudi-app/erudi/blob/main/frontend/electron-builder.yml#L29-L35)).
 
 **What this does and does not protect against.** Erudi is built for a computer you use yourself. It defends the backend against other machines and against web pages you visit. It does not defend against software already running under your account: such a program can read the data folder, and on Apple Silicon it can talk to the inference server while a model is loaded, because `mlx_vlm.server` has no key to require. The same is true of every local-AI tool we know of; we say it here so that you can decide what runs next to Erudi.
 
@@ -65,7 +68,7 @@ Source: [runtime_paths.py](https://github.com/erudi-app/erudi/blob/main/backend/
 
 Two things are written outside it:
 
-- **The app log**, `erudi-backend.log`, in your system's temporary directory (`$TMPDIR` on macOS, `%TEMP%` on Windows, `/tmp` on Linux), with one rotated copy ([main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L105-L107)).
+- **The app log**, `erudi-backend.log`, in your system's temporary directory (`$TMPDIR` on macOS, `%TEMP%` on Windows, `/tmp` on Linux), with one rotated copy ([main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L112-L114)).
 - **One Hugging Face cache file**: the generation defaults fetched after a download go to Hugging Face's own cache, `~/.cache/huggingface/hub` ([generation_hints.py](https://github.com/erudi-app/erudi/blob/main/backend/src/database/generation_hints.py#L533)).
 
 **The logs contain your content.** Because nothing leaves the machine, Erudi deliberately logs what it processes, so that a bug can be diagnosed from the file alone: the question you asked (up to 2 000 characters), a preview of the answer, document names, the knowledge-base query, and the web-search query ([logutils.py](https://github.com/erudi-app/erudi/blob/main/backend/src/core/logutils.py#L3-L11), [logging.md](logging.md)). The app log also records what you typed into text fields, truncated to 200 characters, to reconstruct what the interface was doing ([InteractionLogger.jsx](https://github.com/erudi-app/erudi/blob/main/frontend/src/components/InteractionLogger.jsx#L53-L56)). Read a log before you attach it to a public issue; the bug-report form reminds you.
@@ -86,17 +89,13 @@ Three more are **written** by the launcher rather than read from you, and settin
 
 These are the points on which the current build is weaker than this page would like it to be. They are tracked as issues; the list is here so that you do not have to find them yourself.
 
-1. **The reachability check runs every 45 seconds** while the app is open, whether or not you intend to download anything. It sends no data, but it is a periodic request to a third party that you cannot turn off. It should run only when the catalog is open.
-2. **Web search does not pin an engine.** The `auto` backend picks among ten engines. It should use one, named on this page.
-3. **On Apple Silicon, the inference server accepts requests from any local origin.** `mlx_vlm.server` has no API-key option, so while a model is loaded another program on your machine — or a web page open in your browser — can send it prompts. The backend and the `llama-server` used on Windows and Linux both require a key; this one cannot yet.
-4. **Updates cannot be turned off.** A newer version is downloaded in the background and installed on quit. There should be a setting.
-5. **Images in answers are fetched from any `https:` host.** Answers should not load remote images unless you ask.
-6. **On Windows, the embedded database is reachable by any local process** on a loopback port without a password.
-7. **One cache file lands in `~/.cache/huggingface`** instead of the data folder, so *Clear all data* leaves it behind.
+1. **Web search does not pin an engine.** The `auto` backend picks among ten engines. It should use one, named on this page.
+2. **On Apple Silicon, the inference server accepts requests from any local origin.** `mlx_vlm.server` has no API-key option, so while a model is loaded another program on your machine — or a web page open in your browser — can send it prompts. The backend and the `llama-server` used on Windows and Linux both require a key; this one cannot yet.
+3. **On Windows, the embedded database is reachable by any local process** on a loopback port without a password.
 
 ## How to check for yourself
 
-Run Erudi behind an outbound firewall or a local proxy and watch what it asks for: with web search off and no download in progress, you should see the `HEAD` requests to `huggingface.co`, the update feed on GitHub, and nothing else. Load a model and chat: the only traffic is on `127.0.0.1`. The backend log lists every request it received.
+Run Erudi behind an outbound firewall or a local proxy and watch what it asks for: with web search off and no download in progress, you should see the update feed on GitHub and nothing else — and nothing at all once you turn updates off in Settings. Load a model and chat: the only traffic is on `127.0.0.1`. The backend log lists every request it received.
 
 ## What we looked for and did not find
 

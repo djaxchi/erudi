@@ -30,14 +30,23 @@ function renderPage() {
 }
 
 beforeEach(() => {
-  getMock.mockResolvedValue({ web_search_enabled: false, language: "en" });
-  putMock.mockResolvedValue({ web_search_enabled: true, language: "en" });
+  getMock.mockResolvedValue({
+    web_search_enabled: false,
+    language: "en",
+    auto_update_enabled: true,
+  });
+  putMock.mockResolvedValue({
+    web_search_enabled: true,
+    language: "en",
+    auto_update_enabled: true,
+  });
 });
 
 afterEach(async () => {
   cleanup();
   vi.clearAllMocks();
   delete window.languageAPI;
+  delete window.updaterAPI;
   await i18n.changeLanguage("en");
 });
 
@@ -137,6 +146,59 @@ describe("SettingsPage", () => {
     expect(page).toMatch(/new conversations/i);
   });
 
+  it("renders the sidebar", () => {
+    renderPage();
+    expect(screen.getByTestId("sidebar")).toBeTruthy();
+  });
+});
+
+describe("SettingsPage — automatic updates", () => {
+  it("shows automatic updates on, the behaviour of an install nobody configured", async () => {
+    renderPage();
+    const toggle = await screen.findByRole("switch", { name: "Automatic updates" });
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("true"));
+  });
+
+  it("reflects a refusal that was persisted earlier", async () => {
+    getMock.mockResolvedValue({
+      web_search_enabled: false,
+      language: "en",
+      auto_update_enabled: false,
+    });
+    renderPage();
+    const toggle = await screen.findByRole("switch", { name: "Automatic updates" });
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("false"));
+  });
+
+  it("persists a refusal and tells the main process to stop checking", async () => {
+    const setAutoUpdateEnabled = vi.fn();
+    window.updaterAPI = { setAutoUpdateEnabled };
+    putMock.mockResolvedValue({
+      web_search_enabled: false,
+      language: "en",
+      auto_update_enabled: false,
+    });
+    renderPage();
+    const toggle = await screen.findByRole("switch", { name: "Automatic updates" });
+    await waitFor(() => expect(getMock).toHaveBeenCalled());
+
+    fireEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(putMock).toHaveBeenCalledWith("/user_settings/", { auto_update_enabled: false })
+    );
+    await waitFor(() => expect(setAutoUpdateEnabled).toHaveBeenCalledWith(false));
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("false"));
+  });
+
+  it("says that updates are downloaded and installed without asking", async () => {
+    renderPage();
+    await screen.findByText("Automatic updates");
+    expect(document.body.textContent).toMatch(/install/i);
+  });
+});
+
+describe("SettingsPage", () => {
   it("renders the sidebar", () => {
     renderPage();
     expect(screen.getByTestId("sidebar")).toBeTruthy();

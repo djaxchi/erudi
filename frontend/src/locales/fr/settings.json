@@ -8,6 +8,12 @@
     "note": "Désactivée par défaut. Les nouvelles conversations héritent de ce réglage ; chaque conversation conserve ensuite son propre interrupteur.",
     "toggleLabel": "Recherche web"
   },
+  "autoUpdate": {
+    "title": "Mises à jour automatiques",
+    "description": "Cherche une nouvelle version d'Erudi en arrière-plan, la télécharge et l'installe à la prochaine fermeture. La requête part vers les releases GitHub de ce projet et ne transporte que votre version et votre plateforme.",
+    "note": "Activées par défaut. Une fois désactivées, l'application ne fait plus aucune requête de mise à jour ; vous pouvez toujours installer une nouvelle version vous-même depuis la page des releases.",
+    "toggleLabel": "Mises à jour automatiques"
+  },
   "language": {
     "title": "Langue de l'application",
     "description": "La langue des menus, des boutons et des messages dans toute l'application. Les réponses des modèles restent dans la langue dans laquelle vous écrivez.",

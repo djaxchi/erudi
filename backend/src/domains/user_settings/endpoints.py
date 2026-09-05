@@ -1,8 +1,8 @@
 """FastAPI endpoints for the user-settings singleton (issue #310).
 
 GET/PUT ``/erudi/user_settings/``: the app-wide settings the frontend's
-Settings page binds to: the global web-search default (#310) and the
-interface language (#385). Follows the
+Settings page binds to: the global web-search default (#310), the
+interface language (#385) and the automatic-update preference. Follows the
 startup domain's layering (endpoints -> repository) — the resource is a
 one-row singleton with no business logic beyond get-or-create.
 """
@@ -33,7 +33,8 @@ async def get_user_settings(
     """Fetch the user-settings singleton (created with defaults on first read).
 
     Example:
-        GET /erudi/user_settings/ -> {"web_search_enabled": false, "language": "en"}
+        GET /erudi/user_settings/
+        -> {"web_search_enabled": false, "language": "en", "auto_update_enabled": true}
     """
     try:
         settings = settings_repo.get_or_create()
@@ -55,7 +56,7 @@ async def update_user_settings(
 
     Example:
         PUT /erudi/user_settings/ {"language": "fr"}
-        -> {"web_search_enabled": false, "language": "fr"}
+        -> {"web_search_enabled": false, "language": "fr", "auto_update_enabled": true}
     """
     try:
         settings = settings_repo.get_or_create()
@@ -63,10 +64,13 @@ async def update_user_settings(
             settings_repo.set_web_search_enabled(settings, payload.web_search_enabled)
         if payload.language is not None:
             settings_repo.set_language(settings, payload.language)
+        if payload.auto_update_enabled is not None:
+            settings_repo.set_auto_update_enabled(settings, payload.auto_update_enabled)
         db.commit()
         logger.info(
             "User settings updated: "
-            f"web_search_enabled={settings.web_search_enabled} language={settings.language}"
+            f"web_search_enabled={settings.web_search_enabled} language={settings.language} "
+            f"auto_update_enabled={settings.auto_update_enabled}"
         )
         return settings
     except Exception as e:

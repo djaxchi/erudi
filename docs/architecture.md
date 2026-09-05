@@ -98,10 +98,13 @@ Routers are mounted under the `/erudi` prefix in `register_routers`
 
 ### 6. Startup and user settings
 
-- `GET /erudi/startup/welcome-popup` and `GET /erudi/startup/connection-status` drive
-  first-run UI state (`StartupVariables`).
-- `GET|PUT /erudi/user_settings/` reads and writes the UI language (`UserSettings`).
+- `GET /erudi/startup/welcome-popup` drives first-run UI state (`StartupVariables`).
+- `GET|PUT /erudi/user_settings/` reads and writes the UI language, the global
+  web-search default and the automatic-update preference (`UserSettings`).
   See [Internationalization](i18n.md).
+- Connectivity for the status pill is read in the renderer from `navigator.onLine`
+  and the `online` / `offline` events, corrected by requests that fail on the wire
+  (`frontend/src/utils/networkStatus.js`). No request is made to answer it.
 
 ## Multi-engine architecture
 

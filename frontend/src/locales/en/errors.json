@@ -112,12 +112,12 @@
     },
     "offline": {
       "label": "Offline",
-      "title": "No internet connection",
-      "tooltip": "No internet: the catalog and downloads are unavailable, but chatting with installed models still works."
+      "title": "No network connection",
+      "tooltip": "No network: the catalog and downloads are unavailable, but chatting with installed models still works."
     },
     "connected": {
       "label": "Connected",
-      "title": "Connected to the internet",
+      "title": "Connected to a network",
       "tooltip": "You can chat with installed models offline. Installing new ones needs a connection."
     }
   },

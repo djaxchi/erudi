@@ -4,7 +4,8 @@ Singleton table (one row) holding app-wide user preferences, mirroring the
 ``StartupVariables`` singleton pattern. First occupant: the global web-search
 toggle (issue #310) — the DEFAULT for new conversations. Each conversation
 copies this value at creation and owns its flag afterwards; changing the
-global setting never retro-affects existing conversations.
+global setting never retro-affects existing conversations. It also carries the
+interface language and the automatic-update preference.
 
 Example:
     from src.entities.UserSettings import UserSettings
@@ -33,9 +34,14 @@ class UserSettings(Base):
         language: Interface language code (#385), one of SUPPORTED_LANGUAGES.
             "en" by default; the frontend derives the first value from the OS
             locale and persists it here so it survives restarts.
+        auto_update_enabled: Boolean - whether the Electron main process may
+            check for, download and install a new version on its own. True by
+            default, so an install that never touches the setting behaves as it
+            always has; turning it off stops the update traffic entirely.
 
     Constraints:
         - web_search_enabled must be a Boolean (enforced by validator).
+        - auto_update_enabled must be a Boolean (enforced by validator).
         - language must be one of SUPPORTED_LANGUAGES (enforced by validator).
     """
     __tablename__ = "user_settings"
@@ -43,6 +49,7 @@ class UserSettings(Base):
     id = Column(Integer, primary_key=True, index=True)
     web_search_enabled = Column(Boolean, default=False, nullable=False)
     language = Column(String(8), default=DEFAULT_LANGUAGE, nullable=False)
+    auto_update_enabled = Column(Boolean, default=True, nullable=False)
 
     @validates('language')
     def validate_language(self, key, value):
@@ -57,7 +64,7 @@ class UserSettings(Base):
             )
         return value
 
-    @validates('web_search_enabled')
+    @validates('web_search_enabled', 'auto_update_enabled')
     def validate_boolean_flags(self, key, value):
         """Ensure boolean flags are actually Boolean type.
 

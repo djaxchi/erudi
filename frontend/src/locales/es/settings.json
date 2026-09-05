@@ -8,6 +8,12 @@
     "note": "Desactivada por defecto. Las conversaciones nuevas heredan este ajuste; después, cada conversación conserva su propio interruptor.",
     "toggleLabel": "Búsqueda web"
   },
+  "autoUpdate": {
+    "title": "Actualizaciones automáticas",
+    "description": "Busca una nueva versión de Erudi en segundo plano, la descarga y la instala la próxima vez que cierres la aplicación. La solicitud va a las releases de GitHub de este proyecto y solo lleva tu versión y tu plataforma.",
+    "note": "Activadas por defecto. Cuando están desactivadas, la aplicación no hace ninguna solicitud de actualización; siempre puedes instalar una versión nueva tú mismo desde la página de releases.",
+    "toggleLabel": "Actualizaciones automáticas"
+  },
   "language": {
     "title": "Idioma de la aplicación",
     "description": "El idioma de los menús, botones y mensajes en toda la aplicación. Las respuestas de los modelos se mantienen en el idioma en que escribas.",

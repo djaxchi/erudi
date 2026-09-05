@@ -49,6 +49,20 @@ class TestUserSettingsEntity:
         with pytest.raises(ValueError):
             settings.language = "de"
 
+    def test_default_auto_update_enabled(self, test_db_session):
+        # The shipped behaviour is unchanged for anyone who never opens the
+        # setting: updates keep downloading on their own until refused.
+        settings = UserSettings()
+        test_db_session.add(settings)
+        test_db_session.commit()
+        test_db_session.refresh(settings)
+        assert settings.auto_update_enabled is True
+
+    def test_auto_update_validator_rejects_non_boolean(self):
+        settings = UserSettings()
+        with pytest.raises(ValueError):
+            settings.auto_update_enabled = "yes"
+
 
 # ============ Repository ============
 
@@ -89,6 +103,13 @@ class TestUserSettingsRepository:
         test_db_session.commit()
         assert repo.get_or_create().language == "fr"
 
+    def test_set_auto_update_enabled(self, test_db_session):
+        repo = User_Settings_Repository(test_db_session)
+        settings = repo.get_or_create()
+        repo.set_auto_update_enabled(settings, False)
+        test_db_session.commit()
+        assert repo.get_or_create().auto_update_enabled is False
+
 
 # ============ Endpoints ============
 
@@ -97,17 +118,26 @@ class TestUserSettingsEndpoints:
     def test_get_returns_defaults(self, client):
         response = client.get("/erudi/user_settings/")
         assert response.status_code == 200
-        assert response.json() == {"web_search_enabled": False, "language": "en"}
+        assert response.json() == {
+            "web_search_enabled": False,
+            "language": "en",
+            "auto_update_enabled": True,
+        }
 
     def test_put_updates_and_persists(self, client):
         response = client.put(
             "/erudi/user_settings/", json={"web_search_enabled": True}
         )
         assert response.status_code == 200
-        assert response.json() == {"web_search_enabled": True, "language": "en"}
+        assert response.json() == {
+            "web_search_enabled": True,
+            "language": "en",
+            "auto_update_enabled": True,
+        }
         assert client.get("/erudi/user_settings/").json() == {
             "web_search_enabled": True,
             "language": "en",
+            "auto_update_enabled": True,
         }
 
     def test_put_back_to_false(self, client):
@@ -131,18 +161,61 @@ class TestUserSettingsEndpoints:
     def test_put_language_leaves_web_search_untouched(self, client):
         client.put("/erudi/user_settings/", json={"web_search_enabled": True})
         response = client.put("/erudi/user_settings/", json={"language": "es"})
-        assert response.json() == {"web_search_enabled": True, "language": "es"}
+        assert response.json() == {
+            "web_search_enabled": True,
+            "language": "es",
+            "auto_update_enabled": True,
+        }
 
     def test_put_web_search_leaves_language_untouched(self, client):
         client.put("/erudi/user_settings/", json={"language": "zh"})
         response = client.put("/erudi/user_settings/", json={"web_search_enabled": True})
-        assert response.json() == {"web_search_enabled": True, "language": "zh"}
+        assert response.json() == {
+            "web_search_enabled": True,
+            "language": "zh",
+            "auto_update_enabled": True,
+        }
 
     @pytest.mark.parametrize("code", ["de", "EN", "fr-FR", "", 42])
     def test_put_rejects_unknown_language(self, client, code):
         response = client.put("/erudi/user_settings/", json={"language": code})
         assert response.status_code == 422
         assert client.get("/erudi/user_settings/").json()["language"] == "en"
+
+    def test_get_reports_automatic_updates_on_by_default(self, client):
+        # A fresh install must behave exactly as it did before the setting
+        # existed, otherwise everyone silently stops receiving updates.
+        assert client.get("/erudi/user_settings/").json()["auto_update_enabled"] is True
+
+    def test_put_refuses_automatic_updates_and_it_survives(self, client):
+        # The whole point of the setting: once refused, it stays refused across
+        # reads -- a value that did not persist would let updates resume.
+        response = client.put("/erudi/user_settings/", json={"auto_update_enabled": False})
+        assert response.status_code == 200
+        assert response.json()["auto_update_enabled"] is False
+        assert client.get("/erudi/user_settings/").json()["auto_update_enabled"] is False
+
+    def test_put_auto_update_leaves_the_other_settings_untouched(self, client):
+        client.put("/erudi/user_settings/", json={"web_search_enabled": True})
+        client.put("/erudi/user_settings/", json={"language": "fr"})
+        response = client.put("/erudi/user_settings/", json={"auto_update_enabled": False})
+        assert response.json() == {
+            "web_search_enabled": True,
+            "language": "fr",
+            "auto_update_enabled": False,
+        }
+
+    def test_put_auto_update_back_on(self, client):
+        client.put("/erudi/user_settings/", json={"auto_update_enabled": False})
+        response = client.put("/erudi/user_settings/", json={"auto_update_enabled": True})
+        assert response.json()["auto_update_enabled"] is True
+
+    def test_put_rejects_a_value_that_is_not_a_boolean(self, client):
+        # A payload the schema cannot read must leave the preference alone
+        # rather than land as a truthy value the user never asked for.
+        response = client.put("/erudi/user_settings/", json={"auto_update_enabled": "maybe"})
+        assert response.status_code == 422
+        assert client.get("/erudi/user_settings/").json()["auto_update_enabled"] is True
 
 
 # ============ Conversation inheritance + PATCH ============
