@@ -1,12 +1,16 @@
-# Dependabot: security alerts are enabled on the repository; this file only
-# turns on version updates for GitHub Actions.
+# Security alerts are enabled on the repository and cover every ecosystem.
+# This file turns on VERSION updates, and it does so selectively.
 #
-# Python and npm version updates are deliberately left off. The backend pins
-# several packages on purpose and revalidates them by hand (mlx-vlm, mlx,
-# transformers, torch CPU-only, pgserver — see backend/requirements/README.md),
-# and the frontend's Electron/electron-builder pair is bumped with a packaged
-# build behind it. Weekly automated bumps of those would be closed unread.
-# Security alerts still cover both ecosystems.
+# The rule we apply: automate the trees where a bump is routine and CI can
+# prove it, and keep hands on the tree where a single-package bump can make the
+# whole set unsolvable.
+#
+# The backend's Python requirements are the second kind and are deliberately
+# absent. Its packages are coupled -- langchain moves with langgraph,
+# transformers with torch and mlx-vlm, pgserver pins the Python version itself
+# -- so a one-package pull request is often unmergeable on its own and needs a
+# companion bump nobody asked Dependabot for. We bump those by hand, resolving
+# the whole entrypoint in a clean venv first (backend/requirements/README.md).
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -17,3 +21,43 @@ updates:
     labels: [ci]
     commit-message:
       prefix: "ci(deps)"
+
+  # The frontend tree is loose and its updates are routine. Grouped into one
+  # pull request per week: twenty separate ones would be closed unread, which is
+  # how a backlog of two hundred alerts accumulates.
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels: [dependencies]
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      frontend:
+        patterns: ["*"]
+        exclude-patterns: ["electron", "electron-builder", "electron-updater"]
+    ignore:
+      # Electron and its packaging pair decide what ships to users and how the
+      # installer is signed. They move only behind a full packaged build and a
+      # manual pass on real hardware, so they are never bumped automatically.
+      - dependency-name: electron
+      - dependency-name: electron-builder
+      - dependency-name: electron-updater
+
+  # The documentation site is the one Python tree that is safe to automate: it
+  # is six packages, it ships to nobody, and `mkdocs build --strict` in CI is a
+  # complete proof that a bump works.
+  - package-ecosystem: pip
+    directory: /docs
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    labels: [documentation]
+    commit-message:
+      prefix: "docs(deps)"
+    groups:
+      docs:
+        patterns: ["*"]
