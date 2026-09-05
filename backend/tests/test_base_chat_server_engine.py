@@ -289,6 +289,80 @@ class TestProbeReady:
             _TestEngine._probe_ready("http://127.0.0.1:19000")  # no model_field
         assert captured_payload["model"] == "default_model"
 
+    def test_chat_ping_authenticates_when_the_child_has_a_key(self):
+        """A key-protected child answers 401 to an unauthenticated probe.
+
+        llama-server is spawned with `--api-key` so that no other local process
+        (nor a web page POSTing to the loopback port) can use it. That key
+        guards `/v1/chat/completions`, so the stage-2 ping must present it or
+        every spawn would fail readiness on a perfectly healthy server.
+        """
+        health_ok = MagicMock(status_code=200)
+        chat_ok = MagicMock(status_code=200, text='{"choices":[]}')
+        captured_headers: dict = {}
+
+        def _capture_post(url, json=None, headers=None, **kwargs):
+            captured_headers["value"] = headers
+            return chat_ok
+
+        with patch(
+            "src.engines.base_chat_server_engine.requests.get",
+            return_value=health_ok,
+        ), patch(
+            "src.engines.base_chat_server_engine.requests.post",
+            side_effect=_capture_post,
+        ):
+            _TestEngine._probe_ready("http://127.0.0.1:19000", api_key="s3cret-token")
+        assert captured_headers["value"]["Authorization"] == "Bearer s3cret-token"
+
+    def test_chat_ping_sends_no_auth_header_without_a_key(self):
+        """MLX spawns `mlx_vlm.server`, which has no API-key option at all.
+
+        Sending a bogus `Authorization` header there would be at best noise and
+        at worst rejected, so the header must appear only when a key exists.
+        """
+        health_ok = MagicMock(status_code=200)
+        chat_ok = MagicMock(status_code=200, text='{"choices":[]}')
+        captured_headers: dict = {"value": "unset"}
+
+        def _capture_post(url, json=None, headers=None, **kwargs):
+            captured_headers["value"] = headers
+            return chat_ok
+
+        with patch(
+            "src.engines.base_chat_server_engine.requests.get",
+            return_value=health_ok,
+        ), patch(
+            "src.engines.base_chat_server_engine.requests.post",
+            side_effect=_capture_post,
+        ):
+            _TestEngine._probe_ready("http://127.0.0.1:19000")
+        assert not captured_headers["value"]
+
+    def test_start_server_forwards_the_handles_key_to_the_probe(self):
+        """The key is minted inside `_spawn_child`; only the handle carries it.
+
+        Without this wiring the probe would authenticate with nothing and every
+        llama.cpp model load would fail at readiness, so the link between the
+        two is pinned explicitly.
+        """
+        captured: dict = {}
+
+        def _capture_probe(base_url, proc=None, model_field="default_model", api_key=None):
+            captured["api_key"] = api_key
+
+        spawned = {
+            "pid": 1, "proc": MagicMock(), "port": 19000,
+            "base_url": "http://127.0.0.1:19000", "alias": "test-1",
+            "model_path": "/m.gguf", "api_key": "minted-at-spawn",
+        }
+        with patch.object(_TestEngine, "_spawn_child", return_value=spawned), \
+             patch.object(_TestEngine, "_probe_ready", side_effect=_capture_probe):
+            _TestEngine._start_server(
+                model_path=Path("/m.gguf"), alias="test-1", port=19000
+            )
+        assert captured["api_key"] == "minted-at-spawn"
+
     def test_timeout_message_mentions_port_for_toctou_hint(self):
         """When /health never reaches 200, error should mention the port so the
         user can run `lsof -i :PORT` to diagnose a stolen-port race."""

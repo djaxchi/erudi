@@ -244,6 +244,7 @@ class BaseChatServerEngine(BaseEngine):
         base_url: str,
         proc: Any = None,
         model_field: str = "default_model",
+        api_key: Optional[str] = None,
     ) -> None:
         """Two-stage readiness probe.
 
@@ -263,7 +264,16 @@ class BaseChatServerEngine(BaseEngine):
         for real inference (`_start_server` computes it via
         `_payload_model_value(handle)`: llama-cpp returns the alias, MLX returns
         the preloaded model path mlx_vlm.server resolves with `get_cached_model`).
+
+        `api_key` is the child's own credential, minted at spawn: llama-server
+        is started with `--api-key` so nothing else on the loopback interface
+        can drive it, and the probe would otherwise get a 401 from a perfectly
+        healthy server. `/health` stays public in llama-server, so the header is
+        redundant on stage 1, but sending it uniformly keeps the two calls
+        symmetric. MLX has no key (mlx_vlm.server has no such option), passes
+        None, and sends no header at all.
         """
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
         probe_start = time.monotonic()
         deadline = probe_start + cls._probe_timeout_s
         last_status: Optional[int] = None
@@ -277,7 +287,7 @@ class BaseChatServerEngine(BaseEngine):
                     ),
                 )
             try:
-                resp = requests.get(f"{base_url}/health", timeout=2.0)
+                resp = requests.get(f"{base_url}/health", timeout=2.0, headers=headers)
                 last_status = resp.status_code
                 if resp.status_code == 200:
                     health_ms = (time.monotonic() - probe_start) * 1000
@@ -315,6 +325,7 @@ class BaseChatServerEngine(BaseEngine):
                     "stream": False,
                 },
                 timeout=30.0,
+                headers=headers,
             )
         except requests.RequestException as e:
             raise EngineException(
@@ -408,6 +419,7 @@ class BaseChatServerEngine(BaseEngine):
                 handle["base_url"],
                 proc=handle.get("proc"),
                 model_field=cls._payload_model_value(handle),
+                api_key=handle.get("api_key"),
             )
         except Exception:
             cls._terminate_process(handle.get("proc"))

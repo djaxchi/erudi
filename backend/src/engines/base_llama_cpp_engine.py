@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import platform
+import secrets
 import signal
 import subprocess
 from abc import abstractmethod
@@ -413,6 +414,19 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
         if mmproj:
             argv += ["--mmproj", str(mmproj)]
             logger.info(f"[{cls.__name__}] Vision projector found: {mmproj.name}")
+        # Close the loopback port to everything but us. Spawned without
+        # `--api-key`, llama-server authenticates NOTHING: every endpoint answers
+        # any caller that can reach 127.0.0.1 -- another local process, or a web
+        # page the user has open, since a browser can POST across origins to a
+        # loopback port. `/slots` (on by default) then hands that caller the
+        # prompt of every in-flight request, i.e. what the user is asking the
+        # model right now, and `/v1/chat/completions` lets it run its own
+        # inference on the user's machine. The key is minted per spawn so a
+        # disclosure dies with the child; `/slots` and the bundled web UI are
+        # switched off outright because Erudi calls neither (only `/health` and
+        # `/v1/chat/completions`).
+        api_key = secrets.token_urlsafe(32)
+        argv += ["--api-key", api_key, "--no-slots", "--no-webui"]
         env = cls._build_spawn_env()
         proc = subprocess.Popen(
             [str(a) for a in argv],
@@ -439,6 +453,10 @@ class BaseLlamaCppEngine(BaseChatServerEngine):
             "base_url": f"http://127.0.0.1:{port}",
             "alias": alias,
             "model_path": str(model_path),
+            # Every caller that talks to this child reaches it through the
+            # handle: the readiness probe and the ChatOpenAI inference client
+            # both read the key from here. Never log the handle wholesale.
+            "api_key": api_key,
         }
         # Preserve subclass-relevant context items in the handle so observability
         # (logs, debug endpoints) shows e.g. how many threads / GPU layers were used.
