@@ -12,6 +12,7 @@ download completes. NULL = unknown: the frontend keeps its estimate.
 - ``integration``: the column round-trips, the by-id download copies the
   catalog value, a KB assistant inherits its base's size.
 """
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -26,6 +27,7 @@ from src.entities.Llm import Llm
 
 # ---------------------------------------------------------------- unit: API + entity
 
+
 @pytest.mark.unit
 def test_llmresponse_exposes_artifact_size_bytes_default_none():
     assert "artifact_size_bytes" in LLMResponse.model_fields
@@ -34,8 +36,15 @@ def test_llmresponse_exposes_artifact_size_bytes_default_none():
 
 @pytest.mark.unit
 def test_llmresponse_reads_the_column_from_the_orm_row():
-    row = Llm(id=1, name="Qwen2.5 VL 3B", local=0, type="qwen", is_base=True,
-              link="mlx-community/Qwen2.5-VL-3B-Instruct-4bit", artifact_size_bytes=3_090_000_000)
+    row = Llm(
+        id=1,
+        name="Qwen2.5 VL 3B",
+        local=0,
+        type="qwen",
+        is_base=True,
+        link="mlx-community/Qwen2.5-VL-3B-Instruct-4bit",
+        artifact_size_bytes=3_090_000_000,
+    )
     assert LLMResponse.model_validate(row).artifact_size_bytes == 3_090_000_000
     assert "artifact_size_bytes" in LLMResponse.model_validate(row).model_dump()
 
@@ -60,6 +69,7 @@ def test_kb_assistant_inherits_its_base_artifact_size():
 
 # ---------------------------------------------------------------- unit: completion
 
+
 @pytest.mark.unit
 class TestDownloadCompletionRecordsTheRealBytes:
     """``_run_download_task`` measures the installed directory once (bytes) and
@@ -75,12 +85,20 @@ class TestDownloadCompletionRecordsTheRealBytes:
             monkeypatch.setattr(repository, name, lambda link: None)
         monkeypatch.setattr(endpoints, "_capture_hints_for_download", lambda *a: None)
 
-        llm = Llm(name="Model", local=2, type="qwen", link=str(final_dir),
-                  model_metadata="Model ID: org/model\nSize: ~2.3 GB",
-                  artifact_size_bytes=catalog_bytes)
+        llm = Llm(
+            name="Model",
+            local=2,
+            type="qwen",
+            link=str(final_dir),
+            model_metadata="Model ID: org/model\nSize: ~2.3 GB",
+            artifact_size_bytes=catalog_bytes,
+        )
         job = DownloadJobModel(
-            remote_model_id="org/model", local_model_id=1, remote_model_link="org/model",
-            temp_local_model_link=str(temp_dir), final_local_model_link=str(final_dir),
+            remote_model_id="org/model",
+            local_model_id=1,
+            remote_model_link="org/model",
+            temp_local_model_link=str(temp_dir),
+            final_local_model_link=str(final_dir),
             status="running",
         )
 
@@ -124,8 +142,8 @@ class TestDownloadCompletionRecordsTheRealBytes:
         endpoints._run_download_task("org/model", 1, temp_dir, final_dir, job_id=1)
 
         assert (llm.local, job.status) == (1, "completed")
-        assert llm.artifact_size_bytes == 3_092                    # the real footprint
-        assert "Disk Size GB: 0.00" in llm.model_metadata          # same walk feeds the GB line
+        assert llm.artifact_size_bytes == 3_092  # the real footprint
+        assert "Disk Size GB: 0.00" in llm.model_metadata  # same walk feeds the GB line
 
     def test_unmeasurable_directory_keeps_the_catalog_value(self, tmp_path, monkeypatch):
         # The directory vanished between the transfer and the measurement (a
@@ -141,6 +159,7 @@ class TestDownloadCompletionRecordsTheRealBytes:
 
 
 # ---------------------------------------------------------------- integration
+
 
 @pytest.mark.integration
 def test_artifact_size_bytes_column_exists(test_db_engine):
@@ -162,13 +181,21 @@ def test_artifact_size_bytes_roundtrips_beyond_32_bits(test_db_session):
 def test_catalog_download_copies_the_size_to_the_local_row(client, test_db_session):
     """POST /llms/{id}/download: the placeholder row starts with the catalog's
     real size, so the card never regresses to an estimate mid-download."""
-    remote = Llm(name="Remote", local=0, type="qwen", link="mlx-community/Qwen2.5-VL-3B-Instruct-4bit",
-                 param_size=3.0, artifact_size_bytes=3_090_000_000)
+    remote = Llm(
+        name="Remote",
+        local=0,
+        type="qwen",
+        link="mlx-community/Qwen2.5-VL-3B-Instruct-4bit",
+        param_size=3.0,
+        artifact_size_bytes=3_090_000_000,
+    )
     test_db_session.add(remote)
     test_db_session.commit()
 
-    with patch("src.domains.llms.endpoints.download_llm") as mock_download, \
-            patch("pathlib.Path.exists", return_value=False):
+    with (
+        patch("src.domains.llms.endpoints.download_llm") as mock_download,
+        patch("pathlib.Path.exists", return_value=False),
+    ):
         mock_download.return_value = AsyncMock()
         resp = client.post(f"/erudi/llms/{remote.id}/download")
     assert resp.status_code == 200
@@ -178,8 +205,14 @@ def test_catalog_download_copies_the_size_to_the_local_row(client, test_db_sessi
 
 @pytest.mark.integration
 def test_list_endpoint_serializes_the_size(client, test_db_session):
-    remote = Llm(name="Remote", local=0, type="qwen", link="org/sized", param_size=3.0,
-                 artifact_size_bytes=3_090_000_000)
+    remote = Llm(
+        name="Remote",
+        local=0,
+        type="qwen",
+        link="org/sized",
+        param_size=3.0,
+        artifact_size_bytes=3_090_000_000,
+    )
     unknown = Llm(name="Unknown", local=0, type="qwen", link="org/unsized", param_size=3.0)
     test_db_session.add_all([remote, unknown])
     test_db_session.commit()

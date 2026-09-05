@@ -227,9 +227,7 @@ def _run_download() -> None:
         logger.info(f"Downloading embedding model {EMBEDDING_MODEL_ID} -> {config.CACHE_DIR}")
         _load_model(local_files_only=False)
         _state["error"] = None
-        logger.info(
-            f"Embedding model download complete ({time.perf_counter() - start_s:.1f}s)"
-        )
+        logger.info(f"Embedding model download complete ({time.perf_counter() - start_s:.1f}s)")
     except Exception as exc:  # noqa: BLE001 - any failure is surfaced to the UI
         logger.error(f"Embedding model download failed: {exc}")
         _state["error"] = _describe_download_error(exc)

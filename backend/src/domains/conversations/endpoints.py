@@ -86,7 +86,6 @@ Warning:
     Long generations (>60s) may cause connection timeouts.
 """
 
-
 from typing import List
 
 from fastapi import Depends, APIRouter
@@ -234,8 +233,6 @@ async def get_messages_by_conversation(
     )
 
 
-
-
 @router.get("/", response_model=List[ConversationResponse])
 async def get_all_conversations(
     conversation_repo: ConversationRepository = Depends(get_conversation_repository),
@@ -276,9 +273,7 @@ async def get_all_conversations(
     return await run_in_threadpool(conversation_repo.get_all_conversations)
 
 
-@router.get(
-    "/{conversation_id}", response_model=ConversationWithMessagesResponse
-)
+@router.get("/{conversation_id}", response_model=ConversationWithMessagesResponse)
 async def get_conversation_by_id(
     conversation_id: int,
     conversation_repo: ConversationRepository = Depends(get_conversation_repository),
@@ -493,9 +488,7 @@ async def update_conversation(
             )
             if value is not None
         ]
-        logger.info(
-            f"Conversation updated: id={conversation_id}, fields={updated_fields}"
-        )
+        logger.info(f"Conversation updated: id={conversation_id}, fields={updated_fields}")
         return result
     except Exception:
         db.rollback()
@@ -596,8 +589,6 @@ async def query_and_respond(
             "X-Accel-Buffering": "no",
         },
     )
-
-
 
 
 @router.post("/{conversation_id}/store_error_message")

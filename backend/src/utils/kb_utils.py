@@ -22,6 +22,7 @@ starved panorama and cross-document questions by construction:
 Excerpts carry their ``source_file`` so the KB prompt can attribute each
 one ("according to <document>" grounding) — see ``build_kb_system_prompt``.
 """
+
 import statistics
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
@@ -37,6 +38,7 @@ class KbExcerpt:
 
     source_file: str
     text: str
+
 
 # Below this, a similarity drop-off is noise, not a cut signal: e5 cosines
 # live in a compressed range, so a flat pool falls through to budget-only.

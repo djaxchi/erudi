@@ -48,6 +48,7 @@ def _fake_chat_model(*texts):
 
 # ============ Repository Tests ============
 
+
 class TestArenaRepository:
     """Test suite for ArenaRepository database operations."""
 
@@ -68,20 +69,27 @@ class TestArenaRepository:
 
 # ============ Service Tests ============
 
+
 class TestArenaService:
     """Test suite for ArenaService business logic (fake chat model)."""
 
     async def test_query_llm_stream_basic(self, test_db_session, mock_llm, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
-        monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("AI is artificial intelligence."))
+        monkeypatch.setattr(
+            agent_runner, "build_chat_model", _fake_chat_model("AI is artificial intelligence.")
+        )
         service = ArenaService(test_db_session)
-        payload = ArenaQueryPayload(question="What is AI?", temperature=0.7, top_p=0.9, max_new_tokens=512)
+        payload = ArenaQueryPayload(
+            question="What is AI?", temperature=0.7, top_p=0.9, max_new_tokens=512
+        )
 
         result = [t async for t in service.query_llm_stream(mock_llm.id, payload)]
 
         assert "".join(result) == "AI is artificial intelligence."
 
-    async def test_query_llm_stream_empty_question_rejected_by_pydantic(self, test_db_session, mock_llm):
+    async def test_query_llm_stream_empty_question_rejected_by_pydantic(
+        self, test_db_session, mock_llm
+    ):
         # Empty question with no images is rejected at the schema level -> 422.
         with pytest.raises(Exception):
             ArenaQueryPayload(question="", temperature=0.5)
@@ -93,15 +101,15 @@ class TestArenaService:
         assert payload.question == ""
         assert payload.images == ["data:image/png;base64,AAA"]
 
-    async def test_query_llm_stream_with_images_multimodal(self, test_db_session, mock_llm, monkeypatch):
+    async def test_query_llm_stream_with_images_multimodal(
+        self, test_db_session, mock_llm, monkeypatch
+    ):
         """Attached images ride the model call as multimodal content (#136 C).
         Vision detection is pinned to True: this test covers the VLM
         pass-through path, not the #212 strip/notice."""
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
         monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("A red square."))
-        monkeypatch.setattr(
-            "src.domains.arena.services.detect_supports_vision", lambda _link: True
-        )
+        monkeypatch.setattr("src.domains.arena.services.detect_supports_vision", lambda _link: True)
         service = ArenaService(test_db_session)
 
         captured = {}
@@ -122,9 +130,7 @@ class TestArenaService:
         # The model received multimodal content carrying the image.
         um = captured["user_message"]
         assert isinstance(um, list)
-        assert any(
-            p.get("type") == "image_url" and p["image_url"]["url"] == data_url for p in um
-        )
+        assert any(p.get("type") == "image_url" and p["image_url"]["url"] == data_url for p in um)
 
     async def test_query_llm_stream_unknown_vision_prepends_notice(
         self, test_db_session, mock_llm, monkeypatch
@@ -146,9 +152,7 @@ class TestArenaService:
         """Images + a positively vision-capable model: no notice."""
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngine)
         monkeypatch.setattr(agent_runner, "build_chat_model", _fake_chat_model("A red square."))
-        monkeypatch.setattr(
-            "src.domains.arena.services.detect_supports_vision", lambda _link: True
-        )
+        monkeypatch.setattr("src.domains.arena.services.detect_supports_vision", lambda _link: True)
         service = ArenaService(test_db_session)
 
         payload = ArenaQueryPayload(question="What is this?", images=["data:image/png;base64,AAA"])
@@ -210,9 +214,7 @@ class TestArenaService:
         payload = ArenaQueryPayload(question="What is in the KB?", temperature=0.5)
 
         with patch("src.domains.arena.services.retrieve_kb_excerpts") as mock_kb:
-            mock_kb.return_value = [
-                KbExcerpt(source_file="notes.md", text="Relevant KB context")
-            ]
+            mock_kb.return_value = [KbExcerpt(source_file="notes.md", text="Relevant KB context")]
             result = [t async for t in service.query_llm_stream(llm.id, payload)]
 
         assert "".join(result) == "Answer from KB."
@@ -280,7 +282,9 @@ class TestArenaService:
         assert captured["top_p"] == 0.95
         assert captured["max_tokens"] == 2048
 
-    async def test_query_llm_stream_engine_failure_yields_sentinel(self, test_db_session, mock_llm, monkeypatch):
+    async def test_query_llm_stream_engine_failure_yields_sentinel(
+        self, test_db_session, mock_llm, monkeypatch
+    ):
         # Unified error policy: model-load failure yields the sentinel inline
         # (the old code raised, which was lost after the 200 response started).
         def _boom(llm, **kw):
@@ -297,12 +301,20 @@ class TestArenaService:
 
 # ============ Endpoint Tests ============
 
+
 class TestArenaEndpoints:
     """Test suite for arena REST API endpoints (fake chat model)."""
 
     def test_query_endpoint_success(self, client, test_db_session, mock_llm):
-        payload = {"question": "What is machine learning?", "temperature": 0.7, "top_p": 0.9, "max_new_tokens": 512}
-        with patch.object(agent_runner, "build_chat_model", _fake_chat_model("Machine learning is AI.")):
+        payload = {
+            "question": "What is machine learning?",
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "max_new_tokens": 512,
+        }
+        with patch.object(
+            agent_runner, "build_chat_model", _fake_chat_model("Machine learning is AI.")
+        ):
             response = client.post(f"/erudi/arena/{mock_llm.id}/query", json=payload)
         assert response.status_code == status.HTTP_200_OK
         assert response.text == "Machine learning is AI."
@@ -327,8 +339,14 @@ class TestArenaEndpoints:
         assert response.text == _VISION_NOTICE + "A tiny image."
 
     def test_query_endpoint_with_custom_prompt(self, client, mock_llm):
-        payload = {"question": "Explain quantum physics", "custom_prompt": "Use simple language for a child", "temperature": 0.8}
-        with patch.object(agent_runner, "build_chat_model", _fake_chat_model("Quantum is tiny stuff.")):
+        payload = {
+            "question": "Explain quantum physics",
+            "custom_prompt": "Use simple language for a child",
+            "temperature": 0.8,
+        }
+        with patch.object(
+            agent_runner, "build_chat_model", _fake_chat_model("Quantum is tiny stuff.")
+        ):
             response = client.post(f"/erudi/arena/{mock_llm.id}/query", json=payload)
         assert response.status_code == status.HTTP_200_OK
         assert "Quantum" in response.text

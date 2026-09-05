@@ -7,6 +7,7 @@ degrade-to-empty error paths. The exception matrix pins each AppBaseException
 subclass's HTTP status and erudi code - the contract the global handler and
 the frontend error normalizer rely on.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -19,8 +20,15 @@ from src.core import exceptions as exc
 from src.domains.llms import hf_search
 
 
-def _hit(model_id, downloads=10_000, pipeline="text-generation", tags=(),
-         safetensors=None, gated=False, likes=50):
+def _hit(
+    model_id,
+    downloads=10_000,
+    pipeline="text-generation",
+    tags=(),
+    safetensors=None,
+    gated=False,
+    likes=50,
+):
     return SimpleNamespace(
         id=model_id,
         downloads=downloads,
@@ -57,9 +65,9 @@ def fake_hf(monkeypatch):
 # UNIT - search_huggingface
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestSearchHuggingface:
-
     def test_empty_query_returns_empty(self):
         assert hf_search.search_huggingface("   ") == []
 
@@ -75,13 +83,15 @@ class TestSearchHuggingface:
         assert hf_search.search_huggingface("gemma") == []
 
     def test_results_are_filtered_and_shaped(self, fake_hf):
-        fake_hf([
-            _hit("quanter/good-model-gguf", safetensors={"total": 7_000_000_000}),
-            _hit("quanter/too-obscure-gguf", downloads=3),          # below floor
-            _hit("quanter/whisper-gguf", pipeline="automatic-speech-recognition"),
-            _hit("quanter/broken-model-gguf"),                       # KNOWN_BROKEN
-            _hit("other/good-model-gguf"),                           # dedup by base key
-        ])
+        fake_hf(
+            [
+                _hit("quanter/good-model-gguf", safetensors={"total": 7_000_000_000}),
+                _hit("quanter/too-obscure-gguf", downloads=3),  # below floor
+                _hit("quanter/whisper-gguf", pipeline="automatic-speech-recognition"),
+                _hit("quanter/broken-model-gguf"),  # KNOWN_BROKEN
+                _hit("other/good-model-gguf"),  # dedup by base key
+            ]
+        )
         results = hf_search.search_huggingface("model")
         assert [r["link"] for r in results] == ["quanter/good-model-gguf"]
         row = results[0]
@@ -107,9 +117,7 @@ class TestSearchHuggingface:
         assert [r["link"] for r in results] == ["org/model-gguf"]
 
     def test_safetensors_total_dict_and_absent(self):
-        assert hf_search._safetensors_total(
-            SimpleNamespace(safetensors={"total": 5})
-        ) == 5
+        assert hf_search._safetensors_total(SimpleNamespace(safetensors={"total": 5})) == 5
         assert hf_search._safetensors_total(SimpleNamespace(safetensors=None)) is None
         assert hf_search._safetensors_total(SimpleNamespace(safetensors={})) is None
 
@@ -118,9 +126,9 @@ class TestSearchHuggingface:
 # UNIT - structured exception contract
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestExceptionContract:
-
     CASES = [
         (exc.AppBaseException(), 500, "INTERNAL_SERVER_ERROR"),
         (exc.ModelNotFoundException("m"), 404, "MODEL_NOT_FOUND"),
@@ -150,9 +158,7 @@ class TestExceptionContract:
         CASES,
         ids=[type(c[0]).__name__ + str(i) for i, c in enumerate(CASES)],
     )
-    def test_every_exception_carries_the_contract(
-        self, instance, status_code, erudi_code
-    ):
+    def test_every_exception_carries_the_contract(self, instance, status_code, erudi_code):
         assert isinstance(instance, exc.AppBaseException)
         assert isinstance(instance.status_code, int)
         if status_code is not None:

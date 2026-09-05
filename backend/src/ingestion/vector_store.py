@@ -63,9 +63,7 @@ _kb_store: Optional[PGVectorStore] = None
 _psycopg_url: Optional[str] = None  # retained for the direct similarity SQL
 
 
-def _hybrid_config(
-    fts_query: str | None = None, pool_k: int = POOL_K
-) -> HybridSearchConfig:
+def _hybrid_config(fts_query: str | None = None, pool_k: int = POOL_K) -> HybridSearchConfig:
     """A FRESH hybrid config — required per search, see module docstring.
 
     ``primary_top_k``/``secondary_top_k`` are the per-branch SQL LIMITs and
@@ -86,9 +84,7 @@ def _hybrid_config(
 
 def _ensure_fk(conn: psycopg.Connection, name: str, ddl: str) -> None:
     """Add a FK once (guarded on pg_constraint — init must be idempotent)."""
-    exists = conn.execute(
-        "SELECT 1 FROM pg_constraint WHERE conname = %s", (name,)
-    ).fetchone()
+    exists = conn.execute("SELECT 1 FROM pg_constraint WHERE conname = %s", (name,)).fetchone()
     if not exists:
         conn.execute(ddl)
 
@@ -213,8 +209,7 @@ def add_kb_chunks(
         return []
     start_s = time.perf_counter()
     embedding_texts = [
-        build_embedding_text(file_name=source_file, chunk_text=chunk.text)
-        for chunk in chunks
+        build_embedding_text(file_name=source_file, chunk_text=chunk.text) for chunk in chunks
     ]
     vectors = E5Embeddings().embed_documents(embedding_texts)
     texts = [chunk.text for chunk in chunks]
@@ -228,9 +223,7 @@ def add_kb_chunks(
         }
         for chunk in chunks
     ]
-    ids = get_kb_store().add_embeddings(
-        texts=texts, embeddings=vectors, metadatas=metadatas
-    )
+    ids = get_kb_store().add_embeddings(texts=texts, embeddings=vectors, metadatas=metadatas)
     duration_ms = (time.perf_counter() - start_s) * 1000
     logger.info(
         f"KB chunks added: kb_id={kb_id}, document_id={document_id}, "
@@ -240,9 +233,7 @@ def add_kb_chunks(
     return ids
 
 
-def _dense_similarities(
-    ids: list[str], query_vector: list[float]
-) -> dict[str, float]:
+def _dense_similarities(ids: list[str], query_vector: list[float]) -> dict[str, float]:
     """Cosine similarity of the STORED vectors against the query vector.
 
     One PK-indexed SQL read. Recomputing embeddings over the clean content
@@ -251,9 +242,7 @@ def _dense_similarities(
     the retrieval ranked with.
     """
     if _psycopg_url is None:
-        raise RuntimeError(
-            "KB vector store not initialized — call init_kb_store() first."
-        )
+        raise RuntimeError("KB vector store not initialized — call init_kb_store() first.")
     with psycopg.connect(_psycopg_url) as conn:
         rows = conn.execute(
             f'SELECT langchain_id, 1 - ("embedding" <=> %s::vector)'

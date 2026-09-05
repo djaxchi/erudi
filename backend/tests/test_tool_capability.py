@@ -17,6 +17,7 @@ Run:
     pytest tests/test_tool_capability.py -m unit        # CI-friendly
     pytest tests/test_tool_capability.py -m mlx_only    # local Mac
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -61,7 +62,9 @@ def _minimal_tokenizer_with_template(template: str):
     from tokenizers import Tokenizer, models
     from transformers import PreTrainedTokenizerFast
 
-    backend = Tokenizer(models.WordLevel(vocab={"<s>": 0, "</s>": 1, "<unk>": 2}, unk_token="<unk>"))
+    backend = Tokenizer(
+        models.WordLevel(vocab={"<s>": 0, "</s>": 1, "<unk>": 2}, unk_token="<unk>")
+    )
     tok = PreTrainedTokenizerFast(
         tokenizer_object=backend, bos_token="<s>", eos_token="</s>", unk_token="<unk>"
     )
@@ -190,9 +193,7 @@ def test_compute_supports_tools_graceful_on_none_tokenizer():
 def test_mlx_capability_load_is_local_only(tmp_path, monkeypatch):
     from src.engines.mlx_engine import MLX_Engine
 
-    monkeypatch.setattr(
-        MLX_Engine, "_resolve_model_artifact", classmethod(lambda cls, p: tmp_path)
-    )
+    monkeypatch.setattr(MLX_Engine, "_resolve_model_artifact", classmethod(lambda cls, p: tmp_path))
 
     captured = {}
 

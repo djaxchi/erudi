@@ -21,8 +21,7 @@ class TextExtractor:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
             logger.warning(
-                f"Text file {path.name}: not valid UTF-8 - "
-                f"falling back to latin-1 decoding"
+                f"Text file {path.name}: not valid UTF-8 - " f"falling back to latin-1 decoding"
             )
             text = raw.decode("latin-1")
         logger.debug(f"Text extracted: {path.name} ({len(text)} chars)")

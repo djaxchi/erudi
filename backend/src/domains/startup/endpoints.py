@@ -16,6 +16,7 @@ Example:
     curl http://127.0.0.1:27182/erudi/startup/welcome-popup
     {"has_already_displayed": false}
 """
+
 from fastapi import Depends, APIRouter
 from sqlalchemy.orm import Session
 
@@ -30,6 +31,7 @@ router = APIRouter(prefix="/startup", tags=["startup"])
 
 # ============ Dependency Injection ============
 
+
 def get_startup_repository(db: Session = Depends(get_db)) -> Startup_Variables_Repository:
     """FastAPI dependency injection factory for Startup_Variables_Repository.
 
@@ -43,6 +45,7 @@ def get_startup_repository(db: Session = Depends(get_db)) -> Startup_Variables_R
 
 
 # ============ Endpoints ============
+
 
 @router.get("/welcome-popup", response_model=WelcomePopupResponse)
 async def get_welcome_popup_status(
@@ -71,25 +74,22 @@ async def get_welcome_popup_status(
     try:
         # Get or create singleton startup variables
         vars = startup_repo.get_or_create()
-        
+
         # Check current status
         already_displayed = vars.welcome_popup_has_already_displayed
-        
+
         # If not displayed yet, mark as displayed now
         if not already_displayed:
             startup_repo.mark_welcome_popup_displayed(vars)
             db.commit()
             logger.info("Welcome popup marked as displayed (first time)")
             return WelcomePopupResponse(has_already_displayed=False)
-        
+
         # Already displayed before
         logger.debug("Welcome popup status: already displayed")
         return WelcomePopupResponse(has_already_displayed=True)
-        
+
     except Exception as e:
         db.rollback()
         logger.exception(f"Failed to get welcome popup status: {e}")
-        raise DatabaseException(
-            "Failed to get welcome popup status",
-            trace=str(e)
-        )
+        raise DatabaseException("Failed to get welcome popup status", trace=str(e))

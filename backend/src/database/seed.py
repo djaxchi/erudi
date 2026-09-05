@@ -107,44 +107,40 @@ from src.entities.StartupVariables import StartupVariables
 
 def load_base_models_fallback() -> List[Dict[str, Any]]:
     """Load base models from embedded JSON fallback file.
-    
+
     Used when offline or HuggingFace API is unavailable. Provides minimal
     model metadata to allow app functionality without internet.
-    
+
     Returns:
         List[Dict]: List of base model configurations from JSON file.
-    
+
     Raises:
         FileSystemException: If fallback JSON file is missing or corrupted.
-    
+
     Note:
         JSON file located at: src/database/base_models_fallback.json
         Contains 7 curated base models with essential metadata.
-    
+
     Example:
         >>> models = load_base_models_fallback()
         >>> first = models[0]
         >>> print(first.get("name"))  # Gemma-1B
     """
     fallback_path = config.ROOT_DIR / "src" / "database" / "base_models_fallback.json"
-    
+
     try:
-        with open(fallback_path, 'r') as f:
+        with open(fallback_path, "r") as f:
             models = json.load(f)
-        
+
         logger.info(f"Loaded {len(models)} base models from offline fallback")
         return models
-    
+
     except FileNotFoundError:
         raise FileSystemException(
-            f"Base models fallback file not found: {fallback_path}",
-            trace="FileNotFoundError"
+            f"Base models fallback file not found: {fallback_path}", trace="FileNotFoundError"
         )
     except json.JSONDecodeError as e:
-        raise FileSystemException(
-            f"Failed to parse base models fallback JSON: {e}",
-            trace=str(e)
-        )
+        raise FileSystemException(f"Failed to parse base models fallback JSON: {e}", trace=str(e))
 
 
 def _safetensors_total(model_info) -> Optional[int]:
@@ -163,6 +159,7 @@ def _safetensors_total(model_info) -> Optional[int]:
 
 
 # ============ Configuration Data Classes ============
+
 
 @dataclass(frozen=True)
 class Model_Config:
@@ -189,11 +186,11 @@ class Model_Config:
 @dataclass(frozen=True)
 class Search_Config:
     """Configuration for derived model search."""
-    
+
     search_term: str
     model_type: str
     default_param_size: float
-    
+
     def __post_init__(self) -> None:
         """Validate search configuration.
 
@@ -227,23 +224,24 @@ FRESH_MIN_DOWNLOADS: int = 50_000
 
 # ============ Model Seeding Service ============
 
+
 class Model_Seeder:
     """Handles seeding of base and derived models from HuggingFace.
-    
+
     Supports both online and offline modes:
     - Online: Fetches fresh metadata from HuggingFace API
     - Offline: Uses embedded JSON fallback with minimal metadata
     """
-    
+
     def __init__(
         self,
         db: Session,
         hf_api=None,
         quality_filters: Optional[Quality_Filters] = None,
-        offline_mode: bool = False
+        offline_mode: bool = False,
     ):
         """Initialize model seeder.
-        
+
         Args:
             db: Active database session.
             hf_api: HuggingFace API client (None if offline).
@@ -254,15 +252,39 @@ class Model_Seeder:
         self.hf_api = hf_api
         self.filters = quality_filters or Quality_Filters()
         self.offline_mode = offline_mode
-    
+
     # Slug tokens marking a non-final / intermediate / non-LLM artifact, excluded
     # from org discovery (token-matched, so 'pt' won't hit 'gpt'). '-assistant'
     # distillates and '-qat-…-unquantized' intermediates are the #122 offenders.
-    ARTIFACT_TOKENS: frozenset = frozenset({
-        "gguf", "mlx", "4bit", "8bit", "6bit", "gptq", "awq", "bnb", "lora",
-        "adapter", "onnx", "pt", "pretrain", "draft", "mtp", "qat", "unquantized",
-        "embedding", "reranker", "reward", "rm", "prm", "assistant", "fp8", "nvfp4",
-    })
+    ARTIFACT_TOKENS: frozenset = frozenset(
+        {
+            "gguf",
+            "mlx",
+            "4bit",
+            "8bit",
+            "6bit",
+            "gptq",
+            "awq",
+            "bnb",
+            "lora",
+            "adapter",
+            "onnx",
+            "pt",
+            "pretrain",
+            "draft",
+            "mtp",
+            "qat",
+            "unquantized",
+            "embedding",
+            "reranker",
+            "reward",
+            "rm",
+            "prm",
+            "assistant",
+            "fp8",
+            "nvfp4",
+        }
+    )
     # Non-chat task filtering (NONCHAT_FAMILIES substring + pipeline denylist) is
     # shared with the community-search path and lives in catalog_classify
     # (is_nonchat_task), so both ingestion doors use one audited list (#242).
@@ -271,10 +293,16 @@ class Model_Seeder:
     TEXT_PIPELINES: tuple = ("text-generation",)
     VISION_PIPELINES: tuple = ("image-text-to-text", "any-to-any")
 
-    def discover_instruct_models(self, org: str, model_type: str, top_n: int = 14,
-                                 vision_top_n: int = 8, min_downloads: int = 2000,
-                                 fresh_top_n: int = FRESH_TOP_N,
-                                 fresh_min_downloads: int = FRESH_MIN_DOWNLOADS) -> List[Model_Config]:
+    def discover_instruct_models(
+        self,
+        org: str,
+        model_type: str,
+        top_n: int = 14,
+        vision_top_n: int = 8,
+        min_downloads: int = 2000,
+        fresh_top_n: int = FRESH_TOP_N,
+        fresh_min_downloads: int = FRESH_MIN_DOWNLOADS,
+    ) -> List[Model_Config]:
         """Discover an org's chat-capable models (text + multimodal) as base candidates.
 
         Text and vision get SEPARATE quotas (``top_n`` / ``vision_top_n``) so a busy
@@ -300,11 +328,22 @@ class Model_Seeder:
 
         def fetch(pipeline: str, sort: str) -> list:
             try:
-                return list(self.hf_api.list_models(
-                    author=org, pipeline_tag=pipeline, sort=sort, limit=80,
-                    expand=["safetensors", "cardData", "tags", "pipeline_tag",
-                            "gated", "downloads"],
-                ))
+                return list(
+                    self.hf_api.list_models(
+                        author=org,
+                        pipeline_tag=pipeline,
+                        sort=sort,
+                        limit=80,
+                        expand=[
+                            "safetensors",
+                            "cardData",
+                            "tags",
+                            "pipeline_tag",
+                            "gated",
+                            "downloads",
+                        ],
+                    )
+                )
             except Exception as e:
                 logger.warning(f"Org discovery failed for {org}/{pipeline} (sort={sort}): {e}")
                 return []
@@ -333,7 +372,9 @@ class Model_Seeder:
                 return None
             seen.add(key)
             return Model_Config(
-                name, m.id, model_type,
+                name,
+                m.id,
+                model_type,
                 safetensors_total=_safetensors_total(m),
                 category=categorize(name, tags, pipeline_tag),
             )
@@ -372,6 +413,7 @@ class Model_Seeder:
         in that family are dropped — keeping ``gemma-2-9b-it`` over ``gemma-2-9b``,
         while a suffix-less lone release (``DeepSeek-V3``) is untouched.
         """
+
         def family(mc: Model_Config) -> str:
             toks = base_key(mc.link).split("-")
             while toks and toks[-1] in self._INSTRUCT_SUFFIX:
@@ -405,7 +447,8 @@ class Model_Seeder:
         tag = getattr(config.LLM_Engine, "FORMAT_TAG", None)
         for org, model_type, _term in orgs:
             candidates = self._prefer_instruct_siblings(
-                self.discover_instruct_models(org, model_type))
+                self.discover_instruct_models(org, model_type)
+            )
             for model_config in candidates:
                 try:
                     quant_link = resolve_quant(model_config.link, tag, self.hf_api)
@@ -427,7 +470,7 @@ class Model_Seeder:
                 except Exception as e:
                     logger.error(f"Failed to build base model {model_config.link}: {e}")
         return out
-    
+
     def seed_from_snapshot(self) -> int:
         """Seed the remote catalog (local=0) from the bundled build-time snapshot
         for the active engine format (#112). Instant, zero HF calls — this is the
@@ -464,91 +507,89 @@ class Model_Seeder:
 
     def seed_base_models_offline(self) -> int:
         """Seed base models from embedded JSON fallback (offline mode).
-        
+
         Used when internet is unavailable or HuggingFace API fails. Loads
         models from static JSON file with minimal but sufficient metadata.
-        
+
         Returns:
             Number of models successfully added from fallback.
-        
+
         Raises:
             FileSystemException: If fallback JSON is missing or corrupted.
             DatabaseException: If database operations fail.
-        
+
         Note:
             This method ONLY seeds base models. Derived models are skipped
             in offline mode as they require fresh HuggingFace searches.
-        
+
         Example:
             >>> seeder = Model_Seeder(db, offline_mode=True)
             >>> count = seeder.seed_base_models_offline()
             >>> print(f"Seeded {count} base models in offline mode")
         """
         logger.warning("Seeding in OFFLINE mode using fallback data")
-        
+
         fallback_models = load_base_models_fallback()
         added_count = 0
-        
+
         for model_data in fallback_models:
             # Offline: there is no HF to resolve a quant, so seed the bundled link
             # as-is (the offline JSON should already carry resolved quant links).
-            actual_link = model_data['link']
+            actual_link = model_data["link"]
             if self._link_exists(actual_link):
                 logger.debug(f"Skipping existing model: {actual_link}")
                 continue
-            
+
             try:
                 # Create model config from JSON data
                 model_config = Model_Config(
-                    name=model_data['name'],
-                    link=model_data['link'],
-                    model_type=model_data['type']
+                    name=model_data["name"], link=model_data["link"], model_type=model_data["type"]
                 )
-                
+
                 # Create LLM entity with fallback metadata
                 llm = self._create_base_llm_from_json(model_data)
                 self.db.add(llm)
                 self.db.flush()
                 added_count += 1
                 logger.info(f"Added base model (offline): {model_data['name']}")
-                
+
             except Exception as e:
                 logger.error(f"Failed to add offline model {model_data['name']}: {e}")
                 continue
-        
+
         self.db.commit()
         logger.info(f"Offline seeding complete: {added_count} base models added")
         return added_count
-    
+
     def _create_base_llm_from_json(self, model_data: Dict[str, Any]) -> Llm:
         """Create LLM entity from JSON fallback data.
-        
+
         Args:
             model_data: Dictionary from fallback JSON with keys:
                 name, link, type, param_size, model_metadata
-        
+
         Returns:
             Llm: Entity ready to be added to database.
         """
         # Offline: use the bundled link + flag as-is (no HF resolution available).
-        actual_link = model_data['link']
-        is_quantized = bool(model_data.get('quantized', False))
-        
+        actual_link = model_data["link"]
+        is_quantized = bool(model_data.get("quantized", False))
+
         # Use embedded metadata and param_size from JSON
         return Llm(
-            name=humanize_model_name(model_data['link']),
+            name=humanize_model_name(model_data["link"]),
             local=0,
             link=actual_link,
-            type=model_data['type'],
+            type=model_data["type"],
             quantized=is_quantized,
-            model_metadata=model_data['model_metadata'],
-            param_size=model_data['param_size'],
+            model_metadata=model_data["model_metadata"],
+            param_size=model_data["param_size"],
             # The offline fallback seeds base models only (#86).
             is_base=True,
             # Base models are chat-ready (#182); honor the snapshot flag if present.
-            conversational=bool(model_data.get('conversational', True)),
+            conversational=bool(model_data.get("conversational", True)),
         )
-    
+
     def build_derived_models(
         self,
         searches: List[Search_Config],
@@ -610,11 +651,11 @@ class Model_Seeder:
                 except Exception as e:
                     logger.warning(f"Failed to build derived {model_info.id}: {e}")
         return out
-    
+
     def _link_exists(self, link: str) -> bool:
         """Check if model already exists by link."""
         return self.db.query(Llm).filter(Llm.link == link).first() is not None
-    
+
     def _create_base_llm(self, model_config: Model_Config, quant_link: str) -> Llm:
         """Create a base LLM entity (full metadata) for a resolved engine-format quant.
 
@@ -628,7 +669,8 @@ class Model_Seeder:
         # Real param count from the base's safetensors.total (captured at discovery),
         # slug as sanity-checked fallback — no more blanket 7.0 (#122).
         param_size = param_size_billions(
-            model_config.safetensors_total, model_config.link.split("/")[-1])
+            model_config.safetensors_total, model_config.link.split("/")[-1]
+        )
         metadata = format_model_info_metadata(model_info, size_estimate, True)
 
         return Llm(
@@ -658,15 +700,17 @@ class Model_Seeder:
             # resolver only rewrote the quant link). Cascade base
             # generation_config > quant generation_config > base model card,
             # tiny file fetches memoized per repo, best-effort (None on failure).
-            generation_hints=capture_generation_hints(model_config.link, self.hf_api,
-                                                      quant_repo=quant_link),
+            generation_hints=capture_generation_hints(
+                model_config.link, self.hf_api, quant_repo=quant_link
+            ),
         )
 
     def _create_base_llm_fallback(self, model_config: Model_Config, quant_link: str) -> Llm:
         """Create a base LLM with fallback metadata when base HF metadata is missing."""
         size_estimate = get_disk_size_after_quant(quant_link, hf_api=self.hf_api)
         param_size = param_size_billions(
-            model_config.safetensors_total, model_config.link.split("/")[-1])
+            model_config.safetensors_total, model_config.link.split("/")[-1]
+        )
 
         fallback_metadata = (
             f"Size: {size_estimate.to_string()}\n"
@@ -694,10 +738,11 @@ class Model_Seeder:
             # Deferred to post-download (see _create_base_llm / #113).
             supports_tools=None,
             # Sampling facts cascade -- see _create_base_llm (#388).
-            generation_hints=capture_generation_hints(model_config.link, self.hf_api,
-                                                      quant_repo=quant_link),
+            generation_hints=capture_generation_hints(
+                model_config.link, self.hf_api, quant_repo=quant_link
+            ),
         )
-    
+
     def _passes_quality_filters(self, model_info) -> bool:
         """Keep any model above the popularity floor — nothing else.
 
@@ -705,9 +750,11 @@ class Model_Seeder:
         (distilled, RL, uncensored…), and the format tag already guarantees the model
         is runnable. The floor just keeps the catalog from being all of HF.
         """
-        return (model_info.downloads >= self.filters.min_downloads
-                and model_info.likes >= self.filters.min_likes)
-    
+        return (
+            model_info.downloads >= self.filters.min_downloads
+            and model_info.likes >= self.filters.min_likes
+        )
+
     def _create_derived_llm(self, model_info, search_config: Search_Config) -> Llm:
         """Create derived LLM entity from search result."""
         model_name = model_info.id.split("/")[-1]
@@ -730,13 +777,9 @@ class Model_Seeder:
             param_size = param_count.count / 1000.0
         else:
             param_size = None
-        
+
         # Format metadata
-        metadata = format_model_info_metadata(
-            model_info,
-            size_estimate,
-            quantized=False
-        )
+        metadata = format_model_info_metadata(model_info, size_estimate, quantized=False)
 
         tags = list(getattr(model_info, "tags", None) or [])
         return Llm(
@@ -756,46 +799,46 @@ class Model_Seeder:
             # rows (#182). A community merge/pretrain without the tag or suffix sorts
             # below the instruct ones rather than being dropped.
             conversational=is_conversational(tags, model_name),
-            category=categorize(model_name, tags,
-                                getattr(model_info, "pipeline_tag", None)),
+            category=categorize(model_name, tags, getattr(model_info, "pipeline_tag", None)),
             # Sampling facts (#388): a community quant inherits its base's
             # generation_config (first base_model:* card tag), else its own; the
             # quant repo itself is the cascade's second stage.
             generation_hints=capture_generation_hints(
-                resolve_base_repo(model_info.id, tags), self.hf_api,
-                quant_repo=model_info.id),
+                resolve_base_repo(model_info.id, tags), self.hf_api, quant_repo=model_info.id
+            ),
         )
 
 
 # ============ Job Cleanup Service ============
 
+
 class Job_Cleanup_Service:
     """Handles cleanup of interrupted jobs and orphaned resources.
-    
+
     Responsibilities:
     - Mark interrupted jobs (download, KB) as failed
     - Remove incomplete model files and temp directories
     - Cleanup orphaned model directories without database entries
     """
-    
+
     def __init__(self, db: Session):
         """Initialize job cleanup service.
-        
+
         Args:
             db: Active database session.
         """
         self.db = db
-    
+
     def cleanup_all_unfinished_jobs(self) -> Dict[str, int]:
         """Mark all interrupted jobs as failed and cleanup resources.
-        
+
         Returns:
             Dictionary with counts: {"download": N, "kb": N, "orphaned": N}
         """
         counts = {
             "download": self._cleanup_download_jobs(),
             "kb": self._cleanup_kb_jobs(),
-            "orphaned": self._cleanup_orphaned_models()
+            "orphaned": self._cleanup_orphaned_models(),
         }
 
         total = sum(counts.values())
@@ -806,9 +849,9 @@ class Job_Cleanup_Service:
                 f"kb={counts['kb']}, "
                 f"orphaned={counts['orphaned']}"
             )
-        
+
         return counts
-    
+
     def _artifact_is_complete(self, job: DownloadJobModel, llm: Llm) -> bool:
         """Whether the model on disk is a usable artifact worth preserving (#314).
 
@@ -878,9 +921,11 @@ class Job_Cleanup_Service:
         ``backfill_local_model_sizes`` fill them in exactly as they do for any
         other legacy local model, so no capability probe runs inside boot.
         """
-        unfinished = self.db.query(DownloadJobModel).filter(
-            DownloadJobModel.status.in_(["running", "pending"])
-        ).all()
+        unfinished = (
+            self.db.query(DownloadJobModel)
+            .filter(DownloadJobModel.status.in_(["running", "pending"]))
+            .all()
+        )
 
         count = 0
         rescued = 0
@@ -915,14 +960,10 @@ class Job_Cleanup_Service:
                     shutil.rmtree(llm.link, ignore_errors=True)
                     self.db.delete(llm)
                     job.status = "failed"
-                    job.error_message = (
-                        "Download interrupted due to application shutdown"
-                    )
+                    job.error_message = "Download interrupted due to application shutdown"
                 else:
                     job.status = "failed"
-                    job.error_message = (
-                        "Download interrupted due to application shutdown"
-                    )
+                    job.error_message = "Download interrupted due to application shutdown"
 
                 # Delete temp files. The staging dir is scratch space in every
                 # case: on a rescue its contents were already moved into place.
@@ -978,9 +1019,9 @@ class Job_Cleanup_Service:
         (new_model_id == base_model_id) leave the existing KB and assistant
         untouched — the corpus indexed before the interruption is still valid.
         """
-        unfinished = self.db.query(KBJobModel).filter(
-            KBJobModel.status.in_(["running", "pending"])
-        ).all()
+        unfinished = (
+            self.db.query(KBJobModel).filter(KBJobModel.status.in_(["running", "pending"])).all()
+        )
 
         count = 0
         for job in unfinished:
@@ -992,9 +1033,7 @@ class Job_Cleanup_Service:
                     if new_llm:
                         self.db.delete(new_llm)
 
-                    kb = self.db.query(KnowledgeBase).filter(
-                        KnowledgeBase.id == job.kb_id
-                    ).first()
+                    kb = self.db.query(KnowledgeBase).filter(KnowledgeBase.id == job.kb_id).first()
                     if kb:
                         self.db.delete(kb)
 
@@ -1014,27 +1053,27 @@ class Job_Cleanup_Service:
             self.db.commit()
 
         return count
-    
+
     def _cleanup_orphaned_models(self) -> int:
         """Cleanup orphaned model files without corresponding database entries.
-        
+
         This handles cases where:
         - The app is reinstalled but Application Support data persists
         - Temp directories from interrupted downloads remain
-        
+
         Returns:
             Total count of orphaned models and temp directories removed.
-        
+
         Raises:
             FileSystemException: If critical filesystem operations fail.
         """
         models_dir = config.LLM_DIR
-        
+
         # Return early if models directory doesn't exist
         if not models_dir.exists():
             logger.debug("Models directory doesn't exist, nothing to clean up")
             return 0
-        
+
         # Get all valid model IDs from database
         try:
             local_models = self.db.query(Llm).filter(Llm.local == 1).all()
@@ -1042,7 +1081,7 @@ class Job_Cleanup_Service:
         except DatabaseException as e:
             logger.error(f"Database error fetching local models: {e}")
             return 0
-        
+
         # Scan and cleanup orphaned directories
         cleaned_count = 0
         temp_cleaned_count = 0
@@ -1064,9 +1103,7 @@ class Job_Cleanup_Service:
                 logger.error(f"Failed to remove {kind} {item.name}: {e}")
                 return False
             if left:
-                logger.error(
-                    f"Failed to remove {kind} {item.name}: {left} bytes still on disk"
-                )
+                logger.error(f"Failed to remove {kind} {item.name}: {left} bytes still on disk")
                 return False
             reclaimed_bytes += size
             return True
@@ -1100,7 +1137,7 @@ class Job_Cleanup_Service:
                 logger.debug("No orphaned models or temp directories found")
 
             return total_cleaned
-            
+
         except FileSystemException as e:
             logger.error(f"Filesystem error during orphaned model cleanup: {e}")
             raise
@@ -1111,23 +1148,24 @@ class Job_Cleanup_Service:
 
 # ============ Hardware Initialization Service ============
 
+
 class Hardware_Initializer:
     """Handles system hardware profiling and persistence."""
-    
+
     def __init__(self, db: Session):
         """Initialize hardware initializer.
-        
+
         Args:
             db: Active database session.
         """
         self.db = db
         self.service = Hardware_Service(Hardware_Repository(db))
-    
+
     def initialize_if_needed(self) -> bool:
         """Initialize hardware info if not already present.
-        
+
         Uses service layer to get or create hardware profile.
-        
+
         Returns:
             True if initialization was performed, False if already existed.
         """
@@ -1164,7 +1202,7 @@ class Hardware_Initializer:
             # Create fallback profile on error
             self._create_fallback_profile()
             return True
-    
+
     def _create_fallback_profile(self) -> None:
         """Create fallback hardware profile on initialization failure."""
         try:
@@ -1179,14 +1217,14 @@ class Hardware_Initializer:
                 "global_inference_label": "Poor",
                 "cpu_score": 30.0,
                 "memory_score": 25.0,
-                "system_platform": "Unknown"
+                "system_platform": "Unknown",
             }
-            
+
             profile = HardwareProfile(**fallback_data)
             self.db.add(profile)
             self.db.commit()
             logger.warning("Fallback hardware profile created")
-            
+
         except Exception as e:
             logger.exception(f"Failed to create fallback profile: {e}")
             self.db.rollback()
@@ -1194,20 +1232,21 @@ class Hardware_Initializer:
 
 # ============ Startup Variables Initialization ============
 
+
 class Startup_Initializer:
     """Handles initialization of startup state variables."""
-    
+
     def __init__(self, db: Session):
         """Initialize startup initializer.
-        
+
         Args:
             db: Active database session.
         """
         self.db = db
-    
+
     def initialize_if_needed(self) -> bool:
         """Initialize startup variables if not already present.
-        
+
         Returns:
             True if initialization was performed, False if already existed.
         """
@@ -1215,10 +1254,8 @@ class Startup_Initializer:
         if existing:
             logger.debug("Startup variables already initialized, skipping")
             return False
-        
-        variables = StartupVariables(
-            welcome_popup_has_already_displayed=False
-        )
+
+        variables = StartupVariables(welcome_popup_has_already_displayed=False)
         self.db.add(variables)
         self.db.commit()
         logger.info("Startup variables initialized successfully")
@@ -1227,12 +1264,13 @@ class Startup_Initializer:
 
 # ============ Main Database Seeder (Facade) ============
 
+
 class Database_Seeder:
     """Facade for all database seeding operations.
-    
+
     Provides a simple, high-level API for database initialization
     while maintaining clean separation of concerns internally.
-    
+
     Example:
         ::
 
@@ -1240,7 +1278,7 @@ class Database_Seeder:
             await seeder.create_tables()
             await seeder.populate_startup_data()
     """
-    
+
     # Foundation publishers we watch: (HF org, family type, derived-search term).
     # The base catalog auto-discovers each org's instruct/chat models (no hand list
     # of model ids); the resolver maps each to its engine-format quant. A new model
@@ -1266,7 +1304,7 @@ class Database_Seeder:
         ("NousResearch", "hermes", "Hermes"),
         ("OpenLLM-France", "lucie", "Lucie"),
     ]
-    
+
     async def create_tables(self) -> None:
         """Create all database tables from SQLAlchemy models.
 
@@ -1289,7 +1327,7 @@ class Database_Seeder:
         except Exception as e:
             logger.error(f"Failed to create tables: {e}", exc_info=True)
             raise
-    
+
     def build_fresh_catalog(self, model_seeder: "Model_Seeder") -> Tuple[List[Llm], List[Llm]]:
         """Fetch + build the fresh remote catalog (base + derived, deduped) from HF
         for the active engine format. NO DB writes — returns detached Llm objects.
@@ -1315,9 +1353,19 @@ class Database_Seeder:
 
     # Mutable catalog fields refreshed in place on a resync. supports_tools is
     # excluded on purpose: it is detected post-download and must not be clobbered.
-    _RESYNC_FIELDS = ("name", "type", "param_size", "model_metadata", "quantized",
-                      "is_base", "conversational", "category", "description",
-                      "generation_hints", "artifact_size_bytes")
+    _RESYNC_FIELDS = (
+        "name",
+        "type",
+        "param_size",
+        "model_metadata",
+        "quantized",
+        "is_base",
+        "conversational",
+        "category",
+        "description",
+        "generation_hints",
+        "artifact_size_bytes",
+    )
     # Fields where a None in the fresh set means "unknown", never "clear": the
     # existing value is preserved (#192 for category; #388 for the sampling
     # facts, which an old snapshot simply does not carry; likewise the real
@@ -1341,7 +1389,7 @@ class Database_Seeder:
         added = updated = 0
         seen_links: set = set()
         for fresh in fresh_base + fresh_derived:
-            if fresh.link in seen_links:        # guard against dup links in the fresh set
+            if fresh.link in seen_links:  # guard against dup links in the fresh set
                 continue
             seen_links.add(fresh.link)
             current = existing.get(fresh.link)
@@ -1351,10 +1399,10 @@ class Database_Seeder:
                 # None -> "general" coalesce applies ONLY at insert (#192).
                 if fresh.category is None:
                     fresh.category = "general"
-                db.add(fresh)                   # genuinely new → insert (new id)
+                db.add(fresh)  # genuinely new → insert (new id)
                 added += 1
             else:
-                for field in self._RESYNC_FIELDS:   # refresh in place → id preserved
+                for field in self._RESYNC_FIELDS:  # refresh in place → id preserved
                     value = getattr(fresh, field)
                     # An unclassified fresh row (category=None: pre-#122 snapshot
                     # or bare test fixture) must NEVER clobber a classified one —
@@ -1368,7 +1416,7 @@ class Database_Seeder:
 
         removed = 0
         for link, row in existing.items():
-            if link not in seen_links:          # gone from HF → drop the suggestion
+            if link not in seen_links:  # gone from HF → drop the suggestion
                 db.delete(row)
                 removed += 1
         db.commit()
@@ -1492,11 +1540,7 @@ class Database_Seeder:
         updated = 0
         verdict_cache: Dict[str, Optional[bool]] = {}
         try:
-            pending = (
-                db.query(Llm)
-                .filter(Llm.local == 1, Llm.supports_tools_wire.is_(None))
-                .all()
-            )
+            pending = db.query(Llm).filter(Llm.local == 1, Llm.supports_tools_wire.is_(None)).all()
         except Exception as e:
             logger.warning(f"Wire-capability backfill skipped (query failed): {e}")
             return 0
@@ -1526,25 +1570,22 @@ class Database_Seeder:
         logger.info(f"Wire-capability backfill: {updated} local model(s) verified")
         return updated
 
-    async def populate_startup_data(
-        self,
-        db: Optional[Session] = None
-    ) -> Dict[str, Any]:
+    async def populate_startup_data(self, db: Optional[Session] = None) -> Dict[str, Any]:
         """Populate database with startup data.
-        
+
         Args:
             db: Optional database session. If None, creates new session.
-        
+
         Returns:
             Dictionary with operation results and counts.
-        
+
         Raises:
             Exception: If any critical seeding step fails.
         """
         should_close = db is None
         if db is None:
             db = SessionLocal()
-        
+
         try:
             results = {
                 "base_models_added": 0,
@@ -1555,12 +1596,12 @@ class Database_Seeder:
                 "offline_mode": False,
                 "models_seeded": False,
             }
-            
+
             # Initialize startup variables first
             logger.info("Initializing startup variables...")
             startup_init = Startup_Initializer(db)
             results["startup_vars_initialized"] = startup_init.initialize_if_needed()
-            
+
             # Get or create startup variables singleton
             startup_vars = db.query(StartupVariables).first()
             if not startup_vars:
@@ -1568,7 +1609,7 @@ class Database_Seeder:
                 db.add(startup_vars)
                 db.commit()
                 db.refresh(startup_vars)
-            
+
             # Reconcile the catalog with the bundled snapshot at EVERY boot
             # (#131, #163): zero network, so downloads are never starved by a
             # live HF resync and the catalog never mutates mid-session — it
@@ -1581,9 +1622,11 @@ class Database_Seeder:
             elif db.query(Llm).filter(Llm.local == 0).count() == 0:
                 # No snapshot bundled (e.g. bare dev tree) and the catalog is
                 # still empty → minimal offline fallback so the app has models.
-                results["base_models_added"] = Model_Seeder(db, offline_mode=True).seed_initial_catalog()
+                results["base_models_added"] = Model_Seeder(
+                    db, offline_mode=True
+                ).seed_initial_catalog()
             results["offline_mode"] = False
-            
+
             # Cleanup jobs (always run)
             logger.info("Cleaning up unfinished jobs...")
             job_cleanup = Job_Cleanup_Service(db)
@@ -1598,7 +1641,7 @@ class Database_Seeder:
             logger.info("Initializing hardware info...")
             hw_init = Hardware_Initializer(db)
             results["hardware_initialized"] = hw_init.initialize_if_needed()
-            
+
             logger.info(
                 f"Startup population completed: "
                 f"base={results['base_models_added']}, "
@@ -1607,9 +1650,9 @@ class Database_Seeder:
                 f"offline_mode={results['offline_mode']}, "
                 f"models_seeded={results['models_seeded']}"
             )
-            
+
             return results
-            
+
         except Exception as e:
             logger.error(f"Error during startup population: {e}", exc_info=True)
             db.rollback()
@@ -1617,31 +1660,31 @@ class Database_Seeder:
         finally:
             if should_close:
                 db.close()
-    
+
     async def delete_all_data(self) -> None:
         """Delete all data from database and file storage.
-        
+
         **DESTRUCTIVE OPERATION - DEVELOPMENT ONLY**
-        
+
         Requires interactive confirmation before proceeding.
-        
+
         Warning:
             Never expose this in production. No undo available.
         """
         logger.warning("Preparing to delete all data from the database")
         response = input("Are you sure you want to delete ALL data? (yes/no): ")
-        
+
         if response.lower() not in ("yes", "y"):
             logger.info("Database deletion cancelled")
             return
-        
+
         db = SessionLocal()
         try:
             logger.warning("Deleting all data...")
-            
+
             # Delete file storage
             self._delete_storage_directories()
-            
+
             # Delete database records
             db.query(StartupVariables).delete()
             db.query(KBJobModel).delete()
@@ -1652,17 +1695,17 @@ class Database_Seeder:
             db.query(Message).delete()
             db.query(Conversation).delete()
             db.query(Llm).delete()
-            
+
             db.commit()
             logger.warning("All data deleted successfully")
-            
+
         except Exception as e:
             logger.error(f"Error deleting data: {e}", exc_info=True)
             db.rollback()
             raise
         finally:
             db.close()
-    
+
     def _delete_storage_directories(self) -> None:
         """Delete and recreate storage directories."""
         directories = [str(config.LLM_DIR)]
@@ -1676,9 +1719,10 @@ class Database_Seeder:
 
 # ============ Legacy API Compatibility ============
 
+
 async def create_tables() -> None:
     """Legacy API: Create database tables.
-    
+
     Deprecated: Use Database_Seeder().create_tables() instead.
     """
     seeder = Database_Seeder()
@@ -1719,7 +1763,7 @@ def backfill_wire_tools_startup() -> int:
 
 async def delete_all_data() -> None:
     """Legacy API: Delete all data.
-    
+
     Deprecated: Use Database_Seeder().delete_all_data() instead.
     """
     seeder = Database_Seeder()

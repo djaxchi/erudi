@@ -11,6 +11,7 @@ The engine-specific part is only *loading a tokenizer* from the local artifact
 decision below is shared and agnostic: it consumes any object exposing
 ``apply_chat_template``.
 """
+
 from __future__ import annotations
 
 from typing import Any

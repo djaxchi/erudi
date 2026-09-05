@@ -7,6 +7,7 @@ without mocking HuggingFace.
 
 All HuggingFace API calls are mocked; no network access occurs.
 """
+
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -254,9 +255,11 @@ class TestDownloadLlmNoGgufError:
         mock_api.list_repo_files.return_value = ["config.json"]
         fs = MagicMock()
 
-        with patch("src.domains.llms.services.HfApi", return_value=mock_api), \
-             patch("src.domains.llms.services.HfFileSystem", return_value=fs), \
-             patch.object(config, "LLM_Engine", Fake_GGUF_Engine):
+        with (
+            patch("src.domains.llms.services.HfApi", return_value=mock_api),
+            patch("src.domains.llms.services.HfFileSystem", return_value=fs),
+            patch.object(config, "LLM_Engine", Fake_GGUF_Engine),
+        ):
             with pytest.raises(InvalidInputException, match=f"{repo_id} has no gguf artefact"):
                 await download_llm(
                     model_link=repo_id,

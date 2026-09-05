@@ -11,6 +11,7 @@ died on ``AttributeError: 'ModelInfo' object has no attribute 'modelId'``.
 The fake here is built from the reduced payload through the REAL ``ModelInfo``
 class, so a stub can't accidentally keep the dead field alive. No network.
 """
+
 import ast
 import pathlib
 from types import SimpleNamespace
@@ -50,10 +51,14 @@ def test_build_derived_models_handles_expanded_search_serialization(monkeypatch)
     seen_kwargs = {}
 
     hits = [
-        _expanded_hit("bartowski/Qwen3-8B-GGUF", "text-generation",
-                      ["gguf", "text-generation", "conversational"]),
-        _expanded_hit("handy-computer/whisper-large-v3-gguf",
-                      "automatic-speech-recognition", ["gguf"]),
+        _expanded_hit(
+            "bartowski/Qwen3-8B-GGUF",
+            "text-generation",
+            ["gguf", "text-generation", "conversational"],
+        ),
+        _expanded_hit(
+            "handy-computer/whisper-large-v3-gguf", "automatic-speech-recognition", ["gguf"]
+        ),
     ]
 
     def fake_list_models(**kwargs):
@@ -62,8 +67,7 @@ def test_build_derived_models_handles_expanded_search_serialization(monkeypatch)
 
     seeder = Model_Seeder(db=None, hf_api=SimpleNamespace(list_models=fake_list_models))
     rows = seeder.build_derived_models(
-        [seed_mod.Search_Config(search_term="", model_type="community",
-                                default_param_size=7.0)]
+        [seed_mod.Search_Config(search_term="", model_type="community", default_param_size=7.0)]
     )
 
     # The expand is what triggers the reduced serialization; keep the test honest

@@ -8,6 +8,7 @@ job and are the safety net: they fail loudly if the common stack is not
 importable under numpy 2, or if the language-detection contract that
 ``src.agents.language`` relies on regresses.
 """
+
 import pytest
 
 
@@ -27,9 +28,7 @@ def test_py3langid_contract_under_numpy2():
     from py3langid.langid import MODEL_FILE, LanguageIdentifier
 
     identifier = LanguageIdentifier.from_pickled_model(MODEL_FILE, norm_probs=True)
-    language, probability = identifier.classify(
-        "This is an English sentence about cats and dogs."
-    )
+    language, probability = identifier.classify("This is an English sentence about cats and dogs.")
     assert language == "en"
     assert 0.0 <= float(probability) <= 1.0
 

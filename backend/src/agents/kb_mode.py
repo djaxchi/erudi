@@ -28,6 +28,7 @@ injected as a callable so each caller keeps its own failure policy
 (conversation degrades to no-context, arena raises); it is only invoked in
 systematic mode.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -135,9 +136,7 @@ def plan_turn(
                 "(model tool-call wire capability not verified)"
             )
         else:
-            logger.info(
-                "Turn tools: web_search unavailable (systematic KB path is zero-tool)"
-            )
+            logger.info("Turn tools: web_search unavailable (systematic KB path is zero-tool)")
 
     if agentic:
         if flag is True:
@@ -210,8 +209,7 @@ def plan_turn(
         plain_reason = "KB retrieval returned no excerpts"
     _log_web(mode_allows_tools=True)
     logger.info(
-        f"Turn mode: plain (reason={plain_reason}, "
-        f"web_search={'on' if web else 'off'})"
+        f"Turn mode: plain (reason={plain_reason}, " f"web_search={'on' if web else 'off'})"
     )
     # Zero tools in plain mode (#129): the calculator was a demo tool whose
     # scaffolding cost hurt every model (and wrecked small ones) for no product

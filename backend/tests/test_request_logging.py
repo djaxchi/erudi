@@ -118,6 +118,7 @@ async def _null_send(message):
 # X-Request-ID propagation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_provided_request_id_is_echoed(logging_client):
     response = logging_client.get("/ping", headers={"X-Request-ID": "test-rid-42"})
@@ -145,6 +146,7 @@ def test_request_id_generated_when_absent(logging_client):
 # ---------------------------------------------------------------------------
 # Access log line
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 def test_access_log_has_method_path_status_duration_and_id(logging_client, caplog):
@@ -181,6 +183,7 @@ def test_polling_paths_are_silent_at_info(logging_client, caplog):
 # Unhandled exception fallback
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_unhandled_exception_returns_structured_500(logging_client, caplog):
     with caplog.at_level(logging.INFO, logger="erudi"):
@@ -203,6 +206,7 @@ def test_unhandled_exception_returns_structured_500(logging_client, caplog):
 # ---------------------------------------------------------------------------
 # Streaming: pass-through, unbuffered, single log line
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 async def test_streaming_chunks_pass_through_unbuffered():
@@ -260,9 +264,7 @@ def test_streaming_endpoint_still_streams_full_body(logging_client):
 def test_streaming_request_logs_exactly_once(logging_client, caplog):
     with caplog.at_level(logging.INFO, logger="erudi"):
         logging_client.get("/stream")
-    records = [
-        rec for rec in caplog.records if rec.getMessage().startswith("HTTP GET /stream")
-    ]
+    records = [rec for rec in caplog.records if rec.getMessage().startswith("HTTP GET /stream")]
     assert len(records) == 1
     assert "-> 200 in " in records[0].getMessage()
 
@@ -270,6 +272,7 @@ def test_streaming_request_logs_exactly_once(logging_client, caplog):
 # ---------------------------------------------------------------------------
 # Exception severity mapping (AppBaseException)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 def test_client_error_exceptions_log_at_warning(caplog):

@@ -38,6 +38,7 @@ Run examples:
     pytest backend/tests/test_mlx_engine_server.py -m mlx_only      # local Mac
     ERUDI_TEST_THINKING=1 pytest ... -k thinking                    # opt-in
 """
+
 from __future__ import annotations
 
 import json
@@ -55,6 +56,7 @@ from src.engines.mlx_engine import MLX_Engine
 # =====================================================================
 # Helpers shared by unit tests
 # =====================================================================
+
 
 def _sse_bytes(payloads: List[dict | str]) -> Iterator[bytes]:
     """Render a list of payloads as raw SSE bytes chunks.
@@ -136,6 +138,7 @@ def _mlx_engine_state_reset():
 #   - Update every `patch("src.engines.mlx_engine.<name>")` call site in
 #     this file AND the matching invariant test below.
 
+
 @pytest.mark.unit
 class TestModuleImportInvariants:
     """Pin the module-level imports the mocks in this file rely on.
@@ -149,6 +152,7 @@ class TestModuleImportInvariants:
     def test_mlx_engine_exposes_mp_alias(self):
         """`import multiprocessing as mp` must be at module level."""
         from src.engines import mlx_engine as mod
+
         assert hasattr(mod, "mp"), (
             "src/engines/mlx_engine.py must `import multiprocessing as mp` at "
             "module level (patch target: src.engines.mlx_engine.mp). Without "
@@ -158,16 +162,19 @@ class TestModuleImportInvariants:
     def test_base_chat_server_engine_exposes_requests(self):
         """`import requests` is in the base module post-migration."""
         from src.engines import base_chat_server_engine as base
+
         assert hasattr(base, "requests")
 
     def test_base_chat_server_engine_exposes_socket(self):
         """`import socket` is in the base module post-migration."""
         from src.engines import base_chat_server_engine as base
+
         assert hasattr(base, "socket")
 
     def test_base_chat_server_engine_exposes_atexit(self):
         """`import atexit` is in the base module post-migration."""
         from src.engines import base_chat_server_engine as base
+
         assert hasattr(base, "atexit")
 
 
@@ -178,12 +185,10 @@ class TestModuleImportInvariants:
 # only what MLX_Engine implements directly.
 
 
-
-
-
 # =====================================================================
 # UNIT — _terminate_process (mp.Process API)
 # =====================================================================
+
 
 @pytest.mark.unit
 class TestTerminateProcess:
@@ -209,8 +214,7 @@ class TestTerminateProcess:
         proc.terminate.assert_called_once()
         timeout = self._bounded_join_timeout(proc)
         assert 0 < timeout <= 10, (
-            f"join() timeout must be in (0, 10]s to avoid blocking shutdown, "
-            f"got {timeout!r}"
+            f"join() timeout must be in (0, 10]s to avoid blocking shutdown, " f"got {timeout!r}"
         )
 
     def test_no_op_when_already_dead(self):
@@ -233,10 +237,6 @@ class TestTerminateProcess:
         MLX_Engine._terminate_process(None)  # no exception
 
 
-
-
-
-
 @pytest.mark.unit
 class TestCleanupAndCache:
     """Cleanup must terminate the subprocess; cache must avoid respawn."""
@@ -245,9 +245,12 @@ class TestCleanupAndCache:
         proc = MagicMock()
         proc.is_alive.return_value = True
         MLX_Engine._model = {
-            "pid": 1, "proc": proc, "port": 9090,
+            "pid": 1,
+            "proc": proc,
+            "port": 9090,
             "base_url": "http://127.0.0.1:9090",
-            "alias": "erudi-x", "model_path": "/x",
+            "alias": "erudi-x",
+            "model_path": "/x",
         }
         MLX_Engine._tokenizer = {"type": "remote", "provider": "mlx-vlm-server"}
         MLX_Engine._model_id = "x"
@@ -266,10 +269,13 @@ class TestCleanupAndCache:
         MLX_Engine._tokenizer = sentinel_tokenizer
         MLX_Engine._model_id = "abc"
 
-        with patch.object(MLX_Engine, "_start_server") as mock_start, \
-             patch.object(MLX_Engine, "_proc_is_alive", return_value=True):
+        with (
+            patch.object(MLX_Engine, "_start_server") as mock_start,
+            patch.object(MLX_Engine, "_proc_is_alive", return_value=True),
+        ):
             model, tokenizer = MLX_Engine.get_model_and_tokenizer(
-                llm_id="abc", llm_local_path="/whatever",
+                llm_id="abc",
+                llm_local_path="/whatever",
             )
 
         mock_start.assert_not_called()
@@ -290,27 +296,38 @@ class TestCleanupAndCache:
         old_proc = MagicMock()
         old_proc.is_alive.return_value = True
         MLX_Engine._model = {
-            "pid": 7, "proc": old_proc, "port": 9091,
+            "pid": 7,
+            "proc": old_proc,
+            "port": 9091,
             "base_url": "http://127.0.0.1:9091",
-            "alias": "erudi-old", "model_path": "/old",
+            "alias": "erudi-old",
+            "model_path": "/old",
         }
         MLX_Engine._tokenizer = {"type": "remote", "provider": "mlx-vlm-server"}
         MLX_Engine._model_id = "old"
 
         new_handle = {
-            "pid": 8, "proc": MagicMock(), "port": 9092,
+            "pid": 8,
+            "proc": MagicMock(),
+            "port": 9092,
             "base_url": "http://127.0.0.1:9092",
-            "alias": "erudi-new", "model_path": str(resolved_new),
+            "alias": "erudi-new",
+            "model_path": str(resolved_new),
         }
-        with patch.object(MLX_Engine, "_start_server", return_value=new_handle) as mock_start, \
-             patch.object(MLX_Engine, "_pick_free_port", return_value=9092):
+        with (
+            patch.object(MLX_Engine, "_start_server", return_value=new_handle) as mock_start,
+            patch.object(MLX_Engine, "_pick_free_port", return_value=9092),
+        ):
             model, tokenizer = MLX_Engine.get_model_and_tokenizer(
-                llm_id="new", llm_local_path=str(new_dir),
+                llm_id="new",
+                llm_local_path=str(new_dir),
             )
 
         old_proc.terminate.assert_called_once()
         mock_start.assert_called_once_with(
-            model_path=resolved_new, alias="erudi-new", port=9092,
+            model_path=resolved_new,
+            alias="erudi-new",
+            port=9092,
         )
         assert MLX_Engine._model_id == "new"
         assert model is new_handle
@@ -320,12 +337,14 @@ class TestCleanupAndCache:
 # UNIT — _mlx_vlm_server_runner helper module (picklable target)
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestMlxVlmServerRunnerHelper:
     """The runner is a module-level function so it can be pickled by spawn."""
 
     def test_module_function_is_importable(self):
         from src.engines import _mlx_vlm_server_runner
+
         assert hasattr(_mlx_vlm_server_runner, "run_mlx_vlm_server")
         assert callable(_mlx_vlm_server_runner.run_mlx_vlm_server)
 
@@ -487,8 +506,8 @@ class TestGemmaEndOfTurnStopPatch:
 
         rg = RG()
         rg._initialize_model()
-        assert 106 in rg.stop_tokens          # the turn-ender is now a stop token
-        assert 1 in rg.stop_tokens            # the original eos survives
+        assert 106 in rg.stop_tokens  # the turn-ender is now a stop token
+        assert 1 in rg.stop_tokens  # the original eos survives
 
     def test_no_op_for_non_gemma(self, monkeypatch):
         from src.engines import _mlx_vlm_server_runner as runner
@@ -499,7 +518,7 @@ class TestGemmaEndOfTurnStopPatch:
 
         rg = RG()
         rg._initialize_model()
-        assert rg.stop_tokens == {1}          # unchanged; unk id never added
+        assert rg.stop_tokens == {1}  # unchanged; unk id never added
 
     def test_patch_is_idempotent(self, monkeypatch):
         from src.engines import _mlx_vlm_server_runner as runner
@@ -522,7 +541,8 @@ class TestGemmaEndOfTurnStopPatch:
         order: list[str] = []
         monkeypatch.setattr(runner, "_patch_gemma3_tied_lm_head_quant", lambda: True)
         monkeypatch.setattr(
-            runner, "_patch_gemma_end_of_turn_stop",
+            runner,
+            "_patch_gemma_end_of_turn_stop",
             lambda: order.append("gemma-stop") or True,
         )
         monkeypatch.setattr(runner, "_patch_inline_thinking", lambda: True)
@@ -575,9 +595,7 @@ class TestGemma3TiedLmHeadQuantPatch:
                         "language_model.model.embed_tokens.weight"
                     ]
                 return {
-                    k: v
-                    for k, v in weights.items()
-                    if "self_attn.rotary_emb.inv_freq" not in k
+                    k: v for k, v in weights.items() if "self_attn.rotary_emb.inv_freq" not in k
                 }
 
         mlx_vlm = types.ModuleType("mlx_vlm")
@@ -762,9 +780,7 @@ class TestInlineThinkingPatch:
                     if self.in_thinking:
                         idx, marker = self._find_first(self.buffer, self.close_markers)
                         if idx < 0:
-                            emit, self.buffer = self._split_partial(
-                                self.buffer, self.close_markers
-                            )
+                            emit, self.buffer = self._split_partial(self.buffer, self.close_markers)
                             emit = self._strip_open_marker(emit)
                             if emit:
                                 reasoning.append(emit)
@@ -772,24 +788,20 @@ class TestInlineThinkingPatch:
                         before = self._strip_open_marker(self.buffer[:idx])
                         if before:
                             reasoning.append(before)
-                        self.buffer = self.buffer[idx + len(marker):].lstrip("\n")
+                        self.buffer = self.buffer[idx + len(marker) :].lstrip("\n")
                         self.in_thinking = False
                         self.thinking_done = True
                         thinking_closed = True
                         continue
                     if self.thinking_done:
-                        emit, self.buffer = self._split_partial(
-                            self.buffer, _CONTENT_MARKERS
-                        )
+                        emit, self.buffer = self._split_partial(self.buffer, _CONTENT_MARKERS)
                         emit = _strip_content_markers(emit)
                         if emit:
                             content.append(emit)
                         break
                     idx, marker = self._find_first(self.buffer, self.open_markers)
                     if idx < 0:
-                        emit, self.buffer = self._split_partial(
-                            self.buffer, self.open_markers
-                        )
+                        emit, self.buffer = self._split_partial(self.buffer, self.open_markers)
                         emit = _strip_content_markers(emit)
                         if emit:
                             content.append(emit)
@@ -798,7 +810,7 @@ class TestInlineThinkingPatch:
                         emit = _strip_content_markers(self.buffer[:idx])
                         if emit:
                             content.append(emit)
-                    self.buffer = self.buffer[idx + len(marker):].lstrip("\n")
+                    self.buffer = self.buffer[idx + len(marker) :].lstrip("\n")
                     self.in_thinking = True
                 if last and self.buffer:
                     held, self.buffer = self.buffer, ""
@@ -870,9 +882,7 @@ class TestInlineThinkingPatch:
             """Verbatim port of mlx-vlm 0.6.13 server/responses_state.py:214-220."""
             if processor is None:
                 return None
-            tokenizer = (
-                processor.tokenizer if hasattr(processor, "tokenizer") else processor
-            )
+            tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
             if getattr(tokenizer, "response_template", None) is None:
                 return None
             return tokenizer
@@ -889,9 +899,7 @@ class TestInlineThinkingPatch:
             """
             tokenizer = responses_state._response_template_tokenizer(processor)
             if tokenizer is not None and hasattr(tokenizer, "get_response_parser"):
-                return ResponseTemplateStreamState(
-                    tokenizer.get_response_parser(prefix="")
-                )
+                return ResponseTemplateStreamState(tokenizer.get_response_parser(prefix=""))
             return ThinkingStreamState(
                 enable_thinking,
                 thinking_start_token,
@@ -990,9 +998,7 @@ class TestInlineThinkingPatch:
 
         assert runner._patch_inline_thinking() is True
 
-        patched = responses_state.make_response_stream_state(
-            processor, enable_thinking=True
-        )
+        patched = responses_state.make_response_stream_state(processor, enable_thinking=True)
         assert isinstance(patched, state_cls)
         assert patched.in_thinking is False  # and it is the neutralized state
 
@@ -1039,6 +1045,7 @@ class TestInlineThinkingPatch:
 # UNIT — MLX_Engine spawn argv + class attributes + payload model value
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestSpawnArgv:
     """`_spawn_child` must target the mlx-vlm runner with a 127.0.0.1 argv."""
@@ -1059,16 +1066,22 @@ class TestSpawnArgv:
 
         with patch("src.engines.mlx_engine.mp.Process", side_effect=_fake_process):
             handle = MLX_Engine._spawn_child(
-                model_path=model_dir, alias="erudi-x", port=9087,
+                model_path=model_dir,
+                alias="erudi-x",
+                port=9087,
             )
 
         assert captured["target"] is run_mlx_vlm_server
         assert captured["argv"] == [
             "mlx_vlm.server",
-            "--model", str(model_dir),
-            "--host", "127.0.0.1",
-            "--port", "9087",
-            "--log-level", "INFO",
+            "--model",
+            str(model_dir),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "9087",
+            "--log-level",
+            "INFO",
             "--enable-thinking",
         ]
         assert handle["port"] == 9087
@@ -1132,9 +1145,12 @@ class TestTranslatePayloadKwargsSeed:
     none (see test_cpu_engine_server)."""
 
     def test_adds_an_integer_seed(self):
-        out = MLX_Engine._translate_payload_kwargs({
-            "repetition_penalty": 1.1, "repetition_context_size": 64,
-        })
+        out = MLX_Engine._translate_payload_kwargs(
+            {
+                "repetition_penalty": 1.1,
+                "repetition_context_size": 64,
+            }
+        )
         assert isinstance(out["seed"], int)
         # mlx_vlm masks the seed to 32 bits: keep it non-negative and in range.
         assert 0 <= out["seed"] < 2**32
@@ -1145,8 +1161,11 @@ class TestTranslatePayloadKwargsSeed:
 
     def test_keeps_the_hf_names_and_the_thinking_flag_untouched(self):
         kwargs = {
-            "repetition_penalty": 1.1, "repetition_context_size": 64,
-            "top_k": 20, "min_p": 0.0, "enable_thinking": False,
+            "repetition_penalty": 1.1,
+            "repetition_context_size": 64,
+            "top_k": 20,
+            "min_p": 0.0,
+            "enable_thinking": False,
         }
         out = MLX_Engine._translate_payload_kwargs(kwargs)
         assert {k: v for k, v in out.items() if k != "seed"} == kwargs
@@ -1162,6 +1181,7 @@ class TestTranslatePayloadKwargsSeed:
 # INTEGRATION — real mlx_lm.server subprocess + real model
 # =====================================================================
 
+
 @pytest.mark.mlx_only
 class TestSubprocessReal:
     """Spawn a real `mlx_lm.server` against a small downloaded model.
@@ -1175,9 +1195,11 @@ class TestSubprocessReal:
 
     def test_subprocess_starts_and_serves_health(self, mlx_test_model_path):
         import requests
+
         try:
             model, tokenizer = MLX_Engine.get_model_and_tokenizer(
-                llm_id="qwen-test", llm_local_path=str(mlx_test_model_path),
+                llm_id="qwen-test",
+                llm_local_path=str(mlx_test_model_path),
             )
             assert model["proc"].is_alive(), "subprocess died right after spawn"
             r = requests.get(f"{model['base_url']}/health", timeout=5)
@@ -1188,7 +1210,8 @@ class TestSubprocessReal:
 
     def test_cleanup_kills_subprocess_and_frees_port(self, mlx_test_model_path):
         model, _ = MLX_Engine.get_model_and_tokenizer(
-            llm_id="qwen-test", llm_local_path=str(mlx_test_model_path),
+            llm_id="qwen-test",
+            llm_local_path=str(mlx_test_model_path),
         )
         port = model["port"]
         proc = model["proc"]
@@ -1210,13 +1233,15 @@ class TestSubprocessReal:
         """Calling get_model_and_tokenizer with a new llm_id must kill the old proc."""
         try:
             m1, _ = MLX_Engine.get_model_and_tokenizer(
-                llm_id="qwen-test", llm_local_path=str(mlx_test_model_path),
+                llm_id="qwen-test",
+                llm_local_path=str(mlx_test_model_path),
             )
             old_proc = m1["proc"]
             assert old_proc.is_alive()
 
             m2, _ = MLX_Engine.get_model_and_tokenizer(
-                llm_id="qwen-test-bis", llm_local_path=str(mlx_test_model_path),
+                llm_id="qwen-test-bis",
+                llm_local_path=str(mlx_test_model_path),
             )
             for _ in range(20):
                 if not old_proc.is_alive():
@@ -1238,7 +1263,8 @@ class TestSubprocessReal:
         from datetime import datetime, timedelta
 
         MLX_Engine.get_model_and_tokenizer(
-            llm_id="qwen-test", llm_local_path=str(mlx_test_model_path),
+            llm_id="qwen-test",
+            llm_local_path=str(mlx_test_model_path),
         )
         proc = MLX_Engine._model["proc"]
         assert proc.is_alive()
@@ -1276,6 +1302,7 @@ def _build_real_mlx_chat_model(llm_id, model_path, *, max_tokens):
 # INTEGRATION — thinking-model regression (ChatOpenAI path, opt-in ERUDI_TEST_THINKING=1)
 # =====================================================================
 
+
 @pytest.mark.mlx_only
 class TestThinkingServerSideActivation:
     """Both halves of the MLX thinking fix, proven at the raw SSE boundary (#90).
@@ -1300,15 +1327,14 @@ class TestThinkingServerSideActivation:
 
         try:
             model, _ = MLX_Engine.get_model_and_tokenizer(
-                llm_id="qwen3-thinking", llm_local_path=str(mlx_thinking_model_path),
+                llm_id="qwen3-thinking",
+                llm_local_path=str(mlx_thinking_model_path),
             )
             payload = {
                 # mlx_vlm.server resolves `model` through get_cached_model(),
                 # so it must carry the real preloaded model path.
                 "model": model["model_path"],
-                "messages": [
-                    {"role": "user", "content": "What is 17*23? Think step by step."}
-                ],
+                "messages": [{"role": "user", "content": "What is 17*23? Think step by step."}],
                 "max_tokens": 1500,
                 "temperature": 0.0,
                 "stream": True,
@@ -1317,13 +1343,15 @@ class TestThinkingServerSideActivation:
             reasonings: List[str] = []
             with requests.post(
                 f"{model['base_url']}/v1/chat/completions",
-                json=payload, stream=True, timeout=300,
+                json=payload,
+                stream=True,
+                timeout=300,
             ) as resp:
                 resp.raise_for_status()
                 for line in resp.iter_lines():
                     if not line or not line.startswith(b"data: "):
                         continue
-                    data = line[len(b"data: "):]
+                    data = line[len(b"data: ") :]
                     if data.strip() == b"[DONE]":
                         break
                     delta = json.loads(data)["choices"][0]["delta"]
@@ -1364,7 +1392,8 @@ class TestThinkingModelRegression:
     """
 
     async def test_thinking_flows_and_does_not_leak_into_answer(
-        self, mlx_thinking_model_path,
+        self,
+        mlx_thinking_model_path,
     ):
         from types import SimpleNamespace
 
@@ -1399,9 +1428,9 @@ class TestThinkingModelRegression:
                 "is not activating (or the inline <think> contract broke)"
             )
             for needle in ["<think>", "</think>", "<|channel>", "<channel|>"]:
-                assert needle not in answer, (
-                    f"reasoning marker {needle!r} leaked into the ANSWER text: {answer!r}"
-                )
+                assert (
+                    needle not in answer
+                ), f"reasoning marker {needle!r} leaked into the ANSWER text: {answer!r}"
         finally:
             config.LLM_Engine.cleanup()
 
@@ -1409,6 +1438,7 @@ class TestThinkingModelRegression:
 # =====================================================================
 # INTEGRATION — Gemma EOS regression (ChatOpenAI path, opt-in ERUDI_TEST_GEMMA=1)
 # =====================================================================
+
 
 @pytest.mark.mlx_only
 class TestGemmaEOSRegression:
@@ -1419,12 +1449,12 @@ class TestGemmaEOSRegression:
     @pytest.fixture(scope="class")
     def gemma_path(self):
         import os
+
         if os.environ.get("ERUDI_TEST_GEMMA") != "1":
             pytest.skip("Set ERUDI_TEST_GEMMA=1 to enable Gemma EOS regression test")
         from huggingface_hub import snapshot_download
-        repo = os.environ.get(
-            "ERUDI_MLX_GEMMA_REPO", "mlx-community/gemma-3-270m-it-4bit"
-        )
+
+        repo = os.environ.get("ERUDI_MLX_GEMMA_REPO", "mlx-community/gemma-3-270m-it-4bit")
         try:
             return Path(snapshot_download(repo_id=repo))
         except Exception as exc:
@@ -1452,6 +1482,7 @@ class TestGemmaEOSRegression:
 # E2E — full FastAPI stack with real MLX engine
 # =====================================================================
 
+
 @pytest.mark.mlx_only
 @pytest.mark.e2e
 class TestE2EConversationsRealMLX:
@@ -1478,6 +1509,7 @@ class TestE2EConversationsRealMLX:
     @pytest.fixture(autouse=True)
     def _force_mlx_engine_in_config(self):
         from src.core import config
+
         prev = getattr(config, "LLM_Engine", None)
         config.LLM_Engine = MLX_Engine
         yield
@@ -1486,6 +1518,7 @@ class TestE2EConversationsRealMLX:
     def _make_llm_row(self, db_session, model_path: Path):
         """Insert an Llm pointing to the real MLX model path."""
         from src.entities.Llm import Llm
+
         llm = Llm(
             name="Qwen2.5-0.5B-Instruct-4bit",
             description="Integration test model",
@@ -1502,7 +1535,10 @@ class TestE2EConversationsRealMLX:
         return llm
 
     def test_query_endpoint_streams_real_response(
-        self, client, test_db_session, mlx_test_model_path,
+        self,
+        client,
+        test_db_session,
+        mlx_test_model_path,
     ):
         try:
             llm = self._make_llm_row(test_db_session, mlx_test_model_path)
@@ -1510,7 +1546,9 @@ class TestE2EConversationsRealMLX:
                 "/erudi/conversations/",
                 json={
                     "llm_id": llm.id,
-                    "temperature": 0.0, "top_p": 1.0, "max_tokens": 32,
+                    "temperature": 0.0,
+                    "top_p": 1.0,
+                    "max_tokens": 32,
                     "custom_prompt": "",
                 },
             )
@@ -1526,9 +1564,8 @@ class TestE2EConversationsRealMLX:
 
             # User message + assistant message must both have been persisted.
             from src.entities.Message import Message
-            msgs = test_db_session.query(Message).filter(
-                Message.conversation_id == conv_id
-            ).all()
+
+            msgs = test_db_session.query(Message).filter(Message.conversation_id == conv_id).all()
             senders = [m.sender for m in msgs]
             assert "user" in senders
             assert "llm" in senders
@@ -1536,7 +1573,10 @@ class TestE2EConversationsRealMLX:
             MLX_Engine.cleanup()
 
     def test_generate_title_endpoint_writes_name(
-        self, client, test_db_session, mlx_test_model_path,
+        self,
+        client,
+        test_db_session,
+        mlx_test_model_path,
     ):
         try:
             llm = self._make_llm_row(test_db_session, mlx_test_model_path)
@@ -1544,7 +1584,9 @@ class TestE2EConversationsRealMLX:
                 "/erudi/conversations/",
                 json={
                     "llm_id": llm.id,
-                    "temperature": 0.0, "top_p": 1.0, "max_tokens": 32,
+                    "temperature": 0.0,
+                    "top_p": 1.0,
+                    "max_tokens": 32,
                     "custom_prompt": "",
                 },
             )
@@ -1557,10 +1599,9 @@ class TestE2EConversationsRealMLX:
             assert resp.status_code == 200, resp.text
 
             from src.entities.Conversation import Conversation
+
             test_db_session.expire_all()
-            conv = test_db_session.query(Conversation).filter(
-                Conversation.id == conv_id
-            ).first()
+            conv = test_db_session.query(Conversation).filter(Conversation.id == conv_id).first()
             # Either the model produced a title, or the empty-question fallback
             # kicked in; either way, name must not be the literal "New Conversation"
             # if the model emitted anything, AND it must not be empty.
@@ -1569,7 +1610,10 @@ class TestE2EConversationsRealMLX:
             MLX_Engine.cleanup()
 
     def test_two_consecutive_queries_reuse_same_subprocess(
-        self, client, test_db_session, mlx_test_model_path,
+        self,
+        client,
+        test_db_session,
+        mlx_test_model_path,
     ):
         """Cache contract: same llm.id ⇒ same subprocess across requests."""
         try:
@@ -1578,7 +1622,9 @@ class TestE2EConversationsRealMLX:
                 "/erudi/conversations/",
                 json={
                     "llm_id": llm.id,
-                    "temperature": 0.0, "top_p": 1.0, "max_tokens": 16,
+                    "temperature": 0.0,
+                    "top_p": 1.0,
+                    "max_tokens": 16,
                     "custom_prompt": "",
                 },
             )

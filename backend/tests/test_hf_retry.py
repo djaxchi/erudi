@@ -3,6 +3,7 @@ follow-up). The build-time catalog snapshot generation fires hundreds of anonymo
 metadata calls in a burst; a 429 must be retried (with backoff), not abort the build
 or be swallowed as 'no result'. These are offline unit tests — the HfApi base
 methods are stubbed."""
+
 from types import SimpleNamespace
 
 import httpx
@@ -37,7 +38,7 @@ class TestRetryingHfApi:
         api = cfg._RetryingHfApi(token=None)
         out = api.list_models(filter="mlx", search="x", limit=5)
         assert calls["n"] == 3
-        assert [m.id for m in out] == ["org/model"]   # materialized, not a generator
+        assert [m.id for m in out] == ["org/model"]  # materialized, not a generator
 
     def test_model_info_retries_on_429_then_succeeds(self, monkeypatch):
         calls = {"n": 0}
@@ -64,7 +65,7 @@ class TestRetryingHfApi:
         api = cfg._RetryingHfApi(token=None)
         with pytest.raises(HfHubHTTPError):
             api.list_models(filter="mlx", limit=5)
-        assert calls["n"] == 1   # a 404 is a real answer, not retried
+        assert calls["n"] == 1  # a 404 is a real answer, not retried
 
     def test_persistent_429_eventually_raises(self, monkeypatch):
         def fake(self, *a, **k):
@@ -94,5 +95,5 @@ class TestRetryingHfApi:
         # 2 retries => 3 attempts total, and the private kwargs never leak to HfApi.
         assert calls["n"] == 3
         backoffs = [s for s in slept if s != cfg._RetryingHfApi._PACE_SECONDS]
-        assert backoffs == [1, 2]              # 2**0, 2**1, both under the 4s cap
-        assert sum(backoffs) < 30              # far below the default resync ladder
+        assert backoffs == [1, 2]  # 2**0, 2**1, both under the 4s cap
+        assert sum(backoffs) < 30  # far below the default resync ladder

@@ -7,6 +7,7 @@ scoring pipeline.
 
 No real GPU, subprocess or model is required anywhere in this file.
 """
+
 from __future__ import annotations
 
 import os
@@ -25,9 +26,10 @@ from src.engines.cuda_engine import CUDA_Engine
 # Fake pynvml factory
 # =====================================================================
 
+
 class _FakeMem:
-    total = 24 * 1024**3   # 24 GB
-    free = 20 * 1024**3    # 20 GB
+    total = 24 * 1024**3  # 24 GB
+    free = 20 * 1024**3  # 20 GB
 
 
 def _installed_toolkit_bin_dir() -> Path | None:
@@ -113,9 +115,9 @@ def no_nvml(monkeypatch):
 # UNIT - NVML helpers
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestNvmlHelpers:
-
     def test_init_nvml_success(self, fake_nvml):
         assert CUDA_Engine._init_nvml() is True
 
@@ -262,15 +264,18 @@ class TestNvmlHelpers:
 # UNIT - _compute_gpu_layers (VRAM heuristic)
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestComputeGpuLayers:
-
-    @pytest.mark.parametrize("vram,expected", [
-        ("2", 0),      # < 3 GB -> CPU fallback
-        ("4.5", 20),   # < 6 GB -> partial
-        ("7", 32),     # < 10 GB -> partial
-        ("12", -1),    # >= 10 GB -> full offload
-    ])
+    @pytest.mark.parametrize(
+        "vram,expected",
+        [
+            ("2", 0),  # < 3 GB -> CPU fallback
+            ("4.5", 20),  # < 6 GB -> partial
+            ("7", 32),  # < 10 GB -> partial
+            ("12", -1),  # >= 10 GB -> full offload
+        ],
+    )
     def test_env_override_tiers(self, monkeypatch, vram, expected):
         monkeypatch.setenv("ERUDI_VRAM_OVERRIDE_GB", vram)
         assert CUDA_Engine._compute_gpu_layers() == expected
@@ -293,9 +298,9 @@ class TestComputeGpuLayers:
 # UNIT - _resolve_cuda_bin_dir
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestResolveCudaBinDir:
-
     def test_cuda_path_env_with_bin(self, monkeypatch, tmp_path):
         (tmp_path / "bin").mkdir()
         monkeypatch.setenv("CUDA_PATH", str(tmp_path))
@@ -319,9 +324,9 @@ class TestResolveCudaBinDir:
 # UNIT - get_hardware_info
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestGetHardwareInfo:
-
     def test_full_cuda_path(self, fake_nvml):
         with patch.object(CUDA_Engine, "_get_sm_count", return_value=128):
             info = CUDA_Engine.get_hardware_info()
@@ -359,9 +364,7 @@ class TestGetHardwareInfo:
         built at startup, when the card is idle by definition. Reading the
         instantaneous clock turned 448 GB/s into 13 GB/s.
         """
-        mod = make_fake_pynvml(
-            mem_clock_mhz=14001, idle_mem_clock_mhz=405, bus_bits=128
-        )
+        mod = make_fake_pynvml(mem_clock_mhz=14001, idle_mem_clock_mhz=405, bus_bits=128)
         monkeypatch.setitem(sys.modules, "pynvml", mod)
         with patch.object(CUDA_Engine, "_get_sm_count", return_value=36):
             info = CUDA_Engine.get_hardware_info()
@@ -398,9 +401,9 @@ class TestGetHardwareInfo:
 # UNIT - warm_up_accelerator
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestWarmUp:
-
     def test_returns_false_without_cuda(self, no_nvml):
         assert CUDA_Engine.warm_up_accelerator(0.1) is False
 
@@ -413,9 +416,9 @@ class TestWarmUp:
 # UNIT - get_performance_evaluation / get_flat_hardware_data
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestPerformanceEvaluation:
-
     def _eval_with(self, monkeypatch, mod, sm_count=128):
         monkeypatch.setitem(sys.modules, "pynvml", mod)
         with patch.object(CUDA_Engine, "_get_sm_count", return_value=sm_count):
@@ -431,8 +434,16 @@ class TestPerformanceEvaluation:
         assert result["tensor_tflops"]["bf16"] > 0
         assert 0 < result["global_inference_score"] <= 100
         assert result["global_inference_label"] in {
-            "Amazing", "Excellent", "Very High", "High", "Good",
-            "Medium", "Bad", "Very Bad", "Poor", "Terrible",
+            "Amazing",
+            "Excellent",
+            "Very High",
+            "High",
+            "Good",
+            "Medium",
+            "Bad",
+            "Very Bad",
+            "Poor",
+            "Terrible",
         }
         pb = result["performance_breakdown"]
         # These are the names PerformanceBreakdown reads (hardware/endpoints.py
@@ -454,15 +465,11 @@ class TestPerformanceEvaluation:
         assert result["tensor_tflops"]["fp16"] > 0
 
     def test_hopper_ada_architecture_label(self, monkeypatch):
-        result = self._eval_with(
-            monkeypatch, make_fake_pynvml(compute_capability=(9, 0))
-        )
+        result = self._eval_with(monkeypatch, make_fake_pynvml(compute_capability=(9, 0)))
         assert result["architecture"] == "Ada Lovelace / Hopper"
 
     def test_unknown_architecture_label(self, monkeypatch):
-        result = self._eval_with(
-            monkeypatch, make_fake_pynvml(compute_capability=(12, 0))
-        )
+        result = self._eval_with(monkeypatch, make_fake_pynvml(compute_capability=(12, 0)))
         assert result["architecture"] == "Compute 12.0"
 
     def test_clock_query_failure_uses_fallback_clock(self, monkeypatch):
@@ -491,9 +498,7 @@ class TestPerformanceEvaluation:
         assert result["performance_breakdown"]["pcie_score"] == 50.0
 
     def test_detection_failure_raises_hardware_exception(self):
-        with patch.object(
-            CUDA_Engine, "get_hardware_info", side_effect=RuntimeError("boom")
-        ):
+        with patch.object(CUDA_Engine, "get_hardware_info", side_effect=RuntimeError("boom")):
             with pytest.raises(HardwareException):
                 CUDA_Engine.get_performance_evaluation()
 
@@ -507,9 +512,7 @@ class TestPerformanceEvaluation:
             "accelerator_available": True,
             "global_inference_score": 42.0,
         }
-        with patch.object(
-            CUDA_Engine, "get_performance_evaluation", return_value=dict(fake_eval)
-        ):
+        with patch.object(CUDA_Engine, "get_performance_evaluation", return_value=dict(fake_eval)):
             flat = CUDA_Engine.get_flat_hardware_data()
         assert "tensor_tflops" not in flat
         assert "sm_clock_ghz" not in flat

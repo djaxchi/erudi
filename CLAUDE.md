@@ -43,8 +43,11 @@ cd backend && pytest tests/ -m mlx_only                  # MLX integration only 
 ERUDI_TEST_THINKING=1 pytest tests/ -k thinking          # opt-in regression: <think> tokens
 ERUDI_TEST_GEMMA=1 pytest tests/ -k gemma                # opt-in regression: Gemma <end_of_turn> EOS
 
-# Lint
-cd backend && ruff check src
+# Lint and format
+# (from the repo root; `backend scripts` is every .py in the repo)
+ruff check backend scripts
+ruff format backend scripts              # apply
+ruff format --check backend scripts      # what CI checks
 ```
 
 `pytest.ini` sets `asyncio_mode = auto`, `pythonpath = .`, and `addopts = --strict-markers` — any `@pytest.mark.<name>` not declared in `pytest.ini:markers` is a hard error. Declared markers: `unit`, `integration`, `mlx_only`, `e2e`, `network`. Imports use `from src.*` and `from tests._helpers import is_mlx_platform` (etc.) for the platform-skip helpers.
@@ -129,7 +132,7 @@ frontend/src/
 - **Python**: `snake_case` files/functions, `Capitalized_Snake_Case` classes (yes, with underscores — see `MLX_Engine`, `CUDA_Engine`), absolute imports from `src.*`. Use `pathlib.Path`, never string paths. Logging via `from src.core.logging import logger` — no `print()` in production paths.
 - **ASCII-only where it executes or gets parsed**: log-message literals (`logger.*(...)` strings) and machine-parsed bundled data files (e.g. `alembic.ini`) must stay ASCII-only — no `→`, `—`, accents (see #168/#149). Non-ASCII is fine in comments and docstrings (Python reads source as UTF-8 regardless of locale).
 - **Async-first.** Don't block the event loop with synchronous I/O in endpoints/services.
-- **Ruff config** (`backend/ruff.toml`) only enforces `F` + `E7`. `E501`/`E402`/`F841`/`E701` are intentionally ignored — don't reintroduce them as blockers. Black uses `--line-length=100` via pre-commit.
+- **Ruff config** (`backend/ruff.toml`) only enforces `F` + `E7`. `E501`/`E402`/`F841`/`E701` are intentionally ignored — don't reintroduce them as blockers. `ruff format` is the project's only formatter, and `backend/ruff.toml` sets `line-length = 100` at the top level so the formatter and the linter agree without CLI flags. The root `ruff.toml` carries the same width for the one Python file outside `backend/` (`scripts/ci/smoke_boot.py`); ruff picks the nearest config per file and never merges the two. `ruff format` runs from `.pre-commit-config.yaml` and is checked in CI — never hand-format around it.
 - **Frontend**: ESLint + Prettier are enforced by CI (`lint:check`, `format:check`).
 - **Frontend copy is translated**: no hardcoded user-facing string in JSX or in the Electron menus/dialogs — every string is a `t('ns:key')` over `frontend/src/locales/<lang>/*.json` (`en` source of truth; `fr`, `es`, `zh`), guarded by `locales.test.js` and the `i18next/no-literal-string` ESLint rule. See `docs/i18n.md`.
 - **Commits**: `type(scope): description` (`feat`, `fix`, `docs`, `chore`, `ci`). Don't mention Claude/AI or add `Co-Authored-By: Claude`.
@@ -152,7 +155,7 @@ frontend/src/
 
 ## CI gates (must pass before merge)
 
-- **Backend** (`.github/workflows/backend-ci.yml`, Python 3.12, 3-leg matrix): `compileall`, `ruff check backend/src`, `from src.main import app`, `pytest tests/ -q --ignore=tests/e2e -m "not mlx_only"`. All three legs (`ubuntu-latest`, `windows-latest`, `macos-14`) gate merges and run with `-x` — see `docs/dev/backend-ci-multi-os.md` for the triage that got them there. `pytest.ini` sets `timeout = 600` so a hung test fails instead of consuming the job. The Ubuntu leg runs against `CPU_Engine` only — keep CPU paths working.
+- **Backend** (`.github/workflows/backend-ci.yml`, Python 3.12, 3-leg matrix): `compileall`, `ruff check backend scripts`, `ruff format --check backend scripts`, `from src.main import app`, `pytest tests/ -q --ignore=tests/e2e -m "not mlx_only"`. All three legs (`ubuntu-latest`, `windows-latest`, `macos-14`) gate merges and run with `-x` — see `docs/dev/backend-ci-multi-os.md` for the triage that got them there. `pytest.ini` sets `timeout = 600` so a hung test fails instead of consuming the job. The Ubuntu leg runs against `CPU_Engine` only — keep CPU paths working.
 - **Frontend** (`.github/workflows/frontend-ci.yml`, Node 20): `npm ci`, `npm run lint:check`, `npm run format:check`, `npm run test:run` (Vitest).
 - **Full-app smoke** (`.github/workflows/app-build-smoke.yml`): builds the complete shippable app on macOS, Windows and Linux, then boots the BUNDLED backend and asserts it reaches `ready`. It is the heaviest gate and the one most likely to fail on a packaging change — it runs on `pull_request` (ready for review) and in the merge queue. **The Linux leg is advisory**, not required: Linux has never had a manual pass on real hardware, so its signal is not yet trusted enough to block a merge. Read it, don't ignore it.
 

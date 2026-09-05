@@ -21,6 +21,7 @@ cast, and ``mx.repeat`` accepts the int form the fixed code uses. Imports of
 ``mlx`` / ``mlx_vlm`` stay inside the tests so the module collects on Linux CI
 (the ``mlx_only`` marker deselects it there).
 """
+
 from __future__ import annotations
 
 import importlib.metadata

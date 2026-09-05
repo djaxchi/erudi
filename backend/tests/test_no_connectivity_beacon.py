@@ -9,6 +9,7 @@ operating system, so the probe, its endpoint and its response schema are gone.
 These pin the removal: a route that comes back would resume the traffic without
 anyone noticing, and so would a helper that quietly re-adds the request.
 """
+
 from pathlib import Path
 
 import pytest

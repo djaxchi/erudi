@@ -23,9 +23,7 @@ pytestmark = pytest.mark.unit
 
 
 def _long_paragraphs(n: int, stem: str = "Phrase utile numéro") -> str:
-    return "\n\n".join(
-        f"{stem} {i}, qui décrit un fait précis sur le produit." for i in range(n)
-    )
+    return "\n\n".join(f"{stem} {i}, qui décrit un fait précis sur le produit." for i in range(n))
 
 
 class TestTokenCounting:
@@ -72,8 +70,7 @@ class TestChunkMarkdown:
 
     def test_table_header_reattached_to_continuation_chunks(self):
         rows = "\n".join(
-            f"| Produit numéro {i} avec un libellé assez long | {i * 100} € |"
-            for i in range(60)
+            f"| Produit numéro {i} avec un libellé assez long | {i * 100} € |" for i in range(60)
         )
         md = f"# Catalogue\n\n| Article | Prix |\n| --- | --- |\n{rows}"
         chunks = chunk_markdown(md, target_tokens=96, overlap_tokens=0)

@@ -15,8 +15,10 @@ Example:
     )
     response = requests.post("/knowledge_base/create", json=payload.model_dump())
 """
+
 from pydantic import BaseModel
 from typing import List
+
 
 class KnowledgeBaseCreate(BaseModel):
     """Request schema for creating or updating a Knowledge Base assistant.
@@ -35,10 +37,12 @@ class KnowledgeBaseCreate(BaseModel):
         ...     description="2024 Q1-Q4 financial data"
         ... )
     """
+
     paths: List[str]
     selectedModel: int
     modelName: str
     description: str = None
+
 
 class KnowledgeBaseResponse(BaseModel):
     """Response schema for KB creation endpoint with async processing confirmation.
@@ -54,5 +58,6 @@ class KnowledgeBaseResponse(BaseModel):
         ... )
         >>> # Client polls GET /knowledge_base/108/status until status="completed"
     """
+
     msg: str
     model_id: int

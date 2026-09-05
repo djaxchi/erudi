@@ -142,24 +142,32 @@ class CPU_Engine(BaseLlamaCppEngine):
         """
         return [
             str(llama_server),
-            "-m", str(model_gguf),
-            "--host", "127.0.0.1",
-            "--port", str(port),
-            "--alias", alias,
-            "-c", str(ctx_size),
-            "--threads", str(threads),
-            "-ngl", str(gpu_layers),
+            "-m",
+            str(model_gguf),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--alias",
+            alias,
+            "-c",
+            str(ctx_size),
+            "--threads",
+            str(threads),
+            "-ngl",
+            str(gpu_layers),
             "--jinja",
-            "--reasoning-format", "none",
+            "--reasoning-format",
+            "none",
         ]
 
     @classmethod
     def get_hardware_info(cls) -> Dict[str, Any]:
         """Get comprehensive hardware information for CPU-only backend.
-        
+
         Returns detailed hardware specifications including CPU model, system memory,
         storage capacity, and platform information. No GPU/accelerator data.
-        
+
         Returns:
             Dict containing hardware specifications following BaseEngine contract:
             {
@@ -170,7 +178,7 @@ class CPU_Engine(BaseLlamaCppEngine):
                 "backend_type": "cpu",
                 "timestamp": float
             }
-            
+
         Note:
             GPU fields return None/False since this is CPU-only backend.
             Falls back gracefully if psutil unavailable.
@@ -198,10 +206,10 @@ class CPU_Engine(BaseLlamaCppEngine):
             cpu_brand = get_cpu_brand()
             if cpu_brand:
                 cpu_model = cpu_brand
-            
+
             # Check if Apple Silicon (shouldn't normally reach CPU_Engine on Mac, but handle it)
             is_apple_silicon = system == "Darwin" and "arm" in machine.lower()
-            
+
             # Memory information
             total_mem = avail_mem = memory_pressure = None
             if psutil:
@@ -209,7 +217,7 @@ class CPU_Engine(BaseLlamaCppEngine):
                 total_mem = round(vm.total / (1024**3), 2)
                 avail_mem = round(vm.available / (1024**3), 2)
                 memory_pressure = round(1.0 - (vm.available / vm.total), 3) if vm.total > 0 else 0.0
-            
+
             # Storage information
             disk_total = disk_available = disk_usage_pct = None
             if psutil:
@@ -220,7 +228,7 @@ class CPU_Engine(BaseLlamaCppEngine):
                     disk_usage_pct = round(disk.percent, 2)
                 except Exception as e:
                     logger.warning(f"Failed to get disk info: {e}")
-            
+
             # Build hardware info dictionary
             info = {
                 "system": {
@@ -267,24 +275,48 @@ class CPU_Engine(BaseLlamaCppEngine):
                 "backend_type": "cpu",
                 "timestamp": time.time(),
             }
-            
-            logger.info(f"CPU hardware detected: {cpu_model}, {total_cores} cores, {total_mem}GB RAM")
+
+            logger.info(
+                f"CPU hardware detected: {cpu_model}, {total_cores} cores, {total_mem}GB RAM"
+            )
             return info
-            
+
         except Exception as e:
             logger.exception(f"CPU hardware detection failed: {e}")
             # Return minimal fallback info
             return {
-                "system": {"platform": platform.system(), "platform_version": platform.version(), 
-                          "machine": platform.machine(), "processor": "Unknown"},
-                "cpu": {"model": "Unknown CPU", "architecture": platform.machine(), 
-                       "total_cores": os.cpu_count() or 1, "logical_cores": os.cpu_count() or 1,
-                       "is_apple_silicon": False, "performance_cores": None, "efficiency_cores": None},
-                "memory": {"total_memory_gb": None, "available_memory_gb": None, 
-                          "memory_pressure": None, "memory_type": "system"},
-                "gpu": {"gpu_name": "CPU Only", "gpu_cores": None, "memory_bandwidth_gbs": None,
-                       "vram_total_gb": None, "vram_available_gb": None, "compute_capability": None,
-                       "cuda_version": None, "mps_supported": False, "unified_memory": False},
+                "system": {
+                    "platform": platform.system(),
+                    "platform_version": platform.version(),
+                    "machine": platform.machine(),
+                    "processor": "Unknown",
+                },
+                "cpu": {
+                    "model": "Unknown CPU",
+                    "architecture": platform.machine(),
+                    "total_cores": os.cpu_count() or 1,
+                    "logical_cores": os.cpu_count() or 1,
+                    "is_apple_silicon": False,
+                    "performance_cores": None,
+                    "efficiency_cores": None,
+                },
+                "memory": {
+                    "total_memory_gb": None,
+                    "available_memory_gb": None,
+                    "memory_pressure": None,
+                    "memory_type": "system",
+                },
+                "gpu": {
+                    "gpu_name": "CPU Only",
+                    "gpu_cores": None,
+                    "memory_bandwidth_gbs": None,
+                    "vram_total_gb": None,
+                    "vram_available_gb": None,
+                    "compute_capability": None,
+                    "cuda_version": None,
+                    "mps_supported": False,
+                    "unified_memory": False,
+                },
                 "accelerator": {"neural_engine_tops": None, "architecture": None},
                 "storage": {"total_gb": None, "available_gb": None, "usage_percentage": None},
                 "backend_type": "cpu",
@@ -294,17 +326,17 @@ class CPU_Engine(BaseLlamaCppEngine):
     @classmethod
     def warm_up_accelerator(cls, duration_seconds: float = 1.0) -> bool:
         """Warm up CPU with compute workload.
-        
+
         Runs lightweight computation loop to bring CPU to stable performance
         state. Less critical than GPU warm-up but still useful for consistent
         benchmarking results.
-        
+
         Args:
             duration_seconds: How long to run warm-up operations (default: 1.0).
-            
+
         Returns:
             bool: True if warm-up completed successfully, False otherwise.
-            
+
         Note:
             CPU warm-up is minimal compared to GPU since CPUs don't have
             dynamic clock management like modern GPUs.
@@ -312,7 +344,7 @@ class CPU_Engine(BaseLlamaCppEngine):
         try:
             logger.info(f"Warming up CPU for {duration_seconds}s...")
             t0 = time.time()
-            
+
             # Run bounded compute loop
             n = 0
             iterations = 0
@@ -321,14 +353,14 @@ class CPU_Engine(BaseLlamaCppEngine):
                 for _ in range(10000):
                     n += (_ * 7) % 13
                 iterations += 1
-                
+
                 # Small sleep to prevent complete CPU saturation
                 if iterations % 10 == 0:
                     time.sleep(0.001)
-            
+
             logger.info(f"CPU warm-up completed successfully ({iterations} iterations)")
             return True
-            
+
         except Exception as e:
             logger.warning(f"CPU warm-up failed: {e}")
             return False
@@ -336,7 +368,7 @@ class CPU_Engine(BaseLlamaCppEngine):
     @classmethod
     def get_performance_evaluation(cls) -> Dict[str, Any]:
         """Calculate comprehensive performance metrics for CPU-only backend.
-        
+
         Evaluates hardware capabilities and returns performance scores for
         inference workloads. Scoring acknowledges CPU limitations compared to
         GPU-accelerated backends.
@@ -349,7 +381,7 @@ class CPU_Engine(BaseLlamaCppEngine):
             - Memory: 128GB = 100 points
             - Memory bandwidth: Estimated from CPU specs, 100GB/s = 100 points
             - Disk: 500GB available = 100 points
-        
+
         Returns:
             Dict containing performance metrics and scores (0-100 scale):
             {
@@ -366,7 +398,7 @@ class CPU_Engine(BaseLlamaCppEngine):
                 "performance_breakdown": PerformanceBreakdown,
                 ...
             }
-            
+
         Note:
             CPU backend scores are generally lower than GPU backends due to
             lack of parallel processing capabilities. Scores are calibrated
@@ -383,48 +415,53 @@ class CPU_Engine(BaseLlamaCppEngine):
 
             # Get hardware info
             hw_info = cls.get_hardware_info()
-            
+
             # Extract key metrics
             total_cores = hw_info["cpu"]["total_cores"] or 1
             total_memory_gb = hw_info["memory"]["total_memory_gb"] or 0
             available_memory_gb = hw_info["memory"]["available_memory_gb"] or 0
             disk_available_gb = hw_info["storage"]["available_gb"] or 0
             cpu_model = hw_info["cpu"]["model"]
-            
+
             # === SCORING WEIGHTS ===
             # Inference: CPU (40%), Memory Capacity (30%), Memory BW (20%), Disk (10%)
-            INF_WEIGHTS = {"cpu": 0.40, "memory_capacity": 0.30, "memory_bandwidth": 0.20, "disk": 0.10}
+            INF_WEIGHTS = {
+                "cpu": 0.40,
+                "memory_capacity": 0.30,
+                "memory_bandwidth": 0.20,
+                "disk": 0.10,
+            }
 
             # === NORMALIZATION FACTORS ===
-            NORM_CPU_CORES = 64.0      # 64 cores = 100 points
-            NORM_MEMORY_GB = 128.0     # 128GB RAM = 100 points
-            NORM_MEM_BW_GBS = 100.0    # 100GB/s = 100 points (estimated)
-            NORM_DISK_GB = 500.0       # 500GB available = 100 points
-            
+            NORM_CPU_CORES = 64.0  # 64 cores = 100 points
+            NORM_MEMORY_GB = 128.0  # 128GB RAM = 100 points
+            NORM_MEM_BW_GBS = 100.0  # 100GB/s = 100 points (estimated)
+            NORM_DISK_GB = 500.0  # 500GB available = 100 points
+
             # === COMPONENT SCORES (0-100 scale) ===
-            
+
             # CPU Score: Based on core count
             cpu_score = min(100.0, (total_cores / NORM_CPU_CORES) * 100.0)
-            
+
             # Memory Score: Based on total memory capacity
             memory_capacity_score = min(100.0, (total_memory_gb / NORM_MEMORY_GB) * 100.0)
-            
+
             # Memory Bandwidth Score: Estimate based on CPU architecture
             # Modern CPUs: ~50-100 GB/s, older CPUs: ~20-40 GB/s
             estimated_mem_bw = total_cores * 1.5  # Rough heuristic: 1.5 GB/s per core
             memory_bandwidth_score = min(100.0, (estimated_mem_bw / NORM_MEM_BW_GBS) * 100.0)
-            
+
             # Disk Score: Based on available storage
             disk_score = min(100.0, (disk_available_gb / NORM_DISK_GB) * 100.0)
-            
+
             # === GLOBAL SCORES ===
-            
+
             # Inference Score
             inference_score = (
-                cpu_score * INF_WEIGHTS["cpu"] +
-                memory_capacity_score * INF_WEIGHTS["memory_capacity"] +
-                memory_bandwidth_score * INF_WEIGHTS["memory_bandwidth"] +
-                disk_score * INF_WEIGHTS["disk"]
+                cpu_score * INF_WEIGHTS["cpu"]
+                + memory_capacity_score * INF_WEIGHTS["memory_capacity"]
+                + memory_bandwidth_score * INF_WEIGHTS["memory_bandwidth"]
+                + disk_score * INF_WEIGHTS["disk"]
             )
 
             # Round score
@@ -433,14 +470,21 @@ class CPU_Engine(BaseLlamaCppEngine):
             # === LABELS ===
             def score_to_label(score: float) -> str:
                 """Convert 0-100 score to qualitative label."""
-                if score >= 85: return "Amazing"
-                elif score >= 70: return "Excellent"
-                elif score >= 55: return "Very Good"
-                elif score >= 40: return "Good"
-                elif score >= 25: return "Medium"
-                elif score >= 10: return "Poor"
-                else: return "Terrible"
-            
+                if score >= 85:
+                    return "Amazing"
+                elif score >= 70:
+                    return "Excellent"
+                elif score >= 55:
+                    return "Very Good"
+                elif score >= 40:
+                    return "Good"
+                elif score >= 25:
+                    return "Medium"
+                elif score >= 10:
+                    return "Poor"
+                else:
+                    return "Terrible"
+
             inference_label = score_to_label(inference_score)
 
             # === BUILD RESULT ===
@@ -474,13 +518,13 @@ class CPU_Engine(BaseLlamaCppEngine):
                     "disk_score": round(disk_score, 2),
                 },
             }
-            
+
             logger.info(
                 f"CPU performance evaluated: Inference={inference_score:.1f} ({inference_label})"
             )
 
             return result
-            
+
         except Exception as e:
             logger.exception(f"CPU performance evaluation failed: {e}")
             # Return minimal fallback
@@ -516,18 +560,18 @@ class CPU_Engine(BaseLlamaCppEngine):
                     "disk_score": 0.0,
                 },
             }
-    
+
     @classmethod
     def get_flat_hardware_data(cls) -> Dict[str, Any]:
         """Get hardware data in flat format compatible with HardwareProfile entity.
-        
+
         Returns hardware specifications as a flat dictionary ready for database
         insertion. For CPU backend, get_performance_evaluation() already returns
         data in the correct flat format.
-        
+
         Returns:
             Flat dict with all fields matching HardwareProfile columns.
-            
+
         Raises:
             HardwareException: If hardware data collection fails.
         """

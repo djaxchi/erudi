@@ -15,7 +15,6 @@ it behaves the same on the three CI legs. No network anywhere in this file.
 
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -65,7 +64,6 @@ ACCEPTED_MEMBERS = [
 
 @pytest.mark.unit
 class TestResolveMemberPath:
-
     @pytest.mark.parametrize("member", REJECTED_MEMBERS)
     def test_rejects_every_escaping_form(self, tmp_path, member):
         with pytest.raises(InvalidInputException) as exc:
@@ -112,9 +110,9 @@ class TestResolveMemberPath:
 # UNIT - download_files_concurrent refuses before opening anything
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestDownloadFilesConcurrentContainment:
-
     async def test_escaping_shard_is_refused_before_any_transfer(self, tmp_path):
         requested: list[str] = []
 
@@ -135,6 +133,7 @@ class TestDownloadFilesConcurrentContainment:
 # UNIT - download_llm validates the WHOLE selection before fetching a byte
 # =====================================================================
 
+
 def _fake_api(files):
     api = MagicMock()
     # Tagged `mlx` so the engine-format gate (#408) lets the listing through
@@ -150,7 +149,6 @@ def _fake_api(files):
 
 @pytest.mark.unit
 class TestDownloadLlmFailsFastOnHostileListing:
-
     @pytest.mark.parametrize(
         "hostile",
         [
@@ -161,7 +159,8 @@ class TestDownloadLlmFailsFastOnHostileListing:
     )
     async def test_nothing_is_fetched_and_the_job_fails(self, monkeypatch, tmp_path, hostile):
         monkeypatch.setattr(
-            config, "LLM_Engine",
+            config,
+            "LLM_Engine",
             SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False, FORMAT_TAG="mlx"),
         )
         files = ["config.json", "model-00001-of-00002.safetensors", hostile]
@@ -179,8 +178,11 @@ class TestDownloadLlmFailsFastOnHostileListing:
         final_dir = tmp_path / "1"
         with pytest.raises(InvalidInputException) as exc:
             await llm_services.download_llm(
-                model_link="org/model", model_id=1,
-                temp_save_dir=str(temp_dir), final_save_dir=str(final_dir), job_id=None,
+                model_link="org/model",
+                model_id=1,
+                temp_save_dir=str(temp_dir),
+                final_save_dir=str(final_dir),
+                job_id=None,
             )
 
         # The message the job-failure path stores names the offending member.

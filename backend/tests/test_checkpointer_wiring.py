@@ -78,9 +78,7 @@ async def test_checkpointer_tables_live_in_business_database(pg_test_cluster):
     with psycopg.connect(pg_test_cluster.psycopg_url) as conn:
         tables = {
             r[0]
-            for r in conn.execute(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
-            )
+            for r in conn.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
         }
     assert "checkpoints" in tables
     assert "checkpoint_writes" in tables

@@ -22,8 +22,12 @@ from src.engines.mlx_engine import MLX_Engine
 
 # Representative base ids (the live catalog is org-discovered, not a static list).
 CATALOG_LINKS = [
-    "google/gemma-3-270m-it", "google/gemma-2-2b-it", "google/gemma-3-4b-it",
-    "google/gemma-3-12b-it", "google/gemma-4-E2B-it", "google/gemma-4-26b-a4b-it",
+    "google/gemma-3-270m-it",
+    "google/gemma-2-2b-it",
+    "google/gemma-3-4b-it",
+    "google/gemma-3-12b-it",
+    "google/gemma-4-E2B-it",
+    "google/gemma-4-26b-a4b-it",
     "google/gemma-4-31b-it",
 ]
 
@@ -59,6 +63,7 @@ class TestOrgDiscovery:
         from types import SimpleNamespace
         from unittest.mock import MagicMock
         from src.database.seed import Model_Seeder
+
         api = MagicMock()
         # Real chat releases carry HF's `conversational` tag; discovery requires it
         # for the Base catalog (#182). Fixtures model chat models, so attach it (the
@@ -70,7 +75,10 @@ class TestOrgDiscovery:
         # by downloads, so only the text-generation downloads pass returns them; the
         # vision and freshness passes return nothing (freshness has dedicated tests).
         def _list(**kwargs):
-            if kwargs.get("pipeline_tag") == "text-generation" and kwargs.get("sort") == "downloads":
+            if (
+                kwargs.get("pipeline_tag") == "text-generation"
+                and kwargs.get("sort") == "downloads"
+            ):
                 return models
             return []
 
@@ -78,25 +86,34 @@ class TestOrgDiscovery:
         return Model_Seeder(db=None, hf_api=api)
 
     def test_filters_quants_and_floor(self):
-        seeder = self._seeder([
-            ("Qwen/Qwen3-8B", 100000),                  # keep
-            ("Qwen/Qwen3-8B-GGUF", 50000),              # skip: quant
-            ("Qwen/Qwen3-4B", 30000),                   # keep
-            ("Qwen/Qwen2.5-7B-Instruct-AWQ", 9000),     # skip: quant
-            ("google/gemma-4-12B-it-qat-w4a16-ct", 80000),  # skip: QAT quant, not the base
-            ("google/diffusiongemma-26B-A4B-it", 70000),    # skip: diffusion (image-gen), not a chat LLM
-            ("Qwen/tiny-thing", 10),                    # skip: below floor
-        ])
-        links = [c.link for c in seeder.discover_instruct_models("Qwen", "qwen", min_downloads=1000)]
+        seeder = self._seeder(
+            [
+                ("Qwen/Qwen3-8B", 100000),  # keep
+                ("Qwen/Qwen3-8B-GGUF", 50000),  # skip: quant
+                ("Qwen/Qwen3-4B", 30000),  # keep
+                ("Qwen/Qwen2.5-7B-Instruct-AWQ", 9000),  # skip: quant
+                ("google/gemma-4-12B-it-qat-w4a16-ct", 80000),  # skip: QAT quant, not the base
+                (
+                    "google/diffusiongemma-26B-A4B-it",
+                    70000,
+                ),  # skip: diffusion (image-gen), not a chat LLM
+                ("Qwen/tiny-thing", 10),  # skip: below floor
+            ]
+        )
+        links = [
+            c.link for c in seeder.discover_instruct_models("Qwen", "qwen", min_downloads=1000)
+        ]
         assert "Qwen/Qwen3-8B" in links and "Qwen/Qwen3-4B" in links
         assert all(x not in " ".join(links) for x in ("GGUF", "AWQ", "qat", "diffusion"))
         assert "Qwen/tiny-thing" not in links
 
     def test_dedups_by_normalized_slug(self):
-        seeder = self._seeder([
-            ("Qwen/Qwen3-8B", 100000),
-            ("Qwen/Qwen3-8B-bf16", 90000),  # same normalized slug → dropped
-        ])
+        seeder = self._seeder(
+            [
+                ("Qwen/Qwen3-8B", 100000),
+                ("Qwen/Qwen3-8B-bf16", 90000),  # same normalized slug → dropped
+            ]
+        )
         configs = seeder.discover_instruct_models("Qwen", "qwen", min_downloads=1)
         assert len(configs) == 1
 
@@ -107,6 +124,7 @@ class TestOrgDiscovery:
     def test_search_failure_returns_empty(self):
         from unittest.mock import MagicMock
         from src.database.seed import Model_Seeder
+
         api = MagicMock()
         api.list_models.side_effect = RuntimeError("boom")
         assert Model_Seeder(db=None, hf_api=api).discover_instruct_models("Org", "x") == []
@@ -116,6 +134,7 @@ class TestOrgDiscovery:
         from types import SimpleNamespace
         from unittest.mock import MagicMock
         from src.database.seed import Model_Seeder
+
         api = MagicMock()
 
         def fake_list(**kw):
@@ -134,45 +153,55 @@ class TestOrgDiscovery:
     def test_skips_assistant_distillates(self):
         # #122: the real foundation model is the multimodal -it VLM (discovered under a
         # vision pipeline); the text-only -assistant distillate must NOT be a base model.
-        seeder = self._seeder_by_pipeline({
-            "text-generation": [("google/gemma-4-E4B-it-assistant", 352943)],
-            "image-text-to-text": [("google/gemma-4-E4B-it", 5677536)],
-            "any-to-any": [],
-        })
-        links = [c.link for c in seeder.discover_instruct_models("google", "gemma", min_downloads=1000)]
-        assert "google/gemma-4-E4B-it" in links              # real foundation VLM surfaces
+        seeder = self._seeder_by_pipeline(
+            {
+                "text-generation": [("google/gemma-4-E4B-it-assistant", 352943)],
+                "image-text-to-text": [("google/gemma-4-E4B-it", 5677536)],
+                "any-to-any": [],
+            }
+        )
+        links = [
+            c.link for c in seeder.discover_instruct_models("google", "gemma", min_downloads=1000)
+        ]
+        assert "google/gemma-4-E4B-it" in links  # real foundation VLM surfaces
         assert "google/gemma-4-E4B-it-assistant" not in links  # text-only distillate skipped
 
     def test_discovers_across_pipelines_deduped(self):
         # #122: foundation models span modalities — discover across pipelines, count a
         # repo once (highest downloads kept) even when it lists under several tags.
-        seeder = self._seeder_by_pipeline({
-            "text-generation": [("Qwen/Qwen3-8B", 100000)],
-            "image-text-to-text": [("Qwen/Qwen3-VL-8B", 80000), ("Qwen/Qwen3-8B", 100000)],
-            "any-to-any": [],
-        })
-        links = [c.link for c in seeder.discover_instruct_models("Qwen", "qwen", min_downloads=1000)]
-        assert links.count("Qwen/Qwen3-8B") == 1   # same repo across pipelines → once
-        assert "Qwen/Qwen3-VL-8B" in links          # multimodal foundation included
+        seeder = self._seeder_by_pipeline(
+            {
+                "text-generation": [("Qwen/Qwen3-8B", 100000)],
+                "image-text-to-text": [("Qwen/Qwen3-VL-8B", 80000), ("Qwen/Qwen3-8B", 100000)],
+                "any-to-any": [],
+            }
+        )
+        links = [
+            c.link for c in seeder.discover_instruct_models("Qwen", "qwen", min_downloads=1000)
+        ]
+        assert links.count("Qwen/Qwen3-8B") == 1  # same repo across pipelines → once
+        assert "Qwen/Qwen3-VL-8B" in links  # multimodal foundation included
 
     def test_filters_ocr_and_florence_but_keeps_chat_models(self):
         # #203: OCR / Florence-2 are vision-TASK models that list under image-text-to-text
         # (like real chat VLMs) yet cannot be chatted with. They must be dropped while a
         # plain chat model and a real chat VLM in the same passes survive. The 'ocr' token
         # is a substring so it also catches the fused 'olmOCR' slug (no dash before OCR).
-        seeder = self._seeder_by_pipeline({
-            "text-generation": [("Qwen/Qwen3-8B", 900000)],          # keep: plain chat
-            "image-text-to-text": [
-                ("deepseek-ai/DeepSeek-OCR-2", 500000),      # drop: OCR
-                ("allenai/olmOCR-2-7B-1025", 400000),        # drop: OCR (fused token)
-                ("microsoft/Florence-2-large-ft", 300000),   # drop: vision-task foundation
-                ("Qwen/Qwen3-VL-8B-Instruct", 200000),       # keep: real chat VLM
-            ],
-            "any-to-any": [],
-        })
+        seeder = self._seeder_by_pipeline(
+            {
+                "text-generation": [("Qwen/Qwen3-8B", 900000)],  # keep: plain chat
+                "image-text-to-text": [
+                    ("deepseek-ai/DeepSeek-OCR-2", 500000),  # drop: OCR
+                    ("allenai/olmOCR-2-7B-1025", 400000),  # drop: OCR (fused token)
+                    ("microsoft/Florence-2-large-ft", 300000),  # drop: vision-task foundation
+                    ("Qwen/Qwen3-VL-8B-Instruct", 200000),  # keep: real chat VLM
+                ],
+                "any-to-any": [],
+            }
+        )
         links = [c.link for c in seeder.discover_instruct_models("org", "x", min_downloads=1000)]
         assert "Qwen/Qwen3-8B" in links and "Qwen/Qwen3-VL-8B-Instruct" in links
-        assert not any("ocr" in link.lower() for link in links)       # no OCR leaks (#203)
+        assert not any("ocr" in link.lower() for link in links)  # no OCR leaks (#203)
         assert not any("florence" in link.lower() for link in links)  # no vision-task leak
 
     def test_drops_raw_pretrain_keeps_conversational(self):
@@ -182,21 +211,30 @@ class TestOrgDiscovery:
         from types import SimpleNamespace
         from unittest.mock import MagicMock
         from src.database.seed import Model_Seeder
+
         api = MagicMock()
         api.list_models.side_effect = lambda **kw: (
             [
                 SimpleNamespace(id="meta-llama/Llama-3.2-1B", downloads=500000, tags=[]),
-                SimpleNamespace(id="meta-llama/Llama-3.2-1B-Instruct", downloads=900000,
-                                tags=["conversational"]),
-                SimpleNamespace(id="deepseek-ai/DeepSeek-V3", downloads=800000,
-                                tags=["conversational"]),
-            ] if kw.get("pipeline_tag") == "text-generation" else []
+                SimpleNamespace(
+                    id="meta-llama/Llama-3.2-1B-Instruct", downloads=900000, tags=["conversational"]
+                ),
+                SimpleNamespace(
+                    id="deepseek-ai/DeepSeek-V3", downloads=800000, tags=["conversational"]
+                ),
+            ]
+            if kw.get("pipeline_tag") == "text-generation"
+            else []
         )
-        links = [c.link for c in
-                 Model_Seeder(db=None, hf_api=api).discover_instruct_models("x", "y", min_downloads=1)]
-        assert "meta-llama/Llama-3.2-1B" not in links            # raw pretrain dropped
-        assert "meta-llama/Llama-3.2-1B-Instruct" in links       # instruct sibling kept
-        assert "deepseek-ai/DeepSeek-V3" in links                # suffix-less chat kept via tag
+        links = [
+            c.link
+            for c in Model_Seeder(db=None, hf_api=api).discover_instruct_models(
+                "x", "y", min_downloads=1
+            )
+        ]
+        assert "meta-llama/Llama-3.2-1B" not in links  # raw pretrain dropped
+        assert "meta-llama/Llama-3.2-1B-Instruct" in links  # instruct sibling kept
+        assert "deepseek-ai/DeepSeek-V3" in links  # suffix-less chat kept via tag
 
 
 class TestFreshnessPass:
@@ -215,8 +253,7 @@ class TestFreshnessPass:
         from src.database.seed import Model_Seeder
 
         def mk(rows):
-            return [SimpleNamespace(id=i, downloads=d, tags=list(t))
-                    for i, d, t in rows]
+            return [SimpleNamespace(id=i, downloads=d, tags=list(t)) for i, d, t in rows]
 
         api = MagicMock()
 
@@ -266,9 +303,9 @@ class TestFreshnessPass:
             by_downloads=[("Qwen/Qwen3-8B", 20_000_000, self._CHAT)],
             by_created=[
                 ("Qwen/Qwen3.9-9B-Instruct-GGUF", 900_000, self._CHAT),  # artifact token
-                ("Qwen/Qwen3.9-9B", 800_000, ()),                        # raw pretrain
-                ("Qwen/Qwen3.9-OCR-9B", 700_000, self._CHAT),            # non-chat task
-                ("Qwen/Qwen3.9-9B-Instruct", 600_000, self._CHAT),       # keep
+                ("Qwen/Qwen3.9-9B", 800_000, ()),  # raw pretrain
+                ("Qwen/Qwen3.9-OCR-9B", 700_000, self._CHAT),  # non-chat task
+                ("Qwen/Qwen3.9-9B-Instruct", 600_000, self._CHAT),  # keep
             ],
         )
         links = [c.link for c in seeder.discover_instruct_models("Qwen", "qwen")]
@@ -286,7 +323,10 @@ class TestFreshnessPass:
         # The fresh pass has its own small cap (FRESH_TOP_N); a flood of recent
         # releases can't blow up the catalog.
         from src.database.seed import FRESH_TOP_N
-        fresh = [(f"Org/New-{i}-Instruct", 500_000 - i, self._CHAT) for i in range(FRESH_TOP_N + 10)]
+
+        fresh = [
+            (f"Org/New-{i}-Instruct", 500_000 - i, self._CHAT) for i in range(FRESH_TOP_N + 10)
+        ]
         seeder = self._seeder(by_downloads=[], by_created=fresh)
         assert len(seeder.discover_instruct_models("Org", "x")) == FRESH_TOP_N
 
@@ -320,20 +360,23 @@ class TestRunnabilityPredicate:
 class TestHumanizedNames:
     """Display names are derived from the real slug — exact, unambiguous."""
 
-    @pytest.mark.parametrize("link,expected", [
-        ("google/gemma-3-270m-it",                "Gemma 3 270M Instruct"),
-        ("google/gemma-2-2b-it",                  "Gemma 2 2B Instruct"),
-        ("google/gemma-3-4b-it",                  "Gemma 3 4B Instruct"),
-        ("google/gemma-3-12b-it",                 "Gemma 3 12B Instruct"),
-        ("google/gemma-4-E2B-it",                 "Gemma 4 E2B Instruct"),
-        ("google/gemma-4-26b-a4b-it",             "Gemma 4 26B A4B Instruct"),
-        ("google/gemma-4-31b-it",                 "Gemma 4 31B Instruct"),
-        ("mistralai/Mistral-7B-Instruct-v0.3",    "Mistral 7B Instruct v0.3"),
-        ("mistralai/Ministral-8B-Instruct-2410",  "Ministral 8B Instruct 2410"),
-        ("mistralai/Mistral-Nemo-Instruct-2407",  "Mistral Nemo Instruct 2407"),
-        ("meta-llama/Llama-3.1-8B-Instruct",      "Llama 3.1 8B Instruct"),
-        ("Qwen/Qwen2.5-7B-Instruct",              "Qwen2.5 7B Instruct"),
-    ])
+    @pytest.mark.parametrize(
+        "link,expected",
+        [
+            ("google/gemma-3-270m-it", "Gemma 3 270M Instruct"),
+            ("google/gemma-2-2b-it", "Gemma 2 2B Instruct"),
+            ("google/gemma-3-4b-it", "Gemma 3 4B Instruct"),
+            ("google/gemma-3-12b-it", "Gemma 3 12B Instruct"),
+            ("google/gemma-4-E2B-it", "Gemma 4 E2B Instruct"),
+            ("google/gemma-4-26b-a4b-it", "Gemma 4 26B A4B Instruct"),
+            ("google/gemma-4-31b-it", "Gemma 4 31B Instruct"),
+            ("mistralai/Mistral-7B-Instruct-v0.3", "Mistral 7B Instruct v0.3"),
+            ("mistralai/Ministral-8B-Instruct-2410", "Ministral 8B Instruct 2410"),
+            ("mistralai/Mistral-Nemo-Instruct-2407", "Mistral Nemo Instruct 2407"),
+            ("meta-llama/Llama-3.1-8B-Instruct", "Llama 3.1 8B Instruct"),
+            ("Qwen/Qwen2.5-7B-Instruct", "Qwen2.5 7B Instruct"),
+        ],
+    )
     def test_humanize(self, link, expected):
         assert humanize_model_name(link) == expected
 
@@ -349,6 +392,7 @@ class TestRunnableExposedInResponse:
 
     def test_remote_quant_is_runnable(self, monkeypatch):
         from src.domains.llms.schemas import LLMResponse
+
         monkeypatch.setattr(config, "LLM_Engine", CPU_Engine)
         r = LLMResponse(id=1, name="X", local=0, link="unsloth/gemma-3-1b-it-GGUF")
         assert r.runnable is True
@@ -356,6 +400,7 @@ class TestRunnableExposedInResponse:
 
     def test_remote_known_broken_is_not_runnable(self, monkeypatch):
         from src.domains.llms.schemas import LLMResponse
+
         monkeypatch.setattr(config, "LLM_Engine", MLX_Engine)
         # Roster empty since #273; pin the mechanism with an injected entry.
         monkeypatch.setattr(
@@ -366,6 +411,7 @@ class TestRunnableExposedInResponse:
 
     def test_downloaded_model_always_runnable(self, monkeypatch):
         from src.domains.llms.schemas import LLMResponse
+
         monkeypatch.setattr(config, "LLM_Engine", MLX_Engine)
         # local=1 (downloaded) → runnable even if its link were KNOWN_BROKEN
         r = LLMResponse(id=3, name="Z", local=1, link="/data/models/3")
@@ -380,6 +426,7 @@ class TestReconcileRemoteCatalog:
 
     def _llm(self, **kw):
         from src.entities.Llm import Llm
+
         kw.setdefault("type", "x")
         kw.setdefault("quantized", False)
         kw.setdefault("param_size", 1.0)
@@ -390,14 +437,18 @@ class TestReconcileRemoteCatalog:
         from src.entities.Llm import Llm
 
         db = test_db_session
-        db.add_all([
-            self._llm(name="Old Stale", local=0, link="stale/gone-GGUF"),
-            self._llm(name="My Model", local=1, link="/data/models/9"),
-            self._llm(name="Downloading", local=2, link="repo/wip-GGUF"),
-        ])
+        db.add_all(
+            [
+                self._llm(name="Old Stale", local=0, link="stale/gone-GGUF"),
+                self._llm(name="My Model", local=1, link="/data/models/9"),
+                self._llm(name="Downloading", local=2, link="repo/wip-GGUF"),
+            ]
+        )
         db.commit()
 
-        fresh = self._llm(name="Gemma 3 1B Instruct", local=0, link="unsloth/gemma-3-1b-it-GGUF", type="gemma")
+        fresh = self._llm(
+            name="Gemma 3 1B Instruct", local=0, link="unsloth/gemma-3-1b-it-GGUF", type="gemma"
+        )
         res = Database_Seeder().reconcile_remote_catalog(db, [fresh], [])
 
         assert res["resynced"] is True
@@ -412,18 +463,27 @@ class TestReconcileRemoteCatalog:
         derived rows that are just another quant of a base model, keeps finetunes."""
         from unittest.mock import MagicMock
 
-        base = self._llm(name="Gemma 3 1B Instruct", local=0, link="unsloth/gemma-3-1b-it-GGUF", type="gemma")
+        base = self._llm(
+            name="Gemma 3 1B Instruct", local=0, link="unsloth/gemma-3-1b-it-GGUF", type="gemma"
+        )
         # another quant of the SAME base (normalizes to gemma-3-1b-it) → must drop
-        requant = self._llm(name="dup", local=0, link="bartowski/google_gemma-3-1b-it-GGUF", type="gemma")
+        requant = self._llm(
+            name="dup", local=0, link="bartowski/google_gemma-3-1b-it-GGUF", type="gemma"
+        )
         # a genuine finetune (different slug) → must stay
-        finetune = self._llm(name="Dolphin", local=0, link="cognitivecomputations/dolphin-gemma-3-1b-GGUF", type="gemma")
+        finetune = self._llm(
+            name="Dolphin",
+            local=0,
+            link="cognitivecomputations/dolphin-gemma-3-1b-GGUF",
+            type="gemma",
+        )
         ms = MagicMock()
         ms.build_base_models.return_value = [base]
         ms.build_derived_models.return_value = [requant, finetune]
 
         fresh_base, fresh_derived = Database_Seeder().build_fresh_catalog(ms)
         links = {m.link for m in fresh_base + fresh_derived}
-        assert "unsloth/gemma-3-1b-it-GGUF" in links          # base kept
+        assert "unsloth/gemma-3-1b-it-GGUF" in links  # base kept
         assert "bartowski/google_gemma-3-1b-it-GGUF" not in links  # re-quant of base dropped
         assert "cognitivecomputations/dolphin-gemma-3-1b-GGUF" in links  # finetune kept
 
@@ -438,9 +498,13 @@ class TestReconcileRemoteCatalog:
         db.commit()
 
         monkeypatch.setattr(config, "LLM_Engine", type("_Eng", (), {"FORMAT_TAG": "gguf"}))
-        monkeypatch.setattr(snap_mod, "load_catalog_snapshot",
-                            lambda tag: [{"name": "d", "link": "x/d-GGUF", "type": "x",
-                                          "param_size": 1.0, "is_base": False}])
+        monkeypatch.setattr(
+            snap_mod,
+            "load_catalog_snapshot",
+            lambda tag: [
+                {"name": "d", "link": "x/d-GGUF", "type": "x", "param_size": 1.0, "is_base": False}
+            ],
+        )
 
         res = Database_Seeder().reconcile_catalog_from_snapshot(db)
         assert res["resynced"] is False
@@ -452,20 +516,38 @@ class TestReconcileRemoteCatalog:
         from src.entities.Llm import Llm
 
         db = test_db_session
-        Database_Seeder().reconcile_remote_catalog(db, [
-            self._llm(name="Gemma 3 1B Instruct", local=0,
-                      link="unsloth/gemma-3-1b-it-GGUF", type="gemma", param_size=1.0)
-        ], [])
+        Database_Seeder().reconcile_remote_catalog(
+            db,
+            [
+                self._llm(
+                    name="Gemma 3 1B Instruct",
+                    local=0,
+                    link="unsloth/gemma-3-1b-it-GGUF",
+                    type="gemma",
+                    param_size=1.0,
+                )
+            ],
+            [],
+        )
         first_id = db.query(Llm).filter(Llm.link == "unsloth/gemma-3-1b-it-GGUF").one().id
 
         # Second reconcile: SAME link, refreshed name + param_size.
-        Database_Seeder().reconcile_remote_catalog(db, [
-            self._llm(name="Gemma 3 1B Instruct (refreshed)", local=0,
-                      link="unsloth/gemma-3-1b-it-GGUF", type="gemma", param_size=1.5)
-        ], [])
+        Database_Seeder().reconcile_remote_catalog(
+            db,
+            [
+                self._llm(
+                    name="Gemma 3 1B Instruct (refreshed)",
+                    local=0,
+                    link="unsloth/gemma-3-1b-it-GGUF",
+                    type="gemma",
+                    param_size=1.5,
+                )
+            ],
+            [],
+        )
 
         again = db.query(Llm).filter(Llm.link == "unsloth/gemma-3-1b-it-GGUF").one()
-        assert again.id == first_id                       # id stable → in-place update
+        assert again.id == first_id  # id stable → in-place update
         assert again.name == "Gemma 3 1B Instruct (refreshed)"
         assert again.param_size == 1.5
 
@@ -476,13 +558,17 @@ class TestReconcileRemoteCatalog:
         from src.entities.Llm import Llm
 
         db = test_db_session
-        Database_Seeder().reconcile_remote_catalog(db, [
-            self._llm(name="Coder", local=0, link="org/coder-GGUF", category="code")
-        ], [])
+        Database_Seeder().reconcile_remote_catalog(
+            db, [self._llm(name="Coder", local=0, link="org/coder-GGUF", category="code")], []
+        )
 
-        Database_Seeder().reconcile_remote_catalog(db, [
-            self._llm(name="Coder", local=0, link="org/coder-GGUF")  # category unset → None
-        ], [])
+        Database_Seeder().reconcile_remote_catalog(
+            db,
+            [
+                self._llm(name="Coder", local=0, link="org/coder-GGUF")  # category unset → None
+            ],
+            [],
+        )
 
         row = db.query(Llm).filter(Llm.link == "org/coder-GGUF").one()
         assert row.category == "code"
@@ -492,13 +578,13 @@ class TestReconcileRemoteCatalog:
         from src.entities.Llm import Llm
 
         db = test_db_session
-        Database_Seeder().reconcile_remote_catalog(db, [
-            self._llm(name="Model", local=0, link="org/model-GGUF", category="code")
-        ], [])
+        Database_Seeder().reconcile_remote_catalog(
+            db, [self._llm(name="Model", local=0, link="org/model-GGUF", category="code")], []
+        )
 
-        Database_Seeder().reconcile_remote_catalog(db, [
-            self._llm(name="Model", local=0, link="org/model-GGUF", category="reasoning")
-        ], [])
+        Database_Seeder().reconcile_remote_catalog(
+            db, [self._llm(name="Model", local=0, link="org/model-GGUF", category="reasoning")], []
+        )
 
         row = db.query(Llm).filter(Llm.link == "org/model-GGUF").one()
         assert row.category == "reasoning"
@@ -508,9 +594,13 @@ class TestReconcileRemoteCatalog:
         from src.entities.Llm import Llm
 
         db = test_db_session
-        Database_Seeder().reconcile_remote_catalog(db, [
-            self._llm(name="New", local=0, link="org/new-GGUF")      # category unset → None
-        ], [])
+        Database_Seeder().reconcile_remote_catalog(
+            db,
+            [
+                self._llm(name="New", local=0, link="org/new-GGUF")  # category unset → None
+            ],
+            [],
+        )
 
         row = db.query(Llm).filter(Llm.link == "org/new-GGUF").one()
         assert row.category == "general"
@@ -521,22 +611,30 @@ class TestReconcileRemoteCatalog:
         from src.entities.Llm import Llm
 
         db = test_db_session
-        Database_Seeder().reconcile_remote_catalog(db, [
-            self._llm(name="Keep", local=0, link="org/keep-GGUF", type="gemma"),
-            self._llm(name="Gone", local=0, link="org/gone-GGUF", type="gemma"),
-        ], [])
+        Database_Seeder().reconcile_remote_catalog(
+            db,
+            [
+                self._llm(name="Keep", local=0, link="org/keep-GGUF", type="gemma"),
+                self._llm(name="Gone", local=0, link="org/gone-GGUF", type="gemma"),
+            ],
+            [],
+        )
         keep_id = db.query(Llm).filter(Llm.link == "org/keep-GGUF").one().id
 
         # Next fresh set: 'gone' disappeared, 'fresh' appeared, 'keep' survives.
-        Database_Seeder().reconcile_remote_catalog(db, [
-            self._llm(name="Keep", local=0, link="org/keep-GGUF", type="gemma"),
-            self._llm(name="Fresh", local=0, link="org/fresh-GGUF", type="gemma"),
-        ], [])
+        Database_Seeder().reconcile_remote_catalog(
+            db,
+            [
+                self._llm(name="Keep", local=0, link="org/keep-GGUF", type="gemma"),
+                self._llm(name="Fresh", local=0, link="org/fresh-GGUF", type="gemma"),
+            ],
+            [],
+        )
 
         rows = {r.link: r.id for r in db.query(Llm).filter(Llm.local == 0).all()}
-        assert "org/gone-GGUF" not in rows            # disappeared → deleted
-        assert "org/fresh-GGUF" in rows               # new → inserted
-        assert rows["org/keep-GGUF"] == keep_id       # survivor → id unchanged
+        assert "org/gone-GGUF" not in rows  # disappeared → deleted
+        assert "org/fresh-GGUF" in rows  # new → inserted
+        assert rows["org/keep-GGUF"] == keep_id  # survivor → id unchanged
 
 
 class TestPlaceholderSeedIsBestEffort:
@@ -586,6 +684,7 @@ class TestPlaceholderSeedIsBestEffort:
 
             def seed_initial_catalog(self):
                 return 0
+
         monkeypatch.setattr(seed_mod, "Model_Seeder", _EmptySeeder)
         self._stub_side_steps(monkeypatch, seed_mod)
 
@@ -618,15 +717,31 @@ class TestPlaceholderSeedIsBestEffort:
         monkeypatch.setattr(config, "get_hf_api", _boom)
 
         monkeypatch.setattr(config, "LLM_Engine", type("_Eng", (), {"FORMAT_TAG": "gguf"}))
-        monkeypatch.setattr(snap_mod, "load_catalog_snapshot", lambda tag: [
-            {"name": "A", "link": "org/a-GGUF", "type": "x", "param_size": 1.0, "is_base": True},
-            {"name": "B", "link": "org/b-GGUF", "type": "x", "param_size": 1.0, "is_base": False},
-        ])
+        monkeypatch.setattr(
+            snap_mod,
+            "load_catalog_snapshot",
+            lambda tag: [
+                {
+                    "name": "A",
+                    "link": "org/a-GGUF",
+                    "type": "x",
+                    "param_size": 1.0,
+                    "is_base": True,
+                },
+                {
+                    "name": "B",
+                    "link": "org/b-GGUF",
+                    "type": "x",
+                    "param_size": 1.0,
+                    "is_base": False,
+                },
+            ],
+        )
         self._stub_side_steps(monkeypatch, seed_mod)
 
         res = asyncio.run(Database_Seeder().populate_startup_data(db=test_db_session))
         assert "needs_background_refresh" not in res  # nothing left to schedule
-        assert res["base_models_added"] == 2          # snapshot applied at boot
+        assert res["base_models_added"] == 2  # snapshot applied at boot
         assert res.get("offline_mode") is False
 
 

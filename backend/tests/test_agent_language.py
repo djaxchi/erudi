@@ -54,9 +54,7 @@ class TestDetectLanguageDegradesGracefully:
         def _boom(*_a, **_k):
             raise FileNotFoundError("model.plzma")
 
-        monkeypatch.setattr(
-            language.LanguageIdentifier, "from_pickled_model", staticmethod(_boom)
-        )
+        monkeypatch.setattr(language.LanguageIdentifier, "from_pickled_model", staticmethod(_boom))
         # Must not raise, and must fall back to the generic line (None).
         assert language.detect_language("Quelle est la capitale de la France ?") is None
 
@@ -71,9 +69,7 @@ class TestDetectLanguageDegradesGracefully:
             calls["n"] += 1
             raise OSError("unreadable")
 
-        monkeypatch.setattr(
-            language.LanguageIdentifier, "from_pickled_model", staticmethod(_boom)
-        )
+        monkeypatch.setattr(language.LanguageIdentifier, "from_pickled_model", staticmethod(_boom))
         assert language.detect_language("Bonjour le monde") is None
         assert language.detect_language("Hello world again") is None
         assert calls["n"] == 1  # the failed load is attempted once, then cached

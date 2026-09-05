@@ -11,6 +11,7 @@ reopening a conversation can replay the collapsed reasoning/trace panel exactly
 like the live turn (#90). Existing rows and every user/error message keep a NULL
 trace. The downgrade drops the column.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -18,8 +19,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'd4f9a2c6e1b7'
-down_revision: Union[str, Sequence[str], None] = 'b8e3d5a1c7f2'
+revision: str = "d4f9a2c6e1b7"
+down_revision: Union[str, Sequence[str], None] = "b8e3d5a1c7f2"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

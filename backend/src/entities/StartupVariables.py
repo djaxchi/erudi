@@ -13,6 +13,7 @@ Example:
         last_seeded_at=datetime.now()
     )
 """
+
 from sqlalchemy import Column, Integer, Boolean, DateTime
 from sqlalchemy.orm import validates
 from src.database.core import Base
@@ -42,7 +43,7 @@ class StartupVariables(Base):
         ...     show_welcome_popup()
         ...     vars.welcome_popup_has_already_displayed = True
         ...     db.commit()
-        >>> 
+        >>>
         >>> # Check if models need reseeding (every 3 days)
         >>> from datetime import datetime, timedelta
         >>> if not vars.models_seeded or (datetime.now() - vars.last_seeded_at) > timedelta(days=3):
@@ -51,6 +52,7 @@ class StartupVariables(Base):
         ...     vars.last_seeded_at = datetime.now()
         ...     db.commit()
     """
+
     __tablename__ = "startup_variables"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -59,7 +61,7 @@ class StartupVariables(Base):
     last_seeded_at = Column(DateTime, nullable=True)
     offline_mode = Column(Boolean, default=False, nullable=False)
 
-    @validates('welcome_popup_has_already_displayed', 'models_seeded', 'offline_mode')
+    @validates("welcome_popup_has_already_displayed", "models_seeded", "offline_mode")
     def validate_boolean_flags(self, key, value):
         """Ensure boolean flags are actually Boolean type.
 

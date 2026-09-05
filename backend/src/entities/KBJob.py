@@ -13,9 +13,11 @@ Example:
         status="pending"
     )
 """
+
 from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.sql import func
 from src.database.core import Base
+
 
 class KBJobModel(Base):
     """SQLAlchemy model for Knowledge Base creation/update job tracking.
@@ -39,6 +41,7 @@ class KBJobModel(Base):
     Example:
         >>> job = KBJobModel(base_model_id=42, new_model_id=108, kb_id=15, status="running")
     """
+
     __tablename__ = "kb_jobs"
 
     id = Column(Integer, primary_key=True, index=True)

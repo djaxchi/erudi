@@ -1,6 +1,7 @@
 """
 Tests for Erudi backend launcher (run.py): argument parsing and JSON event emission.
 """
+
 import sys
 import json
 import subprocess
@@ -11,9 +12,11 @@ from pathlib import Path
 
 LAUNCHER_PATH = Path(__file__).parent.parent / "run.py"
 
+
 @pytest.mark.parametrize("port", [8000, 9000, 12345])
 def test_argparse_port(monkeypatch, port):
     import run
+
     monkeypatch.setattr(sys, "argv", ["run.py", "--port", str(port)])
     args = run.parse_args()
     assert args.port == port
@@ -23,6 +26,7 @@ def test_argparse_port(monkeypatch, port):
 def test_default_port_is_canonical_27182(monkeypatch):
     # Erudi's canonical port: the leading digits of e (2.7182…).
     import run
+
     monkeypatch.setattr(sys, "argv", ["run.py"])
     assert run.parse_args().port == 27182
     assert run.CANONICAL_PORT == 27182

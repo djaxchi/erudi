@@ -10,6 +10,7 @@ card tags + slug. Drives the categorized catalog sections in the UI (#122).
 Existing rows backfill to 'general'; the next catalog resync re-classifies
 remote (local=0) rows.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -17,8 +18,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'a1b2c3d4e5f6'
-down_revision: Union[str, Sequence[str], None] = 'f2107afc82f6'
+revision: str = "a1b2c3d4e5f6"
+down_revision: Union[str, Sequence[str], None] = "f2107afc82f6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

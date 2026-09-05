@@ -6,6 +6,7 @@ the tenant re-bind helpers (checkpointer / KB store), a full mocked
 resurrection attempt with the backoff ladder, the wake-wait primitive, and
 the recovery loop's state transitions including its never-die error guard.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -35,9 +36,9 @@ def _reset_watchdog_state(monkeypatch):
 # UNIT - wake signalling
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestSignalWake:
-
     def test_noop_without_loop(self):
         wd._signal_wake()  # loop/wake unset: nothing to do, nothing to raise
 
@@ -61,12 +62,10 @@ class TestSignalWake:
 # UNIT - listener lifecycle edge cases
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestListenerLifecycle:
-
-    def test_register_is_idempotent_for_same_engine(
-        self, monkeypatch, test_db_engine
-    ):
+    def test_register_is_idempotent_for_same_engine(self, monkeypatch, test_db_engine):
         monkeypatch.setattr(db_core, "db_engine", test_db_engine)
         try:
             wd._register_error_listener()
@@ -87,9 +86,9 @@ class TestListenerLifecycle:
 # UNIT - probe without an engine
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestProbe:
-
     def test_probe_sync_requires_engine(self, monkeypatch):
         monkeypatch.setattr(db_core, "db_engine", None)
         with pytest.raises(RuntimeError, match="not initialized"):
@@ -99,6 +98,7 @@ class TestProbe:
 # =====================================================================
 # UNIT - tenant re-bind helpers
 # =====================================================================
+
 
 class _FakeCheckpointerCM:
     def __init__(self, saver="new-saver", fail_exit=False):
@@ -119,7 +119,6 @@ class _FakeCheckpointerCM:
 
 @pytest.mark.unit
 class TestRebindHelpers:
-
     async def test_rebind_checkpointer_noop_without_app(self):
         await wd._rebind_checkpointer(SimpleNamespace(psycopg_url="postgresql://x"))
 
@@ -141,9 +140,7 @@ class TestRebindHelpers:
     async def test_rebind_checkpointer_tolerates_stale_close_failure(self, monkeypatch):
         old_cm = _FakeCheckpointerCM(fail_exit=True)
         new_cm = _FakeCheckpointerCM(saver="fresh")
-        app = SimpleNamespace(
-            state=SimpleNamespace(checkpointer=None, checkpointer_cm=old_cm)
-        )
+        app = SimpleNamespace(state=SimpleNamespace(checkpointer=None, checkpointer_cm=old_cm))
         monkeypatch.setattr(wd, "_app", app)
         monkeypatch.setattr(wd, "open_checkpointer", lambda url: new_cm)
 
@@ -168,9 +165,9 @@ class TestRebindHelpers:
 # UNIT - resurrection attempt + backoff ladder
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestResurrection:
-
     def _wire_success(self, monkeypatch, tmp_path):
         handle = SimpleNamespace(
             sqlalchemy_url="postgresql+psycopg://u", psycopg_url="postgresql://u"
@@ -189,9 +186,7 @@ class TestResurrection:
         monkeypatch.setattr(wd, "_probe_sync", lambda: None)
         return handle
 
-    async def test_successful_attempt_rebinds_and_stores_handle(
-        self, monkeypatch, tmp_path
-    ):
+    async def test_successful_attempt_rebinds_and_stores_handle(self, monkeypatch, tmp_path):
         handle = self._wire_success(monkeypatch, tmp_path)
         app = SimpleNamespace(state=SimpleNamespace(postgres=None))
         monkeypatch.setattr(wd, "_app", app)
@@ -239,9 +234,9 @@ class TestResurrection:
 # UNIT - wake-wait primitive
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestWaitWake:
-
     async def test_without_event_sleeps_and_reports_timeout(self, monkeypatch):
         assert await wd._wait_wake(0.01) is False
 
@@ -261,9 +256,9 @@ class TestWaitWake:
 # INTEGRATION - loop state machine via start/stop
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestRecoveryLoop:
-
     async def test_loop_probes_recovers_and_rearms(self, monkeypatch, test_db_engine):
         probes = []
         episodes = []

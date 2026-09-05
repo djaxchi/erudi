@@ -10,6 +10,7 @@ Relationships:
     - documents: One-to-many with KnowledgeDocument (server-side CASCADE).
     - llm: One-to-one with Llm (specialized assistant using this KB).
 """
+
 from sqlalchemy import Column, DateTime, Integer
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func

@@ -1,48 +1,23 @@
+# Ruff is the only tool these hooks run: it lints and it formats, and one tool
+# cannot disagree with itself. The pin matches the `ruff` pin in
+# `backend/requirements/meta/dev.txt`, so the hooks, the dev environment and CI
+# all run the same version. Move the two together.
+#
+# Formatting width comes from the ruff.toml nearest each file -- `backend/ruff.toml`
+# for the backend, the root `ruff.toml` for everything else, both `line-length = 100`.
+# No CLI flag here, so nothing can drift out of sync with the config CI reads.
+#
+# There is deliberately no test hook. The backend suite boots a real embedded
+# PostgreSQL cluster and takes tens of seconds, which is not something a commit
+# should do. Run it yourself before you push:
+#
+#   cd backend && pytest tests/ -q --ignore=tests/e2e -m "not mlx_only"
 repos:
-  - repo: https://github.com/psf/black
-    rev: 24.1.1
-    hooks:
-      - id: black
-        name: black
-        entry: black
-        language: python
-        types: [python]
-        args: ['--line-length=100']
-
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.7
+    rev: v0.8.4
     hooks:
       - id: ruff
         name: ruff lint
-        entry: ruff check
-        language: python
-        types: [python]
         args: ['--fix']
       - id: ruff-format
         name: ruff format
-        entry: ruff format
-        language: python
-        types: [python]
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.8.0
-    hooks:
-      - id: mypy
-        name: mypy
-        entry: mypy
-        language: python
-        types: [python]
-        args: ['--ignore-missing-imports']
-        additional_dependencies: ['types-all']
-
-  - repo: local
-    hooks:
-      - id: pytest
-        name: pytest
-        entry: pytest
-        language: python
-        types: [python]
-        stages: [commit]
-        pass_filenames: false
-        always_run: true
-        args: ['backend/tests', '--maxfail=1', '-q']

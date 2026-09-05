@@ -89,9 +89,7 @@ class TestErrorHook:
     @pytest.mark.unit
     def test_hook_ignores_non_disconnect_errors(self):
         db_watchdog.db_state = db_watchdog.DB_OK
-        db_watchdog._on_db_error(
-            _ctx(is_disconnect=False, original=psycopg.ProgrammingError("x"))
-        )
+        db_watchdog._on_db_error(_ctx(is_disconnect=False, original=psycopg.ProgrammingError("x")))
         assert db_watchdog.db_state == db_watchdog.DB_OK
 
     @pytest.mark.unit
@@ -242,9 +240,7 @@ def _force_stop_cluster(data_dir) -> None:
 
 class TestWatchdogResurrection:
     @pytest.mark.integration
-    async def test_watchdog_resurrects_a_killed_postmaster(
-        self, tmp_path_factory, monkeypatch
-    ):
+    async def test_watchdog_resurrects_a_killed_postmaster(self, tmp_path_factory, monkeypatch):
         from src.database import core as db_core
         from src.launcher.postgres_runtime import start_postgres
 

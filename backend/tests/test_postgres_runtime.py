@@ -271,9 +271,7 @@ class TestRecoverySecondChance:
             return sentinel  # second call reuses the recovered postmaster
 
         monkeypatch.setattr(postgres_runtime.pgserver, "get_server", fake_get_server)
-        monkeypatch.setattr(
-            postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: True
-        )
+        monkeypatch.setattr(postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: True)
 
         assert postgres_runtime._get_server_with_recovery(tmp_path) is sentinel
         assert calls["n"] == 2  # first timed out, second reused the live postmaster
@@ -299,9 +297,7 @@ class TestRecoverySecondChance:
             return sentinel
 
         monkeypatch.setattr(postgres_runtime.pgserver, "get_server", fake_get_server)
-        monkeypatch.setattr(
-            postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: True
-        )
+        monkeypatch.setattr(postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: True)
 
         assert postgres_runtime._get_server_with_recovery(tmp_path) is sentinel
         assert calls["n"] == 2
@@ -317,9 +313,7 @@ class TestRecoverySecondChance:
             raise AssertionError
 
         monkeypatch.setattr(postgres_runtime.pgserver, "get_server", fake_get_server)
-        monkeypatch.setattr(
-            postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: False
-        )
+        monkeypatch.setattr(postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: False)
 
         with pytest.raises(AssertionError):
             postgres_runtime._get_server_with_recovery(tmp_path)
@@ -334,18 +328,14 @@ class TestRecoverySecondChance:
             raise subprocess.TimeoutExpired(cmd="pg_ctl", timeout=10)
 
         monkeypatch.setattr(postgres_runtime.pgserver, "get_server", fake_get_server)
-        monkeypatch.setattr(
-            postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: False
-        )
+        monkeypatch.setattr(postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: False)
 
         with pytest.raises(subprocess.TimeoutExpired):
             postgres_runtime._get_server_with_recovery(tmp_path)
         assert calls["n"] == 1  # never retried get_server after the wait failed
 
     @pytest.mark.unit
-    def test_get_server_with_recovery_evicts_the_stale_cached_instance(
-        self, tmp_path, monkeypatch
-    ):
+    def test_get_server_with_recovery_evicts_the_stale_cached_instance(self, tmp_path, monkeypatch):
         # pgserver registers the instance in _instances BEFORE starting the
         # server, so the first TimeoutExpired leaves a half-built object
         # (_postmaster_info=None) in the cache and get_server would hand it
@@ -370,9 +360,7 @@ class TestRecoverySecondChance:
             return fresh
 
         monkeypatch.setattr(postgres_runtime.pgserver, "get_server", fake_get_server)
-        monkeypatch.setattr(
-            postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: True
-        )
+        monkeypatch.setattr(postgres_runtime, "_wait_for_postmaster_ready", lambda d, s: True)
 
         assert postgres_runtime._get_server_with_recovery(tmp_path) is fresh
         assert calls["n"] == 2
@@ -396,12 +384,8 @@ class TestConsoleIsolation:
     @pytest.mark.unit
     def test_pg_ctl_and_initdb_are_wrapped(self):
         # Module import rebinds both names on pgserver's postgres_server module.
-        assert getattr(
-            postgres_runtime._pg_server_mod.pg_ctl, "_erudi_console_isolated", False
-        )
-        assert getattr(
-            postgres_runtime._pg_server_mod.initdb, "_erudi_console_isolated", False
-        )
+        assert getattr(postgres_runtime._pg_server_mod.pg_ctl, "_erudi_console_isolated", False)
+        assert getattr(postgres_runtime._pg_server_mod.initdb, "_erudi_console_isolated", False)
 
     @pytest.mark.unit
     def test_wrapper_injects_hidden_console_creationflags(self):

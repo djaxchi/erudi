@@ -153,11 +153,17 @@ class TestBuildKbAgenticSystemPrompt:
         # the tool) must survive the restraint fix: absence may only be claimed
         # after an empty search.
         full = self._prompt(_Llm(param_size=7.0))
-        assert "only say the information is not in the documents after a search in the current turn has come back empty" in full
+        assert (
+            "only say the information is not in the documents after a search in the current turn has come back empty"
+            in full
+        )
         assert "search again instead of relying on what they said" in full
         assert "Ground document answers on the excerpts the tool returns" in full
         compact = self._prompt(_Llm(param_size=0.6))
-        assert "say the information is not in the documents only after a search in this turn finds nothing" in compact
+        assert (
+            "say the information is not in the documents only after a search in this turn finds nothing"
+            in compact
+        )
         assert "search again when you need them" in compact
 
     def test_tiny_tier_gets_the_compact_variant(self):
@@ -174,11 +180,11 @@ class TestBuildKbAgenticSystemPrompt:
     @pytest.mark.parametrize(
         "param_size,marker",
         [
-            (0.6, _COMPACT_MARKER),   # tiny
-            (3.0, _COMPACT_MARKER),   # small
-            (7.0, _FULL_MARKER),      # medium
-            (12.0, _FULL_MARKER),     # large
-            (32.0, _FULL_MARKER),     # xlarge
+            (0.6, _COMPACT_MARKER),  # tiny
+            (3.0, _COMPACT_MARKER),  # small
+            (7.0, _FULL_MARKER),  # medium
+            (12.0, _FULL_MARKER),  # large
+            (32.0, _FULL_MARKER),  # xlarge
         ],
     )
     def test_variant_follows_the_prompt_tier(self, param_size, marker):
@@ -318,17 +324,17 @@ class TestAnswerLanguageLine:
     # pre-question language lines are read as block metadata and ignored
     # (run-4 eval), in-question user-voiced requests are honored (T5).
     def test_localized_to_the_question_language(self):
-        assert answer_language_line(
-            "Quel est le préavis de résiliation du contrat ?"
-        ) == "Réponds en français."
-        assert answer_language_line(
-            "What is the notice period for termination?"
-        ) == "Answer in English."
+        assert (
+            answer_language_line("Quel est le préavis de résiliation du contrat ?")
+            == "Réponds en français."
+        )
+        assert (
+            answer_language_line("What is the notice period for termination?")
+            == "Answer in English."
+        )
 
     def test_ambiguous_question_falls_back_to_generic_line(self):
-        assert answer_language_line("ok") == (
-            "Answer in the same language as the user's question."
-        )
+        assert answer_language_line("ok") == ("Answer in the same language as the user's question.")
 
 
 class TestWebSearchPromptSection:
@@ -381,19 +387,13 @@ class TestWebSearchPromptSection:
         llm = _Llm(name="Agent 7B", param_size=7.0)
         prompt = build_kb_agentic_system_prompt(llm, web_search=True)
         # KB section first, web section after.
-        assert prompt.index("search_knowledge_base tool") < prompt.index(
-            "web_search tool"
-        )
+        assert prompt.index("search_knowledge_base tool") < prompt.index("web_search tool")
         # Arbitration: document questions go to the KB tool, not the web.
         assert "use search_knowledge_base, not web_search" in prompt
 
     def test_agentic_kb_prompt_without_web_is_byte_unchanged(self):
         llm = _Llm(name="Agent 7B", param_size=7.0)
-        expected = (
-            build_agent_system_prompt(llm)
-            + "\n\n"
-            + TestKbRegressionGuards._AGENTIC_FULL
-        )
+        expected = build_agent_system_prompt(llm) + "\n\n" + TestKbRegressionGuards._AGENTIC_FULL
         assert build_kb_agentic_system_prompt(llm) == expected
 
     def test_web_only_prompt_carries_no_arbitration_clause(self):

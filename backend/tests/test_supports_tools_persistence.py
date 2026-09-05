@@ -5,6 +5,7 @@
 - ``integration``: the column exists on ``llms`` (the ALTER shim ran), a row
   round-trips, and ``LLMResponse`` surfaces it from the ORM.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -89,7 +90,9 @@ def test_supports_tools_column_exists(test_db_engine):
 
 @pytest.mark.integration
 def test_supports_tools_roundtrip_true(test_db_session):
-    llm = Llm(name="tool model", local=1, link="m/x", type="qwen", param_size=0.5, supports_tools=True)
+    llm = Llm(
+        name="tool model", local=1, link="m/x", type="qwen", param_size=0.5, supports_tools=True
+    )
     test_db_session.add(llm)
     test_db_session.commit()
     test_db_session.refresh(llm)
@@ -107,7 +110,9 @@ def test_supports_tools_defaults_null(test_db_session):
 
 @pytest.mark.integration
 def test_llmresponse_serializes_supports_tools_from_orm(test_db_session):
-    llm = Llm(name="tool model", local=1, link="m/z", type="qwen", param_size=0.5, supports_tools=True)
+    llm = Llm(
+        name="tool model", local=1, link="m/z", type="qwen", param_size=0.5, supports_tools=True
+    )
     test_db_session.add(llm)
     test_db_session.commit()
     test_db_session.refresh(llm)

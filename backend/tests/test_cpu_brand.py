@@ -4,6 +4,7 @@ These replace py-cpuinfo's multiprocessing probe with direct OS-source reads
 (#282). Every OS path is exercised on ANY host by monkeypatching
 ``platform.system`` (and, for Windows, injecting a fake ``winreg`` module).
 """
+
 from __future__ import annotations
 
 import builtins

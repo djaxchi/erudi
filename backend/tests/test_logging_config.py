@@ -57,6 +57,7 @@ def _make_record(
 # Level resolution (ERUDI_LOG_LEVEL)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_resolve_log_level_defaults_to_info():
     assert resolve_log_level(None) == logging.INFO
@@ -113,6 +114,7 @@ def test_configure_logger_is_idempotent(restore_logging):
 # Formatters: UTC ISO-8601 with milliseconds, Z suffix
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_file_formatter_emits_utc_z_timestamp_with_ms():
     record = _make_record()
@@ -142,6 +144,7 @@ def test_console_formatter_does_not_mutate_record_pathname():
 # ---------------------------------------------------------------------------
 # Request-id filter and formatter tag
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 def test_request_id_filter_injects_dash_outside_requests():
@@ -173,6 +176,7 @@ def test_both_formatters_include_request_id_tag():
 # File handler: stable name + rotation preserved
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_log_file_name_is_stable_with_rotation(restore_logging):
     lg = configure_logger()
@@ -188,6 +192,7 @@ def test_log_file_name_is_stable_with_rotation(restore_logging):
 # Third-party silences
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_noisy_third_party_loggers_are_silenced():
     for name in ("httpx", "httpcore", "huggingface_hub", "uvicorn.access"):
@@ -197,6 +202,7 @@ def test_noisy_third_party_loggers_are_silenced():
 # ---------------------------------------------------------------------------
 # Request-context helpers
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 def test_new_request_id_format_and_uniqueness():

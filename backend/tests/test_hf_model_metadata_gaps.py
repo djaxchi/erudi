@@ -4,6 +4,7 @@ Pins the API-backed disk size with its estimate fallbacks per quantization
 tier, the chosen-artifact byte accounting (#170/#220) for GGUF multi-quant vs
 single-artifact repos, and the metadata formatter's shape and error path.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -15,7 +16,6 @@ from src.core import config
 from src.utils import hf_model_metadata as meta
 from src.utils.hf_model_metadata import (
     ModelSize,
-    QuantizationType,
     _chosen_artifact_bytes,
     format_model_info_metadata,
     get_disk_size_after_quant,
@@ -23,9 +23,7 @@ from src.utils.hf_model_metadata import (
 
 
 def _repo_info(files):
-    return SimpleNamespace(
-        siblings=[SimpleNamespace(rfilename=f, size=s) for f, s in files]
-    )
+    return SimpleNamespace(siblings=[SimpleNamespace(rfilename=f, size=s) for f, s in files])
 
 
 class _NonGgufEngine:
@@ -40,9 +38,9 @@ class _GgufEngine:
 # UNIT - get_disk_size_after_quant
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestDiskSizeAfterQuant:
-
     def test_api_success_sums_chosen_artifacts(self, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", _NonGgufEngine)
         api = MagicMock()
@@ -75,11 +73,14 @@ class TestDiskSizeAfterQuant:
         assert size.source == "fallback"
         assert size.size_gb == 3.5
 
-    @pytest.mark.parametrize("repo,expected_gb", [
-        ("someone/tiny-1b-8bit", 1.5),
-        ("someone/small-2b-8bit", 2.5),
-        ("someone/mid-4b-8bit", 4.5),
-    ])
+    @pytest.mark.parametrize(
+        "repo,expected_gb",
+        [
+            ("someone/tiny-1b-8bit", 1.5),
+            ("someone/small-2b-8bit", 2.5),
+            ("someone/mid-4b-8bit", 4.5),
+        ],
+    )
     def test_fallback_int8_size_hints(self, monkeypatch, repo, expected_gb):
         self._fail_api(monkeypatch)
         size = get_disk_size_after_quant(repo)
@@ -106,14 +107,16 @@ class TestDiskSizeAfterQuant:
         can store it as-is (no GB round-trip) next to the display string."""
         monkeypatch.setattr(config, "LLM_Engine", _GgufEngine)
         api = MagicMock()
-        api.repo_info.return_value = _repo_info([
-            ("model-q4_k_m.gguf", 3_074_000_000),
-            ("model-q8_0.gguf", 8_000_000_000),
-            ("config.json", 1024),
-        ])
+        api.repo_info.return_value = _repo_info(
+            [
+                ("model-q4_k_m.gguf", 3_074_000_000),
+                ("model-q8_0.gguf", 8_000_000_000),
+                ("config.json", 1024),
+            ]
+        )
         monkeypatch.setattr(meta, "get_hf_api", lambda: api)
         size = get_disk_size_after_quant("someone/model-GGUF")
-        assert size.size_bytes == 3_074_000_000 + 1024   # the chosen quant + aux, not the repo
+        assert size.size_bytes == 3_074_000_000 + 1024  # the chosen quant + aux, not the repo
         assert size.size_gb == pytest.approx(size.size_bytes / 1_000_000_000)
 
     def test_estimates_never_claim_exact_bytes(self, monkeypatch):
@@ -146,17 +149,19 @@ class TestDiskSizeAfterQuant:
 # UNIT - chosen-artifact byte accounting (#170/#220)
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestChosenArtifactBytes:
-
     def test_gguf_repo_counts_single_best_quant(self, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", _GgufEngine)
-        repo = _repo_info([
-            ("model-q4_k_m.gguf", 2 * 1024**3),
-            ("model-q8_0.gguf", 4 * 1024**3),
-            ("model-f16.gguf", 14 * 1024**3),
-            ("config.json", 1024),
-        ])
+        repo = _repo_info(
+            [
+                ("model-q4_k_m.gguf", 2 * 1024**3),
+                ("model-q8_0.gguf", 4 * 1024**3),
+                ("model-f16.gguf", 14 * 1024**3),
+                ("config.json", 1024),
+            ]
+        )
         total = _chosen_artifact_bytes(repo)
         # Single q4_k_m + small aux, NOT the 20 GB whole-repo sum
         assert total < 3 * 1024**3
@@ -164,10 +169,12 @@ class TestChosenArtifactBytes:
 
     def test_non_gguf_repo_counts_everything(self, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", _NonGgufEngine)
-        repo = _repo_info([
-            ("model-00001.safetensors", 3 * 1024**3),
-            ("model-00002.safetensors", 3 * 1024**3),
-        ])
+        repo = _repo_info(
+            [
+                ("model-00001.safetensors", 3 * 1024**3),
+                ("model-00002.safetensors", 3 * 1024**3),
+            ]
+        )
         assert _chosen_artifact_bytes(repo) == 6 * 1024**3
 
     def test_gguf_repo_without_gguf_falls_back_to_whole_repo(self, monkeypatch):
@@ -180,9 +187,9 @@ class TestChosenArtifactBytes:
 # UNIT - metadata formatter
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestFormatModelInfoMetadata:
-
     def _info(self, **overrides):
         data = dict(
             id="org/model-7b",
@@ -202,8 +209,7 @@ class TestFormatModelInfoMetadata:
         return SimpleNamespace(**data)
 
     def test_full_shape_with_tag_truncation(self):
-        size = ModelSize(size_gb=13.5, min_gb=13.0, max_gb=14.0,
-                         is_estimate=True, source="pattern")
+        size = ModelSize(size_gb=13.5, min_gb=13.0, max_gb=14.0, is_estimate=True, source="pattern")
         out = format_model_info_metadata(self._info(), size, quantized=True)
         assert "Model ID: org/model-7b" in out
         assert "Quantized: True" in out

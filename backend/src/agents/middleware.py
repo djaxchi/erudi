@@ -77,9 +77,7 @@ class _KbContextMiddleware(AgentMiddleware):
         if image_parts:
             # Multimodal turn: merge the KB block into the text part and keep
             # the screenshot(s) attached for the VLM.
-            merged = HumanMessage(
-                content=[{"type": "text", "text": merged_text}, *image_parts]
-            )
+            merged = HumanMessage(content=[{"type": "text", "text": merged_text}, *image_parts])
         else:
             merged = HumanMessage(content=merged_text)
         return request.override(messages=[*messages[:-1], merged])
@@ -151,9 +149,7 @@ class _StripImagesForTextModel(AgentMiddleware):
         changed = False
         for i, m in enumerate(messages):
             if isinstance(m.content, list):
-                messages[i] = m.model_copy(
-                    update={"content": _flatten_without_images(m.content)}
-                )
+                messages[i] = m.model_copy(update={"content": _flatten_without_images(m.content)})
                 changed = True
         return request.override(messages=messages) if changed else request
 
@@ -192,9 +188,7 @@ class _FoldSystemIntoUserMiddleware(AgentMiddleware):
             return request.override(system_message=None)
 
         messages = list(request.messages)
-        first_human = next(
-            (i for i, m in enumerate(messages) if m.type == "human"), None
-        )
+        first_human = next((i for i, m in enumerate(messages) if m.type == "human"), None)
         if first_human is None:
             # No user turn to attach to (rare): keep the instruction as a plain
             # user message so the model still receives it, just not as a system role.
@@ -206,9 +200,7 @@ class _FoldSystemIntoUserMiddleware(AgentMiddleware):
         text, image_parts = _split_multimodal(target.content)
         folded_text = f"{sys_text}{self._JOIN}{text}" if text else sys_text
         if image_parts:
-            folded = HumanMessage(
-                content=[{"type": "text", "text": folded_text}, *image_parts]
-            )
+            folded = HumanMessage(content=[{"type": "text", "text": folded_text}, *image_parts])
         else:
             folded = HumanMessage(content=folded_text)
         messages[first_human] = folded

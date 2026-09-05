@@ -5,6 +5,7 @@ and verifies the inherited llama-cpp-shared behaviour
 (`_select_gguf` quant priority, `_translate_payload_kwargs` rename).
 Shared subprocess + SSE lifecycle is covered by `test_base_chat_server_engine.py`.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -19,9 +20,9 @@ from src.engines.cpu_engine import CPU_Engine
 # UNIT — hierarchy
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestCpuEngineHierarchy:
-
     def test_mro_includes_base_llama_cpp_and_chat_server(self):
         names = [c.__name__ for c in CPU_Engine.__mro__]
         assert "BaseLlamaCppEngine" in names
@@ -40,9 +41,9 @@ class TestCpuEngineHierarchy:
 # UNIT — spawn context / argv
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestSpawnContextAndArgv:
-
     def test_prepare_spawn_context_forces_zero_gpu_layers(self):
         ctx = CPU_Engine._prepare_spawn_context()
         assert ctx["gpu_layers"] == 0
@@ -84,9 +85,9 @@ class TestSpawnContextAndArgv:
 # UNIT — _select_gguf (inherited from BaseLlamaCppEngine)
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestSelectGguf:
-
     def test_explicit_gguf_file_returned_as_is(self, tmp_path):
         f = tmp_path / "model-q4_k_m.gguf"
         f.write_bytes(b"\x00" * 16)
@@ -117,38 +118,48 @@ class TestSelectGguf:
 # UNIT — _translate_payload_kwargs (HF → llama.cpp wire names)
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestTranslatePayloadKwargs:
-
     def test_repetition_penalty_translated(self):
-        out = CPU_Engine._translate_payload_kwargs({
-            "repetition_penalty": 1.2,
-            "repetition_context_size": 96,
-        })
+        out = CPU_Engine._translate_payload_kwargs(
+            {
+                "repetition_penalty": 1.2,
+                "repetition_context_size": 96,
+            }
+        )
         assert out == {"repeat_penalty": 1.2, "repeat_last_n": 96}
 
     def test_other_kwargs_passthrough(self):
-        out = CPU_Engine._translate_payload_kwargs({
-            "top_k": 50, "min_p": 0.05, "seed": 7,
-        })
+        out = CPU_Engine._translate_payload_kwargs(
+            {
+                "top_k": 50,
+                "min_p": 0.05,
+                "seed": 7,
+            }
+        )
         assert out == {"top_k": 50, "min_p": 0.05, "seed": 7}
 
     def test_mixed_pass_and_translate(self):
-        out = CPU_Engine._translate_payload_kwargs({
-            "top_k": 50,
-            "repetition_penalty": 1.2,
-        })
+        out = CPU_Engine._translate_payload_kwargs(
+            {
+                "top_k": 50,
+                "repetition_penalty": 1.2,
+            }
+        )
         assert out == {"top_k": 50, "repeat_penalty": 1.2}
 
     def test_enable_thinking_becomes_chat_template_kwargs(self):
         # #266: llama-server has no top-level enable_thinking field; it must
         # travel via chat_template_kwargs to reach the Jinja chat template
         # (templates without the kwarg ignore it harmlessly).
-        out = CPU_Engine._translate_payload_kwargs({
-            "repetition_penalty": 1.1,
-            "repetition_context_size": 64,
-            "enable_thinking": False,
-        })
+        out = CPU_Engine._translate_payload_kwargs(
+            {
+                "repetition_penalty": 1.1,
+                "repetition_context_size": 64,
+                "enable_thinking": False,
+            }
+        )
         assert out == {
             "repeat_penalty": 1.1,
             "repeat_last_n": 64,
@@ -159,9 +170,12 @@ class TestTranslatePayloadKwargs:
         # llama-server samples randomly by default (seed -1); only the MLX
         # translation stamps a per-request seed, because mlx_vlm.server would
         # otherwise replay DEFAULT_SEED on every generation.
-        out = CPU_Engine._translate_payload_kwargs({
-            "repetition_penalty": 1.1, "repetition_context_size": 64,
-        })
+        out = CPU_Engine._translate_payload_kwargs(
+            {
+                "repetition_penalty": 1.1,
+                "repetition_context_size": 64,
+            }
+        )
         assert "seed" not in out
 
 
@@ -169,9 +183,9 @@ class TestTranslatePayloadKwargs:
 # UNIT — config attrs
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestCpuEngineConfig:
-
     def test_server_name(self):
         assert CPU_Engine._server_name == "llama-server"
 

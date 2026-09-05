@@ -6,6 +6,7 @@ on-disk footprint, and skips rows whose directory is missing (orphans are
 legitimate since #225/#208) without crashing. Runs against the real test
 cluster so the SQLAlchemy query + commit path is exercised end to end.
 """
+
 import pytest
 
 from src.database.seed import Database_Seeder
@@ -21,7 +22,11 @@ def _make_local_model(db, tmp_path, name, size_line):
     d.mkdir()
     (d / "model-q4_k_m.gguf").write_bytes(b"\x00" * 4096)
     llm = Llm(
-        name=name, local=1, type="qwen", param_size=7.0, link=str(d),
+        name=name,
+        local=1,
+        type="qwen",
+        param_size=7.0,
+        link=str(d),
         model_metadata=f"Model ID: org/{name}\n{size_line}\nParameters: 7B",
     )
     db.add(llm)
@@ -49,8 +54,12 @@ def test_backfill_corrects_stale_size_for_existing_dir(test_db_session, tmp_path
 def test_backfill_skips_missing_dir_without_crashing(test_db_session, tmp_path):
     original = "Model ID: org/orphan\nSize: ~40.2 GB\nParameters: 7B"
     orphan = Llm(
-        name="orphan", local=1, type="qwen", param_size=7.0,
-        link=str(tmp_path / "gone"), model_metadata=original,
+        name="orphan",
+        local=1,
+        type="qwen",
+        param_size=7.0,
+        link=str(tmp_path / "gone"),
+        model_metadata=original,
     )
     test_db_session.add(orphan)
     test_db_session.commit()

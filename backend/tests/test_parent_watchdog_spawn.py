@@ -20,6 +20,7 @@ POSIX-only: SIGKILL/reparenting semantics. Windows parent death is covered
 by the stdin-EOF watcher (ERUDI_WATCH_STDIN, #216) plus the psutil probe
 unit-tested in test_launcher.py.
 """
+
 from __future__ import annotations
 
 import json
@@ -212,9 +213,9 @@ def test_backend_exits_after_parent_sigkill(tmp_path):
         # usual shutdown event is emitted only after the lifespan shutdown
         # (inference child terminated, embedded Postgres stopped) completed.
         reader.join(timeout=10)
-        assert any(e.get("event") == "shutdown" for e in events), (
-            f"no clean shutdown event observed; tail: {lines[-25:]}"
-        )
+        assert any(
+            e.get("event") == "shutdown" for e in events
+        ), f"no clean shutdown event observed; tail: {lines[-25:]}"
     finally:
         if backend_pid is not None and _pid_alive(backend_pid):
             _best_effort_kill(backend_pid)

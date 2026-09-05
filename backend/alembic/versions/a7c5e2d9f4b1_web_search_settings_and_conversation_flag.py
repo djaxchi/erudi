@@ -15,6 +15,7 @@ Issue #310: the web_search agent tool ships with two toggles.
    creation; afterwards the conversation owns its flag (a later global
    change never retro-affects existing conversations).
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -22,8 +23,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'a7c5e2d9f4b1'
-down_revision: Union[str, Sequence[str], None] = 'c9d2e4f7a1b3'
+revision: str = "a7c5e2d9f4b1"
+down_revision: Union[str, Sequence[str], None] = "c9d2e4f7a1b3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -41,9 +42,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        op.f("ix_user_settings_id"), "user_settings", ["id"], unique=False
-    )
+    op.create_index(op.f("ix_user_settings_id"), "user_settings", ["id"], unique=False)
     op.add_column(
         "conversations",
         sa.Column(

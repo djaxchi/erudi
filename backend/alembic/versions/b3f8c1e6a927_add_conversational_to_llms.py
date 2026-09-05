@@ -12,6 +12,7 @@ sort them first, since most users just want to chat and don't know the IT-vs-bas
 distinction. Nullable: existing rows backfill to NULL (unknown) and are re-set on
 the next catalog resync; NULL is treated as "fall back to the name heuristic".
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -19,8 +20,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'b3f8c1e6a927'
-down_revision: Union[str, Sequence[str], None] = 'e5a7c3b91d0f'
+revision: str = "b3f8c1e6a927"
+down_revision: Union[str, Sequence[str], None] = "e5a7c3b91d0f"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -12,6 +12,7 @@ Endpoints:
 Architecture:
     Endpoints → Service → Repository → Entity → Database
 """
+
 from fastapi import Depends, APIRouter, HTTPException
 from sqlalchemy.orm import Session
 
@@ -41,11 +42,11 @@ def _get_service(db: Session) -> Hardware_Service:
 
 def _build_backend_specific_schema(profile: HardwareProfile, scores: dict):
     """Build backend-specific schema instance based on backend_type.
-    
+
     Args:
         profile: HardwareProfile entity
         scores: Dict with raw scores from service.calculate_boosted_scores()
-        
+
     Returns:
         Union[MLXHardwareInfo, CUDAHardwareInfo, CPUHardwareInfo]
     """
@@ -64,7 +65,7 @@ def _build_backend_specific_schema(profile: HardwareProfile, scores: dict):
         "architecture": profile.architecture,
         "system_platform": profile.system_platform,
     }
-    
+
     if profile.backend_type == "mlx":
         return MLXHardwareInfo(
             **base_data,
@@ -120,11 +121,11 @@ def _build_performance_breakdown(profile: HardwareProfile) -> PerformanceBreakdo
 @router.get("/app_startup", response_model=HardwareAppStartupInfo)
 def get_app_startup_info(db: Session = Depends(get_db)):
     """Get minimal performance scores for application startup dashboard.
-    
+
     Returns boosted scores (+20 points, capped at 100) for user-friendly display
     alongside raw scores for transparency. This endpoint is optimized for quick
     loading on app startup.
-    
+
     Response structure:
         {
             "backend_type": "cuda",
@@ -149,7 +150,7 @@ def get_app_startup_info(db: Session = Depends(get_db)):
             recommended_param_min=scores["recommended_param_min"],
             recommended_param_max=scores["recommended_param_max"],
         )
-        
+
         db.commit()
         logger.info(
             f"App startup info retrieved: backend={profile.backend_type}, "
@@ -157,7 +158,7 @@ def get_app_startup_info(db: Session = Depends(get_db)):
             f"raw_inf={scores['raw_inference_score']:.1f}"
         )
         return response
-        
+
     except (HardwareException, DatabaseException) as e:
         db.rollback()
         logger.exception(f"Failed to get app startup info: {e}")
@@ -171,10 +172,10 @@ def get_app_startup_info(db: Session = Depends(get_db)):
 @router.get("/detailed", response_model=DetailedHardwareInfo)
 def get_detailed_hardware_info(db: Session = Depends(get_db)):
     """Get comprehensive hardware diagnostics with raw/boosted score comparison.
-    
+
     Returns complete backend-specific hardware profile plus performance breakdown
     and both raw/boosted scores for debugging and diagnostics.
-    
+
     Response structure:
         {
             "hardware": { ...full backend-specific fields... },
@@ -192,20 +193,20 @@ def get_detailed_hardware_info(db: Session = Depends(get_db)):
         service = _get_service(db)
         profile = service.get_or_create_profile()
         scores = service.calculate_boosted_scores(profile)
-        
+
         backend_schema = _build_backend_specific_schema(profile, scores)
         perf_breakdown = _build_performance_breakdown(profile)
-        
+
         response = DetailedHardwareInfo(
             hardware=backend_schema,
             performance_breakdown=perf_breakdown,
             boosted_inference_score=scores["boosted_inference_score"],
         )
-        
+
         db.commit()
         logger.info(f"Detailed hardware info retrieved: backend={profile.backend_type}")
         return response
-        
+
     except (HardwareException, DatabaseException) as e:
         db.rollback()
         logger.exception(f"Failed to get detailed hardware info: {e}")
@@ -219,20 +220,20 @@ def get_detailed_hardware_info(db: Session = Depends(get_db)):
 @router.post("/refresh")
 def refresh_hardware_profile(db: Session = Depends(get_db)):
     """Force hardware re-detection and update cached profile.
-    
+
     Performs fresh hardware detection through engine and updates database profile.
     Useful for detecting hardware changes (RAM upgrade, new GPU) or refreshing
     dynamic fields (available_memory_gb, disk_available_gb) without app restart.
-    
+
     Returns:
         dict: Confirmation message with backend_type
-        
+
     Example response:
         {
             "message": "Hardware profile refreshed successfully",
             "backend_type": "mlx"
         }
-    
+
     Raises:
         HTTPException: 500 if refresh fails
     """
@@ -240,13 +241,13 @@ def refresh_hardware_profile(db: Session = Depends(get_db)):
         service = _get_service(db)
         profile = service.refresh_profile()
         db.commit()
-        
+
         logger.info(f"Hardware profile refreshed: backend={profile.backend_type}")
         return {
             "message": "Hardware profile refreshed successfully",
-            "backend_type": profile.backend_type
+            "backend_type": profile.backend_type,
         }
-        
+
     except (HardwareException, DatabaseException) as e:
         db.rollback()
         logger.exception(f"Failed to refresh hardware profile: {e}")

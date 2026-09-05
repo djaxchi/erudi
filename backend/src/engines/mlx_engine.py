@@ -105,6 +105,7 @@ class MLX_Engine(BaseChatServerEngine):
     """Singleton Engine for MLX models and tokenizers runtimes.
     Built for Apple Silicon Backends.
     """
+
     # MLX models on HF carry the "mlx" library tag; the catalog is built by
     # searching filter="mlx" (any author), so no hand-maintained mapping is needed.
     FORMAT_TAG = "mlx"
@@ -295,10 +296,14 @@ class MLX_Engine(BaseChatServerEngine):
         """Spawn `mlx_vlm.server` as an mp.Process. Returns the handle dict."""
         argv = [
             "mlx_vlm.server",
-            "--model", str(model_path),
-            "--host", "127.0.0.1",
-            "--port", str(port),
-            "--log-level", "INFO",
+            "--model",
+            str(model_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--log-level",
+            "INFO",
             # Thinking on by default for requests that don't set enable_thinking
             # (Erudi's runner never does). Without it, mlx-vlm 0.6.13 renders the
             # chat template with enable_thinking=False and a thinking model
@@ -377,7 +382,7 @@ class MLX_Engine(BaseChatServerEngine):
             return False
 
     # ======================= HARDWARE DETECTION & EVALUATION =======================
-    
+
     # Apple Silicon specifications database (official Apple specs)
     _APPLE_SILICON_SPECS = {
         "M1": {
@@ -497,12 +502,12 @@ class MLX_Engine(BaseChatServerEngine):
     @classmethod
     def _detect_apple_silicon_chip(cls) -> Optional[str]:
         """Detect specific Apple Silicon chip model (M1, M2, M3, M4, etc.).
-        
+
         Uses system_profiler command to identify the exact chip variant.
-        
+
         Returns:
             Optional[str]: Chip model (e.g., "M3 Max") or None if not detected.
-            
+
         Note:
             Internal method. Called by get_hardware_info().
         """
@@ -511,22 +516,23 @@ class MLX_Engine(BaseChatServerEngine):
                 ["system_profiler", "SPHardwareDataType", "-json"],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
-            
+
             if result.returncode == 0:
                 import json
+
                 data = json.loads(result.stdout)
                 hardware_data = data.get("SPHardwareDataType", [{}])[0]
                 chip_name = hardware_data.get("chip_type", "")
-                
+
                 if chip_name:
                     for model_key in cls._APPLE_SILICON_SPECS.keys():
                         if model_key.replace(" ", "").lower() in chip_name.replace(" ", "").lower():
                             return model_key
-            
+
             return None
-            
+
         except Exception as e:
             logging.warning(f"Failed to detect Apple Silicon chip: {e}")
             return None
@@ -534,7 +540,7 @@ class MLX_Engine(BaseChatServerEngine):
     @classmethod
     def _mps_available(cls) -> bool:
         """Check if Metal Performance Shaders (MPS) is available.
-        
+
         Returns:
             bool: True if MPS backend is available in PyTorch.
         """
@@ -552,10 +558,10 @@ class MLX_Engine(BaseChatServerEngine):
     @classmethod
     def get_hardware_info(cls) -> Dict[str, Any]:
         """Get comprehensive hardware information for Apple Silicon.
-        
+
         Returns detailed hardware specifications including Apple chip model,
         unified memory, MPS availability, and Neural Engine specs.
-        
+
         Returns:
             Dict containing hardware specifications following BaseEngine contract:
             {
@@ -568,20 +574,19 @@ class MLX_Engine(BaseChatServerEngine):
                 "backend_type": "mlx",
                 "timestamp": float
             }
-            
+
         Raises:
             HardwareException: If critical hardware detection fails.
-            
+
         Note:
             Returns fallback values on non-critical failures rather than raising.
-            
+
         Examples:
             >>> hw_info = MLX_Engine.get_hardware_info()
             >>> print(f"Chip: {hw_info['cpu']['model']}")
             >>> print(f"GPU Cores: {hw_info['gpu']['mlx_gpu_cores']}")
         """
         try:
-            
             # Import required modules for hardware detection
             try:
                 import psutil
@@ -591,25 +596,25 @@ class MLX_Engine(BaseChatServerEngine):
 
             # Detect chip model
             chip_model = cls._detect_apple_silicon_chip()
-            
+
             # Get unified memory info
             vm = psutil.virtual_memory()
             total_memory_gb = vm.total / (1024**3)
             available_memory_gb = vm.available / (1024**3)
             memory_pressure = 1.0 - (vm.available / vm.total)
-            
+
             # Get storage info
             disk = psutil.disk_usage(os.path.abspath(os.sep))
             disk_total_gb = disk.total / (1024**3)
             disk_available_gb = disk.free / (1024**3)
             disk_usage_pct = disk.percent
-            
+
             # Get CPU info
             cpu_info_data = cpuinfo.get_cpu_info()
             cpu_model = cpu_info_data.get("brand_raw", "Apple Silicon CPU")
             total_cores = psutil.cpu_count(logical=False)
             logical_cores = psutil.cpu_count(logical=True)
-            
+
             # Get chip specifications
             specs = cls._APPLE_SILICON_SPECS.get(chip_model, {}) if chip_model else {}
             gpu_cores = specs.get("gpu_cores", 0)
@@ -618,20 +623,20 @@ class MLX_Engine(BaseChatServerEngine):
             architecture = specs.get("architecture", "Unknown")
             max_memory = specs.get("max_memory", 0)
             cpu_cores_breakdown = specs.get("cpu_cores", {})
-            
+
             # Estimate TFLOPS (Apple doesn't publish official values)
             estimated_tflops = gpu_cores * 0.35 if gpu_cores else 0.0
-            
+
             # Check MPS availability
             mps_supported = cls._mps_available()
-            
+
             # Build hardware info dictionary
             hardware_info = {
                 "system": {
                     "platform": platform.system(),
                     "platform_version": platform.version(),
                     "machine": platform.machine(),
-                    "processor": platform.processor()
+                    "processor": platform.processor(),
                 },
                 "cpu": {
                     "model": cpu_model,
@@ -646,7 +651,7 @@ class MLX_Engine(BaseChatServerEngine):
                     "total_memory_gb": round(total_memory_gb, 2),
                     "available_memory_gb": round(available_memory_gb, 2),
                     "memory_pressure": round(memory_pressure, 3),
-                    "memory_type": "unified"
+                    "memory_type": "unified",
                 },
                 "gpu": {
                     "gpu_name": f"Apple {chip_model} GPU" if chip_model else "Apple GPU",
@@ -663,39 +668,38 @@ class MLX_Engine(BaseChatServerEngine):
                 "storage": {
                     "total_gb": round(disk_total_gb, 2),
                     "available_gb": round(disk_available_gb, 2),
-                    "usage_percentage": round(disk_usage_pct, 2)
+                    "usage_percentage": round(disk_usage_pct, 2),
                 },
                 "backend_type": "mlx",
                 "mlx_chip_model": chip_model,
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
-            
-            logging.info(f"MLX hardware detected: {chip_model}, {gpu_cores} GPU cores, {total_memory_gb:.1f}GB unified memory")
+
+            logging.info(
+                f"MLX hardware detected: {chip_model}, {gpu_cores} GPU cores, {total_memory_gb:.1f}GB unified memory"
+            )
             return hardware_info
-            
+
         except Exception as e:
             logging.exception(f"MLX hardware detection failed: {e}")
-            raise HardwareException(
-                "Failed to detect Apple Silicon hardware",
-                trace=str(e)
-            )
+            raise HardwareException("Failed to detect Apple Silicon hardware", trace=str(e))
 
     @classmethod
     def warm_up_accelerator(cls, duration_seconds: float = 1.0) -> bool:
         """Warm up Apple Silicon GPU using Metal Performance Shaders.
-        
+
         Runs matrix operations on MPS device to bring GPU to optimal performance
         state before benchmarking or inference.
-        
+
         Args:
             duration_seconds: How long to run warm-up operations (default: 1.0).
-            
+
         Returns:
             bool: True if warm-up completed successfully, False otherwise.
-            
+
         Note:
             Particularly important for Apple Silicon due to dynamic clock management.
-            
+
         Examples:
             >>> success = MLX_Engine.warm_up_accelerator(1.5)
             >>> if success:
@@ -704,35 +708,33 @@ class MLX_Engine(BaseChatServerEngine):
         if not cls._mps_available():
             logging.warning("MPS not available, skipping GPU warm-up")
             return False
-        
+
         try:
-            
             # Import required modules for hardware detection
             try:
                 import torch
             except ImportError as e:
                 logging.warning(f"Optional hardware detection dependency missing: {e}")
-                
 
             logging.info(f"Warming up MPS device for {duration_seconds}s...")
             start_time = time.time()
-            
+
             # Create tensors on MPS device
             device = torch.device("mps")
             size = 4096
-            
+
             while (time.time() - start_time) < duration_seconds:
                 # Matrix multiplication on GPU
                 a = torch.randn(size, size, device=device)
                 b = torch.randn(size, size, device=device)
                 c = torch.matmul(a, b)
-                
+
                 # Small sleep to prevent CPU overload
                 time.sleep(0.05)
-            
+
             logging.info("MPS warm-up completed successfully")
             return True
-            
+
         except Exception as e:
             logging.exception(f"MPS warm-up failed: {e}")
             return False
@@ -740,7 +742,7 @@ class MLX_Engine(BaseChatServerEngine):
     @classmethod
     def get_performance_evaluation(cls) -> Dict[str, Any]:
         """Calculate comprehensive performance metrics for Apple Silicon.
-        
+
         Evaluates hardware capabilities and returns performance scores for
         inference workloads. Scoring optimized for Apple Silicon unified memory
         architecture.
@@ -776,10 +778,10 @@ class MLX_Engine(BaseChatServerEngine):
                 "mlx_chip_model": str,
                 "performance_breakdown": dict
             }
-            
+
         Raises:
             HardwareException: If evaluation fails critically.
-            
+
         Examples:
             >>> eval_result = MLX_Engine.get_performance_evaluation()
             >>> print(f"Inference: {eval_result['global_inference_score']}/100")
@@ -788,7 +790,7 @@ class MLX_Engine(BaseChatServerEngine):
         try:
             # Get base hardware info
             hw_info = cls.get_hardware_info()
-            
+
             # Extract key metrics
             chip_model = hw_info.get("mlx_chip_model")
             gpu_cores = hw_info["gpu"]["mlx_gpu_cores"]
@@ -799,42 +801,49 @@ class MLX_Engine(BaseChatServerEngine):
             available_memory_gb = hw_info["memory"]["available_memory_gb"]
             total_cores = hw_info["cpu"]["total_cores"]
             perf_cores = hw_info["cpu"].get("performance_cores", 4)
-            
+
             # Calculate component scores (0-100 scale)
-            
+
             # GPU/Accelerator score based on TFLOPS and GPU cores
             gpu_score = min(100, (estimated_tflops / 20.0) * 100)  # Normalize to 20 TFLOPS
-            
+
             # Memory bandwidth score
-            mem_bandwidth_score = min(100, (memory_bandwidth / 400.0) * 100)  # Normalize to 400 GB/s
-            
+            mem_bandwidth_score = min(
+                100, (memory_bandwidth / 400.0) * 100
+            )  # Normalize to 400 GB/s
+
             # Memory capacity score
             memory_capacity_score = min(100, (total_memory_gb / 64.0) * 100)  # Normalize to 64GB
-            
+
             # Neural Engine score
             neural_score = min(100, (neural_engine_tops / 20.0) * 100)  # Normalize to 20 TOPS
-            
+
             # CPU score based on performance cores
             cpu_performance_units = perf_cores * 2.5  # Weight performance cores higher
             cpu_score = min(100, (cpu_performance_units / 20.0) * 100)  # Normalize to 20 units
-            
+
             # Calculate weighted inference score
             inference_score = (
-                gpu_score * 0.35 +
-                mem_bandwidth_score * 0.30 +
-                memory_capacity_score * 0.20 +
-                neural_score * 0.10 +
-                cpu_score * 0.05
+                gpu_score * 0.35
+                + mem_bandwidth_score * 0.30
+                + memory_capacity_score * 0.20
+                + neural_score * 0.10
+                + cpu_score * 0.05
             )
-            
+
             # Generate labels based on scores
             def get_label(score: float) -> str:
-                if score >= 80: return "Excellent"
-                elif score >= 60: return "Good"
-                elif score >= 40: return "Fair"
-                elif score >= 20: return "Poor"
-                else: return "Weak"
-            
+                if score >= 80:
+                    return "Excellent"
+                elif score >= 60:
+                    return "Good"
+                elif score >= 40:
+                    return "Fair"
+                elif score >= 20:
+                    return "Poor"
+                else:
+                    return "Weak"
+
             inference_label = get_label(inference_score)
 
             # Build performance breakdown
@@ -849,73 +858,65 @@ class MLX_Engine(BaseChatServerEngine):
                     "memory_bandwidth": 0.30,
                     "memory_capacity": 0.20,
                     "neural_engine": 0.10,
-                    "cpu": 0.05
-                }
+                    "cpu": 0.05,
+                },
             }
-            
+
             # Build complete evaluation result
             eval_result = {
                 # Hardware identification
                 "backend_type": "mlx",
                 "gpu_name": hw_info["gpu"]["gpu_name"],
                 "cpu_model": hw_info["cpu"]["model"],
-                
                 # Memory metrics
                 "total_memory_gb": total_memory_gb,
                 "available_memory_gb": available_memory_gb,
                 "memory_bandwidth_gbs": memory_bandwidth,
-                
                 # Storage metrics
                 "disk_total_gb": hw_info["storage"]["total_gb"],
                 "disk_available_gb": hw_info["storage"]["available_gb"],
-                
                 # Compute metrics
                 "estimated_tflops": estimated_tflops,
                 "mlx_gpu_cores": gpu_cores,
                 "cpu_performance_units": cpu_performance_units,
-                
                 # Apple Silicon specific
                 "neural_engine_tops": neural_engine_tops,
                 "architecture": hw_info["accelerator"]["architecture"],
                 "mlx_chip_model": chip_model,
-                
                 # Performance scores (0-100)
                 "global_inference_score": round(inference_score, 2),
                 "global_inference_label": inference_label,
                 "gpu_score": round(gpu_score, 2),
                 "cpu_score": round(cpu_score, 2),
                 "memory_score": round(memory_capacity_score, 2),
-                
                 # Technical details
                 "unified_memory": True,
                 "mps_available": hw_info["gpu"]["mps_supported"],
                 "system_platform": hw_info["system"]["platform"],
-                
                 # Performance breakdown
-                "performance_breakdown": performance_breakdown
+                "performance_breakdown": performance_breakdown,
             }
-            
-            logging.info(f"Performance evaluation: Inference={inference_score:.1f}/100 ({inference_label})")
+
+            logging.info(
+                f"Performance evaluation: Inference={inference_score:.1f}/100 ({inference_label})"
+            )
             return eval_result
-            
+
         except Exception as e:
             logging.exception(f"Performance evaluation failed: {e}")
-            raise HardwareException(
-                "Failed to evaluate Apple Silicon performance",
-                trace=str(e)
-            )
+            raise HardwareException("Failed to evaluate Apple Silicon performance", trace=str(e))
 
     @classmethod
     def get_flat_hardware_data(cls) -> Dict[str, Any]:
         """Get hardware data in flat format compatible with HardwareProfile entity.
-        
+
         Returns hardware specifications as a flat dictionary ready for database
         insertion. For MLX backend, get_performance_evaluation() already returns
         data in the correct flat format.
-        
+
         Returns:
             Flat dict with all fields matching HardwareProfile columns.
-            
+
         Raises:
             HardwareException: If hardware data collection fails.
         """

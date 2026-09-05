@@ -79,8 +79,18 @@ jobs:
       - name: Syntax check
         run: backend/venv/${{ matrix.venv_bin }}/python -m compileall backend/src -q
 
+      # `backend scripts` is every Python file in the repository, and it is
+      # also exactly what the pre-commit hooks touch. Anything narrower lets
+      # a hook autofix a file that no gate ever looks at.
       - name: Lint (ruff)
-        run: backend/venv/${{ matrix.venv_bin }}/python -m ruff check backend/src
+        run: backend/venv/${{ matrix.venv_bin }}/python -m ruff check backend scripts
+
+      # `ruff format` is the project's only formatter. Checking it here is what
+      # stops the tree drifting away from it again. Width and exclusions come
+      # from the ruff.toml nearest each file, so there are no flags to keep in
+      # sync with the hooks.
+      - name: Format check (ruff format)
+        run: backend/venv/${{ matrix.venv_bin }}/python -m ruff format --check backend scripts
 
       - name: Import check
         run: |

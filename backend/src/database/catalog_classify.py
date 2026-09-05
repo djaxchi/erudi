@@ -32,8 +32,14 @@ CAT_FUNCTION = "function"
 CAT_SAFETY = "safety"
 
 ALL_CATEGORIES = (
-    CAT_GENERAL, CAT_CODE, CAT_REASONING, CAT_MATH,
-    CAT_VISION, CAT_MEDICAL, CAT_FUNCTION, CAT_SAFETY,
+    CAT_GENERAL,
+    CAT_CODE,
+    CAT_REASONING,
+    CAT_MATH,
+    CAT_VISION,
+    CAT_MEDICAL,
+    CAT_FUNCTION,
+    CAT_SAFETY,
 )
 
 # Multimodal pipeline tags whose primary input/output is not plain text.
@@ -54,11 +60,24 @@ INSTRUCT_MARKERS = frozenset({"it", "instruct", "instruction", "chat", "sft", "r
 # boundary would leak ~60 of them. Tokens are chosen not to collide with real
 # chat slugs; the single observed false positive in 604 repos ('Bug-Whisperer'
 # via 'whisper') is an acceptable rounding error.
-NONCHAT_FAMILIES = frozenset({
-    "docling", "vibevoice", "whisper", "clip", "reformer", "rerank",
-    "siglip", "t5gemma", "biogpt", "dialogpt", "embed", "diffusion",
-    "ocr", "florence",
-})
+NONCHAT_FAMILIES = frozenset(
+    {
+        "docling",
+        "vibevoice",
+        "whisper",
+        "clip",
+        "reformer",
+        "rerank",
+        "siglip",
+        "t5gemma",
+        "biogpt",
+        "dialogpt",
+        "embed",
+        "diffusion",
+        "ocr",
+        "florence",
+    }
+)
 
 # HF pipeline tags whose primary task is not text/chat. Used as a denylist on the
 # community-search path, which (unlike org discovery) is not constrained to a
@@ -68,17 +87,38 @@ NONCHAT_FAMILIES = frozenset({
 # (text-generation, image-text-to-text, any-to-any, visual-question-answering)
 # and None are intentionally NOT here. 'image-to-text' (OCR/caption) IS non-chat;
 # 'image-text-to-text' (VLM chat, #122) is not — mind the extra '-text-'.
-NONCHAT_PIPELINES = frozenset({
-    "automatic-speech-recognition", "audio-to-audio", "audio-classification",
-    "audio-text-to-text", "voice-activity-detection", "text-to-speech",
-    "text-to-audio", "text-to-image", "text-to-video", "image-to-video",
-    "video-to-video", "image-to-image", "image-to-text", "image-classification",
-    "object-detection", "image-segmentation", "depth-estimation",
-    "feature-extraction", "sentence-similarity", "text-ranking",
-    "fill-mask", "token-classification", "text-classification",
-    "zero-shot-classification", "zero-shot-image-classification",
-    "text-to-3d", "image-to-3d", "unconditional-image-generation",
-})
+NONCHAT_PIPELINES = frozenset(
+    {
+        "automatic-speech-recognition",
+        "audio-to-audio",
+        "audio-classification",
+        "audio-text-to-text",
+        "voice-activity-detection",
+        "text-to-speech",
+        "text-to-audio",
+        "text-to-image",
+        "text-to-video",
+        "image-to-video",
+        "video-to-video",
+        "image-to-image",
+        "image-to-text",
+        "image-classification",
+        "object-detection",
+        "image-segmentation",
+        "depth-estimation",
+        "feature-extraction",
+        "sentence-similarity",
+        "text-ranking",
+        "fill-mask",
+        "token-classification",
+        "text-classification",
+        "zero-shot-classification",
+        "zero-shot-image-classification",
+        "text-to-3d",
+        "image-to-3d",
+        "unconditional-image-generation",
+    }
+)
 
 _REL_RE = re.compile(r"^base_model:(quantized|finetune|merge|adapter):(.+)$")
 
@@ -160,7 +200,7 @@ def _has_word(name_low: str, *words: str) -> bool:
     """Token-boundary membership test — avoids 'medium' matching 'med' (#122)."""
     toks = set(re.split(r"[-_.\s]", name_low))
     for w in words:
-        if w.startswith("-"):          # explicit substring probe (callers pass '-vl')
+        if w.startswith("-"):  # explicit substring probe (callers pass '-vl')
             if w[1:] in name_low:
                 return True
         elif w in toks:
@@ -168,8 +208,9 @@ def _has_word(name_low: str, *words: str) -> bool:
     return False
 
 
-def categorize(name: str, tags: Optional[List[str]] = None,
-               pipeline_tag: Optional[str] = None) -> str:
+def categorize(
+    name: str, tags: Optional[List[str]] = None, pipeline_tag: Optional[str] = None
+) -> str:
     """Assign a capability category from the slug, card tags, and pipeline tag.
 
     Order matters: more specific buckets are tested first so e.g. ``medgemma``
@@ -178,7 +219,9 @@ def categorize(name: str, tags: Optional[List[str]] = None,
     low = name.lower()
     tagblob = " ".join(tags or []).lower()
 
-    if pipeline_tag in VISION_PIPELINES or _has_word(low, "vl", "-vl", "vision", "multimodal", "omni"):
+    if pipeline_tag in VISION_PIPELINES or _has_word(
+        low, "vl", "-vl", "vision", "multimodal", "omni"
+    ):
         return CAT_VISION
     if _has_word(low, "guard", "safeguard", "guardian", "moderation", "shield", "shieldgemma"):
         return CAT_SAFETY
@@ -188,8 +231,11 @@ def categorize(name: str, tags: Optional[List[str]] = None,
         return CAT_CODE
     if _has_word(low, "math", "prover", "theorem", "mathstral"):
         return CAT_MATH
-    if (_has_word(low, "reasoning", "think", "thinking", "qwq", "openreasoning", "acereason")
-            or "-r1" in low or "reasoning" in tagblob):
+    if (
+        _has_word(low, "reasoning", "think", "thinking", "qwq", "openreasoning", "acereason")
+        or "-r1" in low
+        or "reasoning" in tagblob
+    ):
         return CAT_REASONING
     if _has_word(low, "function", "functiongemma", "-tool", "toolcall"):
         return CAT_FUNCTION

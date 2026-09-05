@@ -8,6 +8,7 @@ and would otherwise let a gated community quant through. The fake hits go throug
 the REAL ``ModelInfo`` so the ``gated`` attribute is read the way the Hub
 serializes it (no network).
 """
+
 from types import SimpleNamespace
 
 import pytest
@@ -43,15 +44,14 @@ def test_community_search_requests_the_gated_flag(engine):
 def test_build_derived_models_skips_gated_hits(monkeypatch, gated):
     monkeypatch.setattr(seed_mod.config, "LLM_Engine", CPU_Engine)
     hits = [
-        _hit("google/gemma-1.1-2b-it-GGUF", gated),          # official, gated
-        _hit("bartowski/gemma-1.1-2b-it-GGUF", False),        # same key, public
+        _hit("google/gemma-1.1-2b-it-GGUF", gated),  # official, gated
+        _hit("bartowski/gemma-1.1-2b-it-GGUF", False),  # same key, public
         _hit("bartowski/Qwen3-8B-GGUF", False),
     ]
     seeder = Model_Seeder(db=None, hf_api=SimpleNamespace(list_models=lambda **kw: list(hits)))
 
     rows = seeder.build_derived_models(
-        [seed_mod.Search_Config(search_term="", model_type="community",
-                                default_param_size=7.0)]
+        [seed_mod.Search_Config(search_term="", model_type="community", default_param_size=7.0)]
     )
 
     # The gated repo is dropped BEFORE the normalized-key dedup, so its public
@@ -65,8 +65,7 @@ def test_build_derived_models_keeps_public_hits(monkeypatch):
     seeder = Model_Seeder(db=None, hf_api=SimpleNamespace(list_models=lambda **kw: list(hits)))
 
     rows = seeder.build_derived_models(
-        [seed_mod.Search_Config(search_term="", model_type="community",
-                                default_param_size=7.0)]
+        [seed_mod.Search_Config(search_term="", model_type="community", default_param_size=7.0)]
     )
 
     assert [r.link for r in rows] == ["bartowski/Qwen3-8B-GGUF"]

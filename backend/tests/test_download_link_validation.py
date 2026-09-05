@@ -9,6 +9,7 @@ full and then left unloadable on disk.
 
 All HuggingFace API calls are mocked; no network access occurs.
 """
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -201,13 +202,9 @@ class TestDownloadLlmRefusesBeforeTransfer:
         assert fs.requested == []
         assert not any((tmp_path / "temp_1").iterdir())
 
-    async def test_gguf_engine_gguf_repo_still_downloads(
-        self, monkeypatch, tmp_path, instant_eta
-    ):
+    async def test_gguf_engine_gguf_repo_still_downloads(self, monkeypatch, tmp_path, instant_eta):
         monkeypatch.setattr(config, "LLM_Engine", Fake_GGUF_Engine)
-        api = _fake_api(
-            ["config.json", "model-Q4_K_M.gguf"], tags=["gguf"], library_name=None
-        )
+        api = _fake_api(["config.json", "model-Q4_K_M.gguf"], tags=["gguf"], library_name=None)
         fs = _RecordingFs()
         monkeypatch.setattr(llm_services, "HfApi", lambda token=None: api)
         monkeypatch.setattr(llm_services, "HfFileSystem", lambda token=None: fs)
@@ -217,13 +214,9 @@ class TestDownloadLlmRefusesBeforeTransfer:
         assert "org/model-GGUF/model-Q4_K_M.gguf" in fs.requested
         assert (tmp_path / "1" / "model-Q4_K_M.gguf").exists()
 
-    async def test_mlx_engine_mlx_repo_still_downloads(
-        self, monkeypatch, tmp_path, instant_eta
-    ):
+    async def test_mlx_engine_mlx_repo_still_downloads(self, monkeypatch, tmp_path, instant_eta):
         monkeypatch.setattr(config, "LLM_Engine", Fake_MLX_Engine)
-        api = _fake_api(
-            ["config.json", "model.safetensors"], tags=["mlx"], library_name="mlx"
-        )
+        api = _fake_api(["config.json", "model.safetensors"], tags=["mlx"], library_name="mlx")
         fs = _RecordingFs()
         monkeypatch.setattr(llm_services, "HfApi", lambda token=None: api)
         monkeypatch.setattr(llm_services, "HfFileSystem", lambda token=None: fs)

@@ -4,6 +4,7 @@ Complements `test_hardware.py` (pure service logic with mocked repository) by
 exercising `Hardware_Repository` against the real test database and the three
 REST endpoints through the FastAPI test client, including their error paths.
 """
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -64,9 +65,9 @@ class _FakeCpuEngineType:
 # INTEGRATION - Hardware_Repository against the real database
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestHardwareRepository:
-
     def test_get_profile_returns_none_when_empty(self, test_db_session):
         repo = Hardware_Repository(test_db_session)
         assert repo.get_profile() is None
@@ -112,9 +113,7 @@ class TestHardwareRepository:
         repo.delete_profile(profile)
         assert repo.get_profile() is None
 
-    def test_create_profile_invalid_column_raises_database_exception(
-        self, test_db_session
-    ):
+    def test_create_profile_invalid_column_raises_database_exception(self, test_db_session):
         repo = Hardware_Repository(test_db_session)
         with pytest.raises(DatabaseException):
             repo.create_profile({"no_such_column": 1})
@@ -132,18 +131,14 @@ class TestHardwareRepository:
     def test_update_profile_wraps_flush_failure(self, test_db_session):
         repo = Hardware_Repository(test_db_session)
         profile = repo.create_profile(_profile_data())
-        with patch.object(
-            test_db_session, "flush", side_effect=RuntimeError("disk full")
-        ):
+        with patch.object(test_db_session, "flush", side_effect=RuntimeError("disk full")):
             with pytest.raises(DatabaseException):
                 repo.update_profile(profile, {"cpu_model": "X"})
 
     def test_delete_profile_wraps_failure(self, test_db_session):
         repo = Hardware_Repository(test_db_session)
         profile = repo.create_profile(_profile_data())
-        with patch.object(
-            test_db_session, "delete", side_effect=RuntimeError("locked")
-        ):
+        with patch.object(test_db_session, "delete", side_effect=RuntimeError("locked")):
             with pytest.raises(DatabaseException):
                 repo.delete_profile(profile)
 
@@ -152,9 +147,9 @@ class TestHardwareRepository:
 # INTEGRATION - Hardware_Service paths not reachable with a mocked repo
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestHardwareServicePaths:
-
     def test_detect_hardware_without_engine_raises(self):
         service = Hardware_Service(repository=None)
         with patch.object(config, "LLM_Engine", None):
@@ -184,13 +179,16 @@ class TestHardwareServicePaths:
             with pytest.raises(HardwareException):
                 service.warm_up(1)
 
-    @pytest.mark.parametrize("score,label", [
-        (85.0, "Excellent"),
-        (65.0, "Good"),
-        (45.0, "Fair"),
-        (25.0, "Poor"),
-        (5.0, "Weak"),
-    ])
+    @pytest.mark.parametrize(
+        "score,label",
+        [
+            (85.0, "Excellent"),
+            (65.0, "Good"),
+            (45.0, "Fair"),
+            (25.0, "Poor"),
+            (5.0, "Weak"),
+        ],
+    )
     def test_label_thresholds(self, score, label):
         service = Hardware_Service(repository=None)
         assert service._get_label(score) == label
@@ -230,9 +228,9 @@ class TestHardwareServicePaths:
 # INTEGRATION - REST endpoints through the test client
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestHardwareEndpoints:
-
     @pytest.fixture(autouse=True)
     def _fake_engine(self, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", _FakeCpuEngineType)

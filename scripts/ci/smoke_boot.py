@@ -15,6 +15,7 @@ Usage:
 Exit codes: 0 = booted (ready seen), 1 = startup_error / timeout / crash.
 Env: SMOKE_TIMEOUT (seconds, default 240).
 """
+
 import json
 import os
 import subprocess

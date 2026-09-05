@@ -28,13 +28,20 @@ def _fake_child(script: str) -> subprocess.Popen:
 
 
 class TestSpawnAttachesADrainer:
-
     def test_spawn_child_attaches_a_drainer_to_the_popen(self, tmp_path, monkeypatch):
         """The pipe must be drained from the moment the child exists."""
         model = tmp_path / "model.gguf"
         model.write_bytes(b"")
-        monkeypatch.setattr(CPU_Engine, "_find_llama_server", classmethod(lambda cls, d=None: tmp_path / "llama-server"))
-        monkeypatch.setattr(CPU_Engine, "_build_spawn_argv", classmethod(lambda cls, **kw: [sys.executable, "-c", "import time;time.sleep(30)"]))
+        monkeypatch.setattr(
+            CPU_Engine,
+            "_find_llama_server",
+            classmethod(lambda cls, d=None: tmp_path / "llama-server"),
+        )
+        monkeypatch.setattr(
+            CPU_Engine,
+            "_build_spawn_argv",
+            classmethod(lambda cls, **kw: [sys.executable, "-c", "import time;time.sleep(30)"]),
+        )
 
         handle = CPU_Engine._spawn_child(model_path=model, alias="a", port=27200)
         proc = handle["proc"]
@@ -48,9 +55,10 @@ class TestSpawnAttachesADrainer:
 
 
 class TestReadChildOutput:
-
     def test_returns_the_drained_tail(self):
-        proc = _fake_child("import sys;sys.stdout.write('boom: out of memory\\n');sys.stdout.flush()")
+        proc = _fake_child(
+            "import sys;sys.stdout.write('boom: out of memory\\n');sys.stdout.flush()"
+        )
         try:
             drainer = ChildOutputDrainer(proc.stdout, name="test")
             CPU_Engine._attach_output_drainer(proc, drainer)
@@ -81,10 +89,11 @@ class TestReadChildOutput:
 
 
 class TestProbeReadyCrashMessage:
-
     def test_early_crash_message_carries_the_child_output(self, monkeypatch):
         """#361 + #360: the crash report must quote the child, not the logs."""
-        proc = _fake_child("import sys;sys.stdout.write('error loading model: bad magic\\n');sys.stdout.flush()")
+        proc = _fake_child(
+            "import sys;sys.stdout.write('error loading model: bad magic\\n');sys.stdout.flush()"
+        )
         drainer = ChildOutputDrainer(proc.stdout, name="test")
         CPU_Engine._attach_output_drainer(proc, drainer)
         proc.wait(timeout=30)

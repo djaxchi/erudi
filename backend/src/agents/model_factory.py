@@ -122,8 +122,8 @@ def build_chat_model(
         top_p=top_p,
         max_tokens=max_tokens,
         extra_body=extra_body,  # restore small-model coherence (repetition controls)
-        timeout=None,       # cold model load can stall several seconds before first token
-        max_retries=0,      # don't silently double-submit a slow local generation
+        timeout=None,  # cold model load can stall several seconds before first token
+        max_retries=0,  # don't silently double-submit a slow local generation
         streaming=True,
         stream_usage=False,  # local servers may not emit usage in SSE; summarization triggers on count
     )

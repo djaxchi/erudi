@@ -79,9 +79,7 @@ class E5Embeddings(Embeddings):
         )
         duration_ms = (time.perf_counter() - start_s) * 1000
         # One line per BATCH — never per text.
-        logger.info(
-            f"Embedded batch: {len(texts)} texts in {duration_ms:.0f}ms"
-        )
+        logger.info(f"Embedded batch: {len(texts)} texts in {duration_ms:.0f}ms")
         return [vector.tolist() for vector in vectors]
 
     def embed_query(self, text: str) -> list[float]:

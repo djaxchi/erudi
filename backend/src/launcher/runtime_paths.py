@@ -38,7 +38,9 @@ class RuntimePaths:
 _RUNTIME_PATHS: Optional[RuntimePaths] = None
 
 
-def initialize_runtime_paths(mode: str, backend_root: Path, packaged_data_dir: Optional[Path] = None) -> RuntimePaths:
+def initialize_runtime_paths(
+    mode: str, backend_root: Path, packaged_data_dir: Optional[Path] = None
+) -> RuntimePaths:
     """Initialize runtime paths for the current process.
 
     Args:
@@ -58,7 +60,9 @@ def initialize_runtime_paths(mode: str, backend_root: Path, packaged_data_dir: O
     if _RUNTIME_PATHS is not None:
         raise ValueError("Runtime paths already initialized")
 
-    runtime_paths = _compute_runtime_paths(mode=mode, backend_root=backend_root, packaged_data_dir=packaged_data_dir)
+    runtime_paths = _compute_runtime_paths(
+        mode=mode, backend_root=backend_root, packaged_data_dir=packaged_data_dir
+    )
     _RUNTIME_PATHS = runtime_paths
     return runtime_paths
 
@@ -77,7 +81,9 @@ def ensure_runtime_paths_initialized(backend_root: Optional[Path] = None) -> Run
     if _RUNTIME_PATHS is None:
         root = backend_root or Path(__file__).resolve().parents[2]
         packaged_data = root / "data"
-        _RUNTIME_PATHS = _compute_runtime_paths(mode="dev", backend_root=root, packaged_data_dir=packaged_data)
+        _RUNTIME_PATHS = _compute_runtime_paths(
+            mode="dev", backend_root=root, packaged_data_dir=packaged_data
+        )
     return _RUNTIME_PATHS
 
 
@@ -95,7 +101,9 @@ def get_runtime_paths() -> RuntimePaths:
     return _RUNTIME_PATHS
 
 
-def _compute_runtime_paths(mode: str, backend_root: Path, packaged_data_dir: Optional[Path]) -> RuntimePaths:
+def _compute_runtime_paths(
+    mode: str, backend_root: Path, packaged_data_dir: Optional[Path]
+) -> RuntimePaths:
     """Resolve runtime paths based on mode and platform."""
     normalized_mode = mode.lower()
     if normalized_mode not in {"dev", "prod"}:
@@ -125,7 +133,9 @@ def _compute_runtime_paths(mode: str, backend_root: Path, packaged_data_dir: Opt
     else:
         data_dir, log_dir = _setup_prod_paths(packaged_data_dir)
 
-    return RuntimePaths(mode=normalized_mode, backend_root=backend_root, data_dir=data_dir, log_dir=log_dir)
+    return RuntimePaths(
+        mode=normalized_mode, backend_root=backend_root, data_dir=data_dir, log_dir=log_dir
+    )
 
 
 def _data_root_override() -> Optional[Path]:
@@ -226,5 +236,3 @@ def _ensure_macos_symlink(packaged_path: Path, target_path: Path) -> None:
         packaged_path.unlink()
 
     os.symlink(target_resolved, packaged_path)
-
-

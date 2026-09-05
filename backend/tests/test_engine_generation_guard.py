@@ -35,6 +35,7 @@ def _reset():
 
 # ───────────────────────── generation_guard ─────────────────────────
 
+
 async def test_guard_refreshes_idle_clock_on_exit():
     # A model idle long enough to be reaped right now.
     _GuardEngine._model = object()
@@ -88,6 +89,7 @@ async def test_guard_serializes_concurrent_generations():
 
 
 # ─────────────────────── idle cleanup (_cleanup_tick) ───────────────────────
+
 
 async def test_idle_tick_reaps_when_idle():
     """The idle tick reaps an idle model — and crucially does NOT deadlock.

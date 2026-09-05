@@ -4,6 +4,7 @@ An offline model download must surface the friendly ``OFFLINE_DOWNLOAD_MESSAGE``
 instead of the raw hf_hub "Cannot reach https://..." string, mirroring the e5
 embedding-download offline path.
 """
+
 import pytest
 import requests
 
@@ -22,9 +23,7 @@ class TestOfflineDownloadErrorMapping:
         assert _is_offline_download_error(exc) is True
 
     def test_hf_cannot_reach_message_is_offline(self):
-        exc = Exception(
-            "Cannot reach https://huggingface.co: (ConnectionError) network down"
-        )
+        exc = Exception("Cannot reach https://huggingface.co: (ConnectionError) network down")
         assert _is_offline_download_error(exc) is True
 
     def test_chained_connection_error_is_offline(self):

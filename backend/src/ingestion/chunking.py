@@ -254,7 +254,6 @@ def chunk_document(
         )
     else:
         logger.debug(
-            f"Document chunked: 0 chunks "
-            f"(extractor={document.metadata.get('extractor', '?')})"
+            f"Document chunked: 0 chunks " f"(extractor={document.metadata.get('extractor', '?')})"
         )
     return chunks

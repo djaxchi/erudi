@@ -8,9 +8,9 @@ body, `cleanup_job_files`, the offline-error classifier (#109), and the
 fully mocked `download_llm` pipeline including its auth/offline error
 mapping.
 """
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -59,9 +59,9 @@ def _add_job(db, llm_id, status="running", **overrides):
 # UNIT - integrity gate (#88)
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestArtifactIntegrityGate:
-
     def test_engine_without_validator_is_noop(self, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", SimpleNamespace())
         llm_endpoints._assert_downloaded_artifact_ok("/final", "/temp")
@@ -104,18 +104,16 @@ class TestArtifactIntegrityGate:
 
         monkeypatch.setattr(llm_endpoints.os.path, "exists", exists_boom)
         with pytest.raises(ValueError, match="bad artifact"):
-            llm_endpoints._assert_downloaded_artifact_ok(
-                tmp_path / "final", tmp_path / "temp"
-            )
+            llm_endpoints._assert_downloaded_artifact_ok(tmp_path / "final", tmp_path / "temp")
 
 
 # =====================================================================
 # UNIT - background download task failure finalization
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestRunDownloadTaskFailure:
-
     def test_failed_download_marks_job_failed(self, monkeypatch):
         job = SimpleNamespace(status="pending", error_message=None, updated_at=None)
         session = MagicMock()
@@ -138,9 +136,9 @@ class TestRunDownloadTaskFailure:
 # INTEGRATION - endpoints: search proxy, dependents, update, delete
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestEndpointGaps:
-
     def test_hf_search_route_proxies_results(self, client, monkeypatch):
         monkeypatch.setattr(llm_endpoints, "search_huggingface", lambda q, limit=30: [])
         resp = client.get("/erudi/llms/search/huggingface", params={"q": "gemma"})
@@ -169,38 +167,26 @@ class TestEndpointGaps:
         assert [a["id"] for a in body["assistants"]] == [assistant.id]
 
     def test_update_unknown_model_404(self, client):
-        resp = client.put(
-            "/erudi/llms/987654", json={"name": "X", "local": 0, "link": "y"}
-        )
+        resp = client.put("/erudi/llms/987654", json={"name": "X", "local": 0, "link": "y"})
         assert resp.status_code == 404
 
     def test_update_failure_maps_to_database_exception(self, client, test_db_session):
         llm = _add_llm(test_db_session, local=0)
         test_db_session.commit()
-        with patch.object(
-            Llm_Repository, "update", side_effect=RuntimeError("constraint")
-        ):
-            resp = client.put(
-                f"/erudi/llms/{llm.id}", json={"name": "X", "local": 0, "link": "y"}
-            )
+        with patch.object(Llm_Repository, "update", side_effect=RuntimeError("constraint")):
+            resp = client.put(f"/erudi/llms/{llm.id}", json={"name": "X", "local": 0, "link": "y"})
         assert resp.status_code == 500
 
-    def test_delete_base_with_dependents_conflicts_without_optin(
-        self, client, test_db_session
-    ):
+    def test_delete_base_with_dependents_conflicts_without_optin(self, client, test_db_session):
         base = _add_llm(test_db_session, name="Base", link="/models/base")
-        _add_llm(
-            test_db_session, name="Helper", link="/models/base", is_attached_to_kb=True
-        )
+        _add_llm(test_db_session, name="Helper", link="/models/base", is_attached_to_kb=True)
         test_db_session.commit()
         resp = client.delete(f"/erudi/llms/{base.id}")
         assert resp.status_code == 409
         # The base survives the guarded refusal
         assert client.get(f"/erudi/llms/{base.id}").status_code == 200
 
-    def test_delete_base_with_dependents_proceeds_with_optin(
-        self, client, test_db_session
-    ):
+    def test_delete_base_with_dependents_proceeds_with_optin(self, client, test_db_session):
         base = _add_llm(test_db_session, name="Base", link="/models/base-nonexistent")
         helper = _add_llm(
             test_db_session,
@@ -209,19 +195,13 @@ class TestEndpointGaps:
             is_attached_to_kb=True,
         )
         test_db_session.commit()
-        resp = client.delete(
-            f"/erudi/llms/{base.id}", params={"orphan_dependents": "true"}
-        )
+        resp = client.delete(f"/erudi/llms/{base.id}", params={"orphan_dependents": "true"})
         assert resp.status_code == 200
         # The assistant remains (now orphaned, rebindable)
         assert client.get(f"/erudi/llms/{helper.id}").status_code == 200
 
-    def test_delete_inconsistent_assistant_without_kb_drops_row(
-        self, client, test_db_session
-    ):
-        ghost = _add_llm(
-            test_db_session, name="Ghost", is_attached_to_kb=True, kb_id=None
-        )
+    def test_delete_inconsistent_assistant_without_kb_drops_row(self, client, test_db_session):
+        ghost = _add_llm(test_db_session, name="Ghost", is_attached_to_kb=True, kb_id=None)
         test_db_session.commit()
         resp = client.delete(f"/erudi/llms/{ghost.id}")
         assert resp.status_code == 200
@@ -230,9 +210,7 @@ class TestEndpointGaps:
     def test_delete_failure_maps_to_database_exception(self, client, test_db_session):
         llm = _add_llm(test_db_session, link="/models/does-not-exist")
         test_db_session.commit()
-        with patch.object(
-            Llm_Repository, "delete", side_effect=RuntimeError("locked")
-        ):
+        with patch.object(Llm_Repository, "delete", side_effect=RuntimeError("locked")):
             resp = client.delete(f"/erudi/llms/{llm.id}")
         assert resp.status_code == 500
 
@@ -241,9 +219,9 @@ class TestEndpointGaps:
 # INTEGRATION - rebind guard rails (#209/#225)
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestRebind:
-
     def _assistant_and_base(self, db, tmp_path):
         weights = tmp_path / "weights"
         weights.mkdir()
@@ -251,7 +229,10 @@ class TestRebind:
         db.add(kb)
         db.flush()
         assistant = _add_llm(
-            db, name="Assistant", link="/models/gone", is_attached_to_kb=True,
+            db,
+            name="Assistant",
+            link="/models/gone",
+            is_attached_to_kb=True,
             kb_id=kb.id,
         )
         base = _add_llm(db, name="NewBase", link=str(weights))
@@ -270,35 +251,25 @@ class TestRebind:
         assert body["name"] == "Assistant"  # own identity preserved
 
     def test_rebind_unknown_assistant_404(self, client):
-        resp = client.post(
-            "/erudi/llms/987654/rebind", json={"new_base_llm_id": 1}
-        )
+        resp = client.post("/erudi/llms/987654/rebind", json={"new_base_llm_id": 1})
         assert resp.status_code == 404
 
     def test_rebind_non_assistant_conflicts(self, client, test_db_session):
         plain = _add_llm(test_db_session, name="Plain")
         test_db_session.commit()
-        resp = client.post(
-            f"/erudi/llms/{plain.id}/rebind", json={"new_base_llm_id": 1}
-        )
+        resp = client.post(f"/erudi/llms/{plain.id}/rebind", json={"new_base_llm_id": 1})
         assert resp.status_code == 409
 
     def test_rebind_unknown_target_404(self, client, test_db_session, tmp_path):
         assistant, _ = self._assistant_and_base(test_db_session, tmp_path)
-        resp = client.post(
-            f"/erudi/llms/{assistant.id}/rebind", json={"new_base_llm_id": 987654}
-        )
+        resp = client.post(f"/erudi/llms/{assistant.id}/rebind", json={"new_base_llm_id": 987654})
         assert resp.status_code == 404
 
     def test_rebind_onto_assistant_conflicts(self, client, test_db_session, tmp_path):
         assistant, _ = self._assistant_and_base(test_db_session, tmp_path)
-        other = _add_llm(
-            test_db_session, name="OtherAssistant", is_attached_to_kb=True
-        )
+        other = _add_llm(test_db_session, name="OtherAssistant", is_attached_to_kb=True)
         test_db_session.commit()
-        resp = client.post(
-            f"/erudi/llms/{assistant.id}/rebind", json={"new_base_llm_id": other.id}
-        )
+        resp = client.post(f"/erudi/llms/{assistant.id}/rebind", json={"new_base_llm_id": other.id})
         assert resp.status_code == 409
 
     def test_rebind_onto_undownloaded_conflicts(self, client, test_db_session, tmp_path):
@@ -312,9 +283,7 @@ class TestRebind:
 
     def test_rebind_onto_missing_weights_conflicts(self, client, test_db_session, tmp_path):
         assistant, _ = self._assistant_and_base(test_db_session, tmp_path)
-        no_weights = _add_llm(
-            test_db_session, name="NoWeights", link=str(tmp_path / "missing")
-        )
+        no_weights = _add_llm(test_db_session, name="NoWeights", link=str(tmp_path / "missing"))
         test_db_session.commit()
         resp = client.post(
             f"/erudi/llms/{assistant.id}/rebind",
@@ -322,13 +291,9 @@ class TestRebind:
         )
         assert resp.status_code == 409
 
-    def test_rebind_failure_maps_to_database_exception(
-        self, client, test_db_session, tmp_path
-    ):
+    def test_rebind_failure_maps_to_database_exception(self, client, test_db_session, tmp_path):
         assistant, base = self._assistant_and_base(test_db_session, tmp_path)
-        with patch.object(
-            Llm_Repository, "update", side_effect=RuntimeError("constraint")
-        ):
+        with patch.object(Llm_Repository, "update", side_effect=RuntimeError("constraint")):
             resp = client.post(
                 f"/erudi/llms/{assistant.id}/rebind",
                 json={"new_base_llm_id": base.id},
@@ -340,31 +305,23 @@ class TestRebind:
 # INTEGRATION - download routes error mapping
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestDownloadRouteErrors:
-
     def test_download_generic_failure_maps_to_500(self, client, test_db_session):
         remote = _add_llm(test_db_session, local=0, link="org/model")
         test_db_session.commit()
-        with patch.object(
-            llm_endpoints, "_start_download", side_effect=RuntimeError("disk full")
-        ):
+        with patch.object(llm_endpoints, "_start_download", side_effect=RuntimeError("disk full")):
             resp = client.post(f"/erudi/llms/{remote.id}/download")
         assert resp.status_code == 500
 
     def test_hf_download_generic_failure_maps_to_500(self, client):
-        with patch.object(
-            llm_endpoints, "_start_download", side_effect=RuntimeError("disk full")
-        ):
-            resp = client.post(
-                "/erudi/llms/download/huggingface", json={"link": "org/model"}
-            )
+        with patch.object(llm_endpoints, "_start_download", side_effect=RuntimeError("disk full")):
+            resp = client.post("/erudi/llms/download/huggingface", json={"link": "org/model"})
         assert resp.status_code == 500
 
     def test_cancel_generic_failure_maps_to_500(self, client):
-        with patch.object(
-            llm_endpoints, "cancel_download_job", side_effect=RuntimeError("boom")
-        ):
+        with patch.object(llm_endpoints, "cancel_download_job", side_effect=RuntimeError("boom")):
             resp = client.post("/erudi/llms/downloads/1/cancel")
         assert resp.status_code == 500
 
@@ -373,9 +330,9 @@ class TestDownloadRouteErrors:
 # INTEGRATION - download status polling cleanup
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestDownloadStatusCleanup:
-
     def test_failed_job_cleans_temp_llm_and_files(self, client, test_db_session):
         llm = _add_llm(test_db_session, local=2)
         job = _add_job(test_db_session, llm.id, status="failed")
@@ -423,9 +380,7 @@ class TestDownloadStatusCleanup:
         )
 
     def test_status_generic_failure_maps_to_500(self, client):
-        with patch.object(
-            Download_Job_Repository, "get_by_id", side_effect=RuntimeError("boom")
-        ):
+        with patch.object(Download_Job_Repository, "get_by_id", side_effect=RuntimeError("boom")):
             resp = client.get("/erudi/llms/downloads/1/status")
         assert resp.status_code == 500
 
@@ -445,9 +400,7 @@ class TestDownloadStatusCleanup:
         """Race guard: the job may finalize between poll query and status check."""
         llm = _add_llm(test_db_session, local=2)
         job = _add_job(test_db_session, llm.id, status="failed")
-        with patch.object(
-            Download_Job_Repository, "get_most_recent_active", return_value=job
-        ):
+        with patch.object(Download_Job_Repository, "get_most_recent_active", return_value=job):
             with patch.object(Download_Job_Repository, "cleanup_job_files") as cleanup:
                 resp = client.get("/erudi/llms/downloads/status")
         assert resp.status_code == 200
@@ -457,9 +410,7 @@ class TestDownloadStatusCleanup:
     def test_recent_job_that_turned_completed_marks_ready(self, client, test_db_session):
         llm = _add_llm(test_db_session, local=2)
         job = _add_job(test_db_session, llm.id, status="completed")
-        with patch.object(
-            Download_Job_Repository, "get_most_recent_active", return_value=job
-        ):
+        with patch.object(Download_Job_Repository, "get_most_recent_active", return_value=job):
             resp = client.get("/erudi/llms/downloads/status")
         assert resp.status_code == 200
         test_db_session.refresh(llm)
@@ -479,9 +430,9 @@ class TestDownloadStatusCleanup:
 # UNIT - repository: cleanup_job_files + progress updater thread
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestCleanupJobFiles:
-
     # NOTE: the test name must not contain the substring 'temp' - pytest embeds
     # it in tmp_path, and the fallback sweep triggers only when the job's link
     # does NOT contain 'temp'.
@@ -529,9 +480,7 @@ class TestCleanupJobFiles:
         (stuck / "model.gguf").write_bytes(b"\x00" * 2048)
 
         # Simulate the Windows behaviour: rmtree cannot remove the open file.
-        monkeypatch.setattr(
-            llm_repo_mod.shutil, "rmtree", lambda *a, **kw: None
-        )
+        monkeypatch.setattr(llm_repo_mod.shutil, "rmtree", lambda *a, **kw: None)
         monkeypatch.setattr(llm_repo_mod.time, "sleep", lambda _s: None)
 
         job = SimpleNamespace(
@@ -546,8 +495,8 @@ class TestCleanupJobFiles:
 
         assert warn.called, "surviving bytes must be reported, not swallowed"
         message = warn.call_args[0][0]
-        assert str(stuck) in message          # names the path
-        assert "2048 bytes" in message        # and how much is still there
+        assert str(stuck) in message  # names the path
+        assert "2048 bytes" in message  # and how much is still there
 
     def test_remove_tree_reporting_returns_zero_when_the_tree_goes(self, tmp_path):
         doomed = tmp_path / "gone"
@@ -571,7 +520,6 @@ class TestCleanupJobFiles:
 
 @pytest.mark.unit
 class TestUpdateDbWithProgress:
-
     def _session_with(self, monkeypatch, job_row, llm_row):
         session = MagicMock()
 
@@ -640,18 +588,19 @@ class TestUpdateDbWithProgress:
 # UNIT - services: offline classifier, runnability gate, download pipeline
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestOfflineErrorClassifier:
-
     def test_requests_connection_error_is_offline(self):
         from requests.exceptions import ConnectionError as RCE
 
         assert llm_services._is_offline_download_error(RCE("boom")) is True
 
     def test_marker_in_message_is_offline(self):
-        assert llm_services._is_offline_download_error(
-            RuntimeError("Max retries exceeded with url")
-        ) is True
+        assert (
+            llm_services._is_offline_download_error(RuntimeError("Max retries exceeded with url"))
+            is True
+        )
 
     def test_marker_in_cause_chain_is_offline(self):
         inner = OSError("network is unreachable")
@@ -665,7 +614,6 @@ class TestOfflineErrorClassifier:
 
 @pytest.mark.unit
 class TestAssertRunnable:
-
     def test_known_broken_quant_is_rejected(self, monkeypatch):
         monkeypatch.setattr(
             config,
@@ -676,9 +624,7 @@ class TestAssertRunnable:
             llm_services._assert_runnable("org/broken-quant")
 
     def test_runnable_quant_passes(self, monkeypatch):
-        monkeypatch.setattr(
-            config, "LLM_Engine", SimpleNamespace(is_runnable=lambda link: True)
-        )
+        monkeypatch.setattr(config, "LLM_Engine", SimpleNamespace(is_runnable=lambda link: True))
         llm_services._assert_runnable("org/fine-quant")
 
 
@@ -704,7 +650,6 @@ def _fake_api(files):
 
 @pytest.mark.unit
 class TestDownloadLlmPipeline:
-
     async def test_non_gguf_download_moves_to_final_dir(self, monkeypatch, tmp_path):
         monkeypatch.setattr(
             config,
@@ -744,9 +689,7 @@ class TestDownloadLlmPipeline:
             SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False, FORMAT_TAG="mlx"),
         )
         api = MagicMock()
-        api.repo_info.side_effect = GatedRepoError(
-            "401 gated", response=MagicMock(status_code=401)
-        )
+        api.repo_info.side_effect = GatedRepoError("401 gated", response=MagicMock(status_code=401))
         monkeypatch.setattr(llm_services, "HfApi", lambda token=None: api)
         monkeypatch.setattr(llm_services, "HfFileSystem", lambda token=None: _FakeFs())
 

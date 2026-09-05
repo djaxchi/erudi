@@ -10,16 +10,14 @@ Endpoints:
     GET  /knowledge_base/{llm_id}/status - Poll KB job status
     POST /knowledge_base/create - Create new KB assistant or update existing
 """
+
 from typing import List
 from fastapi import BackgroundTasks, Depends, APIRouter
 from sqlalchemy.orm import Session
 
 from src.database.core import get_db, SessionLocal
 from src.domains.knowledge_base.services import KB_Service
-from src.domains.knowledge_base.schemas import (
-    KnowledgeBaseCreate,
-    KnowledgeBaseResponse
-)
+from src.domains.knowledge_base.schemas import KnowledgeBaseCreate, KnowledgeBaseResponse
 from src.core.logging import logger
 from src.ingestion.embedding_model import download_state, start_download
 from src.core.exceptions import (
@@ -52,10 +50,7 @@ def post_embedding_model_download():
 
 
 @router.get("/{llm_id}/status")
-def get_kb_job_status(
-    llm_id: int,
-    db: Session = Depends(get_db)
-):
+def get_kb_job_status(llm_id: int, db: Session = Depends(get_db)):
     """Poll Knowledge Base job status with automatic cleanup for failed jobs.
 
     Args:
@@ -81,17 +76,12 @@ def get_kb_job_status(
 
     except Exception as e:
         logger.error(f"Error fetching KB job status: {e}")
-        raise DatabaseException(
-            "Error fetching KB job status",
-            trace=str(e)
-        )
+        raise DatabaseException("Error fetching KB job status", trace=str(e))
 
 
 @router.post("/create", response_model=KnowledgeBaseResponse)
 def create_knowledge_base(
-    payload: KnowledgeBaseCreate,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    payload: KnowledgeBaseCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
 ):
     """Create new Knowledge Base assistant or update existing one.
 
@@ -118,9 +108,7 @@ def create_knowledge_base(
     """
     # Validate payload
     if not payload.paths or not isinstance(payload.paths, list):
-        raise InvalidInputException(
-            "paths (must be non-empty list)"
-        )
+        raise InvalidInputException("paths (must be non-empty list)")
 
     if not payload.selectedModel:
         raise InvalidInputException("selectedModel")
@@ -138,6 +126,7 @@ def create_knowledge_base(
     try:
         # Check if base LLM has existing KB
         from src.domains.knowledge_base.repository import KB_Repository
+
         repo = KB_Repository()
         base_llm = repo.get_local_llm_by_id(db, payload.selectedModel)
 
@@ -149,21 +138,16 @@ def create_knowledge_base(
             logger.info(f"Updating existing KB for LLM {base_llm.id}")
 
             llm_id, kb_job_id = service.update_existing_kb(
-                db=db,
-                base_llm_id=base_llm.id,
-                file_paths=payload.paths
+                db=db, base_llm_id=base_llm.id, file_paths=payload.paths
             )
 
             # Queue background task for update
             background_tasks.add_task(
-                _run_kb_update_task,
-                kb_job_id=kb_job_id,
-                file_paths=payload.paths
+                _run_kb_update_task, kb_job_id=kb_job_id, file_paths=payload.paths
             )
 
             return KnowledgeBaseResponse(
-                msg="Knowledge Base is being updated with new documents.",
-                model_id=llm_id
+                msg="Knowledge Base is being updated with new documents.", model_id=llm_id
             )
 
         else:
@@ -186,19 +170,16 @@ def create_knowledge_base(
                 base_llm_id=base_llm.id,
                 model_name=payload.modelName,
                 description=payload.description or "",
-                file_paths=payload.paths
+                file_paths=payload.paths,
             )
 
             # Queue background task for creation
             background_tasks.add_task(
-                _run_kb_creation_task,
-                kb_job_id=kb_job_id,
-                file_paths=payload.paths
+                _run_kb_creation_task, kb_job_id=kb_job_id, file_paths=payload.paths
             )
 
             return KnowledgeBaseResponse(
-                msg="Knowledge Base Assistant is being created.",
-                model_id=llm_id
+                msg="Knowledge Base Assistant is being created.", model_id=llm_id
             )
 
     except AppBaseException:
@@ -210,10 +191,7 @@ def create_knowledge_base(
 
     except Exception as e:
         logger.error(f"Error creating KB assistant: {e}")
-        raise DatabaseException(
-            "Error creating Knowledge Base Assistant",
-            trace=str(e)
-        )
+        raise DatabaseException("Error creating Knowledge Base Assistant", trace=str(e))
 
 
 def _run_kb_creation_task(kb_job_id: int, file_paths: List[str]) -> None:
@@ -228,10 +206,7 @@ def _run_kb_creation_task(kb_job_id: int, file_paths: List[str]) -> None:
 
     try:
         service.process_and_index_documents(
-            db=db,
-            kb_job_id=kb_job_id,
-            file_paths=file_paths,
-            is_update=False
+            db=db, kb_job_id=kb_job_id, file_paths=file_paths, is_update=False
         )
     except Exception as e:
         logger.error(f"KB creation task failed: {e}")
@@ -251,10 +226,7 @@ def _run_kb_update_task(kb_job_id: int, file_paths: List[str]) -> None:
 
     try:
         service.process_and_index_documents(
-            db=db,
-            kb_job_id=kb_job_id,
-            file_paths=file_paths,
-            is_update=True
+            db=db, kb_job_id=kb_job_id, file_paths=file_paths, is_update=True
         )
     except Exception as e:
         logger.error(f"KB update task failed: {e}")

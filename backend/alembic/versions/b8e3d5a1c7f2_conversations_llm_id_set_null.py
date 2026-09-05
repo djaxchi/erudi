@@ -17,6 +17,7 @@ deleted), so the downgrade first DELETES every such conversation. That row loss
 is intentional and irreversible -- it is the cost of reverting to the old
 strict-binding schema.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -24,8 +25,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'b8e3d5a1c7f2'
-down_revision: Union[str, Sequence[str], None] = 'c7e4b9a1d2f8'
+revision: str = "b8e3d5a1c7f2"
+down_revision: Union[str, Sequence[str], None] = "c7e4b9a1d2f8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -38,8 +39,12 @@ def upgrade() -> None:
     op.drop_constraint(_FK_NAME, "conversations", type_="foreignkey")
     op.alter_column("conversations", "llm_id", existing_type=sa.Integer(), nullable=True)
     op.create_foreign_key(
-        _FK_NAME, "conversations", "llms",
-        ["llm_id"], ["id"], ondelete="SET NULL",
+        _FK_NAME,
+        "conversations",
+        "llms",
+        ["llm_id"],
+        ["id"],
+        ondelete="SET NULL",
     )
 
 
@@ -51,6 +56,10 @@ def downgrade() -> None:
     op.drop_constraint(_FK_NAME, "conversations", type_="foreignkey")
     op.alter_column("conversations", "llm_id", existing_type=sa.Integer(), nullable=False)
     op.create_foreign_key(
-        _FK_NAME, "conversations", "llms",
-        ["llm_id"], ["id"], ondelete="CASCADE",
+        _FK_NAME,
+        "conversations",
+        "llms",
+        ["llm_id"],
+        ["id"],
+        ondelete="CASCADE",
     )

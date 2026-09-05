@@ -6,6 +6,7 @@ lifecycle without spawning real subprocesses. Integration coverage (real
 `test_mlx_engine_server.py`, `test_cpu_engine_server.py`, and
 `test_cuda_engine_server.py`.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -25,6 +26,7 @@ from src.engines.base_chat_server_engine import BaseChatServerEngine
 # =====================================================================
 # Helpers
 # =====================================================================
+
 
 @contextlib.contextmanager
 def _occupied_port(port: int):
@@ -89,6 +91,7 @@ def _mock_streaming_post(sse_chunks: List[bytes]):
 # Minimal concrete test subclass — overrides required attrs + abstract hooks.
 # =====================================================================
 
+
 class _TestEngine(BaseChatServerEngine):
     """Concrete subclass used only by these tests."""
 
@@ -101,11 +104,16 @@ class _TestEngine(BaseChatServerEngine):
     _probe_poll_interval_s = 0.05
 
     # Hooks left abstract on the base — override with MagicMocks by default.
-    _spawn_child = classmethod(lambda cls, **kw: {  # type: ignore[assignment]
-        "pid": 1, "proc": MagicMock(), "port": kw["port"],
-        "base_url": f"http://127.0.0.1:{kw['port']}",
-        "alias": kw["alias"], "model_path": kw["model_path"],
-    })
+    _spawn_child = classmethod(
+        lambda cls, **kw: {  # type: ignore[assignment]
+            "pid": 1,
+            "proc": MagicMock(),
+            "port": kw["port"],
+            "base_url": f"http://127.0.0.1:{kw['port']}",
+            "alias": kw["alias"],
+            "model_path": kw["model_path"],
+        }
+    )
     _terminate_process = classmethod(lambda cls, proc: None)  # type: ignore[assignment]
     _proc_is_alive = classmethod(lambda cls, proc: True)  # type: ignore[assignment]
     _resolve_model_artifact = classmethod(  # type: ignore[assignment]
@@ -132,9 +140,9 @@ def _state_reset():
 # UNIT — abstract enforcement
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestAbstractEnforcement:
-
     def test_base_is_abstract_cannot_instantiate(self):
         """Direct instantiation of BaseChatServerEngine must fail."""
         # BaseEngine's __init__ raises RuntimeError; the abstract methods are
@@ -163,13 +171,15 @@ class TestAbstractEnforcement:
 # UNIT — _pick_free_port
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestPickFreePort:
-
     def test_returns_port_in_configured_range(self):
         port = _TestEngine._pick_free_port()
-        assert _TestEngine._port_range_start <= port < (
-            _TestEngine._port_range_start + _TestEngine._port_range_count
+        assert (
+            _TestEngine._port_range_start
+            <= port
+            < (_TestEngine._port_range_start + _TestEngine._port_range_count)
         )
 
     def test_skips_busy_port_and_finds_next(self):
@@ -190,9 +200,7 @@ class TestPickFreePort:
                 # A port already taken by something else on the machine is fine:
                 # it is busy either way, which is what this test needs.
                 with contextlib.suppress(OSError):
-                    stack.enter_context(
-                        _occupied_port(_Tight._port_range_start + offset)
-                    )
+                    stack.enter_context(_occupied_port(_Tight._port_range_start + offset))
             with pytest.raises(EngineException, match=_Tight._server_name):
                 _Tight._pick_free_port()
 
@@ -201,9 +209,9 @@ class TestPickFreePort:
 # UNIT — _probe_ready (two-stage)
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestProbeReady:
-
     def test_health_503_then_200_then_chat_200_succeeds(self):
         """Realistic warm-up: /health goes 503 → 503 → 200, then chat-ping OK."""
         responses = [
@@ -212,12 +220,15 @@ class TestProbeReady:
             MagicMock(status_code=200),
         ]
         chat_resp = MagicMock(status_code=200, text='{"choices":[]}')
-        with patch(
-            "src.engines.base_chat_server_engine.requests.get",
-            side_effect=responses,
-        ), patch(
-            "src.engines.base_chat_server_engine.requests.post",
-            return_value=chat_resp,
+        with (
+            patch(
+                "src.engines.base_chat_server_engine.requests.get",
+                side_effect=responses,
+            ),
+            patch(
+                "src.engines.base_chat_server_engine.requests.post",
+                return_value=chat_resp,
+            ),
         ):
             _TestEngine._probe_ready("http://127.0.0.1:19000")
 
@@ -234,12 +245,15 @@ class TestProbeReady:
         """Stage-2 ping returning 400 surfaces the body in the error message."""
         health_ok = MagicMock(status_code=200)
         chat_bad = MagicMock(status_code=400, text='{"error":"missing chat template"}')
-        with patch(
-            "src.engines.base_chat_server_engine.requests.get",
-            return_value=health_ok,
-        ), patch(
-            "src.engines.base_chat_server_engine.requests.post",
-            return_value=chat_bad,
+        with (
+            patch(
+                "src.engines.base_chat_server_engine.requests.get",
+                return_value=health_ok,
+            ),
+            patch(
+                "src.engines.base_chat_server_engine.requests.post",
+                return_value=chat_bad,
+            ),
         ):
             with pytest.raises(EngineException, match="400"):
                 _TestEngine._probe_ready("http://127.0.0.1:19000")
@@ -256,15 +270,19 @@ class TestProbeReady:
             captured_payload.update(json)
             return chat_ok
 
-        with patch(
-            "src.engines.base_chat_server_engine.requests.get",
-            return_value=health_ok,
-        ), patch(
-            "src.engines.base_chat_server_engine.requests.post",
-            side_effect=_capture_post,
+        with (
+            patch(
+                "src.engines.base_chat_server_engine.requests.get",
+                return_value=health_ok,
+            ),
+            patch(
+                "src.engines.base_chat_server_engine.requests.post",
+                side_effect=_capture_post,
+            ),
         ):
             _TestEngine._probe_ready(
-                "http://127.0.0.1:19000", model_field="/models/erudi-7",
+                "http://127.0.0.1:19000",
+                model_field="/models/erudi-7",
             )
         assert captured_payload["model"] == "/models/erudi-7"
 
@@ -279,12 +297,15 @@ class TestProbeReady:
             captured_payload.update(json)
             return chat_ok
 
-        with patch(
-            "src.engines.base_chat_server_engine.requests.get",
-            return_value=health_ok,
-        ), patch(
-            "src.engines.base_chat_server_engine.requests.post",
-            side_effect=_capture_post,
+        with (
+            patch(
+                "src.engines.base_chat_server_engine.requests.get",
+                return_value=health_ok,
+            ),
+            patch(
+                "src.engines.base_chat_server_engine.requests.post",
+                side_effect=_capture_post,
+            ),
         ):
             _TestEngine._probe_ready("http://127.0.0.1:19000")  # no model_field
         assert captured_payload["model"] == "default_model"
@@ -305,12 +326,15 @@ class TestProbeReady:
             captured_headers["value"] = headers
             return chat_ok
 
-        with patch(
-            "src.engines.base_chat_server_engine.requests.get",
-            return_value=health_ok,
-        ), patch(
-            "src.engines.base_chat_server_engine.requests.post",
-            side_effect=_capture_post,
+        with (
+            patch(
+                "src.engines.base_chat_server_engine.requests.get",
+                return_value=health_ok,
+            ),
+            patch(
+                "src.engines.base_chat_server_engine.requests.post",
+                side_effect=_capture_post,
+            ),
         ):
             _TestEngine._probe_ready("http://127.0.0.1:19000", api_key="s3cret-token")
         assert captured_headers["value"]["Authorization"] == "Bearer s3cret-token"
@@ -329,12 +353,15 @@ class TestProbeReady:
             captured_headers["value"] = headers
             return chat_ok
 
-        with patch(
-            "src.engines.base_chat_server_engine.requests.get",
-            return_value=health_ok,
-        ), patch(
-            "src.engines.base_chat_server_engine.requests.post",
-            side_effect=_capture_post,
+        with (
+            patch(
+                "src.engines.base_chat_server_engine.requests.get",
+                return_value=health_ok,
+            ),
+            patch(
+                "src.engines.base_chat_server_engine.requests.post",
+                side_effect=_capture_post,
+            ),
         ):
             _TestEngine._probe_ready("http://127.0.0.1:19000")
         assert not captured_headers["value"]
@@ -352,15 +379,19 @@ class TestProbeReady:
             captured["api_key"] = api_key
 
         spawned = {
-            "pid": 1, "proc": MagicMock(), "port": 19000,
-            "base_url": "http://127.0.0.1:19000", "alias": "test-1",
-            "model_path": "/m.gguf", "api_key": "minted-at-spawn",
+            "pid": 1,
+            "proc": MagicMock(),
+            "port": 19000,
+            "base_url": "http://127.0.0.1:19000",
+            "alias": "test-1",
+            "model_path": "/m.gguf",
+            "api_key": "minted-at-spawn",
         }
-        with patch.object(_TestEngine, "_spawn_child", return_value=spawned), \
-             patch.object(_TestEngine, "_probe_ready", side_effect=_capture_probe):
-            _TestEngine._start_server(
-                model_path=Path("/m.gguf"), alias="test-1", port=19000
-            )
+        with (
+            patch.object(_TestEngine, "_spawn_child", return_value=spawned),
+            patch.object(_TestEngine, "_probe_ready", side_effect=_capture_probe),
+        ):
+            _TestEngine._start_server(model_path=Path("/m.gguf"), alias="test-1", port=19000)
         assert captured["api_key"] == "minted-at-spawn"
 
     def test_timeout_message_mentions_port_for_toctou_hint(self):
@@ -384,15 +415,19 @@ class TestProbeReady:
 # UNIT — atexit storage + _stop_server_if_running
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestAtexitAndStop:
-
     def test_start_server_registers_and_stores_handler(self):
         """_start_server must store the registered handler on cls._atexit_handler."""
-        with patch.object(_TestEngine, "_probe_ready", return_value=None), \
-             patch("src.engines.base_chat_server_engine.atexit.register") as reg:
+        with (
+            patch.object(_TestEngine, "_probe_ready", return_value=None),
+            patch("src.engines.base_chat_server_engine.atexit.register") as reg,
+        ):
             handle = _TestEngine._start_server(
-                model_path=Path("/tmp"), alias="test-x", port=19010,
+                model_path=Path("/tmp"),
+                alias="test-x",
+                port=19010,
             )
         assert _TestEngine._atexit_handler is not None
         reg.assert_called_once_with(_TestEngine._atexit_handler)
@@ -404,18 +439,26 @@ class TestAtexitAndStop:
         handler holding a dead proc — exactly bug (b) from PR #76)."""
         spawned_proc = MagicMock()
         spawn_returns = {
-            "pid": 1, "proc": spawned_proc, "port": 19015,
+            "pid": 1,
+            "proc": spawned_proc,
+            "port": 19015,
             "base_url": "http://127.0.0.1:19015",
-            "alias": "test-x", "model_path": Path("/tmp"),
+            "alias": "test-x",
+            "model_path": Path("/tmp"),
         }
-        with patch.object(_TestEngine, "_spawn_child", return_value=spawn_returns), \
-             patch.object(_TestEngine, "_probe_ready",
-                          side_effect=EngineException("probe rejected")), \
-             patch.object(_TestEngine, "_terminate_process") as term, \
-             patch("src.engines.base_chat_server_engine.atexit.register") as reg:
+        with (
+            patch.object(_TestEngine, "_spawn_child", return_value=spawn_returns),
+            patch.object(
+                _TestEngine, "_probe_ready", side_effect=EngineException("probe rejected")
+            ),
+            patch.object(_TestEngine, "_terminate_process") as term,
+            patch("src.engines.base_chat_server_engine.atexit.register") as reg,
+        ):
             with pytest.raises(EngineException, match="probe rejected"):
                 _TestEngine._start_server(
-                    model_path=Path("/tmp"), alias="test-x", port=19015,
+                    model_path=Path("/tmp"),
+                    alias="test-x",
+                    port=19015,
                 )
         term.assert_called_once_with(spawned_proc)
         reg.assert_not_called()
@@ -423,11 +466,16 @@ class TestAtexitAndStop:
 
     def test_stop_server_unregisters_handler(self):
         """_stop_server_if_running must unregister the stored handler."""
+
         def sentinel() -> None: ...
+
         _TestEngine._atexit_handler = sentinel
         _TestEngine._model = {
-            "pid": 1, "proc": MagicMock(), "port": 19011,
-            "base_url": "http://127.0.0.1:19011", "alias": "test-x",
+            "pid": 1,
+            "proc": MagicMock(),
+            "port": 19011,
+            "base_url": "http://127.0.0.1:19011",
+            "alias": "test-x",
             "model_path": Path("/tmp"),
         }
         with patch("src.engines.base_chat_server_engine.atexit.unregister") as unreg:
@@ -472,17 +520,22 @@ class TestAtexitAndStop:
         def prev_handler() -> None: ...
 
         _TestEngine._model = {
-            "pid": 1, "proc": prev_proc, "port": 19020,
-            "base_url": "http://127.0.0.1:19020", "alias": "test-old",
+            "pid": 1,
+            "proc": prev_proc,
+            "port": 19020,
+            "base_url": "http://127.0.0.1:19020",
+            "alias": "test-old",
             "model_path": Path("/old"),
         }
         _TestEngine._tokenizer = {"type": "remote", "provider": "test-provider"}
         _TestEngine._model_id = "old"
         _TestEngine._atexit_handler = prev_handler
 
-        with patch.object(_TestEngine, "_probe_ready", return_value=None), \
-             patch("src.engines.base_chat_server_engine.atexit.unregister") as unreg, \
-             patch("src.engines.base_chat_server_engine.atexit.register"):
+        with (
+            patch.object(_TestEngine, "_probe_ready", return_value=None),
+            patch("src.engines.base_chat_server_engine.atexit.unregister") as unreg,
+            patch("src.engines.base_chat_server_engine.atexit.register"),
+        ):
             _TestEngine.get_model_and_tokenizer(llm_id="new", llm_local_path="/new")
         unreg.assert_called_once_with(prev_handler)
 
@@ -490,6 +543,7 @@ class TestAtexitAndStop:
 # =====================================================================
 # UNIT — cached-handle liveness (a crashed child must not be reused forever)
 # =====================================================================
+
 
 @pytest.mark.unit
 class TestCachedHandleLiveness:
@@ -500,16 +554,21 @@ class TestCachedHandleLiveness:
     def test_dead_cached_proc_forces_respawn_not_reuse(self):
         dead_proc = MagicMock()
         _TestEngine._model = {
-            "pid": 1, "proc": dead_proc, "port": 19030,
-            "base_url": "http://127.0.0.1:19030", "alias": "test-662",
+            "pid": 1,
+            "proc": dead_proc,
+            "port": 19030,
+            "base_url": "http://127.0.0.1:19030",
+            "alias": "test-662",
             "model_path": Path("/m"),
         }
         _TestEngine._tokenizer = {"type": "remote", "provider": "test-provider"}
         _TestEngine._model_id = "662"
 
-        with patch.object(_TestEngine, "_proc_is_alive", return_value=False), \
-             patch.object(_TestEngine, "_probe_ready", return_value=None), \
-             patch.object(_TestEngine, "_spawn_child", wraps=_TestEngine._spawn_child) as spawn:
+        with (
+            patch.object(_TestEngine, "_proc_is_alive", return_value=False),
+            patch.object(_TestEngine, "_probe_ready", return_value=None),
+            patch.object(_TestEngine, "_spawn_child", wraps=_TestEngine._spawn_child) as spawn,
+        ):
             model, _ = _TestEngine.get_model_and_tokenizer(llm_id="662", llm_local_path="/m")
 
         spawn.assert_called_once()
@@ -519,15 +578,20 @@ class TestCachedHandleLiveness:
         """Sanity check: a genuinely alive cached proc is unaffected."""
         live_proc = MagicMock()
         _TestEngine._model = {
-            "pid": 1, "proc": live_proc, "port": 19031,
-            "base_url": "http://127.0.0.1:19031", "alias": "test-662",
+            "pid": 1,
+            "proc": live_proc,
+            "port": 19031,
+            "base_url": "http://127.0.0.1:19031",
+            "alias": "test-662",
             "model_path": Path("/m"),
         }
         _TestEngine._tokenizer = {"type": "remote", "provider": "test-provider"}
         _TestEngine._model_id = "662"
 
-        with patch.object(_TestEngine, "_proc_is_alive", return_value=True), \
-             patch.object(_TestEngine, "_spawn_child") as spawn:
+        with (
+            patch.object(_TestEngine, "_proc_is_alive", return_value=True),
+            patch.object(_TestEngine, "_spawn_child") as spawn,
+        ):
             model, _ = _TestEngine.get_model_and_tokenizer(llm_id="662", llm_local_path="/m")
 
         spawn.assert_not_called()
@@ -538,9 +602,9 @@ class TestCachedHandleLiveness:
 # UNIT — _payload_model_value default + override
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestPayloadModelValue:
-
     def test_default_returns_alias_from_handle(self):
         handle = {"alias": "test-erudi-7"}
         assert _TestEngine._payload_model_value(handle) == "test-erudi-7"
@@ -554,18 +618,19 @@ class TestPayloadModelValue:
             def _payload_model_value(handle):
                 return handle["model_path"]
 
-        assert _MlxLike._payload_model_value(
-            {"alias": "ignored", "model_path": "/models/x"}
-        ) == "/models/x"
+        assert (
+            _MlxLike._payload_model_value({"alias": "ignored", "model_path": "/models/x"})
+            == "/models/x"
+        )
 
 
 # =====================================================================
 # UNIT — cleanup contract
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestCleanup:
-
     def test_cleanup_calls_stop_then_super(self):
         with patch.object(_TestEngine, "_stop_server_if_running") as mock_stop:
             _TestEngine.cleanup()

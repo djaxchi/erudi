@@ -1,0 +1,11 @@
+# Repository-wide ruff settings, for the Python that lives outside backend/ --
+# today that is scripts/ci/smoke_boot.py and nothing else.
+#
+# Ruff picks the NEAREST config above each file rather than merging them, so
+# backend/ruff.toml keeps full control of backend/ (its own rule selection and
+# exclusions) and this file never overrides it. Both set the same width, so a
+# script and a backend module are formatted identically.
+#
+# Without this file, ruff would fall back to its 88-column default out here and
+# format the same repository two different ways.
+line-length = 100

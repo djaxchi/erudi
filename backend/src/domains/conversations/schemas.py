@@ -52,6 +52,7 @@ from pydantic import BaseModel, Field, validator
 from datetime import datetime
 from typing import List, Optional
 
+
 class MessageBase(BaseModel):
     """Base schema for messages with sender and content validation.
 
@@ -59,11 +60,12 @@ class MessageBase(BaseModel):
         sender: Message sender, must be "user" or "assistant".
         content: Message content, 1-32768 characters.
     """
+
     """Base schema for messages."""
     sender: str = Field(..., description="Message sender (user or assistant)")
     content: str = Field(..., min_length=1, max_length=32768, description="Message content")
 
-    @validator('sender')
+    @validator("sender")
     def validate_sender(cls, v):
         """Ensure sender is either 'user', 'assistant', or 'llm'.
 
@@ -76,10 +78,9 @@ class MessageBase(BaseModel):
         Raises:
             ValueError: If sender is not "user", "assistant", or "llm".
         """
-        if v not in ['user', 'assistant', 'llm']:
+        if v not in ["user", "assistant", "llm"]:
             raise ValueError('Sender must be either "user", "assistant", or "llm"')
         return v
-
 
 
 class MessageResponse(MessageBase):
@@ -95,6 +96,7 @@ class MessageResponse(MessageBase):
         trace: Optional list of the assistant turn's non-answer stream events
             (thinking / tool_call / tool_result) for replay on reload (#90).
     """
+
     """Schema for message responses."""
     id: int = Field(..., description="Message ID")
     conversation_id: int = Field(..., description="Parent conversation ID")
@@ -108,14 +110,17 @@ class MessageResponse(MessageBase):
     class Config:
         from_attributes = True
 
+
 class ConversationBase(BaseModel):
     """Base schema for conversations with required LLM ID.
 
     Attributes:
         llm_id: ID of the LLM model to use for this conversation.
     """
+
     """Base schema for conversations."""
     llm_id: int = Field(..., description="ID of the LLM to use")
+
 
 class ConversationCreate(ConversationBase):
     """Schema for creating new conversations with generation parameters.
@@ -138,6 +143,7 @@ class ConversationCreate(ConversationBase):
                 custom_prompt="You are a creative storyteller."
             )
     """
+
     """Schema for creating new conversations."""
     # None = "use the model's own defaults" (#388): the service resolves them
     # from the Llm row (captured generation_config, else the neutral constants).
@@ -146,24 +152,22 @@ class ConversationCreate(ConversationBase):
         default=None,
         ge=0.0,
         le=2.0,
-        description="Sampling temperature; None resolves the model's default (#388)"
+        description="Sampling temperature; None resolves the model's default (#388)",
     )
     top_p: Optional[float] = Field(
         default=None,
         ge=0.0,
         le=1.0,
-        description="Nucleus sampling threshold; None resolves the model's default (#388)"
+        description="Nucleus sampling threshold; None resolves the model's default (#388)",
     )
     max_tokens: Optional[int] = Field(
         default=None,
         ge=1,
         le=32768,
-        description="Maximum number of tokens to generate; None resolves the model's default (#388)"
+        description="Maximum number of tokens to generate; None resolves the model's default (#388)",
     )
     custom_prompt: Optional[str] = Field(
-        default="",
-        max_length=4096,
-        description="Custom system prompt override"
+        default="", max_length=4096, description="Custom system prompt override"
     )
     web_search_enabled: Optional[bool] = Field(
         default=None,
@@ -173,6 +177,7 @@ class ConversationCreate(ConversationBase):
             "wins (pre-conversation settings panel)."
         ),
     )
+
 
 class ConversationUpdate(ConversationBase):
     """Schema for partial conversation updates (PATCH operations).
@@ -196,6 +201,7 @@ class ConversationUpdate(ConversationBase):
                 temperature=0.3  # Only update name and temperature
             )
     """
+
     """Schéma utilisé pour les mises à jour partielles (PATCH)."""
 
     llm_id: Optional[int] = None
@@ -205,6 +211,7 @@ class ConversationUpdate(ConversationBase):
     max_tokens: Optional[int] = None
     custom_prompt: Optional[str] = None
     web_search_enabled: Optional[bool] = None
+
 
 class ConversationResponse(ConversationBase):
     """Schema for conversation responses with full metadata.
@@ -219,6 +226,7 @@ class ConversationResponse(ConversationBase):
         max_tokens: Current max_tokens setting.
         custom_prompt: Current system prompt.
     """
+
     id: int
     # Overrides the required llm_id from ConversationBase: NULL once the bound
     # model is deleted (#225). The conversation survives, unbound, awaiting a
@@ -233,9 +241,9 @@ class ConversationResponse(ConversationBase):
     custom_prompt: str
     web_search_enabled: bool
 
-
     class Config:
         from_attributes = True
+
 
 class ConversationWithMessagesResponse(ConversationResponse):
     """Extended conversation response including full message history.
@@ -256,7 +264,9 @@ class ConversationWithMessagesResponse(ConversationResponse):
                 ]
               }
     """
+
     messages: List[MessageResponse]
+
 
 class ConversationQuery(BaseModel):
     """Schema for querying conversations with streaming generation parameters.
@@ -276,6 +286,7 @@ class ConversationQuery(BaseModel):
                 temperature=0.3,
             )
     """
+
     question: str
     images: Optional[List[str]] = Field(
         default=None,
@@ -289,8 +300,6 @@ class ConversationQuery(BaseModel):
     top_p: Optional[float] = None
     max_new_tokens: Optional[int] = None
     custom_prompt: Optional[str] = None
-
-
 
 
 class MessageStarRequest(BaseModel):
@@ -307,4 +316,5 @@ class MessageStarRequest(BaseModel):
               "message_id": 345
             }
     """
+
     message_id: int = Field(..., description="ID of the message to toggle star state")

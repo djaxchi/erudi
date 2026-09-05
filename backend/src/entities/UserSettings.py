@@ -12,6 +12,7 @@ Example:
 
     settings = UserSettings(web_search_enabled=False)
 """
+
 from sqlalchemy import Column, Integer, Boolean, String
 from sqlalchemy.orm import validates
 from src.database.core import Base
@@ -44,6 +45,7 @@ class UserSettings(Base):
         - auto_update_enabled must be a Boolean (enforced by validator).
         - language must be one of SUPPORTED_LANGUAGES (enforced by validator).
     """
+
     __tablename__ = "user_settings"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -51,7 +53,7 @@ class UserSettings(Base):
     language = Column(String(8), default=DEFAULT_LANGUAGE, nullable=False)
     auto_update_enabled = Column(Boolean, default=True, nullable=False)
 
-    @validates('language')
+    @validates("language")
     def validate_language(self, key, value):
         """Ensure the language is one of the supported interface languages.
 
@@ -59,12 +61,10 @@ class UserSettings(Base):
             ValueError: If value is not in SUPPORTED_LANGUAGES.
         """
         if value not in SUPPORTED_LANGUAGES:
-            raise ValueError(
-                f"{key} must be one of {SUPPORTED_LANGUAGES}, got {value!r}"
-            )
+            raise ValueError(f"{key} must be one of {SUPPORTED_LANGUAGES}, got {value!r}")
         return value
 
-    @validates('web_search_enabled', 'auto_update_enabled')
+    @validates("web_search_enabled", "auto_update_enabled")
     def validate_boolean_flags(self, key, value):
         """Ensure boolean flags are actually Boolean type.
 

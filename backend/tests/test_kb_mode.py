@@ -7,6 +7,7 @@ turn goes agentic iff the model declares tools (``supports_tools``) AND its
 tool calls were verified to parse on this engine's wire
 (``supports_tools_wire is True``).
 """
+
 from types import SimpleNamespace
 
 import pytest
@@ -21,8 +22,12 @@ pytestmark = pytest.mark.unit
 
 def _llm(**kw):
     base = dict(
-        name="M", param_size=7.0, is_attached_to_kb=False, kb_id=None,
-        supports_tools=None, supports_tools_wire=None,
+        name="M",
+        param_size=7.0,
+        is_attached_to_kb=False,
+        kb_id=None,
+        supports_tools=None,
+        supports_tools_wire=None,
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -44,18 +49,14 @@ class TestPlanTurn:
     def test_plain_mode_no_kb_is_zero_tool_for_tool_capable_model(self):
         # #129: plain chat (no KB attached) carries NO tools at all, even when
         # the model supports native function calling.
-        plan = plan_turn(
-            _llm(supports_tools=True), question="hi", retrieve=lambda: []
-        )
+        plan = plan_turn(_llm(supports_tools=True), question="hi", retrieve=lambda: [])
         assert plan.tools == []
         assert plan.kb_context_block is None and plan.context is None
         assert "search_knowledge_base" not in plan.system_prompt
 
     def test_plain_mode_no_kb_is_zero_tool_for_non_tool_capable_model(self):
         # #129: same zero-tool policy for models without tool support.
-        plan = plan_turn(
-            _llm(supports_tools=False), question="hi", retrieve=lambda: []
-        )
+        plan = plan_turn(_llm(supports_tools=False), question="hi", retrieve=lambda: [])
         assert plan.tools == []
         assert plan.kb_context_block is None and plan.context is None
 
@@ -67,7 +68,8 @@ class TestPlanTurn:
         monkeypatch.setattr(config, "KB_AGENTIC_MODE", True)
         plan = plan_turn(
             _llm(is_attached_to_kb=True, kb_id=5, supports_tools=True),
-            question="q", retrieve=_must_not_retrieve,
+            question="q",
+            retrieve=_must_not_retrieve,
         )
         # Non-regression (#129): the agentic KB branch keeps BOTH tools.
         assert plan.tools == [calculator, search_knowledge_base]
@@ -84,7 +86,8 @@ class TestPlanTurn:
         excerpts = [KbExcerpt(source_file="d.pdf", text="Le preavis est de 90 jours.")]
         plan = plan_turn(
             _llm(is_attached_to_kb=True, kb_id=5, supports_tools=True),
-            question="preavis ?", retrieve=lambda: excerpts,
+            question="preavis ?",
+            retrieve=lambda: excerpts,
         )
         assert plan.tools == []  # #288: systematic path is zero-tool
         assert search_knowledge_base not in plan.tools
@@ -95,7 +98,8 @@ class TestPlanTurn:
         excerpts = [KbExcerpt(source_file="d.pdf", text="Le préavis est de 90 jours.")]
         plan = plan_turn(
             _llm(is_attached_to_kb=True, kb_id=5, supports_tools=False),
-            question="préavis ?", retrieve=lambda: excerpts,
+            question="préavis ?",
+            retrieve=lambda: excerpts,
         )
         # #288: systematic KB is zero-tool (the calculator caused tool-JSON
         # leaks on some models and added nothing for document Q&A).
@@ -109,7 +113,8 @@ class TestPlanTurn:
     def test_systematic_empty_pool_falls_back_to_plain(self):
         plan = plan_turn(
             _llm(is_attached_to_kb=True, kb_id=5, supports_tools=False),
-            question="q", retrieve=lambda: [],
+            question="q",
+            retrieve=lambda: [],
         )
         assert plan.kb_context_block is None and plan.context is None
         # The empty-pool fallback IS the plain mode: zero tools (#129).
@@ -120,7 +125,8 @@ class TestPlanTurn:
         excerpts = [KbExcerpt(source_file="d.pdf", text="x")]
         plan = plan_turn(
             _llm(is_attached_to_kb=True, kb_id=5, supports_tools=None),
-            question="q", retrieve=lambda: excerpts,
+            question="q",
+            retrieve=lambda: excerpts,
         )
         assert plan.context is None
         assert search_knowledge_base not in plan.tools
@@ -141,10 +147,13 @@ class TestPerModelWireRouting:
         excerpts = [KbExcerpt(source_file="d.pdf", text="x")]
         return plan_turn(
             _llm(
-                is_attached_to_kb=attached, kb_id=5,
-                supports_tools=tools, supports_tools_wire=wire,
+                is_attached_to_kb=attached,
+                kb_id=5,
+                supports_tools=tools,
+                supports_tools_wire=wire,
             ),
-            question="q", retrieve=lambda: excerpts,
+            question="q",
+            retrieve=lambda: excerpts,
         )
 
     def _is_agentic(self, plan):
@@ -193,7 +202,8 @@ class TestPerModelWireRouting:
         monkeypatch.setattr(config, "KB_AGENTIC_MODE", True)
         plan = plan_turn(
             _llm(supports_tools=True, supports_tools_wire=True),
-            question="q", retrieve=lambda: [],
+            question="q",
+            retrieve=lambda: [],
         )
         assert plan.tools == [] and plan.context is None  # plain mode
 
@@ -238,7 +248,8 @@ class TestWebSearchGate:
 
         plan = plan_turn(
             _llm(supports_tools=True, supports_tools_wire=True),
-            question="latest news?", retrieve=lambda: [],
+            question="latest news?",
+            retrieve=lambda: [],
             web_search_enabled=True,
         )
         assert plan.tools == [web_search]
@@ -251,7 +262,8 @@ class TestWebSearchGate:
     def test_plain_toggle_off_stays_zero_tool(self):
         plan = plan_turn(
             _llm(supports_tools=True, supports_tools_wire=True),
-            question="hi", retrieve=lambda: [],
+            question="hi",
+            retrieve=lambda: [],
             web_search_enabled=False,
         )
         assert plan.tools == [] and plan.context is None
@@ -263,7 +275,8 @@ class TestWebSearchGate:
     def test_plain_toggle_on_not_wire_capable_stays_zero_tool(self, tools, wire):
         plan = plan_turn(
             _llm(supports_tools=tools, supports_tools_wire=wire),
-            question="hi", retrieve=lambda: [],
+            question="hi",
+            retrieve=lambda: [],
             web_search_enabled=True,
         )
         assert plan.tools == [] and plan.context is None
@@ -274,10 +287,13 @@ class TestWebSearchGate:
 
         plan = plan_turn(
             _llm(
-                is_attached_to_kb=True, kb_id=5,
-                supports_tools=True, supports_tools_wire=True,
+                is_attached_to_kb=True,
+                kb_id=5,
+                supports_tools=True,
+                supports_tools_wire=True,
             ),
-            question="q", retrieve=_must_not_retrieve,
+            question="q",
+            retrieve=_must_not_retrieve,
             web_search_enabled=True,
         )
         assert plan.tools == [calculator, search_knowledge_base, web_search]
@@ -289,10 +305,13 @@ class TestWebSearchGate:
     def test_agentic_kb_toggle_off_keeps_kb_tools_only(self):
         plan = plan_turn(
             _llm(
-                is_attached_to_kb=True, kb_id=5,
-                supports_tools=True, supports_tools_wire=True,
+                is_attached_to_kb=True,
+                kb_id=5,
+                supports_tools=True,
+                supports_tools_wire=True,
             ),
-            question="q", retrieve=_must_not_retrieve,
+            question="q",
+            retrieve=_must_not_retrieve,
             web_search_enabled=False,
         )
         assert plan.tools == [calculator, search_knowledge_base]
@@ -304,7 +323,8 @@ class TestWebSearchGate:
         excerpts = [KbExcerpt(source_file="d.pdf", text="x")]
         plan = plan_turn(
             _llm(is_attached_to_kb=True, kb_id=5, supports_tools=True),
-            question="q", retrieve=lambda: excerpts,
+            question="q",
+            retrieve=lambda: excerpts,
             web_search_enabled=True,
         )
         assert plan.tools == []
@@ -316,7 +336,8 @@ class TestWebSearchGate:
 
         plan = plan_turn(
             _llm(param_size=0.5, supports_tools=True, supports_tools_wire=True),
-            question="q", retrieve=lambda: [],
+            question="q",
+            retrieve=lambda: [],
             web_search_enabled=True,
         )
         assert plan.tools == [web_search]
@@ -328,7 +349,8 @@ class TestWebSearchGate:
         with caplog.at_level(logging.INFO, logger="erudi"):
             plan_turn(
                 _llm(supports_tools=True, supports_tools_wire=True),
-                question="q", retrieve=lambda: [],
+                question="q",
+                retrieve=lambda: [],
                 web_search_enabled=True,
             )
         joined = " ".join(r.message for r in caplog.records)
@@ -340,7 +362,8 @@ class TestWebSearchGate:
         with caplog.at_level(logging.INFO, logger="erudi"):
             plan_turn(
                 _llm(supports_tools=True, supports_tools_wire=None),
-                question="q", retrieve=lambda: [],
+                question="q",
+                retrieve=lambda: [],
                 web_search_enabled=True,
             )
         joined = " ".join(r.message for r in caplog.records)

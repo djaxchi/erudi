@@ -35,9 +35,7 @@ def _get_identifier() -> Optional[LanguageIdentifier]:
     global _identifier, _load_failed
     if _identifier is None and not _load_failed:
         try:
-            _identifier = LanguageIdentifier.from_pickled_model(
-                MODEL_FILE, norm_probs=True
-            )
+            _identifier = LanguageIdentifier.from_pickled_model(MODEL_FILE, norm_probs=True)
         except Exception:
             _load_failed = True
             return None

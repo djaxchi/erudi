@@ -55,6 +55,7 @@ them, exports the matching env vars (e.g. `MLX_VLM_PRELOAD_MODEL` from
 Once invoked, this function blocks for the lifetime of the HTTP server,
 exiting only when the child process is terminated by the parent.
 """
+
 from __future__ import annotations
 
 from typing import List
@@ -136,11 +137,7 @@ def _patch_gemma3_tied_lm_head_quant() -> bool:
         prefix = "language_model."
         head_w = weights.get(f"{prefix}lm_head.weight")
         embed_w = weights.get(f"{prefix}model.embed_tokens.weight")
-        if (
-            head_w is not None
-            and head_w is embed_w
-            and f"{prefix}lm_head.scales" not in weights
-        ):
+        if head_w is not None and head_w is embed_w and f"{prefix}lm_head.scales" not in weights:
             for sidecar in ("scales", "biases"):
                 src = weights.get(f"{prefix}model.embed_tokens.{sidecar}")
                 if src is not None:
@@ -308,6 +305,7 @@ def _import_mlx_vlm_server_main():
     parent-process import time low.
     """
     from mlx_vlm.server.cli import main as _main
+
     return _main
 
 

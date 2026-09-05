@@ -43,9 +43,9 @@ def _tracker(total: int) -> DownloadTracker:
 # UNIT - the shard loop stops scheduling once cancelled
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestShardLoopHonoursCancel:
-
     async def test_remaining_shards_are_never_requested_after_cancel(self, tmp_path):
         tracker = _tracker(3 * 16)
         callback = make_callback(tracker)
@@ -89,9 +89,9 @@ class TestShardLoopHonoursCancel:
 # UNIT - the per-chunk callback aborts the in-flight transfer
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestChunkCallbackHonoursCancel:
-
     def test_callback_counts_until_cancel_then_raises(self):
         tracker = _tracker(100)
         callback = make_callback(tracker)
@@ -128,6 +128,7 @@ class TestChunkCallbackHonoursCancel:
 # UNIT - download_llm turns the abort into a clean early return
 # =====================================================================
 
+
 def _fake_api(files):
     api = MagicMock()
     api.repo_info.return_value = SimpleNamespace(
@@ -141,12 +142,12 @@ def _fake_api(files):
 
 @pytest.mark.unit
 class TestDownloadLlmCancelledMidTransfer:
-
     async def test_cancel_mid_shard_stops_transfer_and_skips_finalization(
         self, monkeypatch, tmp_path, caplog
     ):
         monkeypatch.setattr(
-            config, "LLM_Engine",
+            config,
+            "LLM_Engine",
             SimpleNamespace(is_runnable=lambda link: True, USES_GGUF=False, FORMAT_TAG="mlx"),
         )
         files = ["config.json", *SHARDS]
@@ -178,8 +179,11 @@ class TestDownloadLlmCancelledMidTransfer:
         final_dir = tmp_path / "1"
         with caplog.at_level(logging.INFO, logger="erudi"):
             result = await llm_services.download_llm(
-                model_link="org/model", model_id=1,
-                temp_save_dir=str(temp_dir), final_save_dir=str(final_dir), job_id=42,
+                model_link="org/model",
+                model_id=1,
+                temp_save_dir=str(temp_dir),
+                final_save_dir=str(final_dir),
+                job_id=42,
             )
 
         assert result == str(temp_dir)
@@ -198,6 +202,7 @@ class TestDownloadLlmCancelledMidTransfer:
 # UNIT - the endpoint logs the real outcome
 # =====================================================================
 
+
 def _session_with(monkeypatch, job_row, llm_row):
     session = MagicMock()
 
@@ -213,7 +218,6 @@ def _session_with(monkeypatch, job_row, llm_row):
 
 @pytest.mark.unit
 class TestRunDownloadTaskOutcomeLog:
-
     def _arm(self, monkeypatch, *, ends_as: str):
         job = SimpleNamespace(status="pending", error_message=None, updated_at=None, progress=0.0)
         llm = SimpleNamespace(link="/models/1", model_metadata=None, local=2)

@@ -85,9 +85,7 @@ class ArenaService:
             return []
 
         try:
-            return retrieve_kb_excerpts(
-                query, llm.kb_id, token_budget=strategy["kb_token_budget"]
-            )
+            return retrieve_kb_excerpts(query, llm.kb_id, token_budget=strategy["kb_token_budget"])
         except (KnowledgeBaseNotFoundException, KnowledgeBaseCorruptedException):
             raise
         except Exception as e:
@@ -153,9 +151,13 @@ class ArenaService:
         # Omitted values resolve to the MODEL's defaults (#388); explicit wins.
         defaults = resolve_sampling_defaults(llm)
         params = GenParams(
-            temperature=defaults.temperature if payload.temperature is None else payload.temperature,
+            temperature=defaults.temperature
+            if payload.temperature is None
+            else payload.temperature,
             top_p=defaults.top_p if payload.top_p is None else payload.top_p,
-            max_tokens=defaults.max_tokens if payload.max_new_tokens is None else payload.max_new_tokens,
+            max_tokens=defaults.max_tokens
+            if payload.max_new_tokens is None
+            else payload.max_new_tokens,
         )
 
         # Safety net (#133/#212): unless the model is positively vision-capable,

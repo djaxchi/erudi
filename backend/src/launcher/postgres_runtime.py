@@ -127,9 +127,7 @@ def _prune_stale_handle_pids(data_dir: Path) -> None:
         alive = [pid for pid in pids if psutil.pid_exists(pid)]
         if alive != pids:
             handle_file.write_text(json.dumps(alive))
-            logger.info(
-                f"Pruned stale pgserver handle pids: {sorted(set(pids) - set(alive))}"
-            )
+            logger.info(f"Pruned stale pgserver handle pids: {sorted(set(pids) - set(alive))}")
     except (OSError, ValueError) as exc:
         # Unreadable/corrupt registry — pgserver will rebuild it on boot.
         logger.warning(f"Could not prune pgserver handle pids: {exc}")
@@ -155,9 +153,7 @@ def _recover_corrupt_pgdata(data_dir: Path) -> None:
         return
     if not entries:
         return  # empty — pgserver will initdb into it cleanly
-    logger.warning(
-        f"Recovering half-initialized Postgres data dir (no PG_VERSION): {data_dir}"
-    )
+    logger.warning(f"Recovering half-initialized Postgres data dir (no PG_VERSION): {data_dir}")
     for entry in entries:
         try:
             if entry.is_dir() and not entry.is_symlink():
@@ -216,9 +212,7 @@ def _wait_for_postmaster_ready(data_dir: Path, deadline_seconds: float) -> bool:
             )
             return True
         time.sleep(1.0)
-    logger.warning(
-        f"Postgres crash recovery did not report ready within {deadline_seconds:.0f}s"
-    )
+    logger.warning(f"Postgres crash recovery did not report ready within {deadline_seconds:.0f}s")
     return False
 
 
@@ -293,9 +287,7 @@ def start_postgres(data_dir: Path | str) -> PostgresHandle:
     # CREATE DATABASE has no IF NOT EXISTS → guard on pg_database.
     # DB_NAME is an internal constant, never user input.
     with psycopg.connect(admin_uri, autocommit=True) as conn:
-        exists = conn.execute(
-            "SELECT 1 FROM pg_database WHERE datname = %s", (DB_NAME,)
-        ).fetchone()
+        exists = conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (DB_NAME,)).fetchone()
         if not exists:
             conn.execute(f'CREATE DATABASE "{DB_NAME}"')
 

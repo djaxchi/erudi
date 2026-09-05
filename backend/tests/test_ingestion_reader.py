@@ -24,6 +24,7 @@ pytestmark = pytest.mark.unit
 # Fixture builders — real files, real parsers, no mocks.
 # ---------------------------------------------------------------------------
 
+
 def _escape_pdf_text(text: str) -> str:
     return text.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
 
@@ -42,18 +43,13 @@ def _minimal_pdf(pages_text: list[str]) -> bytes:
     kids = " ".join(f"{n} 0 R" for n in page_objs)
 
     objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")  # 1
+    objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {n_pages} >>".encode())  # 2
     objects.append(
-        f"<< /Type /Pages /Kids [{kids}] /Count {n_pages} >>".encode()
-    )  # 2
-    objects.append(
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica "
-        b"/Encoding /WinAnsiEncoding >>"
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica " b"/Encoding /WinAnsiEncoding >>"
     )  # 3
 
     for i, text in enumerate(pages_text):
-        content = (
-            f"BT /F1 12 Tf 72 720 Td ({_escape_pdf_text(text)}) Tj ET"
-        ).encode("latin-1")
+        content = (f"BT /F1 12 Tf 72 720 Td ({_escape_pdf_text(text)}) Tj ET").encode("latin-1")
         page = (
             f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
             f"/Resources << /Font << /F1 3 0 R >> >> "
@@ -61,9 +57,7 @@ def _minimal_pdf(pages_text: list[str]) -> bytes:
         ).encode()
         objects.append(page)
         objects.append(
-            f"<< /Length {len(content)} >>\nstream\n".encode()
-            + content
-            + b"\nendstream"
+            f"<< /Length {len(content)} >>\nstream\n".encode() + content + b"\nendstream"
         )
 
     out = bytearray(b"%PDF-1.4\n")
@@ -77,8 +71,7 @@ def _minimal_pdf(pages_text: list[str]) -> bytes:
     for off in offsets[1:]:
         out += f"{off:010d} 00000 n \n".encode()
     out += (
-        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
-        f"startxref\n{xref_at}\n%%EOF\n"
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n" f"startxref\n{xref_at}\n%%EOF\n"
     ).encode()
     return bytes(out)
 
@@ -157,6 +150,7 @@ def csv_file(tmp_path):
 # Cleaning — non-destructive (D4)
 # ---------------------------------------------------------------------------
 
+
 class TestCleaning:
     def test_accents_and_non_ascii_preserved(self):
         text = "Le café naïve coûte 5 € — vraiment ?"
@@ -184,6 +178,7 @@ class TestCleaning:
 # ---------------------------------------------------------------------------
 # Reader routing + per-format extraction
 # ---------------------------------------------------------------------------
+
 
 class TestPdf:
     def test_text_layer_pdf_is_active_with_pages(self, pdf_with_text):

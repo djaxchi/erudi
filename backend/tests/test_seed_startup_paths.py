@@ -8,6 +8,7 @@ cleanup (download / KB / orphaned dirs), hardware and startup-variable
 initializers, the populate facade, the wire-tools backfill, the destructive
 dev reset, and the snapshot helpers in `src.database.catalog_snapshot`.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,7 +29,6 @@ from src.database.seed import (
     Job_Cleanup_Service,
     Model_Config,
     Model_Seeder,
-    Quality_Filters,
     Search_Config,
     Startup_Initializer,
     _safetensors_total,
@@ -101,9 +101,9 @@ _FakeEngineType.__name__ = "CPU_Engine"
 # UNIT - module helpers
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestModuleHelpers:
-
     def test_load_base_models_fallback_reads_bundled_json(self):
         models = load_base_models_fallback()
         assert models, "bundled fallback must not be empty"
@@ -149,9 +149,9 @@ class TestModuleHelpers:
 # UNIT - instruct sibling preference (#122)
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestPreferInstructSiblings:
-
     def _mc(self, link):
         return Model_Config(link.split("/")[-1], link, "gemma")
 
@@ -186,16 +186,14 @@ class TestPreferInstructSiblings:
 # UNIT - build_base_models assembly and fallbacks
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestBuildBaseModels:
-
     ORGS = [("google", "gemma", "Gemma")]
 
     def _seeder_with_candidates(self, monkeypatch, candidates):
         seeder = Model_Seeder(db=None, hf_api=MagicMock())
-        monkeypatch.setattr(
-            seeder, "discover_instruct_models", lambda org, mtype: candidates
-        )
+        monkeypatch.setattr(seeder, "discover_instruct_models", lambda org, mtype: candidates)
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngineType)
         return seeder
 
@@ -206,9 +204,7 @@ class TestBuildBaseModels:
         candidates = [self._mc("google/gemma-2-9b-it"), self._mc("google/gemma-2-2b-it")]
         seeder = self._seeder_with_candidates(monkeypatch, candidates)
         # Both bases resolve to the SAME quant repo -> only one row (#122)
-        monkeypatch.setattr(
-            seed_mod, "resolve_quant", lambda link, tag, api: "quanter/gemma-gguf"
-        )
+        monkeypatch.setattr(seed_mod, "resolve_quant", lambda link, tag, api: "quanter/gemma-gguf")
         built = []
 
         def fake_create(mc, quant):
@@ -221,16 +217,12 @@ class TestBuildBaseModels:
         assert built == [("google/gemma-2-9b-it", "quanter/gemma-gguf")]
 
     def test_unresolvable_base_is_skipped(self, monkeypatch):
-        seeder = self._seeder_with_candidates(
-            monkeypatch, [self._mc("google/gemma-2-9b-it")]
-        )
+        seeder = self._seeder_with_candidates(monkeypatch, [self._mc("google/gemma-2-9b-it")])
         monkeypatch.setattr(seed_mod, "resolve_quant", lambda link, tag, api: None)
         assert seeder.build_base_models(self.ORGS) == []
 
     def test_resolver_crash_is_contained(self, monkeypatch):
-        seeder = self._seeder_with_candidates(
-            monkeypatch, [self._mc("google/gemma-2-9b-it")]
-        )
+        seeder = self._seeder_with_candidates(monkeypatch, [self._mc("google/gemma-2-9b-it")])
 
         def broken_resolver(link, tag, api):
             raise RuntimeError("HF 500")
@@ -239,31 +231,21 @@ class TestBuildBaseModels:
         assert seeder.build_base_models(self.ORGS) == []
 
     def test_hf_metadata_failure_falls_back(self, monkeypatch):
-        seeder = self._seeder_with_candidates(
-            monkeypatch, [self._mc("google/gemma-2-9b-it")]
-        )
-        monkeypatch.setattr(
-            seed_mod, "resolve_quant", lambda link, tag, api: "quanter/gemma-gguf"
-        )
+        seeder = self._seeder_with_candidates(monkeypatch, [self._mc("google/gemma-2-9b-it")])
+        monkeypatch.setattr(seed_mod, "resolve_quant", lambda link, tag, api: "quanter/gemma-gguf")
 
         def broken_create(mc, quant):
             raise HuggingFaceAPIException("metadata gone", trace="t")
 
         fallback_row = Llm(name="Gemma", local=0, link="quanter/gemma-gguf", type="gemma")
         monkeypatch.setattr(seeder, "_create_base_llm", broken_create)
-        monkeypatch.setattr(
-            seeder, "_create_base_llm_fallback", lambda mc, quant: fallback_row
-        )
+        monkeypatch.setattr(seeder, "_create_base_llm_fallback", lambda mc, quant: fallback_row)
         out = seeder.build_base_models(self.ORGS)
         assert out == [fallback_row]
 
     def test_fallback_failure_drops_only_that_model(self, monkeypatch):
-        seeder = self._seeder_with_candidates(
-            monkeypatch, [self._mc("google/gemma-2-9b-it")]
-        )
-        monkeypatch.setattr(
-            seed_mod, "resolve_quant", lambda link, tag, api: "quanter/gemma-gguf"
-        )
+        seeder = self._seeder_with_candidates(monkeypatch, [self._mc("google/gemma-2-9b-it")])
+        monkeypatch.setattr(seed_mod, "resolve_quant", lambda link, tag, api: "quanter/gemma-gguf")
 
         def broken_create(mc, quant):
             raise HuggingFaceAPIException("metadata gone", trace="t")
@@ -276,12 +258,8 @@ class TestBuildBaseModels:
         assert seeder.build_base_models(self.ORGS) == []
 
     def test_generic_build_failure_is_contained(self, monkeypatch):
-        seeder = self._seeder_with_candidates(
-            monkeypatch, [self._mc("google/gemma-2-9b-it")]
-        )
-        monkeypatch.setattr(
-            seed_mod, "resolve_quant", lambda link, tag, api: "quanter/gemma-gguf"
-        )
+        seeder = self._seeder_with_candidates(monkeypatch, [self._mc("google/gemma-2-9b-it")])
+        monkeypatch.setattr(seed_mod, "resolve_quant", lambda link, tag, api: "quanter/gemma-gguf")
 
         def broken_create(mc, quant):
             raise RuntimeError("unexpected")
@@ -296,8 +274,9 @@ class TestBuildBaseModels:
             def to_string(self):
                 return "5.1 GB"
 
-        monkeypatch.setattr(seed_mod, "get_disk_size_after_quant",
-                            lambda link, hf_api=None: _Size())
+        monkeypatch.setattr(
+            seed_mod, "get_disk_size_after_quant", lambda link, hf_api=None: _Size()
+        )
         api = MagicMock()
         api.model_info.return_value = SimpleNamespace(
             id="google/gemma-2-9b-it",
@@ -307,13 +286,14 @@ class TestBuildBaseModels:
             tags=[],
             library_name="transformers",
         )
-        monkeypatch.setattr(
-            seed_mod, "format_model_info_metadata", lambda info, size, q: "meta"
-        )
+        monkeypatch.setattr(seed_mod, "format_model_info_metadata", lambda info, size, q: "meta")
         seeder = Model_Seeder(db=None, hf_api=api)
         mc = Model_Config(
-            "gemma-2-9b-it", "google/gemma-2-9b-it", "gemma",
-            safetensors_total=9_000_000_000, category="general",
+            "gemma-2-9b-it",
+            "google/gemma-2-9b-it",
+            "gemma",
+            safetensors_total=9_000_000_000,
+            category="general",
         )
 
         row = seeder._create_base_llm(mc, "quanter/gemma-gguf")
@@ -333,9 +313,9 @@ class TestBuildBaseModels:
 # INTEGRATION - offline seeding
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestOfflineSeeding:
-
     FALLBACK = [
         {
             "name": "Test Gemma",
@@ -348,23 +328,15 @@ class TestOfflineSeeding:
     ]
 
     def test_seed_base_models_offline_adds_rows(self, test_db_session, monkeypatch):
-        monkeypatch.setattr(
-            seed_mod, "load_base_models_fallback", lambda: list(self.FALLBACK)
-        )
+        monkeypatch.setattr(seed_mod, "load_base_models_fallback", lambda: list(self.FALLBACK))
         seeder = Model_Seeder(test_db_session, offline_mode=True)
         assert seeder.seed_base_models_offline() == 1
-        row = (
-            test_db_session.query(Llm)
-            .filter(Llm.link == "quanter/test-gemma-gguf")
-            .one()
-        )
+        row = test_db_session.query(Llm).filter(Llm.link == "quanter/test-gemma-gguf").one()
         assert row.is_base is True
         assert row.local == 0
 
     def test_seed_base_models_offline_skips_existing(self, test_db_session, monkeypatch):
-        monkeypatch.setattr(
-            seed_mod, "load_base_models_fallback", lambda: list(self.FALLBACK)
-        )
+        monkeypatch.setattr(seed_mod, "load_base_models_fallback", lambda: list(self.FALLBACK))
         seeder = Model_Seeder(test_db_session, offline_mode=True)
         assert seeder.seed_base_models_offline() == 1
         assert seeder.seed_base_models_offline() == 0  # idempotent
@@ -385,9 +357,7 @@ class TestOfflineSeeding:
         monkeypatch.setattr(seeder, "seed_from_snapshot", lambda: 42)
         assert seeder.seed_initial_catalog() == 42
 
-    def test_seed_initial_catalog_falls_back_to_offline_json(
-        self, test_db_session, monkeypatch
-    ):
+    def test_seed_initial_catalog_falls_back_to_offline_json(self, test_db_session, monkeypatch):
         seeder = Model_Seeder(test_db_session, offline_mode=True)
         monkeypatch.setattr(seeder, "seed_from_snapshot", lambda: 0)
         monkeypatch.setattr(seeder, "seed_base_models_offline", lambda: 3)
@@ -410,18 +380,11 @@ class TestOfflineSeeding:
 
     def test_seed_from_snapshot_with_entries(self, test_db_session, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngineType)
-        entries = [
-            {"name": "Snap Model", "link": "quanter/snap-gguf", "type": "gemma"}
-        ]
-        monkeypatch.setattr(
-            snapshot_mod, "load_catalog_snapshot", lambda tag: entries
-        )
+        entries = [{"name": "Snap Model", "link": "quanter/snap-gguf", "type": "gemma"}]
+        monkeypatch.setattr(snapshot_mod, "load_catalog_snapshot", lambda tag: entries)
         seeder = Model_Seeder(test_db_session)
         assert seeder.seed_from_snapshot() == 1
-        assert (
-            test_db_session.query(Llm).filter(Llm.link == "quanter/snap-gguf").count()
-            == 1
-        )
+        assert test_db_session.query(Llm).filter(Llm.link == "quanter/snap-gguf").count() == 1
 
     def test_seed_from_snapshot_empty_snapshot(self, test_db_session, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngineType)
@@ -433,9 +396,9 @@ class TestOfflineSeeding:
 # INTEGRATION - interrupted job cleanup
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestJobCleanup:
-
     def _download_job(self, db, llm_id=None, temp_dir="", status="running"):
         job = DownloadJobModel(
             remote_model_id="9",
@@ -461,9 +424,7 @@ class TestJobCleanup:
         llm = Llm(name="Partial", local=2, link=str(model_dir), type="x")
         test_db_session.add(llm)
         test_db_session.flush()
-        job = self._download_job(
-            test_db_session, llm_id=llm.id, temp_dir=str(temp_dir)
-        )
+        job = self._download_job(test_db_session, llm_id=llm.id, temp_dir=str(temp_dir))
 
         count = Job_Cleanup_Service(test_db_session)._cleanup_download_jobs()
 
@@ -495,9 +456,7 @@ class TestJobCleanup:
         llm = Llm(name="Qwen3 14B", local=2, link=str(model_dir), type="x")
         test_db_session.add(llm)
         test_db_session.flush()
-        job = self._download_job(
-            test_db_session, llm_id=llm.id, temp_dir=str(temp_dir)
-        )
+        job = self._download_job(test_db_session, llm_id=llm.id, temp_dir=str(temp_dir))
 
         count = Job_Cleanup_Service(test_db_session)._cleanup_download_jobs()
 
@@ -714,16 +673,12 @@ class TestJobCleanup:
         assert not staging.exists()
 
     def _kb_job(self, db, base_id, new_id, kb_id, status="running"):
-        job = KBJobModel(
-            base_model_id=base_id, new_model_id=new_id, kb_id=kb_id, status=status
-        )
+        job = KBJobModel(base_model_id=base_id, new_model_id=new_id, kb_id=kb_id, status=status)
         db.add(job)
         db.flush()
         return job
 
-    def test_kb_creation_cleanup_rolls_back_assistant_and_kb(
-        self, test_db_session, mock_llm
-    ):
+    def test_kb_creation_cleanup_rolls_back_assistant_and_kb(self, test_db_session, mock_llm):
         kb = KnowledgeBase()
         test_db_session.add(kb)
         test_db_session.flush()
@@ -738,10 +693,7 @@ class TestJobCleanup:
         assert job.status == "failed"
         assert "creation interrupted" in job.error_message
         assert test_db_session.query(Llm).filter(Llm.id == assistant.id).count() == 0
-        assert (
-            test_db_session.query(KnowledgeBase).filter(KnowledgeBase.id == kb.id).count()
-            == 0
-        )
+        assert test_db_session.query(KnowledgeBase).filter(KnowledgeBase.id == kb.id).count() == 0
 
     def test_kb_update_cleanup_keeps_existing_kb(self, test_db_session, mock_llm_with_kb):
         llm, kb = mock_llm_with_kb
@@ -753,10 +705,7 @@ class TestJobCleanup:
         assert job.status == "failed"
         assert "update interrupted" in job.error_message
         assert test_db_session.query(Llm).filter(Llm.id == llm.id).count() == 1
-        assert (
-            test_db_session.query(KnowledgeBase).filter(KnowledgeBase.id == kb.id).count()
-            == 1
-        )
+        assert test_db_session.query(KnowledgeBase).filter(KnowledgeBase.id == kb.id).count() == 1
 
     def test_orphaned_models_cleanup(self, test_db_session, monkeypatch, tmp_path):
         models_dir = tmp_path / "models"
@@ -767,10 +716,10 @@ class TestJobCleanup:
         test_db_session.add(valid)
         test_db_session.flush()
 
-        (models_dir / str(valid.id)).mkdir()          # belongs to a local row
-        (models_dir / "999999").mkdir()               # orphan
-        (models_dir / "temp_123").mkdir()             # interrupted download temp
-        (models_dir / "stray.txt").write_text("x")    # non-dir: ignored
+        (models_dir / str(valid.id)).mkdir()  # belongs to a local row
+        (models_dir / "999999").mkdir()  # orphan
+        (models_dir / "temp_123").mkdir()  # interrupted download temp
+        (models_dir / "stray.txt").write_text("x")  # non-dir: ignored
 
         count = Job_Cleanup_Service(test_db_session)._cleanup_orphaned_models()
 
@@ -796,9 +745,9 @@ class TestJobCleanup:
 # INTEGRATION - hardware / startup initializers
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestInitializers:
-
     def test_hardware_initializes_once(self, test_db_session, monkeypatch):
         monkeypatch.setattr(config, "LLM_Engine", _FakeEngineType)
         init = Hardware_Initializer(test_db_session)
@@ -856,9 +805,9 @@ class TestInitializers:
 # INTEGRATION - Database_Seeder facade
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestDatabaseSeederFacade:
-
     async def test_create_tables_requires_initialized_database(self, monkeypatch):
         monkeypatch.setattr(db_core, "db_engine", None)
         with pytest.raises(RuntimeError, match="Database not initialized"):
@@ -959,9 +908,9 @@ class TestDatabaseSeederFacade:
 # INTEGRATION - wire-tools backfill (#298)
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestWireToolsBackfill:
-
     def _local_llm(self, db, link, wire=None):
         llm = Llm(name="L", local=1, link=link, type="x", supports_tools_wire=wire)
         db.add(llm)
@@ -981,9 +930,7 @@ class TestWireToolsBackfill:
             calls.append(link)
             return True
 
-        monkeypatch.setattr(
-            "src.domains.llms.repository.detect_wire_tools", fake_detect
-        )
+        monkeypatch.setattr("src.domains.llms.repository.detect_wire_tools", fake_detect)
         updated = Database_Seeder().backfill_wire_tools(test_db_session)
         assert updated == 2
         assert a.supports_tools_wire is True
@@ -997,9 +944,7 @@ class TestWireToolsBackfill:
         present_dir = tmp_path / "present"
         present_dir.mkdir()
         undecided = self._local_llm(test_db_session, str(present_dir))
-        monkeypatch.setattr(
-            "src.domains.llms.repository.detect_wire_tools", lambda link: None
-        )
+        monkeypatch.setattr("src.domains.llms.repository.detect_wire_tools", lambda link: None)
         assert Database_Seeder().backfill_wire_tools(test_db_session) == 0
         assert gone.supports_tools_wire is None
         assert undecided.supports_tools_wire is None  # retried next boot
@@ -1023,9 +968,9 @@ class TestWireToolsBackfill:
 # INTEGRATION - destructive dev reset
 # =====================================================================
 
+
 @pytest.mark.integration
 class TestDeleteAllData:
-
     async def test_cancelled_without_confirmation(self, monkeypatch):
         monkeypatch.setattr("builtins.input", lambda prompt: "no")
         factory = MagicMock()
@@ -1056,9 +1001,9 @@ class TestDeleteAllData:
 # UNIT - catalog snapshot helpers (#112)
 # =====================================================================
 
+
 @pytest.mark.unit
 class TestCatalogSnapshotHelpers:
-
     def test_load_snapshot_broken_json_returns_empty(self, monkeypatch, tmp_path):
         target = tmp_path / "src" / "database"
         target.mkdir(parents=True)
@@ -1079,9 +1024,7 @@ class TestCatalogSnapshotHelpers:
         monkeypatch.setattr(config, "get_hf_api", lambda: MagicMock(), raising=False)
         base = [Llm(name="Base", local=0, link="a/base-gguf", type="x", is_base=True)]
         derived = [Llm(name="Derived", local=0, link="b/derived-gguf", type="x")]
-        with patch.object(
-            Database_Seeder, "build_fresh_catalog", return_value=(base, derived)
-        ):
+        with patch.object(Database_Seeder, "build_fresh_catalog", return_value=(base, derived)):
             path = snapshot_mod.generate_snapshot()
         data = json.loads(Path(path).read_text())
         assert [e["link"] for e in data] == ["a/base-gguf", "b/derived-gguf"]
@@ -1091,12 +1034,8 @@ class TestCatalogSnapshotHelpers:
         monkeypatch.setattr(config, "LLM_Engine", None)
         from src.engines.base_engine import BaseEngine
 
-        monkeypatch.setattr(
-            BaseEngine, "get_engine", classmethod(lambda cls: _FakeEngineType)
-        )
-        monkeypatch.setattr(
-            snapshot_mod, "generate_snapshot", lambda: Path("/tmp/snap.json")
-        )
+        monkeypatch.setattr(BaseEngine, "get_engine", classmethod(lambda cls: _FakeEngineType))
+        monkeypatch.setattr(snapshot_mod, "generate_snapshot", lambda: Path("/tmp/snap.json"))
         snapshot_mod.main()
         assert config.LLM_Engine is _FakeEngineType
         assert "snap.json" in capsys.readouterr().out

@@ -26,6 +26,7 @@ pytestmark = pytest.mark.integration
 # Lifecycle / state machine (rollback harness)
 # ---------------------------------------------------------------------------
 
+
 class TestAssistantLifecycle:
     def test_create_kb_assistant_contract(self, test_db_session, mock_llm):
         service = KB_Service()
@@ -49,9 +50,7 @@ class TestAssistantLifecycle:
         assert job.new_model_id == llm_id
         assert job.kb_id == specialized.kb_id
 
-    def test_specialized_llm_inherits_all_descriptive_metadata(
-        self, test_db_session, mock_llm
-    ):
+    def test_specialized_llm_inherits_all_descriptive_metadata(self, test_db_session, mock_llm):
         # Regression for #209: create_specialized_llm used to copy only a
         # hand-picked subset of the base's columns, so the assistant's landing
         # card rendered generic/empty (category, model_metadata were dropped) and
@@ -109,9 +108,7 @@ class TestAssistantLifecycle:
         specialized = test_db_session.query(Llm).get(llm_id)
         assert specialized.supports_tools is True
 
-    def test_kb_assistant_inherits_the_publisher_generation_hints(
-        self, test_db_session, mock_llm
-    ):
+    def test_kb_assistant_inherits_the_publisher_generation_hints(self, test_db_session, mock_llm):
         # An assistant shares its base's weights, so the publisher's sampling
         # hints (#388) are its own: without them a Qwen3 assistant chatted at
         # the neutral 0.2 / 0.95 without top_k and the UI claimed "no publisher
@@ -180,9 +177,7 @@ class TestAssistantLifecycle:
     def test_update_requires_attached_kb(self, test_db_session, mock_llm):
         service = KB_Service()
         with pytest.raises(ValueError, match="not attached"):
-            service.update_existing_kb(
-                db=test_db_session, base_llm_id=mock_llm.id, file_paths=[]
-            )
+            service.update_existing_kb(db=test_db_session, base_llm_id=mock_llm.id, file_paths=[])
 
     def test_update_creates_job_on_same_llm(self, test_db_session, mock_llm_with_kb):
         llm, kb = mock_llm_with_kb
@@ -217,9 +212,7 @@ class TestAssistantLifecycle:
         assert test_db_session.query(KnowledgeBase).get(kb_id) is None
         assert service.repo.get_kb_job_by_id(test_db_session, job_id) is not None
 
-    def test_status_reflects_latest_job_not_the_first(
-        self, test_db_session, mock_llm_with_kb
-    ):
+    def test_status_reflects_latest_job_not_the_first(self, test_db_session, mock_llm_with_kb):
         """An assistant accumulates one KBJob per creation/update, all
         sharing the same new_model_id. Without ordering by recency, the
         lookup used to return whichever row the query happened to hand back
@@ -278,6 +271,7 @@ class TestAssistantLifecycle:
 # Real ingestion pipeline (committed session + live vector store)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def kb_store(pg_test_cluster, _session_db_engine):
     from src.ingestion import vector_store
@@ -313,9 +307,7 @@ def _make_kb_and_job(session, created_ids):
     session.add(kb)
     session.flush()
     created_ids.append(kb.id)
-    job = service.repo.create_kb_job(
-        db=session, base_model_id=None, new_model_id=None, kb_id=kb.id
-    )
+    job = service.repo.create_kb_job(db=session, base_model_id=None, new_model_id=None, kb_id=kb.id)
     session.commit()
     return service, kb, job
 
@@ -344,10 +336,7 @@ class TestIngestionPipeline:
         session.expire_all()
         assert service.repo.get_kb_job_by_id(session, job.id).status == "completed"
 
-        documents = {
-            d.name: d
-            for d in session.query(KnowledgeDocument).filter_by(kb_id=kb.id)
-        }
+        documents = {d.name: d for d in session.query(KnowledgeDocument).filter_by(kb_id=kb.id)}
         assert documents["procédure.md"].status == "active"
         assert documents["photo.jpg"].status == "pending_vision"
         assert documents["procédure.md"].size_bytes > 0
@@ -366,9 +355,7 @@ class TestIngestionPipeline:
         doc = tmp_path / "notes.txt"
         doc.write_text("Contenu unique à ne pas dupliquer.", encoding="utf-8")
 
-        service.process_and_index_documents(
-            db=session, kb_job_id=job.id, file_paths=[str(doc)]
-        )
+        service.process_and_index_documents(db=session, kb_job_id=job.id, file_paths=[str(doc)])
         # Same content again (update flow re-drops the same file).
         job2 = service.repo.create_kb_job(
             db=session, base_model_id=None, new_model_id=None, kb_id=kb.id
@@ -380,9 +367,7 @@ class TestIngestionPipeline:
 
         session.expire_all()
         assert service.repo.get_kb_job_by_id(session, job2.id).status == "completed"
-        count = (
-            session.query(KnowledgeDocument).filter_by(kb_id=kb.id).count()
-        )
+        count = session.query(KnowledgeDocument).filter_by(kb_id=kb.id).count()
         assert count == 1
         with psycopg.connect(pg_test_cluster.psycopg_url) as conn:
             chunks = conn.execute(
@@ -408,14 +393,11 @@ class TestIngestionPipeline:
         session.expire_all()
         assert service.repo.get_kb_job_by_id(session, job.id).status == "completed"
         statuses = {
-            d.name: d.status
-            for d in session.query(KnowledgeDocument).filter_by(kb_id=kb.id)
+            d.name: d.status for d in session.query(KnowledgeDocument).filter_by(kb_id=kb.id)
         }
         assert statuses == {"ok.txt": "active", "mystère.xyz": "failed"}
 
-    def test_job_fails_when_nothing_could_be_ingested(
-        self, kb_store, real_db_session, tmp_path
-    ):
+    def test_job_fails_when_nothing_could_be_ingested(self, kb_store, real_db_session, tmp_path):
         session, created = real_db_session
         service, kb, job = _make_kb_and_job(session, created)
 
@@ -423,18 +405,14 @@ class TestIngestionPipeline:
         bad.write_text("nope")
 
         with pytest.raises(ValueError, match="No searchable content could be indexed"):
-            service.process_and_index_documents(
-                db=session, kb_job_id=job.id, file_paths=[str(bad)]
-            )
+            service.process_and_index_documents(db=session, kb_job_id=job.id, file_paths=[str(bad)])
 
         session.expire_all()
         job_after = service.repo.get_kb_job_by_id(session, job.id)
         assert job_after.status == "failed"
         assert "No searchable content could be indexed" in job_after.error_message
 
-    def test_empty_file_is_marked_empty_and_job_fails(
-        self, kb_store, real_db_session, tmp_path
-    ):
+    def test_empty_file_is_marked_empty_and_job_fails(self, kb_store, real_db_session, tmp_path):
         """A file that yields zero chunks must NOT be reported as indexed: the
         document is flagged 'empty' and a content-less job fails honestly (#133)."""
         session, created = real_db_session
@@ -451,11 +429,7 @@ class TestIngestionPipeline:
         session.expire_all()
         job_after = service.repo.get_kb_job_by_id(session, job.id)
         assert job_after.status == "failed"
-        doc = (
-            session.query(KnowledgeDocument)
-            .filter_by(kb_id=kb.id, name="blank.txt")
-            .one()
-        )
+        doc = session.query(KnowledgeDocument).filter_by(kb_id=kb.id, name="blank.txt").one()
         assert doc.status == "empty"
 
     def test_empty_file_alongside_content_still_completes(
@@ -478,7 +452,6 @@ class TestIngestionPipeline:
         session.expire_all()
         assert service.repo.get_kb_job_by_id(session, job.id).status == "completed"
         statuses = {
-            d.name: d.status
-            for d in session.query(KnowledgeDocument).filter_by(kb_id=kb.id)
+            d.name: d.status for d in session.query(KnowledgeDocument).filter_by(kb_id=kb.id)
         }
         assert statuses == {"good.md": "active", "blank.txt": "empty"}

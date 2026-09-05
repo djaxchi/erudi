@@ -5,6 +5,7 @@ shrink to a short per-tool directive marker while the CURRENT turn's results
 stay intact. Content is rewritten, never dropped, so the chat template's
 ``AIMessage(tool_calls) -> ToolMessage`` pairing invariant holds.
 """
+
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 import pytest

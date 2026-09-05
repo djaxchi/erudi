@@ -26,6 +26,7 @@ class _FakeApi:
 
     Entries are ``(id, downloads)`` or ``(id, downloads, gated)``; ``gated`` takes
     the values the Hub serializes (``False``, ``"auto"``, ``"manual"``)."""
+
     def __init__(self, ids):
         self._models = [_Model(*entry) for entry in ids]
         self.calls = []
@@ -41,24 +42,34 @@ class _BoomApi:
 
 
 class TestNormalize:
-    @pytest.mark.parametrize("name,owner,expected", [
-        ("gemma-3-1b-it-4bit", "google", "gemma-3-1b-it"),
-        ("gemma-2-2b-it-4bit", "google", "gemma-2-2b-it"),
-        ("google_gemma-3-1b-it-GGUF", "google", "gemma-3-1b-it"),   # vendor prefix in name
-        ("gpt-oss-20b-MXFP4-Q8", "openai", "gpt-oss-20b"),          # multi-token format tail
-        ("Qwen_Qwen3-4B-GGUF", "Qwen", "qwen3-4b"),                 # cross-org vendor prefix
-        ("internlm2_5-20b-chat_8bit", "internlm", "internlm2-5-20b-chat"),  # underscores
-        ("Mistral-Small-3.2-24B-Instruct-2506-bf16", "mistralai", "mistral-small-3.2-24b-instruct-2506"),
-        ("DeepSeek-V3-4bit", "deepseek-ai", "deepseek-v3"),
-        ("SmolLM2-1.7B-Instruct", "HuggingFaceTB", "smollm2-1.7b-instruct"),  # no quant suffix
-    ])
+    @pytest.mark.parametrize(
+        "name,owner,expected",
+        [
+            ("gemma-3-1b-it-4bit", "google", "gemma-3-1b-it"),
+            ("gemma-2-2b-it-4bit", "google", "gemma-2-2b-it"),
+            ("google_gemma-3-1b-it-GGUF", "google", "gemma-3-1b-it"),  # vendor prefix in name
+            ("gpt-oss-20b-MXFP4-Q8", "openai", "gpt-oss-20b"),  # multi-token format tail
+            ("Qwen_Qwen3-4B-GGUF", "Qwen", "qwen3-4b"),  # cross-org vendor prefix
+            ("internlm2_5-20b-chat_8bit", "internlm", "internlm2-5-20b-chat"),  # underscores
+            (
+                "Mistral-Small-3.2-24B-Instruct-2506-bf16",
+                "mistralai",
+                "mistral-small-3.2-24b-instruct-2506",
+            ),
+            ("DeepSeek-V3-4bit", "deepseek-ai", "deepseek-v3"),
+            ("SmolLM2-1.7B-Instruct", "HuggingFaceTB", "smollm2-1.7b-instruct"),  # no quant suffix
+        ],
+    )
     def test_normalize(self, name, owner, expected):
         assert normalize(name, owner) == expected
 
     def test_does_not_strip_real_slug_tokens(self):
         # qat / preview / instruct are part of real slugs, never stripped
         assert normalize("gemma-3-1b-it-qat-4bit", "google") == "gemma-3-1b-it-qat"
-        assert normalize("granite-3.2-8b-instruct-preview-4bit", "ibm-granite") == "granite-3.2-8b-instruct-preview"
+        assert (
+            normalize("granite-3.2-8b-instruct-preview-4bit", "ibm-granite")
+            == "granite-3.2-8b-instruct-preview"
+        )
 
     def test_base_key(self):
         assert base_key("google/gemma-2-2b-it") == "gemma-2-2b-it"
@@ -69,58 +80,79 @@ class TestResolveQuant:
     def test_picks_exact_over_higher_download_wrong_model(self):
         # The classic trap: gemma-4-e2b outranks gemma-2-2b by downloads, but the
         # exact-normalized rule must still pick gemma-2-2b.
-        api = _FakeApi([
-            ("mlx-community/gemma-4-e2b-it-4bit", 83321),
-            ("mlx-community/gemma-2-2b-it-4bit", 5889),
-            ("mlx-community/gemma-4-e2b-it-bf16", 1801),
-        ])
-        assert resolve_quant("google/gemma-2-2b-it", "mlx", api) == "mlx-community/gemma-2-2b-it-4bit"
+        api = _FakeApi(
+            [
+                ("mlx-community/gemma-4-e2b-it-4bit", 83321),
+                ("mlx-community/gemma-2-2b-it-4bit", 5889),
+                ("mlx-community/gemma-4-e2b-it-bf16", 1801),
+            ]
+        )
+        assert (
+            resolve_quant("google/gemma-2-2b-it", "mlx", api) == "mlx-community/gemma-2-2b-it-4bit"
+        )
 
     def test_prefers_4bit_among_exacts(self):
-        api = _FakeApi([
-            ("mlx-community/gpt-oss-20b-MXFP4-Q8", 397624),
-            ("mlx-community/gpt-oss-20b-OptiQ-4bit", 294),  # not exact (OptiQ token remains)
-            ("mlx-community/gpt-oss-20b-mxfp4-bf16", 414),
-        ])
+        api = _FakeApi(
+            [
+                ("mlx-community/gpt-oss-20b-MXFP4-Q8", 397624),
+                ("mlx-community/gpt-oss-20b-OptiQ-4bit", 294),  # not exact (OptiQ token remains)
+                ("mlx-community/gpt-oss-20b-mxfp4-bf16", 414),
+            ]
+        )
         # All real exacts are MXFP4 variants → highest downloads wins (no -4bit present).
-        assert resolve_quant("openai/gpt-oss-20b", "mlx", api) == "mlx-community/gpt-oss-20b-MXFP4-Q8"
+        assert (
+            resolve_quant("openai/gpt-oss-20b", "mlx", api) == "mlx-community/gpt-oss-20b-MXFP4-Q8"
+        )
 
     def test_rejects_version_siblings(self):
-        api = _FakeApi([
-            ("mlx-community/DeepSeek-V3.1-4bit", 6385),
-            ("mlx-community/DeepSeek-V3-0324-4bit", 1830),
-            ("mlx-community/DeepSeek-V3-4bit", 826),
-        ])
-        assert resolve_quant("deepseek-ai/DeepSeek-V3", "mlx", api) == "mlx-community/DeepSeek-V3-4bit"
+        api = _FakeApi(
+            [
+                ("mlx-community/DeepSeek-V3.1-4bit", 6385),
+                ("mlx-community/DeepSeek-V3-0324-4bit", 1830),
+                ("mlx-community/DeepSeek-V3-4bit", 826),
+            ]
+        )
+        assert (
+            resolve_quant("deepseek-ai/DeepSeek-V3", "mlx", api) == "mlx-community/DeepSeek-V3-4bit"
+        )
 
     def test_none_when_no_exact_match(self):
         # Only finetunes / siblings present, no exact base quant → None (won't appear).
-        api = _FakeApi([
-            ("someone/Phi-4-mini-instruct-4bit", 9999),
-            ("other/Phi-4-reasoning-4bit", 5000),
-        ])
+        api = _FakeApi(
+            [
+                ("someone/Phi-4-mini-instruct-4bit", 9999),
+                ("other/Phi-4-reasoning-4bit", 5000),
+            ]
+        )
         assert resolve_quant("microsoft/phi-4", "mlx", api) is None
 
     def test_vendor_prefixed_gguf_name_matches(self):
         api = _FakeApi([("bartowski/google_gemma-3-1b-it-GGUF", 12345)])
-        assert resolve_quant("google/gemma-3-1b-it", "gguf", api) == "bartowski/google_gemma-3-1b-it-GGUF"
+        assert (
+            resolve_quant("google/gemma-3-1b-it", "gguf", api)
+            == "bartowski/google_gemma-3-1b-it-GGUF"
+        )
 
     def test_prefers_trusted_quanter_over_higher_download_random(self):
         # A random uploader has more downloads, but mlx-community is trusted and wins
         # so a base's name never binds to an unvetted reupload when a canonical one
         # exists (#122). Both are exact 4bit matches → only trust differs.
-        api = _FakeApi([
-            ("randomuser/Yi-34B-mlx-4bit", 99999),
-            ("mlx-community/Yi-34B-4bit", 120),
-        ])
+        api = _FakeApi(
+            [
+                ("randomuser/Yi-34B-mlx-4bit", 99999),
+                ("mlx-community/Yi-34B-4bit", 120),
+            ]
+        )
         assert resolve_quant("01-ai/Yi-34B", "mlx", api) == "mlx-community/Yi-34B-4bit"
 
     def test_prefers_official_org_quant_first(self):
         # The base's own org outranks even a trusted community quanter.
-        api = _FakeApi([
-            ("mlx-community/Qwen3-8B-4bit", 5000),
-            ("Qwen/Qwen3-8B-4bit", 50),
-        ])
+        api = _FakeApi(
+            [
+                ("mlx-community/Qwen3-8B-4bit", 5000),
+                ("Qwen/Qwen3-8B-4bit", 50),
+            ]
+        )
         assert resolve_quant("Qwen/Qwen3-8B", "mlx", api) == "Qwen/Qwen3-8B-4bit"
 
     def test_network_failure_returns_none(self):
@@ -132,18 +164,25 @@ class TestResolveQuant:
     # google/gemma-2b-it (gated: manual) ended up in the GGUF catalog.
     @pytest.mark.parametrize("gated", ["manual", "auto", True])
     def test_skips_gated_candidate_and_picks_next_trusted(self, gated):
-        api = _FakeApi([
-            ("google/gemma-2b-it", 151895, gated),                  # official but gated
-            ("lmstudio-community/gemma-2b-it-GGUF", 4000, False),  # trusted, public
-            ("randomuser/gemma-2b-it-GGUF", 90000, False),         # public, untrusted
-        ])
-        assert resolve_quant("google/gemma-2b-it", "gguf", api) == "lmstudio-community/gemma-2b-it-GGUF"
+        api = _FakeApi(
+            [
+                ("google/gemma-2b-it", 151895, gated),  # official but gated
+                ("lmstudio-community/gemma-2b-it-GGUF", 4000, False),  # trusted, public
+                ("randomuser/gemma-2b-it-GGUF", 90000, False),  # public, untrusted
+            ]
+        )
+        assert (
+            resolve_quant("google/gemma-2b-it", "gguf", api)
+            == "lmstudio-community/gemma-2b-it-GGUF"
+        )
 
     def test_none_when_only_exact_candidate_is_gated(self):
-        api = _FakeApi([
-            ("google/gemma-2b-it", 151895, "manual"),
-            ("mlx-community/gemma-4-e2b-it-4bit", 83321, False),   # public but not exact
-        ])
+        api = _FakeApi(
+            [
+                ("google/gemma-2b-it", 151895, "manual"),
+                ("mlx-community/gemma-4-e2b-it-4bit", 83321, False),  # public but not exact
+            ]
+        )
         assert resolve_quant("google/gemma-2b-it", "gguf", api) is None
 
     def test_search_requests_gated_alongside_downloads(self):
@@ -183,8 +222,9 @@ _GROUND_TRUTH = [
 
 
 @pytest.mark.network
-@pytest.mark.skipif(not os.environ.get("ERUDI_TEST_NETWORK"),
-                    reason="hits live HF; set ERUDI_TEST_NETWORK=1")
+@pytest.mark.skipif(
+    not os.environ.get("ERUDI_TEST_NETWORK"), reason="hits live HF; set ERUDI_TEST_NETWORK=1"
+)
 class TestResolverLiveEval:
     """Anti-regression guard against the REAL HF API: the resolver must never pick
     a wrong model (every non-None result is an exact normalized match), and overall
@@ -193,6 +233,7 @@ class TestResolverLiveEval:
 
     def _api(self):
         from huggingface_hub import HfApi
+
         return HfApi(token=None)
 
     def test_no_wrong_picks_and_high_coverage(self):
@@ -213,4 +254,3 @@ class TestResolverLiveEval:
         total_existing = sum(1 for _, _, e in _GROUND_TRUTH if e)
         coverage = resolved / total_existing
         assert coverage >= 0.85, f"coverage dropped to {coverage:.0%} ({misses} misses)"
-

@@ -7,6 +7,7 @@ NEVER raises; every failure returns text the model can read, prefixed
 exactly ``Error during Web Search: `` with a cause-specific tail mapped
 from the ddgs exception taxonomy. Empty results are NOT an error.
 """
+
 from types import SimpleNamespace
 
 import pytest
@@ -80,9 +81,7 @@ class TestFormatWebToolResult:
         assert "What's new in Python 3.13 - https://docs.python.org/3/whatsnew/3.13.html" in out
 
     def test_localized_answer_language_line_rides_last(self):
-        out = format_web_tool_result(
-            _RESULTS, "quelle est la dernière version de python ?", 1000
-        )
+        out = format_web_tool_result(_RESULTS, "quelle est la dernière version de python ?", 1000)
         assert out.rstrip().endswith("Réponds en français.")
 
     def test_citation_reminder_present(self):
@@ -130,10 +129,7 @@ class TestWebSearchErrorMapping:
     def test_ddgs_wrapping_a_network_error_is_offline(self):
         exc = DDGSException("engine failed")
         exc.__cause__ = ConnectionError("dns fail")
-        assert (
-            map_web_search_error(exc)
-            == f"{WEB_SEARCH_ERROR_PREFIX}no internet connection"
-        )
+        assert map_web_search_error(exc) == f"{WEB_SEARCH_ERROR_PREFIX}no internet connection"
 
     def test_bare_oserror_is_offline(self):
         assert (

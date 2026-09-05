@@ -5,6 +5,7 @@ HuggingFace ``config.json`` dict, whether a model accepts image input. It backs
 ``MLX_Engine.model_supports_vision``; the llama.cpp side keys off an ``mmproj``
 file instead and is covered in the engine tests.
 """
+
 from __future__ import annotations
 
 import pytest

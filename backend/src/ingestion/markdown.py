@@ -14,10 +14,7 @@ def rows_to_markdown_table(rows: list[list[str]]) -> str:
     width = max(len(row) for row in rows)
 
     def fmt(row: list[str]) -> str:
-        cells = [
-            str(cell).replace("|", "\\|").replace("\n", " ").strip()
-            for cell in row
-        ]
+        cells = [str(cell).replace("|", "\\|").replace("\n", " ").strip() for cell in row]
         cells += [""] * (width - len(cells))
         return "| " + " | ".join(cells) + " |"
 

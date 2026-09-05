@@ -6,6 +6,7 @@ of numerical libraries (NumPy, PyTorch) before any heavy imports occur.
 CRITICAL: These must be set BEFORE any import of numpy/torch/sentence_transformers.
 Python's import system guarantees __init__.py runs first when importing from this package.
 """
+
 import os
 import sys
 

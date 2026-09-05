@@ -4,6 +4,7 @@ The search box queries HF directly, filtered to runnable chat/vision models in t
 active engine format, and a chosen hit downloads by repo id without being persisted
 into the curated catalog. HF is mocked — no network.
 """
+
 from types import SimpleNamespace
 from unittest.mock import patch, AsyncMock
 
@@ -16,8 +17,15 @@ from src.entities.Llm import Llm
 
 def _hit(mid, downloads=1000, pipeline_tag="text-generation", tags=None, total=None):
     st = SimpleNamespace(total=total) if total else None
-    return SimpleNamespace(id=mid, downloads=downloads, likes=3, gated=False,
-                           pipeline_tag=pipeline_tag, tags=tags or [], safetensors=st)
+    return SimpleNamespace(
+        id=mid,
+        downloads=downloads,
+        likes=3,
+        gated=False,
+        pipeline_tag=pipeline_tag,
+        tags=tags or [],
+        safetensors=st,
+    )
 
 
 class _Engine:
@@ -36,13 +44,17 @@ class TestSearchHuggingface:
 
     def test_filters_non_llm_pipelines_and_floor(self, monkeypatch):
         monkeypatch.setattr(hf_search.config, "LLM_Engine", _Engine, raising=False)
-        api = SimpleNamespace(list_models=lambda **k: [
-            _hit("mlx-community/Qwen2.5-7B-Instruct-4bit", downloads=5000, total=7_600_000_000),
-            _hit("org/whisper-tiny-mlx", pipeline_tag="automatic-speech-recognition"),  # drop
-            _hit("org/pii-french-mlx", pipeline_tag="token-classification"),            # drop
-            _hit("org/dead-repo-4bit", downloads=2),                                    # below floor
-            _hit("mlx-community/Qwen2.5-VL-7B-Instruct-4bit", pipeline_tag="image-text-to-text"),
-        ])
+        api = SimpleNamespace(
+            list_models=lambda **k: [
+                _hit("mlx-community/Qwen2.5-7B-Instruct-4bit", downloads=5000, total=7_600_000_000),
+                _hit("org/whisper-tiny-mlx", pipeline_tag="automatic-speech-recognition"),  # drop
+                _hit("org/pii-french-mlx", pipeline_tag="token-classification"),  # drop
+                _hit("org/dead-repo-4bit", downloads=2),  # below floor
+                _hit(
+                    "mlx-community/Qwen2.5-VL-7B-Instruct-4bit", pipeline_tag="image-text-to-text"
+                ),
+            ]
+        )
         monkeypatch.setattr(hf_search.config, "get_hf_api", lambda: api)
 
         res = hf_search.search_huggingface("qwen", limit=10)
@@ -53,9 +65,11 @@ class TestSearchHuggingface:
 
     def test_result_shape_and_category(self, monkeypatch):
         monkeypatch.setattr(hf_search.config, "LLM_Engine", _Engine, raising=False)
-        api = SimpleNamespace(list_models=lambda **k: [
-            _hit("mlx-community/Qwen2.5-Coder-7B-Instruct-4bit", total=7_600_000_000),
-        ])
+        api = SimpleNamespace(
+            list_models=lambda **k: [
+                _hit("mlx-community/Qwen2.5-Coder-7B-Instruct-4bit", total=7_600_000_000),
+            ]
+        )
         monkeypatch.setattr(hf_search.config, "get_hf_api", lambda: api)
 
         (r,) = hf_search.search_huggingface("coder", limit=5)
@@ -66,10 +80,13 @@ class TestSearchHuggingface:
 
     def test_search_failure_returns_empty(self, monkeypatch):
         monkeypatch.setattr(hf_search.config, "LLM_Engine", _Engine, raising=False)
+
         def boom(**k):
             raise RuntimeError("HF down")
-        monkeypatch.setattr(hf_search.config, "get_hf_api",
-                            lambda: SimpleNamespace(list_models=boom))
+
+        monkeypatch.setattr(
+            hf_search.config, "get_hf_api", lambda: SimpleNamespace(list_models=boom)
+        )
         assert hf_search.search_huggingface("qwen") == []
 
     def test_passes_short_retry_budget_to_list_models(self, monkeypatch):
@@ -81,8 +98,9 @@ class TestSearchHuggingface:
             seen.update(k)
             return []
 
-        monkeypatch.setattr(hf_search.config, "get_hf_api",
-                            lambda: SimpleNamespace(list_models=capture))
+        monkeypatch.setattr(
+            hf_search.config, "get_hf_api", lambda: SimpleNamespace(list_models=capture)
+        )
         hf_search.search_huggingface("qwen")
         assert seen["_max_retries"] == hf_search._SEARCH_MAX_RETRIES
         assert seen["_max_backoff"] == hf_search._SEARCH_MAX_BACKOFF
@@ -99,10 +117,16 @@ class TestHFDownloadEndpoint:
         mock_download.return_value = AsyncMock()
 
         before = test_db_session.query(Llm).count()
-        resp = client.post("/erudi/llms/download/huggingface", json={
-            "link": "mlx-community/Some-Model-4bit", "name": "Some Model",
-            "param_size": 7.0, "quantized": True, "category": "general",
-        })
+        resp = client.post(
+            "/erudi/llms/download/huggingface",
+            json={
+                "link": "mlx-community/Some-Model-4bit",
+                "name": "Some Model",
+                "param_size": 7.0,
+                "quantized": True,
+                "category": "general",
+            },
+        )
         assert resp.status_code == status.HTTP_200_OK
         body = resp.json()
         assert body["remote_model_link"] == "mlx-community/Some-Model-4bit"

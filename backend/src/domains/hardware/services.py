@@ -5,27 +5,28 @@ profile management, score calculation, and labeling logic.
 
 Architecture:
     Endpoints → Service → Repository → Entity → Database
-    
+
 Key Responsibilities:
     - Orchestrate hardware detection through LLM_Engine
     - Manage hardware profile lifecycle (get_or_create pattern)
     - Calculate boosted scores for UI display (+20 points)
     - Generate performance labels (Excellent, Good, Fair, Poor, Weak)
     - Format performance_breakdown structure
-    
+
 Example:
     from src.domains.hardware.services import Hardware_Service
     from src.domains.hardware.repository import Hardware_Repository
     from src.database.core import SessionLocal
-    
+
     db = SessionLocal()
     repo = Hardware_Repository(db)
     service = Hardware_Service(repo)
-    
+
     profile = service.get_or_create_profile()
     boosted = service.calculate_boosted_scores(profile)
     db.commit()
 """
+
 from typing import Dict, Any, Optional
 from src.domains.hardware.repository import Hardware_Repository
 from src.entities.HardwareProfile import HardwareProfile
@@ -138,6 +139,8 @@ def recommended_param_range(profile: HardwareProfile) -> tuple[float, float]:
     min_params = min(max_params * 0.5, _MAX_RECOMMENDED_MIN_PARAMS)
     min_params = max(_MIN_PARAM_FLOOR, min(min_params, max_params))
     return (round(min_params, 1), round(max_params, 1))
+
+
 class Hardware_Service:
     """Service layer for hardware domain business logic.
 
@@ -191,18 +194,20 @@ class Hardware_Service:
         """
         try:
             logger.info("Getting or creating hardware profile")
-            
+
             # Try to get existing profile
             profile = self.repository.get_profile()
-            
+
             # Extract backend type from current engine name
-            current_backend = config.LLM_Engine.__name__.lower().replace('_engine', '')
-            
+            current_backend = config.LLM_Engine.__name__.lower().replace("_engine", "")
+
             if profile:
                 stored_version = getattr(profile, "profiling_version", None)
                 if profile.backend_type != current_backend:
                     # No profile exists or backend mismatch, detect hardware
-                    logger.info(f"Backend mismatch: cached={profile.backend_type}, current={current_backend}. Re-detecting.")
+                    logger.info(
+                        f"Backend mismatch: cached={profile.backend_type}, current={current_backend}. Re-detecting."
+                    )
                     self.repository.delete_profile(profile)
                 elif stored_version != PROFILING_LOGIC_VERSION:
                     # Same machine, but the numbers were produced by profiling
@@ -218,21 +223,18 @@ class Hardware_Service:
                     return profile
             else:
                 logger.info("No cached profile found, detecting hardware")
-            
+
             hardware_data = self._detect_hardware()
-            
+
             # Create new profile
             profile = self.repository.create_profile(hardware_data)
             logger.info(f"Hardware profile created: backend={profile.backend_type}")
-            
+
             return profile
-            
+
         except Exception as e:
             logger.exception(f"Failed to get or create hardware profile: {e}")
-            raise HardwareException(
-                "Failed to retrieve hardware information",
-                trace=str(e)
-            )
+            raise HardwareException("Failed to retrieve hardware information", trace=str(e))
 
     def _detect_hardware(self) -> Dict[str, Any]:
         """Perform hardware detection through LLM_Engine.
@@ -251,25 +253,24 @@ class Hardware_Service:
         """
         try:
             logger.debug("Starting hardware detection via LLM_Engine")
-            
+
             if not config.LLM_Engine:
                 raise HardwareException("LLM_Engine not initialized")
-            
+
             # Get flat hardware data from engine
             hardware_data = config.LLM_Engine.get_flat_hardware_data()
             # Stamp the logic that produced these numbers, so a later fix to
             # detection or scoring can tell this row is stale and redo it.
             hardware_data["profiling_version"] = PROFILING_LOGIC_VERSION
 
-            logger.debug(f"Hardware detection complete: backend={hardware_data.get('backend_type')}")
+            logger.debug(
+                f"Hardware detection complete: backend={hardware_data.get('backend_type')}"
+            )
             return hardware_data
-            
+
         except Exception as e:
             logger.exception(f"Hardware detection failed: {e}")
-            raise HardwareException(
-                "Failed to detect hardware",
-                trace=str(e)
-            )
+            raise HardwareException("Failed to detect hardware", trace=str(e))
 
     def warm_up(self, duration_seconds: int = 5) -> bool:
         """Warm up hardware accelerator (GPU/MPS/CUDA).
@@ -294,26 +295,23 @@ class Hardware_Service:
         """
         try:
             logger.info(f"Starting hardware warm-up: duration={duration_seconds}s")
-            
+
             if not config.LLM_Engine:
                 logger.warning("LLM_Engine not initialized, skipping warm-up")
                 return False
-            
+
             success = config.LLM_Engine.warm_up_accelerator(duration_seconds)
-            
+
             if success:
                 logger.info("Hardware warm-up completed successfully")
             else:
                 logger.warning("Hardware warm-up failed or not available")
-            
+
             return success
-            
+
         except Exception as e:
             logger.exception(f"Hardware warm-up failed: {e}")
-            raise HardwareException(
-                "Failed to warm up hardware accelerator",
-                trace=str(e)
-            )
+            raise HardwareException("Failed to warm up hardware accelerator", trace=str(e))
 
     def calculate_boosted_scores(self, profile: HardwareProfile) -> Dict[str, Any]:
         """Calculate UI-friendly scores with +20 boost for frontend display.
@@ -350,14 +348,11 @@ class Hardware_Service:
         result = {
             # Raw score (engine output, no modification)
             "raw_inference_score": raw_inf,
-
             # Boosted score for UI display
             "boosted_inference_score": boosted_inf,
             "global_inference_score": boosted_inf,  # Alias for backward compat
-
             # Label based on boosted score
             "global_inference_label": self._get_label(boosted_inf),
-
             # Component scores (raw, no boost needed for internal metrics)
             "cpu_score": profile.cpu_score,
             "memory_score": profile.memory_score,
@@ -369,10 +364,8 @@ class Hardware_Service:
         param_min, param_max = recommended_param_range(profile)
         result["recommended_param_min"] = param_min
         result["recommended_param_max"] = param_max
-        
-        logger.debug(
-            f"Scores calculated: raw_inf={raw_inf:.1f}, boosted_inf={boosted_inf:.1f}"
-        )
+
+        logger.debug(f"Scores calculated: raw_inf={raw_inf:.1f}, boosted_inf={boosted_inf:.1f}")
         return result
 
     def _get_label(self, score: float) -> str:
@@ -431,10 +424,10 @@ class Hardware_Service:
         """
         try:
             logger.info("Refreshing hardware profile")
-            
+
             # Detect current hardware state
             hardware_data = self._detect_hardware()
-            
+
             # Get existing profile
             profile = self.repository.get_profile()
             if not profile:
@@ -445,13 +438,10 @@ class Hardware_Service:
                 # Update existing profile
                 logger.info(f"Updating existing profile: id={profile.id}")
                 profile = self.repository.update_profile(profile, hardware_data)
-            
+
             logger.info("Hardware profile refreshed successfully")
             return profile
-            
+
         except Exception as e:
             logger.exception(f"Failed to refresh hardware profile: {e}")
-            raise HardwareException(
-                "Failed to refresh hardware profile",
-                trace=str(e)
-            )
+            raise HardwareException("Failed to refresh hardware profile", trace=str(e))
