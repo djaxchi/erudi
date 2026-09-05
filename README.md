@@ -46,7 +46,7 @@ Every request, when it happens and the code behind it: **[What leaves your machi
 
 ## Install
 
-1. **[Download](https://github.com/erudi-app/erudi/releases)** the installer for your platform — a notarized `.dmg` for macOS (Apple Silicon, macOS 14+), a `Setup.exe` for Windows (a separate CUDA build for NVIDIA GPUs), an `.AppImage` for Linux.
+1. **[Download](https://github.com/erudi-app/erudi/releases)** the installer for your platform — a notarized `.dmg` for macOS (Apple Silicon, macOS 14+), a `Setup.exe` for Windows, an `.AppImage` for Linux. Windows and Linux each ship two builds: take the plain one unless you have an NVIDIA GPU, in which case take the `cuda` one. Nothing else to install — the inference engine and everything it needs are inside the installer.
 2. Open it. The first launch prepares the embedded database and the model catalog; it takes a few seconds.
 3. Pick a model marked **Runs easily** or **Ideal fit** and press Download. Once it is on disk, you can unplug the network and keep working.
 
@@ -72,7 +72,7 @@ tell us what breaks.
 
 ## How it compares
 
-Most local-AI tools are either a runtime you drive from a terminal, or a web interface you host on top of one. Erudi is the whole thing in one signed desktop app: the inference engine is inside it, the catalog tells you what your machine can actually run, and your documents become an assistant without anything to host, configure or pay for. If you already run Ollama or LM Studio and like it, keep it; Erudi is for the people who would rather not.
+Most local-AI tools are either a runtime you drive from a terminal, or a web interface you host on top of one. Erudi is the whole thing in one desktop app: the inference engine is inside it, the catalog tells you what your machine can actually run, and your documents become an assistant without anything to host, configure or pay for. If you already run Ollama or LM Studio and like it, keep it; Erudi is for the people who would rather not.
 
 ---
 
@@ -167,7 +167,7 @@ Every environment variable read by the backend, including `HF_TOKEN` for gated m
 The installer is generated at:
 
 ```text
-frontend/out/installer/Erudi Setup <version>.exe
+frontend/dist/Erudi Setup <version>.exe
 ```
 
 ### macOS (Apple Silicon)
@@ -176,8 +176,9 @@ frontend/out/installer/Erudi Setup <version>.exe
 bash scripts/build/build-mac-silicon.sh
 ```
 
-Signed and notarized builds are produced by CI: pushing a `vX.Y.Z` tag builds every platform and
-publishes a draft release. See [`BUILD.md`](BUILD.md) for the signing and notarization setup.
+Pushing a `vX.Y.Z` tag builds every platform in CI and publishes a draft release. macOS builds are
+signed and notarized on that leg; **Windows and Linux artifacts are currently unsigned**, so those
+installers show an unknown-publisher warning. See [`BUILD.md`](BUILD.md) for the signing setup.
 
 ---
 
@@ -190,7 +191,7 @@ erudi/
 │   │   ├── engines/          # Hardware backends (CUDA, CPU, MLX)
 │   │   ├── domains/          # API domains (conversations, llms, knowledge_base…)
 │   │   └── entities/         # SQLAlchemy models
-│   ├── backend.spec          # PyInstaller build spec (Windows)
+│   ├── backend.spec          # PyInstaller build spec (Windows and Linux CUDA)
 │   └── run.py                # Entry point
 ├── frontend/                 # Electron + React frontend
 │   ├── src/
@@ -222,7 +223,7 @@ Windows/Linux + NVIDIA    → CUDA_Engine (llama-server with CUDA offload)
 Windows/Linux, no NVIDIA  → CPU_Engine  (llama-server, CPU only)
 ```
 
-All inference engines run an OpenAI-compatible HTTP server in a child process and communicate with it through `http://127.0.0.1:<port>/v1/chat/completions`. Windows and Linux NVIDIA backends and the CPU fallback use `llama-server` from llama.cpp. macOS Apple Silicon uses `mlx_vlm.server` for vision and tool calling. The bundled PyTorch distribution is CPU-only and is used exclusively for the Knowledge Base embedding model (`multilingual-e5-small`); conversation history and its rolling summary are handled by the LangGraph checkpointer, not by embeddings.
+All inference engines run an OpenAI-compatible HTTP server in a child process and communicate with it through `http://127.0.0.1:<port>/v1/chat/completions`. Windows and Linux NVIDIA backends and the CPU fallback use `llama-server` from llama.cpp. macOS Apple Silicon uses `mlx_vlm.server` for vision and tool calling. PyTorch is never used for inference — only for the Knowledge Base embedding model (`multilingual-e5-small`), which runs on the CPU on Windows and Linux (those builds install torch from the CPU-only index) and on Metal on Apple Silicon. Conversation history and its rolling summary are handled by the LangGraph checkpointer, not by embeddings.
 
 ---
 
@@ -231,7 +232,8 @@ All inference engines run an OpenAI-compatible HTTP server in a child process an
 | Platform | Log location |
 |---|---|
 | Windows | `%TEMP%\erudi-backend.log` |
-| macOS / Linux | `/tmp/erudi-backend.log` |
+| macOS | `$TMPDIR/erudi-backend.log` (a per-user folder under `/var/folders/…`, not `/tmp`) |
+| Linux | `/tmp/erudi-backend.log` |
 
 ---
 

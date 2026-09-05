@@ -1,5 +1,12 @@
 # Apple Notarization Setup Guide for Erudi
 
+> **Scope: LOCAL macOS builds only.** Released builds are signed and notarized by CI,
+> which reads `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`
+> and `APPLE_TEAM_ID` from repository secrets and lets electron-builder notarize
+> natively (`notarize: true` in `frontend/electron-builder.yml`). You do not need any
+> of this to ship a release — see [`BUILD.md`](BUILD.md). Follow this guide only when
+> you want a signed artifact from your own machine.
+
 This guide explains how to set up Apple code signing and notarization for your Erudi app.
 
 ## Prerequisites
