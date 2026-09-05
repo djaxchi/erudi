@@ -102,23 +102,29 @@ jobs:
       #             package's nvidia-driver-560-open/dkms can't configure on a GPU-
       #             less runner) and, unlike the local `--toolkit` runfile, no multi-
       #             GB transient extraction that filled the small ubuntu / mid-build.
+      # 12.8 is deliberate, not just "recent": it is the first toolkit whose nvcc
+      # can emit native code for Blackwell (sm_120, the RTX 50 series). Built with
+      # anything older, those cards still work -- the driver JIT-compiles them from
+      # PTX -- but they pay a compile on first load and run Ada-generation code
+      # paths. The build scripts add 120-real only when the toolkit is >= 12.8, so
+      # a contributor on an older 12.x can still build.
       - name: Install CUDA Toolkit (Windows — network)
         if: matrix.llama_build == 'cuda' && runner.os == 'Windows'
         uses: Jimver/cuda-toolkit@v0.2.35
         with:
-          cuda: "12.6.3"
+          cuda: "12.8.1"
           method: network
       - name: Install CUDA Toolkit (Linux — toolkit-only, no driver)
         if: matrix.llama_build == 'cuda' && runner.os == 'Linux'
         uses: Jimver/cuda-toolkit@v0.2.35
         with:
-          cuda: "12.6.3"
+          cuda: "12.8.1"
           method: network
           # cuda-* compiler + headers, plus the libcublas that ggml-cuda links.
           sub-packages: '["nvcc", "cudart-dev", "cccl", "nvtx", "nvrtc-dev"]'
           non-cuda-sub-packages: '["libcublas-dev"]'
 
-      # Headroom insurance for the heavy 7-arch CUDA compile: drop preinstalled
+      # Headroom insurance for the CUDA compile: drop preinstalled
       # bloat we never use (~20 GB) so a thin-disk runner can't run out mid-build.
       - name: Free disk space (Linux CUDA build)
         if: matrix.llama_build == 'cuda' && runner.os == 'Linux'

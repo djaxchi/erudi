@@ -84,8 +84,12 @@ Most local-AI tools are either a runtime you drive from a terminal, or a web int
 - **Python 3.12** exactly — `pgserver`, which ships the embedded PostgreSQL cluster, publishes wheels up to cp312 only
 - **Git**
 - Platform-specific requirements:
-  - CUDA 12.1 toolkit for Windows with an NVIDIA GPU
+  - A CUDA toolkit to compile `llama-server` for an NVIDIA GPU on Windows or Linux — any 12.x works; releases are built with 12.8, which is the first that emits native code for RTX 50 cards
   - Xcode Command Line Tools for macOS
+
+> These are **build** requirements. Running Erudi needs none of them: the installer
+> carries the inference engine and its CUDA runtime, so an NVIDIA user only needs a
+> driver, and everyone else needs nothing at all.
 
 ### 1. Clone the repository
 
@@ -101,9 +105,9 @@ Run the setup script for your platform:
 | Platform | Script |
 |---|---|
 | macOS Apple Silicon | `bash scripts/dev/backend/setup-mac-silicon.sh` |
-| Windows CUDA 12.1 | `.\scripts\dev\backend\setup-win-cuda-121.ps1` |
+| Windows CUDA | `.\scripts\dev\backend\setup-win-cuda.ps1` |
 | Windows CPU | `.\scripts\dev\backend\setup-win-cpu.ps1` |
-| Linux CUDA 12.1 | `bash scripts/dev/backend/setup-linux-cuda-121.sh` |
+| Linux CUDA | `bash scripts/dev/backend/setup-linux-cuda.sh` |
 | Linux CPU | `bash scripts/dev/backend/setup-linux-cpu.sh` |
 
 ### 3. Build llama.cpp
@@ -161,7 +165,7 @@ Every environment variable read by the backend, including `HF_TOKEN` for gated m
 ### Windows (NVIDIA GPU)
 
 ```powershell
-.\scripts\build\build-win-cuda-121.ps1
+.\scripts\build\build-win-cuda.ps1
 ```
 
 The installer is generated at:

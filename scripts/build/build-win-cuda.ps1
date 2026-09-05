@@ -1,6 +1,6 @@
-# build-win-cuda-121.ps1
+# build-win-cuda.ps1
 #
-# Full build pipeline for Erudi on Windows with CUDA 12.1.
+# Full build pipeline for Erudi on Windows with CUDA.
 #
 # Steps:
 #   1. Verify prerequisites (Python venv, llama-cpp binaries, Node/npm)
@@ -11,7 +11,7 @@
 #   6. Run `npm run dist:win` in frontend/ → electron-builder NSIS installer
 #
 # Usage (from repo root):
-#   .\scripts\build\build-win-cuda-121.ps1
+#   .\scripts\build\build-win-cuda.ps1
 #
 # Output:
 #   frontend\dist\Erudi Setup 1.0.0.exe
@@ -36,7 +36,7 @@ $IconPng      = Join-Path $FrontendRoot "assets\icons\icon.png"
 $IconIco      = Join-Path $FrontendRoot "assets\icons\icon.ico"
 $LlamaServer  = Join-Path $BackendRoot "artifacts\llama-cpp\cuda\bin\llama-server.exe"
 
-Write-Step "Erudi Windows CUDA 12.1 build"
+Write-Step "Erudi Windows CUDA build"
 Write-Host "  Repo root : $RepoRoot"
 Write-Host "  Backend   : $BackendRoot"
 Write-Host "  Frontend  : $FrontendRoot"
@@ -45,7 +45,7 @@ Write-Host "  Frontend  : $FrontendRoot"
 Write-Step "Checking prerequisites..."
 
 if (-not (Test-Path $VenvPython)) {
-    Write-Fail "Backend venv not found at $VenvPython.`nRun: .\scripts\dev\backend\setup-win-cuda-121.ps1"
+    Write-Fail "Backend venv not found at $VenvPython.`nRun: .\scripts\dev\backend\setup-win-cuda.ps1"
 }
 Write-OK "Backend venv found"
 

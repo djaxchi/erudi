@@ -1,7 +1,7 @@
 # Erudi Backend Setup Script - Windows CPU
 # Supports both development and production environments
 # Compatible with interactive use and CI/CD pipelines
-# Requirements: Python 3.9+
+# Requirements: Python 3.12 exactly (pgserver ships cp312 wheels only)
 
 param(
     [string]$InstallType = ""
@@ -33,7 +33,7 @@ if ($currentDir -eq "backend") {
     $venvPath = ".\backend\venv"
 }
 
-# Check Python version (3.9+)
+# Check Python version (3.12 exactly)
 Write-Status "Checking Python version..."
 
 $pythonCandidates = @("python", "python3", "py")
@@ -59,8 +59,11 @@ if ([string]::IsNullOrEmpty($pythonCmd)) {
 if ($version -match "(\d+)\.(\d+)\.(\d+)") {
     $major = [int]$matches[1]
     $minor = [int]$matches[2]
-    if (($major -lt 3) -or (($major -eq 3) -and ($minor -lt 9))) {
-        Write-Error-Exit "Python 3.9+ required, found: $version"
+    # 3.12 EXACTLY, not a floor: pgserver ships cp312 wheels only (no cp313,
+    # no sdist), so a newer Python gets past this check and then fails to
+    # install the embedded PostgreSQL cluster with an opaque pip error.
+    if (($major -ne 3) -or ($minor -ne 12)) {
+        Write-Error-Exit "Python 3.12 exactly is required (pgserver publishes cp312 wheels only), found: $version"
     } else {
         Write-Status "Using Python: $pythonCmd ($version)"
     }

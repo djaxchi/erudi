@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Erudi Backend Setup Script - Linux CUDA 12.1
+# Erudi Backend Setup Script - Linux CUDA
 # Supports both development and production environments
 # Compatible with interactive use and CI/CD pipelines
-# Requirements: Python 3.9+, CUDA 12.1
+# Requirements: Python 3.12 exactly (pgserver ships cp312 wheels only), and a CUDA
+#               toolkit if you intend to compile llama-server for an NVIDIA GPU.
 
 set -e  # Exit on error
 
@@ -36,7 +37,7 @@ else
     venv_path="./backend/venv"
 fi
 
-# Check Python version (3.9+)
+# Check Python version (3.12 exactly)
 write_status "Checking Python version..."
 
 python_candidates=("python3" "python" "py3" "py")
@@ -57,8 +58,11 @@ fi
 if [[ $version =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
     major=${BASH_REMATCH[1]}
     minor=${BASH_REMATCH[2]}
-    if (( major < 3 || (major == 3 && minor < 9) )); then
-        write_error "Python 3.9+ required, found: $version"
+    # 3.12 EXACTLY, not a floor: pgserver ships cp312 wheels only (no cp313,
+    # no sdist), so a newer Python gets past this check and then fails to
+    # install the embedded PostgreSQL cluster with an opaque pip error.
+    if (( major != 3 || minor != 12 )); then
+        write_error "Python 3.12 exactly is required (pgserver publishes cp312 wheels only), found: $version"
     else
         write_status "Using Python: $python_cmd ($version)"
     fi

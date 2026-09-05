@@ -23,8 +23,14 @@ Intel Macs are not a target.
   publishes wheels up to cp312 only.
 - **Node.js 20 or later** — the CI legs run Node 20.
 - **Git**, with submodule support (llama.cpp is a submodule).
-- Platform extras: the CUDA 12.1 toolkit on Windows/Linux with an NVIDIA GPU; Xcode
-  Command Line Tools on macOS.
+- Platform extras: a CUDA toolkit on Windows/Linux to compile `llama-server` for an
+  NVIDIA GPU — any 12.x builds, and releases use 12.8, the first that emits native
+  code for RTX 50 cards; Xcode Command Line Tools on macOS.
+
+!!! note "This page is for building Erudi, not for running it"
+    The published installers carry the inference engine and its CUDA runtime. A user
+    with an NVIDIA GPU needs only a driver; everyone else needs nothing installed at
+    all. Nothing on this page applies to them.
 
 ### Recommended hardware
 
@@ -55,9 +61,9 @@ Run the script for your platform from the repository root. Each one creates
 | Platform | Script |
 |---|---|
 | macOS Apple Silicon | `bash scripts/dev/backend/setup-mac-silicon.sh` |
-| Windows CUDA 12.1 | `.\scripts\dev\backend\setup-win-cuda-121.ps1` |
+| Windows CUDA | `.\scripts\dev\backend\setup-win-cuda.ps1` |
 | Windows CPU | `.\scripts\dev\backend\setup-win-cpu.ps1` |
-| Linux CUDA 12.1 | `bash scripts/dev/backend/setup-linux-cuda-121.sh` |
+| Linux CUDA | `bash scripts/dev/backend/setup-linux-cuda.sh` |
 | Linux CPU | `bash scripts/dev/backend/setup-linux-cpu.sh` |
 
 ### 3. Build llama.cpp
