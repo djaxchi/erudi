@@ -192,6 +192,17 @@ screens, the shared chrome, and non-functional behavior.
 - [ ] When the app runs on **macOS or Windows**, then the Chromium renderer processes run **sandboxed** (no `--no-sandbox` in the renderer process arguments — check the process list); on Linux the flag is expected (user-namespace workaround).
 - [ ] When the backend logs a request with a foreign Origin or Host, then the request id correlation (`X-Request-ID`) still works for allowed requests (tracing survives the tightening).
 
+### The inference child requires a key (Windows and Linux)
+
+*`llama-server` is spawned with a per-process `--api-key`, and with `--no-slots` and `--no-webui`. The first scenario is the one that matters most in the whole pass: if the key wiring is wrong, **every** GGUF model load fails at readiness rather than degrading quietly, so run it before anything else on those platforms. Not applicable on Apple Silicon, where `mlx_vlm.server` has no such option — see the privacy page's known gaps.*
+
+- [ ] When I download a GGUF model and send it a message, then the answer streams normally (proof the backend authenticates itself to its own child; a broken key shows up as a readiness timeout at load, never as a bad answer).
+- [ ] When a model is loaded and I find the child's port in `%TEMP%\erudi-backend.log` (or `/tmp/erudi-backend.log`), then an **unauthenticated** request to it is refused: `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:<port>/v1/chat/completions -d '{"model":"x","messages":[]}'` answers **401**.
+- [ ] When I request `http://127.0.0.1:<port>/slots` on that same port, then it does **not** return the prompts of in-flight requests (the endpoint is disabled; a 404 or an error is the expected outcome, never a JSON list of slots carrying prompt text).
+- [ ] When I open `http://127.0.0.1:<port>/` in a browser, then llama.cpp's bundled web interface does **not** load.
+- [ ] When I unload the model and load it again, then the child's key has **changed** — grep the process arguments (`ps aux | grep llama-server` on macOS/Linux, Task Manager details on Windows) before and after; the two values must differ, which is what makes a leaked key worthless.
+- [ ] When I read `%TEMP%\erudi-backend.log` after a load, then the key appears **nowhere** in it.
+
 ## Non-functional (boot, offline, persistence, updates, errors)
 
 **Boot & errors**
