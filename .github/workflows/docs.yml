@@ -47,7 +47,7 @@ jobs:
           pip install -r docs/requirements.txt
       - name: Build (strict)
         run: mkdocs build --strict --site-dir site
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: github.event_name != 'pull_request'
         with:
           path: site
