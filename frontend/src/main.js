@@ -16,7 +16,7 @@ const os = require("os");
 const { confirmBackendHealth } = require("./utils/backendHealth");
 const { classifyStderrLine } = require("./utils/backendStderr");
 const { shouldRetrySpawn } = require("./utils/backendRetry");
-const { buildBackendSpawnOptions } = require("./utils/backendSpawn");
+const { buildBackendSpawnOptions, buildBackendEnv } = require("./utils/backendSpawn");
 const { gracefulShutdown } = require("./utils/backendShutdown");
 
 // electron-updater: only loaded in production to avoid dev noise.
@@ -256,16 +256,11 @@ const startRealBackend = () => {
 
     // Storage paths (embedded PostgreSQL data dir, model cache) are resolved
     // by the backend itself (src/launcher/runtime_paths.py) — nothing to pass.
-    // PYTHONUTF8=1 only affects the NON-frozen (dev) interpreter: PyInstaller's
-    // bootloader pre-initializes CPython and ignores this env var, so the
-    // packaged build gets UTF-8 mode from the spec's interpreter OPTIONS instead
-    // (see backend/backend.spec, #168). We still set it here because in dev it
-    // makes open() read bundled data files (e.g. alembic.ini) as UTF-8 regardless
-    // of the locale — a macOS app launched from Finder inherits no LANG (see #149).
-    // ERUDI_WATCH_STDIN=1 opts the launcher into watching stdin for EOF: on quit
-    // we close stdin so the backend shuts down gracefully (stop_postgres), which
-    // Windows otherwise never got because taskkill /F /T skips the lifespan (#216).
-    const backendEnv = { ...process.env, PYTHONUTF8: "1", ERUDI_WATCH_STDIN: "1" };
+    // buildBackendEnv inherits the parent environment, strips what must never
+    // cross into the backend (the LangChain/LangSmith family, which would turn
+    // on cloud tracing of every conversation), and adds PYTHONUTF8 and
+    // ERUDI_WATCH_STDIN. See utils/backendSpawn.js for the reasoning.
+    const backendEnv = buildBackendEnv(process.env);
 
     backendProcess = spawn(
       backendPath,

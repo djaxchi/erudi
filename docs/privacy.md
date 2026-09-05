@@ -35,6 +35,8 @@ Hugging Face's own client telemetry is disabled by the launcher before anything 
 
 **About web search.** The search tool uses the `ddgs` library with its `auto` backend. Despite the name, that is not only DuckDuckGo: the library queries a shuffled selection of public engines — Wikipedia and Grokipedia first, then any of DuckDuckGo, Google, Bing, Brave, Startpage, Mojeek, Yahoo and Yandex — two at a time until it has enough results, and it presents itself to them with a randomised browser fingerprint. No API key is involved and nothing identifies you beyond your IP address, but you cannot know in advance which engine will see a given query. That is why the toggle ships off, and why the Settings screen says so. We intend to pin the engine — see [known gaps](#known-gaps).
 
+**About LangChain's tracing client.** The agent runs on LangChain, which ships with a cloud tracing client called LangSmith. That client uploads the entire exchange — system prompt, knowledge-base excerpts, your question, the model's answer — and it is switched on by an environment variable alone. Erudi holds it shut in two places. The launcher assigns `LANGSMITH_TRACING` and `LANGCHAIN_TRACING_V2` to `false` on every start, overwriting whatever the process inherited ([run.py](https://github.com/erudi-app/erudi/blob/main/backend/run.py#L126-L162)), and the Electron process strips every `LANGCHAIN_*` and `LANGSMITH_*` variable out of the environment before the backend is started at all ([backendSpawn.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/utils/backendSpawn.js#L14-L23)). Both are covered by tests. The single exception is the escape hatch described below.
+
 **About images in answers.** The app window may load images over `https:` ([main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L696)). If a model writes an image link into an answer, or a web search result contains one, the window will fetch that image from its host, which reveals your IP address to that host. Models do not do this on their own; it needs web search on, or a document that contains such a link.
 
 ## What is exposed on this computer
@@ -74,6 +76,9 @@ All of them are documented in [`backend/.env.example`](https://github.com/erudi-
 - `HF_HUB_OFFLINE=1` — honoured by the Hugging Face client: every request to `huggingface.co` fails immediately with an explicit offline message. A blunt but effective switch if you want to be sure.
 - `ERUDI_DATA_ROOT` — moves the data and log folders.
 - `ERUDI_LOG_LEVEL` — verbosity of the backend log (`INFO` by default).
+- `ERUDI_ALLOW_LANGSMITH_TRACING=1` — the only way to let LangChain's tracing client send conversations off your machine, meant for a contributor debugging the agent layer. It has to be typed out in full, and it should never be set in a build anyone distributes.
+
+Three more are **written** by the launcher rather than read from you, and setting them yourself has no effect: `HF_HUB_DISABLE_TELEMETRY` is forced to `1`, and `LANGSMITH_TRACING` and `LANGCHAIN_TRACING_V2` are forced to `false`. They are assignments, not defaults, precisely so that a value inherited from your shell cannot re-open them.
 
 ## Known gaps
 
@@ -93,4 +98,8 @@ Run Erudi behind an outbound firewall or a local proxy and watch what it asks fo
 
 ## What we looked for and did not find
 
-Searched across the backend, the Electron main process, the renderer and the packaging configuration: telemetry and analytics SDKs (Sentry, PostHog, Mixpanel, Amplitude, Segment, Google Analytics, Umami, Plausible, Datadog, New Relic, Bugsnag, Electron's crash reporter), other network transports (WebSocket, EventSource, `sendBeacon`, `XMLHttpRequest`, mail or FTP clients), search providers requiring an API key, login-item or firewall manipulation, remote debugging switches, and external CDNs for fonts or scripts. None is present. The interface's font and the maths renderer are bundled with the app.
+Searched across the backend, the Electron main process, the renderer and the packaging configuration: telemetry and analytics SDKs (Sentry, PostHog, Mixpanel, Amplitude, Segment, Google Analytics, Umami, Plausible, Datadog, New Relic, Bugsnag, OpenTelemetry, Electron's crash reporter), other network transports (WebSocket, EventSource, `sendBeacon`, `XMLHttpRequest`, mail or FTP clients), search providers requiring an API key, login-item or firewall manipulation, remote debugging switches, and external CDNs for fonts or scripts. None is present. The interface's font and the maths renderer are bundled with the app.
+
+We also looked for a **stable identifier** — an install id, a device fingerprint, a machine id, a MAC address read, anything that would let two requests be tied to the same computer. There is none. The only identifier the code generates is an eight-character request id, regenerated for every request and used solely to correlate lines in the local log; it is never sent anywhere. And no log leaves the machine: the backend attaches exactly two handlers, one to standard output and one to a rotating local file, and the renderer's logs travel over an internal channel to that same file.
+
+`electron-log` does contain a remote transport. It ships disabled, with no URL configured, and nothing in this repository configures one.

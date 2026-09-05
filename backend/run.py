@@ -124,12 +124,43 @@ def parse_args():
 
 
 def configure_library_env() -> None:
-    """Set environment defaults to tame noisy third-party libraries."""
+    """Tame noisy third-party libraries, and close every known egress switch.
+
+    Two different rules apply here, and the difference matters.
+
+    Performance knobs use ``setdefault``: an operator who pins a thread count
+    means it, and overriding them would be rude.
+
+    Anything that can send data off the machine is **hard-set**, because these
+    variables are not ours to negotiate. The backend inherits the user's whole
+    environment (the Electron main process passes ``process.env`` through), and
+    ``load_dotenv()`` walks up from the working directory, so a value can arrive
+    from a shell profile or a stray ``.env`` several levels up without anyone
+    intending it. ``setdefault`` would honour that value; a local-first app
+    must not.
+
+    ``LANGSMITH_TRACING`` / ``LANGCHAIN_TRACING_V2`` are the serious one.
+    ``langsmith`` is a transitive dependency of langchain and ships inside the
+    frozen build, and either variable is enough to make LangChain POST the full
+    system prompt, the knowledge-base excerpts, the user's question and the
+    model's answer to ``api.smith.langchain.com``. Nothing in the UI would say
+    so. The legacy name is set alongside the current one because old shell
+    profiles outlive library renames.
+    """
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     os.environ.setdefault("MKL_NUM_THREADS", "1")
     os.environ.setdefault("PYTHONNOUSERSITE", "1")
-    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")  # local-first egress hygiene (#109)
+
+    # Egress switches: assigned, never defaulted. See the docstring.
+    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"  # local-first egress hygiene (#109)
+
+    # One deliberate escape hatch, for a contributor debugging the agent layer.
+    # It has to be typed out in full, which is the point: turning it on means
+    # accepting that conversations leave the machine.
+    if os.getenv("ERUDI_ALLOW_LANGSMITH_TRACING") != "1":
+        os.environ["LANGSMITH_TRACING"] = "false"
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
 
 
 def set_event_loop_policy() -> None:

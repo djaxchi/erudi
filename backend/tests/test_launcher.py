@@ -100,8 +100,8 @@ def test_configure_stdio_forces_utf8_replace(monkeypatch):
 
 @pytest.mark.unit
 def test_configure_library_env_sets_defaults(monkeypatch):
-    # configure_library_env pins noisy-library defaults, including
-    # HF_HUB_DISABLE_TELEMETRY=1 for local-first egress hygiene (#109).
+    # configure_library_env pins noisy-library defaults and closes every known
+    # egress switch (#109).
     import run
 
     for key in (
@@ -110,6 +110,8 @@ def test_configure_library_env_sets_defaults(monkeypatch):
         "MKL_NUM_THREADS",
         "PYTHONNOUSERSITE",
         "HF_HUB_DISABLE_TELEMETRY",
+        "LANGSMITH_TRACING",
+        "LANGCHAIN_TRACING_V2",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -123,13 +125,46 @@ def test_configure_library_env_sets_defaults(monkeypatch):
 
 
 @pytest.mark.unit
-def test_configure_library_env_does_not_override_existing(monkeypatch):
-    # setdefault semantics: an operator-provided telemetry setting is respected.
+def test_performance_knobs_stay_overridable(monkeypatch):
+    # Thread counts are tuning, not egress: an operator who sets them means it.
+    import run
+
+    monkeypatch.setenv("OMP_NUM_THREADS", "8")
+    run.configure_library_env()
+    assert os.environ["OMP_NUM_THREADS"] == "8"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "var",
+    ["LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2"],
+)
+def test_langchain_tracing_is_forced_off(monkeypatch, var):
+    """LangChain ships prompts to a cloud service when an env var says so.
+
+    `langsmith` rides in as a transitive dependency of langchain and is
+    bundled in the frozen build, and enabling it takes nothing but an
+    environment variable. A user with that variable exported in their shell
+    profile would have every system prompt, knowledge-base excerpt, question
+    and answer POSTed to api.smith.langchain.com without the app ever saying
+    so. This is the one switch that must not be left to `setdefault`.
+    """
+    import run
+
+    monkeypatch.setenv(var, "true")
+    run.configure_library_env()
+    assert os.environ[var] == "false"
+
+
+@pytest.mark.unit
+def test_hf_telemetry_cannot_be_re_enabled(monkeypatch):
+    # Same reasoning as the tracing switch: an inherited HF_HUB_DISABLE_TELEMETRY=0
+    # silently turned the hub client's telemetry back on for every call.
     import run
 
     monkeypatch.setenv("HF_HUB_DISABLE_TELEMETRY", "0")
     run.configure_library_env()
-    assert os.environ["HF_HUB_DISABLE_TELEMETRY"] == "0"
+    assert os.environ["HF_HUB_DISABLE_TELEMETRY"] == "1"
 
 
 @pytest.mark.unit
