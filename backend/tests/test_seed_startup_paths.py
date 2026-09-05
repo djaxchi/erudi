@@ -28,7 +28,6 @@ from src.database.seed import (
     Job_Cleanup_Service,
     Model_Config,
     Model_Seeder,
-    Quality_Filters,
     Search_Config,
     Startup_Initializer,
     _safetensors_total,

@@ -15,7 +15,6 @@ from src.core import config
 from src.utils import hf_model_metadata as meta
 from src.utils.hf_model_metadata import (
     ModelSize,
-    QuantizationType,
     _chosen_artifact_bytes,
     format_model_info_metadata,
     get_disk_size_after_quant,

@@ -15,7 +15,6 @@ it behaves the same on the three CI legs. No network anywhere in this file.
 
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
