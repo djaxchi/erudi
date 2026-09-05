@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildBackendSpawnOptions } from "./backendSpawn.js";
+import { buildBackendSpawnOptions, buildBackendEnv } from "./backendSpawn.js";
 
 const io = { cwd: "/work/dir", env: { PYTHONUTF8: "1" } };
 
@@ -21,5 +21,43 @@ describe("buildBackendSpawnOptions", () => {
     expect(opts.stdio).toEqual(["pipe", "pipe", "pipe"]);
     expect(opts.cwd).toBe("/work/dir");
     expect(opts.env).toBe(io.env);
+  });
+});
+
+describe("buildBackendEnv", () => {
+  it("keeps the parent environment and adds the launcher's own variables", () => {
+    const env = buildBackendEnv({ PATH: "/usr/bin", HF_TOKEN: "hf_abc" });
+    expect(env.PATH).toBe("/usr/bin");
+    expect(env.HF_TOKEN).toBe("hf_abc");
+    expect(env.PYTHONUTF8).toBe("1");
+    expect(env.ERUDI_WATCH_STDIN).toBe("1");
+  });
+
+  it("drops every LangChain and LangSmith variable", () => {
+    // `langsmith` ships inside the frozen backend as a transitive dependency of
+    // langchain, and a single inherited variable is enough to make it POST the
+    // system prompt, the knowledge-base excerpts, the question and the answer
+    // to api.smith.langchain.com. A user who set one of these years ago for an
+    // unrelated project must not have their conversations exfiltrated by us.
+    const env = buildBackendEnv({
+      PATH: "/usr/bin",
+      LANGSMITH_TRACING: "true",
+      LANGCHAIN_TRACING_V2: "true",
+      LANGCHAIN_API_KEY: "ls_secret",
+      LANGSMITH_API_KEY: "ls_secret",
+      LANGCHAIN_ENDPOINT: "https://api.smith.langchain.com",
+      LANGSMITH_PROJECT: "someone-elses-project",
+    });
+    for (const key of Object.keys(env)) {
+      expect(key.startsWith("LANGCHAIN_")).toBe(false);
+      expect(key.startsWith("LANGSMITH_")).toBe(false);
+    }
+    expect(env.PATH).toBe("/usr/bin");
+  });
+
+  it("does not mutate the environment it was given", () => {
+    const parent = { LANGSMITH_TRACING: "true" };
+    buildBackendEnv(parent);
+    expect(parent.LANGSMITH_TRACING).toBe("true");
   });
 });
