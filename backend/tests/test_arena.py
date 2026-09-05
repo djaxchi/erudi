@@ -310,7 +310,7 @@ class TestArenaEndpoints:
     def test_query_endpoint_invalid_payload(self, client, test_db_session, mock_llm):
         payload = {"question": "", "temperature": 3.0}  # empty + out-of-range
         response = client.post(f"/erudi/arena/{mock_llm.id}/query", json=payload)
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     def test_query_endpoint_model_not_found(self, client):
         response = client.post("/erudi/arena/999/query", json={"question": "Test question"})
