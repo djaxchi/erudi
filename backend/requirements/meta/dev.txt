@@ -2,14 +2,17 @@
 # Tools for development, testing, and debugging
 
 # Testing
-pytest==8.3.4
-pytest-asyncio==0.24.0
-pytest-cov==6.0.0
-pytest-timeout==2.3.1  # a hung test must fail, not eat the whole job (#335)
+pytest==9.1.1
+# pytest-asyncio 0.24 caps pytest<9, so it moves with the pytest major.
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+pytest-timeout==2.4.0  # a hung test must fail, not eat the whole job (#335)
 httpx==0.28.1  # For FastAPI testing
 
 # Code Quality
-black==24.10.0
+# black 26.3.1 fixes the arbitrary file write through an unsanitized cache file
+# name; stay on the newest stable of the line.
+black==26.5.1
 ruff==0.8.4
 mypy==1.13.0
 
@@ -22,7 +25,7 @@ types-python-dateutil==2.9.0.20241206
 
 # Docs
 mkdocs==1.6.1
-mkdocs-material==9.5.47
+mkdocs-material==9.7.7  # keep in sync with docs/requirements.txt
 mkdocstrings[python]==0.27.0
 pyyaml>=6.0
 
