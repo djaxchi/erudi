@@ -1,14 +1,28 @@
 name: Backend CI
 
+# `push` is restricted to main. Without that restriction every commit on a PR
+# branch triggered this workflow TWICE -- once as `push`, once as
+# `pull_request` -- and the two runs were identical.
+#
+# `merge_group` is what makes the merge queue work now that push no longer
+# matches its `gh-readonly-queue/**` branches. Removing one without adding the
+# other would leave the queue waiting on a check that can never report.
+#
+# No `paths` filter on purpose: this is a REQUIRED check, and a required check
+# that does not run because a path filter excluded it never reports at all,
+# which blocks the pull request forever. Always running costs a few minutes
+# that overlap the longer app-build-smoke anyway.
 on:
   push:
-    paths:
-      - 'backend/**'
-      - '.github/workflows/backend-ci.yml'
+    branches: [main]
   pull_request:
-    paths:
-      - 'backend/**'
-      - '.github/workflows/backend-ci.yml'
+  merge_group:
+
+# A superseded run teaches us nothing: cancel it when a new commit arrives.
+# Never on main or in the queue, where every run must complete.
+concurrency:
+  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   backend-ci:

@@ -258,7 +258,18 @@ npm run test:run
 It builds the complete shippable app on all three platforms, then boots the bundled
 backend and asserts it reaches `ready`. You cannot reproduce it in one command, but
 it is the gate most likely to catch a packaging or dependency change, so expect it
-to run for a while after you mark a pull request ready for review.
+to run for a while after you mark a pull request ready for review. Its **Linux leg
+is advisory** — Linux has never had a manual pass on real hardware, so a red Linux
+leg is a warning worth reading rather than a merge blocker.
+
+Every gate runs twice: once on your pull request, then again in the merge queue on
+your branch merged with `main`. A green pull request can still fail in the queue if
+`main` moved underneath it — that is the point of the second pass, not a flake.
+
+If your change touches `scripts/dev/backend/build-llamacpp-*` or the llama.cpp
+submodule, **`llamacpp-build.yml`** will compile the inference binary for you. It is
+the only place in CI that does, so treat a failure there as real: nothing else will
+catch a bad compile flag before a release tag.
 
 Then:
 
