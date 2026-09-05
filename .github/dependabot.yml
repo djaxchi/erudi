@@ -5,6 +5,11 @@
 # prove it, and keep hands on the tree where a single-package bump can make the
 # whole set unsolvable.
 #
+# Second rule, learned the hard way: group minor and patch, never majors. A
+# group without `update-types` swept fifteen breaking changes into one pull
+# request. Majors now arrive one per pull request, so each is judged on its own
+# and `open-pull-requests-limit` keeps the queue short.
+#
 # The backend's Python requirements are the second kind and are deliberately
 # absent. Its packages are coupled -- langchain moves with langgraph,
 # transformers with torch and mlx-vlm, pgserver pins the Python version itself
@@ -35,9 +40,14 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
+      # Minor and patch only. Grouping majors in here produces a single pull
+      # request carrying fifteen breaking changes -- eslint 8 to 10, tailwind 3
+      # to 4, babel 7 to 8 -- which is not a dependency bump, it is a migration
+      # nobody planned, and it is unreviewable and unmergeable in one piece.
       frontend:
         patterns: ["*"]
         exclude-patterns: ["electron", "electron-builder", "electron-updater"]
+        update-types: ["minor", "patch"]
     ignore:
       # Electron and its packaging pair decide what ships to users and how the
       # installer is signed. They move only behind a full packaged build and a
@@ -61,3 +71,4 @@ updates:
     groups:
       docs:
         patterns: ["*"]
+        update-types: ["minor", "patch"]

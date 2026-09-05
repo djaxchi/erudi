@@ -1,14 +1,18 @@
 name: Frontend CI
 
+# See the comment in backend-ci.yml: `push` restricted to main kills the
+# duplicate run on every PR commit, `merge_group` keeps the merge queue able to
+# see this check, and the `paths` filter is gone because a required check that
+# a path filter skips never reports and blocks the pull request forever.
 on:
   push:
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend-ci.yml'
+    branches: [main]
   pull_request:
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend-ci.yml'
+  merge_group:
+
+concurrency:
+  group: frontend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   frontend-ci:
