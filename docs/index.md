@@ -53,6 +53,8 @@ weights locally.
 - [Knowledge Base](reference/knowledge_base.md) — ingestion and retrieval
 - [Arena](reference/arena.md) — model comparison
 - [Hardware](reference/hardware.md) — system monitoring
+- [User settings](reference/user_settings.md) — global preferences (web search, language)
+- [Startup](reference/startup.md) — first-boot payload for the frontend
 - [Entities](reference/entities.md) — SQLAlchemy models
 - [Database](reference/database.md) — seeding and DB access
 

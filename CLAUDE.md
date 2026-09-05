@@ -89,10 +89,10 @@ backend/src/
 ├── ingestion/           KB pipeline: DocumentReader façade + *Extractor backends, cleaning,
 │                        3-pass chunking (e5 tokenizer), E5Embeddings, vector_store (rag.kb_chunks)
 ├── launcher/            runtime_paths.py (packaged vs. dev paths), postgres_runtime.py (embedded cluster)
-└── utils/               file_processor (training), kb_utils (hybrid retrieval façade), prompt_utils
+└── utils/               kb_utils (hybrid retrieval façade), prompt_utils, hf_model_metadata
 ```
 
-Routers mounted under `/erudi` (in `core/api.py:register_routers`): `llms`, `hardware`, `arena`, `knowledge_base`, `conversations`, `startup` (from `domains/`) plus `health` (from `core/health.py`, not a domain). There is no `training` router — training lives in `utils/file_processor` and is driven through the `llms` domain. The frontend hits `http://127.0.0.1:27182/erudi/...` (see `frontend/src/config/api.js`).
+Routers mounted under `/erudi` (in `core/api.py:register_routers`): `llms`, `hardware`, `arena`, `knowledge_base`, `conversations`, `user_settings`, `startup` (from `domains/`) plus `health` (from `core/health.py`, not a domain). Fine-tuning was removed as dead code (#99) — there is no `training` router and no `file_processor`. The frontend hits `http://127.0.0.1:27182/erudi/...` (see `frontend/src/config/api.js`).
 
 **Engine singleton.** `BaseEngine` keeps `_model`, `_tokenizer`, `_model_id`, `_last_used` as class attributes shared across requests, guarded by `_lock`. A 300s idle cleanup task (`start_cleanup_task`) is registered in `lifespan`. Don't instantiate engines — call class methods on the result of `BaseEngine.get_engine()`. Selected engine lives in `src.core.config.LLM_Engine`.
 
@@ -153,13 +153,14 @@ frontend/src/
 ## CI gates (must pass before merge)
 
 - **Backend** (`.github/workflows/backend-ci.yml`, Python 3.12, 3-leg matrix): `compileall`, `ruff check backend/src`, `from src.main import app`, `pytest tests/ -q --ignore=tests/e2e -m "not mlx_only"`. All three legs (`ubuntu-latest`, `windows-latest`, `macos-14`) gate merges and run with `-x` — see `docs/dev/backend-ci-multi-os.md` for the triage that got them there. `pytest.ini` sets `timeout = 600` so a hung test fails instead of consuming the job. The Ubuntu leg runs against `CPU_Engine` only — keep CPU paths working.
-- **Frontend** (`.github/workflows/frontend-ci.yml`, Node 20): `npm ci`, `npm run lint:check`, `npm run format:check`.
+- **Frontend** (`.github/workflows/frontend-ci.yml`, Node 20): `npm ci`, `npm run lint:check`, `npm run format:check`, `npm run test:run` (Vitest).
+- **Full-app smoke** (`.github/workflows/app-build-smoke.yml`): builds the complete shippable app on macOS, Windows and Linux, then boots the BUNDLED backend and asserts it reaches `ready`. It is the heaviest gate and the one most likely to fail on a packaging change — it runs on `pull_request` (ready for review) and in the merge queue.
 
 ## Logs
 
-- Backend: `/tmp/erudi-backend.log` (macOS/Linux) or `%TEMP%\erudi-backend.log` (Windows), written by `frontend/src/main.js`. Backend's own logger writes to `backend/logs/backend.log`.
+- Backend: `os.tmpdir()/erudi-backend.log`, written by `frontend/src/main.js` — that is `/tmp` on Linux, `%TEMP%` on Windows, and `$TMPDIR` (a per-user folder under `/var/folders/…`, NOT `/tmp`) on macOS. Backend's own logger writes to `backend/logs/backend.log`.
 - Frontend (production): electron-log default location.
 
 ## Conflict with the global CLAUDE.md
 
-Your global rule mandates French responses; the in-repo `.github/copilot-instructions.md` doesn't take a stance, so French stays the default. The repo-level rules on naming, exceptions, async, and engine encapsulation stack on top — no conflicts to flag today.
+Nothing in this repository takes a stance on the language of chat replies, so a global rule mandating one wins by default. The repo-level rules on naming, exceptions, async, and engine encapsulation stack on top — no conflicts to flag today.
