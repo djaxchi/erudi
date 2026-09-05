@@ -43,11 +43,13 @@ The backend listens on `127.0.0.1` only, on the first free port from 27182 to 27
 
 The inference servers listen on `127.0.0.1` too: `llama-server` on 27200–27299, `mlx_vlm.server` on 27300–27399 ([base_llama_cpp_engine.py](https://github.com/erudi-app/erudi/blob/main/backend/src/engines/base_llama_cpp_engine.py#L94), [mlx_engine.py](https://github.com/erudi-app/erudi/blob/main/backend/src/engines/mlx_engine.py#L140)).
 
+On Windows and Linux, `llama-server` is started with a random key that exists only for the life of that process, so nothing else on your machine can drive the loaded model — not another program, and not a web page in your browser, which can otherwise POST to a loopback port. Its slots endpoint, which would report the prompt of every request in flight, and its bundled web interface are both switched off, because Erudi uses neither ([base_llama_cpp_engine.py](https://github.com/erudi-app/erudi/blob/main/backend/src/engines/base_llama_cpp_engine.py#L417-L429)). On Apple Silicon, `mlx_vlm.server` offers no equivalent option — see [known gaps](#known-gaps).
+
 The embedded PostgreSQL database is reachable through a Unix socket only on macOS and Linux ([postgres_runtime.py](https://github.com/erudi-app/erudi/blob/main/backend/src/launcher/postgres_runtime.py#L50-L76)). On Windows, where Unix sockets are not available, it listens on a loopback TCP port without a password.
 
 The app window runs with Chromium's sandbox, context isolation and no Node integration ([main.js](https://github.com/erudi-app/erudi/blob/main/frontend/src/main.js#L637-L643)); the packaged build cannot be started with remote debugging or Node inspection flags ([electron-builder.yml](https://github.com/erudi-app/erudi/blob/main/frontend/electron-builder.yml#L29-L35)).
 
-**What this does and does not protect against.** Erudi is built for a computer you use yourself. It defends the backend against other machines and against web pages you visit. It does not defend against software already running under your account: such a program can read the data folder, and can talk to the backend and to the inference server while a model is loaded, because none of them requires a key. The same is true of every local-AI tool we know of; we say it here so that you can decide what runs next to Erudi.
+**What this does and does not protect against.** Erudi is built for a computer you use yourself. It defends the backend against other machines and against web pages you visit. It does not defend against software already running under your account: such a program can read the data folder, and on Apple Silicon it can talk to the inference server while a model is loaded, because `mlx_vlm.server` has no key to require. The same is true of every local-AI tool we know of; we say it here so that you can decide what runs next to Erudi.
 
 ## Where your data is written
 
@@ -81,7 +83,7 @@ These are the points on which the current build is weaker than this page would l
 
 1. **The reachability check runs every 45 seconds** while the app is open, whether or not you intend to download anything. It sends no data, but it is a periodic request to a third party that you cannot turn off. It should run only when the catalog is open.
 2. **Web search does not pin an engine.** The `auto` backend picks among ten engines. It should use one, named on this page.
-3. **The inference server accepts requests from any local origin.** `llama-server` and `mlx_vlm.server` do not require a key, and they answer cross-origin requests, so a web page open in your browser while a model is loaded could send it prompts. The backend itself is protected against this; the child servers are not yet.
+3. **On Apple Silicon, the inference server accepts requests from any local origin.** `mlx_vlm.server` has no API-key option, so while a model is loaded another program on your machine — or a web page open in your browser — can send it prompts. The backend and the `llama-server` used on Windows and Linux both require a key; this one cannot yet.
 4. **Updates cannot be turned off.** A newer version is downloaded in the background and installed on quit. There should be a setting.
 5. **Images in answers are fetched from any `https:` host.** Answers should not load remote images unless you ask.
 6. **On Windows, the embedded database is reachable by any local process** on a loopback port without a password.
