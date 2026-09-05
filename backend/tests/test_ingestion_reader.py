@@ -200,6 +200,23 @@ class TestPdf:
         assert doc.status == "pending_vision"
         assert doc.markdown == ""
 
+    def test_corrupt_pdf_fails_fast_instead_of_hanging(self, tmp_path):
+        """A truncated PDF must raise, not spin.
+
+        Documents come from the user, so the parser is fed untrusted input by
+        design: most of the advisories fixed in pypdf 6 are unbounded loops or
+        recursion on malformed cross-reference tables. This pins the contract
+        the ingestion job relies on — a bad file fails, and it fails quickly.
+        """
+        path = tmp_path / "truncated.pdf"
+        # A header and an xref pointing past the end of the file.
+        path.write_bytes(b"%PDF-1.4\ntrailer<</Root 1 0 R>>\nstartxref\n999999\n%%EOF\n")
+
+        with pytest.raises(Exception) as caught:
+            DocumentReader().read(path)
+        # Whatever pypdf raises must not be a timeout or a recursion blow-up.
+        assert not isinstance(caught.value, RecursionError)
+
 
 class TestDocx:
     def test_headings_become_markdown_and_text_extracted(self, docx_file):

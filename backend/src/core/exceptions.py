@@ -213,7 +213,7 @@ class InvalidInputException(AppBaseException):
             trace: Optional stack trace or additional context.
 
         """
-        super().__init__(f"Invalid input for '{field_name}'", status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, erudi_code="INVALID_INPUT", trace=trace)
+        super().__init__(f"Invalid input for '{field_name}'", status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, erudi_code="INVALID_INPUT", trace=trace)
 
 
 class StateConflictException(AppBaseException):

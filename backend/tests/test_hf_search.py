@@ -111,4 +111,4 @@ class TestHFDownloadEndpoint:
 
     def test_download_by_link_requires_link(self, client):
         resp = client.post("/erudi/llms/download/huggingface", json={"name": "x"})
-        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert resp.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
