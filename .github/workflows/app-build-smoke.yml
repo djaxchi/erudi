@@ -65,6 +65,12 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Build frozen backend (PyInstaller)
+        env:
+          # This gate proves the backend boots to `ready`; it does not compile
+          # llama.cpp and never runs inference, so it is the one build allowed
+          # to ship without an inference binary. Releases must not set this -
+          # backend.spec fails hard there, on purpose.
+          ERUDI_ALLOW_MISSING_INFERENCE_BINARY: "1"
         run: |
           python -m pip install --upgrade pip wheel setuptools
           pip install -r backend/requirements/entrypoints/prod/${{ matrix.reqs }}

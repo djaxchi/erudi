@@ -121,6 +121,48 @@ def test_cpu_spec_excludes_mlx_vlm():
 
 
 @pytest.mark.unit
+def test_backend_spec_fails_the_build_when_the_inference_binary_is_missing():
+    """A release without llama-server is an app that cannot infer at all.
+
+    The spec used to only `warnings.warn` when the artifact directory was
+    absent, so a silently failed llama build would still produce a bundle and
+    still publish. Nothing downstream checked, so the defect would surface as
+    "the app does nothing" on a user's machine. The spec must raise instead.
+    """
+    spec = _read("backend.spec")
+    assert "warnings.warn" not in spec, (
+        "a missing inference binary must fail the build, not warn"
+    )
+    assert "RuntimeError" in spec
+    # The boot-only smoke build legitimately has no llama-server, so there is
+    # one explicit, named opt-out - and it has to be spelled out in the
+    # workflow that uses it rather than being the default.
+    assert "ERUDI_ALLOW_MISSING_INFERENCE_BINARY" in spec
+
+
+@pytest.mark.unit
+def test_smoke_workflow_is_the_only_place_that_opts_out():
+    """The opt-out belongs to the boot-only gate, never to a release."""
+    root = _BACKEND.parent
+    smoke = (root / ".github/workflows/app-build-smoke.yml").read_text(encoding="utf-8")
+    release = (root / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "ERUDI_ALLOW_MISSING_INFERENCE_BINARY" in smoke
+    assert "ERUDI_ALLOW_MISSING_INFERENCE_BINARY" not in release
+
+
+@pytest.mark.unit
+def test_release_asserts_the_bundle_actually_contains_the_binary():
+    """Belt and braces: the spec can only see what it was handed.
+
+    PyInstaller could succeed and still drop the file, so the release verifies
+    the frozen bundle on disk before it is packaged and published.
+    """
+    root = _BACKEND.parent
+    release = (root / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "Verify the bundled inference binary" in release
+
+
+@pytest.mark.unit
 def test_backend_spec_bundles_variant_llama_server():
     # The Windows llama-server bundle must follow the build variant so the cpu
     # spec ships artifacts/llama-cpp/cpu/bin and the (default) cuda spec ships

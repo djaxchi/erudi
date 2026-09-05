@@ -150,6 +150,47 @@ jobs:
       - name: Build backend bundle
         run: pyinstaller backend/${{ matrix.spec }} --distpath backend/dist
 
+      # backend.spec already refuses to build without llama-server, but it can
+      # only check what it was handed: PyInstaller could still drop the file on
+      # its way into the bundle. Verify the frozen tree on disk before anything
+      # is packaged, so a release can never publish an app that loads a model
+      # and then fails at the first message. mac is MLX and has no such binary,
+      # hence the llama_build guard.
+      - name: Verify the bundled inference binary
+        if: matrix.llama_build != ''
+        env:
+          LLAMA_FLAVOUR: ${{ matrix.llama_build }}
+        run: |
+          set -euo pipefail
+          # Not `[ ... ] && exe=...`: under `set -e` a false test would exit 1.
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            exe="llama-server.exe"
+          else
+            exe="llama-server"
+          fi
+          found=$(find backend/dist -type f -name "$exe" -print -quit)
+          if [ -z "$found" ]; then
+            echo "::error::$exe is missing from the frozen backend. The $LLAMA_FLAVOUR build produced no inference engine; refusing to package."
+            find backend/dist -maxdepth 4 -type d -name "llama-cpp" -exec ls -R {} + || true
+            exit 1
+          fi
+          echo "Found inference binary: $found"
+          # The Windows CUDA bundle carries its own CUDA runtime so a user needs
+          # only an NVIDIA driver, never the toolkit. If those DLLs go missing
+          # the installer still builds and then fails to start the engine on
+          # every machine, so treat their absence as a release blocker too.
+          if [ "${RUNNER_OS}" = "Windows" ] && [ "$LLAMA_FLAVOUR" = "cuda" ]; then
+            bindir=$(dirname "$found")
+            for dll in cudart64_12.dll cublas64_12.dll cublasLt64_12.dll; do
+              if [ ! -f "$bindir/$dll" ]; then
+                echo "::error::$dll is missing next to llama-server.exe; the CUDA build would require the user to install the CUDA toolkit."
+                ls -la "$bindir"
+                exit 1
+              fi
+            done
+            echo "CUDA runtime DLLs present next to the server."
+          fi
+
       # ── Frontend: webpack build → electron-builder package + sign + publish ──
       - name: Install frontend dependencies
         working-directory: frontend
